@@ -1,3 +1,4 @@
+use crate::VerifiedClientAssertion;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -40,8 +41,20 @@ pub struct ValidatedTokenEndpointInput {
     assertion: PresentedClientAssertion,
 }
 
+/// A validated token request paired with the verified client assertion that
+/// authenticated that same client for this exact token endpoint.
+#[must_use = "consume the code only with this authenticated token request"]
+pub struct AuthenticatedTokenEndpointInput {
+    client_id: String,
+    exchange: AuthorizationCodeExchange,
+    assertion: VerifiedClientAssertion,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidTokenEndpointInput;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidAuthenticatedTokenEndpointInput;
 
 /// A canonical code digest and PKCE challenge ready for a conditional store operation.
 /// The bearer code and verifier are not retained after validation.
@@ -145,6 +158,41 @@ impl ValidatedTokenEndpointInput {
     }
 
     pub fn assertion(&self) -> &PresentedClientAssertion {
+        &self.assertion
+    }
+
+    /// Bind the request's client and token endpoint to its verified assertion.
+    /// The assertion must already have been signature-checked and reserved in
+    /// the replay store by the platform adapter.
+    pub fn authenticate(
+        self,
+        assertion: VerifiedClientAssertion,
+        token_endpoint: &str,
+    ) -> Result<AuthenticatedTokenEndpointInput, InvalidAuthenticatedTokenEndpointInput> {
+        if token_endpoint.is_empty()
+            || self.client_id != assertion.client_id()
+            || assertion.audience() != token_endpoint
+        {
+            return Err(InvalidAuthenticatedTokenEndpointInput);
+        }
+        Ok(AuthenticatedTokenEndpointInput {
+            client_id: self.client_id,
+            exchange: self.exchange,
+            assertion,
+        })
+    }
+}
+
+impl AuthenticatedTokenEndpointInput {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub fn exchange(&self) -> &AuthorizationCodeExchange {
+        &self.exchange
+    }
+
+    pub fn assertion(&self) -> &VerifiedClientAssertion {
         &self.assertion
     }
 }

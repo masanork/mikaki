@@ -11,7 +11,8 @@ pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
 pub use exchange::{
-    AuthorizationCodeExchange, CodeExchangeInput, InvalidCodeExchange, InvalidTokenEndpointInput,
+    AuthenticatedTokenEndpointInput, AuthorizationCodeExchange, CodeExchangeInput,
+    InvalidAuthenticatedTokenEndpointInput, InvalidCodeExchange, InvalidTokenEndpointInput,
     PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, TokenEndpointInput,
     ValidatedTokenEndpointInput,
 };

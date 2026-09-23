@@ -279,13 +279,13 @@ pub async fn verify_and_accept_client_assertion(
 #[cfg(target_arch = "wasm32")]
 pub async fn authenticate_token_request(
     db: &worker::d1::D1Database,
-    input: &sakimori_oidc::ValidatedTokenEndpointInput,
+    input: sakimori_oidc::ValidatedTokenEndpointInput,
     token_endpoint: &str,
     now: u64,
     policy: &WorkerRuntimePolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
-) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
-    verify_and_accept_client_assertion(
+) -> worker::Result<sakimori_oidc::AuthenticatedTokenEndpointInput> {
+    let assertion = verify_and_accept_client_assertion(
         db,
         input.client_id(),
         input.assertion().as_str(),
@@ -295,7 +295,10 @@ pub async fn authenticate_token_request(
         policy,
         random,
     )
-    .await
+    .await?;
+    input
+        .authenticate(assertion, token_endpoint)
+        .map_err(|_| worker::Error::RustError("invalid_client".into()))
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
