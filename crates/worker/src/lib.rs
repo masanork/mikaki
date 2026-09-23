@@ -60,7 +60,7 @@ struct AuthorizationCodeContextRow {
     client_id: String,
     sid: String,
     sub: String,
-    nonce: String,
+    nonce: Option<String>,
     auth_time: i64,
     parent_expires_at: i64,
     signing_generation: i64,
@@ -143,7 +143,7 @@ pub struct AuthorizationCodeContext {
     client_id: String,
     sid: String,
     sub: String,
-    nonce: String,
+    nonce: Option<String>,
     auth_time: u64,
     parent_expires_at: u64,
     signing_kid: String,
@@ -237,7 +237,7 @@ impl WorkerTokenSigner {
         subject: &str,
         audience: &str,
         sid: &str,
-        nonce: &str,
+        nonce: Option<&str>,
         auth_time: u64,
         issued_at: u64,
         expires_at: u64,
@@ -300,8 +300,8 @@ impl AuthorizationCodeContext {
         &self.sub
     }
 
-    pub fn nonce(&self) -> &str {
-        &self.nonce
+    pub fn nonce(&self) -> Option<&str> {
+        self.nonce.as_deref()
     }
 
     pub fn auth_time(&self) -> u64 {
@@ -957,7 +957,10 @@ async fn commit_authorization_code_exchange(
         JsValue::from_str(&context.signing_generation().to_string()),
         JsValue::from_str(context.sid()),
         JsValue::from_str(context.subject()),
-        JsValue::from_str(context.nonce()),
+        context
+            .nonce()
+            .map(JsValue::from_str)
+            .unwrap_or(JsValue::NULL),
         JsValue::from_str(&context.auth_time().to_string()),
         JsValue::from_str(&context.parent_expires_at().to_string()),
         JsValue::from_str(&operation_id),
@@ -981,7 +984,7 @@ async fn commit_authorization_code_exchange(
              AND EXISTS (SELECT 1 FROM client_session cs \
                JOIN sso_context sx ON sx.sso_id=cs.sso_id \
                JOIN code_context cc ON cc.code_hash=?1 \
-               WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce=?16) \
+               WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce IS ?16) \
              AND EXISTS (SELECT 1 FROM client_key ck WHERE ck.client_id=?2 \
                AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1) \
              AND EXISTS (SELECT 1 FROM assertion_use au WHERE au.client_id=?2 \
@@ -1367,7 +1370,6 @@ async fn authorize_route(
         "response_type",
         "scope",
         "state",
-        "nonce",
         "code_challenge",
         "code_challenge_method",
     ]
@@ -1388,7 +1390,7 @@ async fn authorize_route(
         response_type: parameters["response_type"].clone(),
         scope: parameters["scope"].clone(),
         state: parameters["state"].clone(),
-        nonce: parameters["nonce"].clone(),
+        nonce: parameters.get("nonce").cloned(),
         code_challenge: parameters["code_challenge"].clone(),
         code_challenge_method: parameters["code_challenge_method"].clone(),
     };
@@ -1538,7 +1540,10 @@ async fn authorize_route(
         JsValue::from_str(code_hash),
         JsValue::from_str(client_id),
         JsValue::from_str(redirect_uri),
-        JsValue::from_str(validated.nonce()),
+        validated
+            .nonce()
+            .map(JsValue::from_str)
+            .unwrap_or(JsValue::NULL),
     ];
     db.batch(vec![
         db.prepare(include_str!("../sql/insert-pairwise-subject.sql"))
@@ -1550,7 +1555,13 @@ async fn authorize_route(
         db.prepare(include_str!("../sql/insert-authorization-code.sql"))
             .bind(&code_values)?,
         db.prepare(include_str!("../sql/insert-authorization-code-context.sql"))
-            .bind(&[code_values[0].clone(), JsValue::from_str(validated.nonce())])?,
+            .bind(&[
+                code_values[0].clone(),
+                validated
+                    .nonce()
+                    .map(JsValue::from_str)
+                    .unwrap_or(JsValue::NULL),
+            ])?,
         db.prepare(include_str!("../sql/guard-authorization-code.sql"))
             .bind(&[
                 guard_values[0].clone(),

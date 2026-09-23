@@ -112,7 +112,7 @@ CREATE TABLE authorization_code (
 
 CREATE TABLE code_context (
   code_hash TEXT PRIMARY KEY NOT NULL REFERENCES authorization_code(code_hash),
-  nonce TEXT NOT NULL CHECK(length(nonce) BETWEEN 1 AND 512)
+  nonce TEXT CHECK(nonce IS NULL OR length(nonce) BETWEEN 1 AND 512)
 ) STRICT;
 
 CREATE TABLE assertion_use (

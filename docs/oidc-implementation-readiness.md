@@ -11,7 +11,7 @@
 | アカウント | sakimori共通アカウント、アプリごとのSubjectId。メール一致の統合なし |
 | ID | 通常IDはUUIDv4、小文字36文字。初期D1ではTEXTとして保存。内部v7は必要性を測定するまで導入しない |
 | sub | account/sectorごとの永続UUIDv4。接続解除・鍵更新で維持 |
-| ログイン | 静的登録のサーバー側client、Code＋PKCE S256、state・nonce必須 |
+| ログイン | 静的登録のサーバー側client、Code＋PKCE S256、state必須・nonce任意 |
 | client認証 | private_key_jwt、client/環境/用途別鍵、assertion一回限り |
 | 署名 | 通常はJOSE ES256。client登録にも明記。RS256は規格適合・明示的な互換プロファイルで実装対象 |
 | EdDSA/PQC | 初期既定にはしない。鍵・方式の境界は追加可能にし、標準と実装の対応を確認して導入 |
@@ -55,7 +55,7 @@ OAuthのエラーコードとHTTP statusは対象規格の規則に従う。サ�
 
 Discoveryはresponse_types_supported=[code]、grant_types_supported=[authorization_code]、subject_types_supported=[pairwise]、scopes_supported=[openid]、code_challenge_methods_supported=[S256]、token_endpoint_auth_methods_supported=[private_key_jwt]を公開する。署名方式は実装・相互運用試験に通ったES256とRS256を掲載し、まだ使えない方式を予告掲載しない。backchannel_logout_supportedとbackchannel_logout_session_supportedをtrueにするのは実装後とする。
 
-ID Tokenはiss、sub、aud、exp、iat、nonce、auth_time、sidを発行する。通常は単一aud。acr/amrは検証済みの意味と値の体系を決めずに推測で付けない。claims_supportedは実際のID Token/UserInfoのclaimを記載する。独自のsession APIをUserInfo claimとして宣伝しない。
+ID Tokenはiss、sub、aud、exp、iat、auth_time、sidを発行し、nonceは認可要求に含まれた場合に限り発行する。通常は単一aud。acr/amrは検証済みの意味と値の体系を決めずに推測で付けない。claims_supportedは実際のID Token/UserInfoのclaimを記載する。独自のsession APIをUserInfo claimとして宣伝しない。
 
 request/request_uri、動的登録、claims parameter、署名/暗号化UserInfoは初期未対応としてメタデータと要求処理を一致させる。request/request_uriを送られた場合は規定の非対応エラーを返し、URLを取得しない。promptのnone/login/consent/select_account、max_ageとauth_timeを実装する。display、ui_locales、claims_locales、acr_valuesは規格の最低対応を満たし、未提供の言語/保証を偽って返さない。max_age=0は再認証要求として扱い、noneと対話が必要な条件が両立しなければ規定のエラーにする。
 

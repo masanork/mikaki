@@ -34,7 +34,7 @@ pub struct Authorization {
     pub response_type: String,
     pub scope: String,
     pub state: String,
-    pub nonce: String,
+    pub nonce: Option<String>,
     pub code_challenge: String,
     pub code_challenge_method: String,
 }
@@ -50,7 +50,7 @@ pub struct ValidatedAuthorization {
     client_id: String,
     redirect_uri: String,
     state: String,
-    nonce: String,
+    nonce: Option<String>,
     code_challenge: String,
 }
 
@@ -103,8 +103,10 @@ impl Authorization {
             || self.scope != "openid"
             || self.state.is_empty()
             || self.state.len() > state_limit
-            || self.nonce.is_empty()
-            || self.nonce.len() > nonce_limit
+            || self
+                .nonce
+                .as_ref()
+                .is_some_and(|nonce| nonce.is_empty() || nonce.len() > nonce_limit)
             || self.code_challenge_method != "S256"
             || challenge.len() != 32
             || B64.encode(challenge) != self.code_challenge
@@ -146,8 +148,8 @@ impl ValidatedAuthorization {
     pub fn state(&self) -> &str {
         &self.state
     }
-    pub fn nonce(&self) -> &str {
-        &self.nonce
+    pub fn nonce(&self) -> Option<&str> {
+        self.nonce.as_deref()
     }
     pub fn code_challenge(&self) -> &str {
         &self.code_challenge
@@ -174,7 +176,7 @@ mod tests {
             response_type: "code".into(),
             scope: "openid".into(),
             state: "state".into(),
-            nonce: "nonce".into(),
+            nonce: Some("nonce".into()),
             code_challenge: pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
             code_challenge_method: "S256".into(),
         };
@@ -184,8 +186,11 @@ mod tests {
         assert_eq!(validated.client_id(), "client");
         assert_eq!(validated.redirect_uri(), "https://app.example/callback");
         assert_eq!(validated.state(), "state");
-        assert_eq!(validated.nonce(), "nonce");
+        assert_eq!(validated.nonce(), Some("nonce"));
         assert_eq!(validated.code_challenge(), request.code_challenge);
+        request.nonce = None;
+        assert_eq!(validate(&request).unwrap().nonce(), None);
+        request.nonce = Some("nonce".into());
         for field in [
             "client_id",
             "redirect_uri",
@@ -204,9 +209,9 @@ mod tests {
         request.state = "x".repeat(257);
         assert!(validate(&request).is_err());
         request.state = "s".into();
-        request.nonce = "x".repeat(257);
+        request.nonce = Some("x".repeat(257));
         assert!(validate(&request).is_err());
-        request.nonce = "n".into();
+        request.nonce = Some("n".into());
         request.code_challenge.push('=');
         assert!(validate(&request).is_err());
         let mut value = serde_json::to_value(&request).unwrap();

@@ -101,7 +101,7 @@ mod tests {
             response_type: "code".into(),
             scope: "openid".into(),
             state: "state".into(),
-            nonce: "nonce".into(),
+            nonce: Some("nonce".into()),
             code_challenge: crate::pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
             code_challenge_method: "S256".into(),
         }

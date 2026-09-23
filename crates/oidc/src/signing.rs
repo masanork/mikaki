@@ -112,7 +112,8 @@ struct IdTokenClaims<'a> {
     aud: &'a str,
     iat: u64,
     exp: u64,
-    nonce: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nonce: Option<&'a str>,
     sid: &'a str,
     auth_time: u64,
 }
@@ -263,7 +264,7 @@ impl P256TokenSigner {
         subject: &str,
         audience: &str,
         sid: &str,
-        nonce: &str,
+        nonce: Option<&str>,
         auth_time: u64,
         issued_at: u64,
         expires_at: u64,
@@ -273,7 +274,6 @@ impl P256TokenSigner {
             || subject.is_empty()
             || audience.is_empty()
             || sid.is_empty()
-            || nonce.is_empty()
             || issued_at == 0
             || expires_at <= issued_at
             || auth_time > issued_at
@@ -392,7 +392,7 @@ impl IdTokenSigningInput {
         subject: &str,
         audience: &str,
         sid: &str,
-        nonce: &str,
+        nonce: Option<&str>,
         auth_time: u64,
         issued_at: u64,
         expires_at: u64,
@@ -406,7 +406,6 @@ impl IdTokenSigningInput {
             || subject.is_empty()
             || audience.is_empty()
             || sid.is_empty()
-            || nonce.is_empty()
             || issued_at == 0
             || expires_at <= issued_at
             || auth_time > issued_at
@@ -593,7 +592,7 @@ mod tests {
             "sub",
             "client",
             "sid",
-            "nonce",
+            Some("nonce"),
             10,
             11,
             12,
@@ -608,7 +607,7 @@ mod tests {
             "sub",
             "client",
             "sid",
-            "nonce",
+            Some("nonce"),
             10,
             11,
             12,

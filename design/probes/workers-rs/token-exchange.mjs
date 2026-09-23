@@ -155,7 +155,6 @@ try {
     response_type: 'code',
     scope: 'openid',
     state: 'concurrent-integration-state',
-    nonce: 'concurrent-integration-nonce',
     code_challenge: concurrentChallenge,
     code_challenge_method: 'S256',
   }).toString();
@@ -184,8 +183,15 @@ try {
   const concurrentLoserBody = await concurrentLoser.text();
   assert.equal(concurrentLoser.status, 400, concurrentLoserBody);
   assert.equal(JSON.parse(concurrentLoserBody).error, 'invalid_grant');
+  const concurrentWinner = concurrentResponses.find((response) => response.status === 200);
+  const concurrentTokens = await concurrentWinner.json();
+  const { payload: concurrentPayload } = await jwtVerify(concurrentTokens.id_token, op.pair.publicKey, {
+    issuer,
+    audience: clientId,
+  });
+  assert.equal(Object.hasOwn(concurrentPayload, 'nonce'), false);
 
-  console.log('sakimori-worker: isolated D1 authorization, private_key_jwt code exchange, ES256 ID Token, UserInfo, replay revocation, and concurrent one-time exchange passed');
+  console.log('sakimori-worker: isolated D1 authorization, optional nonce, private_key_jwt code exchange, ES256 ID Token, UserInfo, replay revocation, and concurrent one-time exchange passed');
 } finally {
   await harness.close();
 }
