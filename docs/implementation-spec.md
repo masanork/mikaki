@@ -56,7 +56,7 @@ Locker本文、タイトル等の意味情報、会話内容、添付用の秘�
 
 利用者が明示的にシステム処理を必要とする個別データでは、対象・目的を限定したsystem principalを追加recipientにできる。例として任意blobへの必須ウイルス検査がある。暗号化データ鍵は利用者端末と、そのsystem principal向けに別々にwrapする。recipient wrapはOR条件であり、system wrapを持つ処理主体は単独で本文を復号できるため、そのデータは当該目的に限りserver-readableとして扱う。全Lockerや共通の万能system keyを受信者にしない。Login認証やAuthZENのallow判断だけでは鍵包みを作らず、暗号鍵の配布・復号を別の認可・監査対象とする。
 
-UserInfo、アカウント管理、集計などサーバーが常時処理する情報は、可能ならLocker本文に入れずserver-operational領域に保存する。Locker内情報を統計へ使うなら、対象フィールド/collectionと目的を限定したsystem recipientを明示する。必須ウイルス検査は、Lockerへの確定前に隔離されたscan serviceで実施するか、継続再検査のためscannerをrecipientに含める。後者ではscannerが保存済み本文を復号できる能力を持つことを利用者に示す。
+UserInfo、アカウント管理、集計などサーバーが常時処理する情報は、利用者が開示を選ぶ属性か、システム運用上必要な情報かを区別する。利用者が任意に提供するUserInfo属性は、[Vault属性の限定共有案](vault-claim-sharing.md)として、対象属性だけを専用system principalと共有する方向を検討する。これはその属性をsystem-readableにする明示的な選択であり、通常ログインの必須項目にはしない。Locker内情報を統計へ使うなら、対象フィールド/collectionと目的を限定したsystem recipientを明示する。必須ウイルス検査は、Lockerへの確定前に隔離されたscan serviceで実施するか、継続再検査のためscannerをrecipientに含める。後者ではscannerが保存済み本文を復号できる能力を持つことを利用者に示す。
 
 | データ区分 | 復号主体 | 鍵の方針 | サーバー侵害時の主な影響 |
 | --- | --- | --- | --- |

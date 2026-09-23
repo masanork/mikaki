@@ -124,8 +124,8 @@ DB確定に失敗すれば旧blob参照を維持し、新blobは孤立objectと�
 
 1. S3互換providerの選定条件と、Vaultを含む開示・暗号化モデルを確定する。
 2. 共通blob storeの不変key、revision pinning、失敗回復、GC、quota契約を確定する。
-3. FileNode APIのCRUD、完全PUT/GET、revision/changesを実装し、AuthZEN action profileとfail-closed動作を確定する。
-4. Vaultのblob操作を共通backendへ載せる場合、既存P1の競合・暗号文保護・Grant契約を維持できることを確認する。
+3. [Vault属性の限定共有案](vault-claim-sharing.md)に沿い、まずowner-onlyの暗号化snapshotを共通blob backendへ載せ、既存P1の競合・暗号文保護・Grant契約とAuthZEN評価境界を確認する。
+4. FileNode APIのCRUD、完全PUT/GET、revision/changesを実装し、FileNode用AuthZEN action profileとfail-closed動作を確定する。Vaultのsystem recipient共有は属性単位の鍵配布とRP別開示同意を設計してから追加する。
 5. 実クライアントでJMAP互換範囲を検証し、JMAP wire protocol採用またはmikaki API adapterを決める。
 6. 必要性を確認してから共有、PATCH、大容量multipart、trash、symlink、blobextを検討する。
 

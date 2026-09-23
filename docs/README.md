@@ -58,7 +58,7 @@ ADRは仕様書ごとに一つ作る必要はない。次に追加すべき対�
 | [oidc-operations](oidc-operations.md)                                              | 制限・再送・障害復旧の実装案。運用実績ではない                                                  |
 | [frontend-and-ci](frontend-and-ci.md)                                              | Svelte/i18n/品質計測の推奨案                                                                    |
 | [personal-vault](personal-vault.md)、[federated-messaging](federated-messaging.md) | 合意した将来方向と候補。G2以降の詳細をP0へ持ち込まない                                          |
-| [storage-api](storage-api.md)                                                        | 一般ファイルストレージの設計案。Vault同期とは別機能で、API・S3互換backend・AuthZEN profileは未決 |
+| [storage-api](storage-api.md)、[vault-claim-sharing](vault-claim-sharing.md)          | 共通blob基盤とFileNodeの設計案、Vault属性の限定的なシステム共有案。API・AuthZEN profileは未決 |
 
 運用設定の実行時の正本は[設定契約](runtime-configuration.md)で定めるD1有効版とし、[runtime-policy.example.toml](../config/runtime-policy.example.toml)は初期投入・編集の見本とする。旧3断片は説明用であり、mergeして使わない。SQLとPythonは設計検証用で、本番のmigration/設定loaderではない。
 
