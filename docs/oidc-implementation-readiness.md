@@ -61,7 +61,7 @@ request/request_uri、動的登録、claims parameter、署名/暗号化UserInfo
 
 | 対象 | 評価対象と選択条件 |
 | --- | --- |
-| Rust JOSE | jsonwebtokenを第一評価対象とする。default algを使わず用途別にES256/RS256等を指定。署名ポートの非同期性、鍵形式、重複JSON、時刻注入、Wasmを確認して採否を確定 |
+| Rust JOSE | jsonwebtoken 11.1.0を検証候補とする。default algを使わず用途別にES256/RS256等を指定。署名発行は同期`Signer` traitで非同期KMS/WebCrypto portに直結できないため、発行形式と署名境界を別途選ぶ。鍵形式、重複JSON、時刻注入、Wasmも確認して採否を確定 |
 | ES256/WebAuthn | RustCrypto p256等の保守された実装。JOSEの固定長R\|SとWebAuthnのDER署名を混同しない。各仕様の形式変換は既存のパーサーを使用 |
 | RSA互換 | 保守されたruntime/KMS等の秘密鍵操作を優先評価。RS256 3072 bitを初期互換発行プロファイルの基準とし、client公開鍵検証は明示登録された2048 bit以上を評価 |
 | RustのRP相互運用 | openidconnect-rs。これはRP用でありsakimori OPの実装を提供するものではない。private_key_jwtを含む対応は実試験で確認 |
@@ -70,7 +70,7 @@ request/request_uri、動的登録、claims parameter、署名/暗号化UserInfo
 
 2026-09-23の隔離spikeでは、公開版jsonwebtoken 11.1.0のRustCrypto backendがES256/RS256のNode jose署名をNativeとWasmで検証し、alg・改変・issuer・audience・期限・鍵差替えを確認した。release Wasmは638 KB、gzip 253 KB。検証APIが毎回JWKをparseするベンチで、10,000回の1検証はNative/WasmでES256が約214/690 µs、RS256が約109/461 µsだった。実アプリのJWKS cacheを反映しない保守的な上限値として扱う。
 
-組込みbackendを無効にした独自CryptoProviderでもES256/RS256検証を保ったまま308 KB（gzip 121 KB）に縮んだ。probeではissuer/audience/expiryとduplicate claimも確認した。Native/Wasmの10,000回測定ではES256が約216/681 µs、RS256が約228/417 µs。毎回JWKから鍵を作るため、cache済み鍵の性能値ではない。RSA JWKのn/eをDERへ変換する独自前処理が必要で、private-key署名は未実装。時刻注入、キャッシュ済み鍵の性能、配備先での署名方式、実D1との統合を終えるまで依存選択は保留する。依存spikeの再実行・制約は[隔離JOSE probe](../design/probes/README.md#rust-jose-依存スパイク初期評価)に記録した。
+組込みbackendを無効にした独自CryptoProviderでもES256/RS256検証を保ったまま308 KB（gzip 121 KB）に縮んだ。probeではissuer/audience/expiryとduplicate claimも確認した。Native/Wasmの10,000回測定ではES256が約216/681 µs、RS256が約228/417 µs。毎回JWKから鍵を作るため、cache済み鍵の性能値ではない。RSA JWKのn/eをDERへ変換する独自前処理が必要で、private-key署名は未実装。jsonwebtokenの`JwtSigner`は同期traitで、async KMS/WebCrypto signerとは直接統合できない。[crypto module](https://docs.rs/jsonwebtoken/11.1.0/jsonwebtoken/crypto/)はSigner/Verifier traitを使うことを示す。同期の署名鍵を配置できない環境では、非同期ポートを維持する署名/compact JWS発行設計を別途選ぶ。時刻注入、キャッシュ済み鍵の性能、配備先での署名方式、実D1との統合を終えるまで依存選択は保留する。依存spikeの再実行・制約は[隔離JOSE probe](../design/probes/README.md#rust-jose-依存スパイク初期評価)に記録した。
 
 2026-09-23時点で`rust_crypto` featureはrsa/p256/p384/ed25519-dalek等をまとめて有効化し、本番で使わないアルゴリズムも依存グラフに入る。openidconnect-rsのmain manifestは4.0.1で、既定HTTP依存はreqwest/rustls。Workers向けに既定featureを無検討で有効化しない。
 

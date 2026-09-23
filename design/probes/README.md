@@ -69,7 +69,7 @@ Native/Wasm共通で17項目が成功した。ES256・RS256の独立署名検証
 
 Wasmのrelease生成物は637,956 byte（gzip 253,443 byte）。2026-09-23のローカル10,000回測定では、組込みbackendのNative/WasmはES256が約214/690 µs、RS256が約109/461 µsだった。probe APIは各呼出しでJWKをJSON parseするため、値は鍵キャッシュなしの上限寄りであり、製品性能の予測には使わない。`rust_crypto` featureはRSA・P-384・Ed25519等をまとめて有効にし、RSA crateも依存グラフへ含む。`cargo audit` に指摘はないが、監査だけでRSA秘密鍵署名を本番採用せず、既知のRSA timing勧告と公開鍵検証/秘密鍵操作の境界を別途評価する。
 
-別の[`jose-custom`](jose-custom/) crateは組込みbackend featureを無効にし、ES256・RS256の検証providerだけを実装した。Native/Wasmとも独立jose署名を受理し、改変・alg・失効鍵・issuer/audience/expiry不一致・重複claimを拒否した。RS256 JWKは`DecodingKey`内のn/eがcustom providerへ公開されないため、probeでn/eからPKCS#1 DERを作る前処理を置いた。Wasmは307,963 byte（gzip 120,871 byte）で、組込みRustCrypto版よりraw約52%小さい。10,000回のNative/Wasm検証はES256が約216/681 µs、RS256が約228/417 µs。RSA JWKからDERへの変換も毎回含むため、鍵をcacheする実装の予測には使わない。`cargo audit`は両lockfileとも指摘なし。このproviderはprivate-key署名を意図的に無効化し、検証時刻はプロセス時計に依存するため製品実装候補としては未完了。
+別の[`jose-custom`](jose-custom/) crateは組込みbackend featureを無効にし、ES256・RS256の検証providerだけを実装した。Native/Wasmとも独立jose署名を受理し、改変・alg・失効鍵・issuer/audience/expiry不一致・重複claimを拒否した。RS256 JWKは`DecodingKey`内のn/eがcustom providerへ公開されないため、probeでn/eからPKCS#1 DERを作る前処理を置いた。Wasmは307,963 byte（gzip 120,871 byte）で、組込みRustCrypto版よりraw約52%小さい。10,000回のNative/Wasm検証はES256が約216/681 µs、RS256が約228/417 µs。RSA JWKからDERへの変換も毎回含むため、鍵をcacheする実装の予測には使わない。`cargo audit`は両lockfileとも指摘なし。jsonwebtokenの`JwtSigner`は同期traitなので、非同期KMS/WebCrypto signerをそのまま受け入れない。probeのsignerは意図的に無効であり、検証時刻もプロセス時計に依存するため製品実装候補としては未完了。
 
 ## 次の実装
 
