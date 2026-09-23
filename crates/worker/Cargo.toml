@@ -17,10 +17,13 @@ base64.workspace = true
 futures-util.workspace = true
 js-sys = "=0.3.105"
 mikaki-oidc = { path = "../oidc" }
+mikaki-auth = { path = "../auth" }
+mikaki-webauthn = { path = "../webauthn" }
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded = "=0.7.1"
 sha2.workspace = true
+subtle.workspace = true
 wasm-bindgen = "=0.2.128"
 wasm-bindgen-futures = "=0.4.78"
 web-sys = { version = "=0.3.105", features = ["Crypto", "CryptoKey", "SubtleCrypto"] }

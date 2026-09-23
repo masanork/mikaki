@@ -15,10 +15,13 @@ worker-build --release crates/worker
 wasm-pack build design/probes/jose-custom --target nodejs --release --out-dir pkg -- --locked
 node design/probes/workers-rs/test.mjs
 node design/probes/workers-rs/token-exchange.mjs
+node design/probes/workers-rs/secret-auth.mjs
 cargo audit --file design/probes/workers-rs/Cargo.lock
 ```
 
 `token-exchange.mjs` additionally uses `local/generated/worker-policy.json` (generate it with `npm run build:policy`), applies the isolated local D1 migration, activates the policy in D1, and seeds synthetic client/session rows. It checks fail-closed behavior before activation, live policy revision changes, stale/concurrent activation rejection, and `/authorize` through private_key_jwt token exchange, UserInfo, replay revocation, and a concurrent code exchange with exactly one winner. Its signing keys, browser session cookie, and identifiers are generated for the test run. It does not connect to a remote database or Cloudflare account.
+
+`secret-auth.mjs` uses the same generated policy and isolated local D1. It checks the deployment profile's Discovery methods, two Basic clients and one Post client, normal-profile refusal, wrong secrets, mismatched and mixed methods, cross-client code binding, replay, registration revision enforcement, and the per-client secret-attempt limit. Client secrets and signing keys are generated in memory for each run. It does not connect to a remote database or Cloudflare account.
 
 2026-09-23時点で上記のD1・ES256/RS256署名・CSPRNG/code準備試験が成功し、Cargo auditは93 crateに脆弱性を報告しなかった。最適化済みprobe `index_bg.wasm`の過去サイズは321,262 bytes（gzip 104,541 bytes）。RS256追加後のサイズは未測定。これはprobe単体の参考値で、Worker全体の上限・cold startを測ったものではない。read replicaを持たないローカル環境の`FirstPrimary`はAPI経路の確認であり、本番のreplica整合性を検証しない。残りのゲート項目と結果は[ADR 0009](../../docs/adr/0009-rust-oidc-and-worker-stack.md)に記録する。
 

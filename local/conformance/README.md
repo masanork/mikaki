@@ -55,3 +55,23 @@ node local/conformance/benchmark.mjs
 ```
 
 全ビルド終了後に単独で測定する。既存の公開fixtureで毎回検証を実行し、結果も照合する。出力はartifacts/webauthn-performance.json。nativeコア、Wasm/JSON境界、nativeのプロセス起動込み、metadata検索を区別する。DB・HTTP・正式Suiteの所要時間はこのマイクロベンチマークに含まない。[性能調査](performance-2026-09-23.md)を参照。
+
+## OIDC Basic OP のローカル試験
+
+Colima の OIDF Conformance Suite 5.2.4 を `https://localhost:8443` で起動してから、別のターミナルで次を実行する。`local/generated/` の証明書、試験用passkey、client secret、詳細ログはgitに含めない。
+
+```sh
+npm run build:policy
+worker-build --release crates/worker
+openssl req -x509 -nodes -newkey rsa:2048 -days 1 -keyout local/generated/oidf-local.key -out local/generated/oidf-local.crt -subj '/CN=host.docker.internal'
+node local/conformance/oidf-local-worker.mjs
+```
+
+fixtureの起動時に隔離D1を作り、passkey認証と一回限りのログイン取引を事前確認する。Chromiumの仮想認証器を使う試験driverは別のターミナルで実行する。fixtureを再起動するとテストcredentialとcounterが新しくなる。
+
+```sh
+node local/conformance/run-passkey-oidf.mjs all 1
+node local/conformance/run-passkey-oidf.mjs oidcc-discovery-endpoint-verification 1 oidcc-config-certification-test-plan
+```
+
+2番目の引数`1`はfixtureの事前確認後の署名counter。複数のモジュールは同じ仮想認証器を使い、counterを引き継ぐ。`REVIEW`に必要な画面画像はdriverがローカルsuiteへ提出する。結果の集計と詳細ログは`local/generated/oidf-passkey-*.json`に保存する。公開issuerでの正式認証とは区別する。

@@ -14,6 +14,8 @@ const NUMERIC_FIELDS = [
   'response_bytes',
   'jwt_bytes',
   'form_body_bytes',
+  'token_rate_window_seconds',
+  'token_attempts_per_client',
 ];
 const FIELDS = new Set([
   ...NUMERIC_FIELDS,
@@ -47,6 +49,8 @@ export function validateWorkerPolicyProjection(policy) {
     policy.state_bytes > policy.request_target_bytes ||
     policy.nonce_bytes > policy.request_target_bytes ||
     policy.response_bytes > 1_048_576 ||
+    ![10, 60].includes(policy.token_rate_window_seconds) ||
+    policy.token_attempts_per_client > 1000 ||
     [
       'assertion_ttl_seconds',
       'clock_skew_seconds',

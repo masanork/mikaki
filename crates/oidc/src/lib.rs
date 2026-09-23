@@ -94,9 +94,26 @@ impl Authorization {
         state_limit: usize,
         nonce_limit: usize,
     ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        self.validate_with_optional_pkce(client_id, redirect_uri, state_limit, nonce_limit, false)
+    }
+
+    pub fn validate_with_optional_pkce(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+        allow_missing_pkce: bool,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
         let challenge = B64
             .decode(&self.code_challenge)
             .map_err(|_| InvalidAuthorization)?;
+        let valid_pkce = (self.code_challenge_method == "S256"
+            && challenge.len() == 32
+            && B64.encode(challenge) == self.code_challenge)
+            || (allow_missing_pkce
+                && self.code_challenge.is_empty()
+                && self.code_challenge_method.is_empty());
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
@@ -107,9 +124,7 @@ impl Authorization {
                 .nonce
                 .as_ref()
                 .is_some_and(|nonce| nonce.is_empty() || nonce.len() > nonce_limit)
-            || self.code_challenge_method != "S256"
-            || challenge.len() != 32
-            || B64.encode(challenge) != self.code_challenge
+            || !valid_pkce
         {
             return Err(InvalidAuthorization);
         }
@@ -217,6 +232,34 @@ mod tests {
         let mut value = serde_json::to_value(&request).unwrap();
         value["prompt"] = serde_json::json!("none");
         assert!(serde_json::from_value::<Authorization>(value).is_err());
+    }
+
+    #[test]
+    fn optional_pkce_accepts_only_a_fully_absent_challenge() {
+        let request = Authorization {
+            client_id: "client".into(),
+            redirect_uri: "https://app.example/callback".into(),
+            response_type: "code".into(),
+            scope: "openid".into(),
+            state: "state".into(),
+            nonce: None,
+            code_challenge: String::new(),
+            code_challenge_method: String::new(),
+        };
+        let validate = |request: &Authorization, allow_missing| {
+            request.validate_with_optional_pkce(
+                "client",
+                "https://app.example/callback",
+                256,
+                256,
+                allow_missing,
+            )
+        };
+        assert!(validate(&request, false).is_err());
+        assert_eq!(validate(&request, true).unwrap().code_challenge(), "");
+        let mut partial = request;
+        partial.code_challenge_method = "S256".into();
+        assert!(validate(&partial, true).is_err());
     }
     #[test]
     fn rfc7636_vector_and_invalid_verifiers() {

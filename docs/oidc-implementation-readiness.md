@@ -29,7 +29,7 @@
 
 G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`mikaki-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
 
-Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtによるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。本番migrationは未配備であり、issuer変数・秘密鍵・D1 policy版の投入が必要。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
+Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。通常配備はprivate_key_jwtのみ、隔離conformance配備は登録済みclientごとに固定したclient_secret_basic/postも受け付ける。secretはD1にSHA-256 verifierだけを保存し、一定時間の試行回数を制限する。認証後は共通の短期receiptを保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient認証・session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtとsecret方式によるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。本番migrationは未配備であり、issuer変数・秘密鍵・D1 policy版の投入が必要。authorizeはpasskeyによる本人確認と明示的な初回consentからSSO cookieとapp_connectionを作成でき、ローカルOIDF Basic OPの認可を完了した。passkey登録、アカウント復旧、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
 
 時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
@@ -42,8 +42,8 @@ workerはHTTP制限、cookie、秘密管理、D1、時刻・乱数、外向き�
 | Endpoint | 処理と代表的な失敗 |
 | --- | --- |
 | Discovery / JWKS | GET、issuerと実装済みcode flowを掲載。active ES256/RS256公開鍵を掲載。RS256署名はローカルworkerdで確認 |
-| GET /authorize | code/openid/S256を検証。現状は有効SSOと既存active connectionを要する。初回consent/login UIなし |
-| POST /token | form body、authorization_codeとprivate_key_jwt。隔離D1/workerdで正常交換、code replay拒否、並行交換が一回だけ成立することを確認。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別 |
+| GET /authorize | code/openid/S256を検証。対話可能な要求で有効SSOがなければpasskeyログイン取引を開始し、初回consent後にconnectionを作る。`prompt=none`は対話しない |
+| POST /token | form body、authorization_codeと通常配備のprivate_key_jwt、隔離conformance配備のclient_secret_basic/post。隔離D1/workerdで正常交換、code replay拒否、並行交換が一回だけ成立することを確認。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別 |
 | GET・POST /userinfo | Bearer、subのJSON。隔離D1/workerdで有効tokenの受入とreplay後失効を確認。詳細はUserInfo仕様 |
 | POST /session/check | client署名＋sid。200 active=falseと通信障害503を区別。存在照会は認証後に限定 |
 | GET・POST /logout | 標準のhint/登録済み戻り先/stateを検証し、必要な確認を表示。SSO失効とevent確定後に完了へ |
@@ -114,7 +114,7 @@ python3 scripts/check_design.py
 
 2026-09-23時点で、段階5のうち単一RP向けログアウトoutboxのlease・再試行・期限・scheduled復旧・集計警告を[ローカル実装](../local/README.md#ログアウト通知の配送2026-09-23)で検証した。期限切れ認証取引・再使用防止記録・RPセッションに加え、OPのSSO配下と完了した単一SSO通知履歴のGC、標準入力からの運用者再配送と原子的な監査記録、アカウント全セッション失効と旧epochへの通知展開もローカルD1で検証済み。本番migration、管理操作、アカウント停止・監査の外部保管、外部監視連携と復旧訓練は残り、段階5全体の完了ではない。
 
-conformanceの最初の目標候補は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。通常環境のclient認証は`private_key_jwt`既定を維持し、Basic OPの手動登録で求められる`client_secret_basic`・`client_secret_post`は隔離したconformance配備と登録済み試験clientに限って追加する。配備ごとにissuer・D1・鍵・テストaccountを分離し、requestからprofileを切り替えられないようにする。実際のplanでPKCEの有無を確認し、必要な互換条件だけを試験client単位で定義する。RS256が使えることだけで全面適合とせず、prompt・claim・エラー・Discovery等も確認する。
+conformanceの最初の目標候補は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。通常環境のclient認証は`private_key_jwt`既定を維持し、Basic OPの手動登録で求められる`client_secret_basic`・`client_secret_post`は隔離したconformance配備と登録済み試験clientに限って追加する。配備ごとにissuer・D1・鍵・テストaccountを分離し、requestからprofileを切り替えられないようにする。実際のBasic OP planはPKCEを送らなかったため、隔離配備のsecret clientだけにD1登録値で省略を許可する。RS256が使えることだけで全面適合とせず、prompt・claim・エラー・Discovery等も確認する。
 
 受入試験には、(1)既存UXの画面数、(2)code/state/nonce/PKCE/aud/iss/alg、(3)assertion再使用と鍵停止、(4)親SSO・grant・credential失効、(5)通知/確認/callbackの全順序、(6)新旧設定/鍵の混在とrollback、(7)body/JSON/パラメーターの境界・fuzz、(8)負荷時の容量とrate制御、(9)秘密がログ/ブラウザ保存へ出ないこと、(10)PQC向けの大きな公開鍵/署名を想定した制限変更を含める。
 

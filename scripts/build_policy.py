@@ -28,6 +28,8 @@ worker_policy = {
     'response_bytes': normalized['limits.response_bytes'],
     'jwt_bytes': normalized['limits.jwt_bytes'],
     'form_body_bytes': normalized['limits.form_body_bytes'],
+    'token_rate_window_seconds': normalized['rate_limit.window'],
+    'token_attempts_per_client': normalized['rate_limit.token_per_authenticated_client'],
 }
 worker_policy['policy_revision'] = policy_revision
 worker_policy['projection_revision'] = hashlib.sha256(

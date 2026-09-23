@@ -14,12 +14,60 @@ CREATE TABLE credential (
   UNIQUE(credential_id, account_id)
 ) STRICT;
 
+CREATE TABLE passkey_credential (
+  credential_id TEXT PRIMARY KEY NOT NULL REFERENCES credential(credential_id),
+  public_key TEXT NOT NULL CHECK(length(public_key) BETWEEN 1 AND 4096),
+  user_handle TEXT NOT NULL CHECK(length(user_handle) BETWEEN 1 AND 128),
+  counter INTEGER NOT NULL CHECK(counter BETWEEN 0 AND 4294967295),
+  backup_eligible INTEGER NOT NULL CHECK(backup_eligible IN (0, 1)),
+  backup_state INTEGER NOT NULL CHECK(backup_state IN (0, 1)),
+  revision INTEGER NOT NULL CHECK(revision >= 0)
+) STRICT;
+
+CREATE TABLE login_transaction (
+  tx_id TEXT PRIMARY KEY NOT NULL CHECK(length(tx_id) = 43),
+  browser_hash TEXT NOT NULL CHECK(length(browser_hash) = 43),
+  authorization_url TEXT NOT NULL CHECK(length(authorization_url) BETWEEN 1 AND 8192),
+  client_id TEXT NOT NULL REFERENCES client(client_id),
+  challenge TEXT NOT NULL CHECK(length(challenge) = 43),
+  expires_at INTEGER NOT NULL CHECK(expires_at > 0),
+  consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0, 1)),
+  failures INTEGER NOT NULL DEFAULT 0 CHECK(failures BETWEEN 0 AND 5)
+) STRICT;
+
 CREATE TABLE client (
   client_id TEXT PRIMARY KEY NOT NULL CHECK(length(client_id) BETWEEN 1 AND 128),
   revision INTEGER NOT NULL CHECK(revision >= 0),
   active INTEGER NOT NULL CHECK(active IN (0, 1)),
-  sector_identifier TEXT NOT NULL CHECK(length(sector_identifier) BETWEEN 1 AND 2048)
+  auth_method TEXT NOT NULL DEFAULT 'private_key_jwt'
+    CHECK(auth_method IN ('private_key_jwt', 'client_secret_basic', 'client_secret_post')),
+  allow_missing_pkce INTEGER NOT NULL DEFAULT 0 CHECK(allow_missing_pkce IN (0, 1)),
+  sector_identifier TEXT NOT NULL CHECK(length(sector_identifier) BETWEEN 1 AND 2048),
+  CHECK(allow_missing_pkce = 0 OR auth_method IN ('client_secret_basic', 'client_secret_post'))
 ) STRICT;
+
+-- High-entropy client secrets are held only as SHA-256 verifiers. These rows
+-- are meaningful only for an isolated conformance deployment.
+CREATE TABLE client_secret (
+  client_id TEXT PRIMARY KEY NOT NULL REFERENCES client(client_id),
+  revision INTEGER NOT NULL CHECK(revision >= 0),
+  active INTEGER NOT NULL CHECK(active IN (0, 1)),
+  secret_hash TEXT NOT NULL CHECK(length(secret_hash) = 43)
+) STRICT;
+
+CREATE TABLE client_secret_attempt (
+  client_id TEXT PRIMARY KEY NOT NULL REFERENCES client(client_id),
+  window_start INTEGER NOT NULL CHECK(window_start > 0),
+  attempts INTEGER NOT NULL CHECK(attempts BETWEEN 1 AND 1000)
+) STRICT;
+
+CREATE TRIGGER client_registration_revision BEFORE UPDATE ON client
+WHEN NEW.revision <= OLD.revision
+BEGIN SELECT RAISE(ABORT, 'client revision must increase'); END;
+
+CREATE TRIGGER client_secret_revision BEFORE UPDATE ON client_secret
+WHEN NEW.revision <= OLD.revision
+BEGIN SELECT RAISE(ABORT, 'client secret revision must increase'); END;
 
 -- Redirect URIs are exact static registrations. Authorization codes reference
 -- this table so a code cannot be issued for a request-supplied callback.
@@ -100,7 +148,7 @@ CREATE TABLE authorization_code (
   sid TEXT NOT NULL,
   client_revision INTEGER NOT NULL CHECK(client_revision >= 0),
   redirect_uri TEXT NOT NULL CHECK(length(redirect_uri) BETWEEN 1 AND 2048),
-  pkce_challenge TEXT NOT NULL CHECK(length(pkce_challenge) = 43),
+  pkce_challenge TEXT NOT NULL CHECK(pkce_challenge = '' OR length(pkce_challenge) = 43),
   expires_at INTEGER NOT NULL CHECK(expires_at > 0),
   consumed_by TEXT UNIQUE,
   consumed_at INTEGER,
@@ -122,6 +170,19 @@ CREATE TABLE assertion_use (
   accepted_by TEXT NOT NULL UNIQUE CHECK(length(accepted_by) BETWEEN 1 AND 128),
   retain_until INTEGER NOT NULL CHECK(retain_until > 0),
   PRIMARY KEY(client_id, jti)
+) STRICT;
+
+-- An authenticated request gets one short-lived receipt, whether its client
+-- proved a JWT assertion or an isolated conformance client secret.
+CREATE TABLE client_auth_use (
+  accepted_by TEXT PRIMARY KEY NOT NULL CHECK(length(accepted_by) BETWEEN 1 AND 128),
+  client_id TEXT NOT NULL REFERENCES client(client_id),
+  method TEXT NOT NULL CHECK(method IN ('private_key_jwt', 'client_secret_basic', 'client_secret_post')),
+  endpoint TEXT NOT NULL CHECK(length(endpoint) BETWEEN 1 AND 2048),
+  credential_id TEXT NOT NULL CHECK(length(credential_id) <= 128),
+  client_revision INTEGER NOT NULL CHECK(client_revision >= 0),
+  credential_revision INTEGER NOT NULL CHECK(credential_revision >= 0),
+  retain_until INTEGER NOT NULL CHECK(retain_until > 0)
 ) STRICT;
 
 CREATE TABLE token_issue (
@@ -183,6 +244,7 @@ BEGIN SELECT RAISE(ABORT, 'runtime policy audit is immutable'); END;
 CREATE INDEX client_session_sso ON client_session(sso_id, client_id, sid);
 CREATE INDEX sso_account_epoch ON sso_session(account_id, epoch);
 CREATE INDEX assertion_gc ON assertion_use(retain_until);
+CREATE INDEX client_auth_gc ON client_auth_use(retain_until);
 
 -- Code exchange preconditions. A row here alone does not imply an authenticated session.
 CREATE VIEW eligible_client_session AS

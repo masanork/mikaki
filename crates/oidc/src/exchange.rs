@@ -66,6 +66,7 @@ pub struct InvalidAuthenticatedTokenEndpointInput;
 /// A canonical code digest and PKCE challenge ready for a conditional store operation.
 /// The bearer code and verifier are not retained after validation.
 #[must_use = "exchange only after client authentication, and consume atomically in the store"]
+#[derive(Clone)]
 pub struct AuthorizationCodeExchange {
     code_digest: String,
     redirect_uri: String,
@@ -77,6 +78,13 @@ pub struct InvalidCodeExchange;
 
 impl CodeExchangeInput {
     pub fn validate(self) -> Result<AuthorizationCodeExchange, InvalidCodeExchange> {
+        self.validate_with_optional_pkce(false)
+    }
+
+    pub fn validate_with_optional_pkce(
+        self,
+        allow_missing_pkce: bool,
+    ) -> Result<AuthorizationCodeExchange, InvalidCodeExchange> {
         if self.grant_type != "authorization_code"
             || self.code.len() != 43
             || self.redirect_uri.is_empty()
@@ -92,7 +100,11 @@ impl CodeExchangeInput {
         if raw_code.len() != 32 || B64.encode(&raw_code) != self.code {
             return Err(InvalidCodeExchange);
         }
-        let pkce_challenge = super::pkce(&self.code_verifier).ok_or(InvalidCodeExchange)?;
+        let pkce_challenge = if allow_missing_pkce && self.code_verifier.is_empty() {
+            String::new()
+        } else {
+            super::pkce(&self.code_verifier).ok_or(InvalidCodeExchange)?
+        };
         Ok(AuthorizationCodeExchange {
             code_digest: B64.encode(Sha256::digest(raw_code)),
             redirect_uri: self.redirect_uri,

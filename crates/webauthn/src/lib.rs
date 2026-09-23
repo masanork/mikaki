@@ -179,6 +179,20 @@ pub struct VerifiedAssertion {
     user_verified: bool,
 }
 
+impl VerifiedAssertion {
+    pub fn counter(&self) -> u32 {
+        self.counter
+    }
+
+    pub fn backup_state(&self) -> bool {
+        self.backup_state
+    }
+
+    pub fn user_verified(&self) -> bool {
+        self.user_verified
+    }
+}
+
 fn require(ok: bool) -> Result<()> {
     if ok { Ok(()) } else { Err(Invalid::Input) }
 }
