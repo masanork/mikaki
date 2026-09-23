@@ -1,16 +1,18 @@
 # Vault属性のUserInfoへの開示（設計案）
 
-2026-09-23 / Draft 1。以下の限定したStorage API以外は設計案であり、採用・実装済みの契約ではない。
+2026-09-23 / Draft 2。本人専用Storage APIと暗号化画面以外は設計案であり、採用・実装済みの契約ではない。
 
-## 実装中の最初のStorage API
+## 本人専用Storage API
 
-Rust Workerに本人専用の実験的な`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`を追加した。dev Workerだけに`VAULT_BLOBS` R2 bindingを置き、bindingのない本番Workerでは404を返す。`0002_vault_attribute_storage.sql`がD1のheadと操作再試行記録を作る。現在の認可判断はAuthZENのsubject/action/resource/decision形状を持つRustのローカルowner policyであり、HTTP PDP配置とGrant照会は未実装である。UserInfoのclaim公開、system recipient、属性の暗号化・解錠UIも未実装である。このAPIを実利用者のデータ保存先として公開しない。
+Rust Workerに本人専用の`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`を追加した。`/vault`は`name`の暗号化・解錠画面で、ログイン済みSSOとPRF対応Passkeyを要する。`0002_vault_attribute_storage.sql`がD1のhead、操作再試行記録、回収カーソルを作る。R2 bindingのないWorkerではVaultを404にする。現在の認可判断はAuthZENのsubject/action/resource/decision形状を持つRustのローカルowner policyであり、HTTP PDP配置とGrant照会は未実装である。UserInfoのclaim公開とsystem recipientは未実装である。
 
 ローカルprofileのsubjectは検証済みAccountIdを`type=mikaki-account`で表し、resourceは`type=mikaki-vault-attribute`、IDは`vault-attribute:<owner>:<attribute>`とする。許可するactionは`vault.attribute.read-ciphertext`、`vault.attribute.read-owner-envelope`、`vault.attribute.write`、`vault.attribute.delete`の4つだけ。service principalや未知actionはdenyする。これらは[AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)の情報モデルを使うmikaki固有の語彙で、外部PDP相互運用を実証したものではない。
 
-`attribute`は1〜64文字の小文字ASCII英数字・`-`・`_`。PUTは`format_version: 1`、base64urlの`ciphertext`（最大24 KiB）と`owner_envelope`（最大8 KiB）のJSONを受ける。サーバーは暗号文をR2のランダムな不変keyに保存し、D1のheadにSHA-256 digestと本人用envelopeを記録する。暗号形式と鍵包みの中身はまだ確定しておらず、サーバーは復号可能性を保証しない。GETは同じ値とrevisionを返し、保存blobのdigestを検証する。
+`attribute`は1〜64文字の小文字ASCII英数字・`-`・`_`。PUTは`format_version: 1`、base64urlの`ciphertext`（最大24 KiB）と`owner_envelope`（最大8 KiB）のJSONを受ける。サーバーは暗号文をR2のランダムな不変keyに保存し、D1のheadにSHA-256 digestと本人用envelopeを記録する。GETは同じ値とrevisionを返し、保存blobのdigestを検証する。サーバーは暗号文を復号しないため、復号可能性は本人端末で確認する。
 
-PUTの新規作成には`If-None-Match: *`、更新・DELETEには`If-Match: "<revision>"`を要求する。書込みには同一originの`Origin`と43文字の`X-Operation-ID`が必要であり、SSO cookieから本人を確定する。同じoperation IDと同じ要求は既存結果を返し、異なる要求は409とする。D1の条件付き確定時にもSSO・credential・accountの有効性を再確認する。削除はrevision付きtombstoneで、古い端末の上書きを防ぐ。R2とD1をまたぐtransactionはないため、確定失敗でできる孤立blobのGCは別途実装する。
+ブラウザのversion 1形式では、属性ごと・revisionごとにランダムな32 byte data keyを生成し、AES-256-GCMで本文を暗号化する。`ciphertext`のバイト列は`0x01 | nonce(12) | ciphertext+tag`。本人用鍵包みはPasskeyのWebAuthn PRF出力からHKDF-SHA-256で導いたAES-256-GCM鍵でdata keyを包む。`owner_envelope`は`0x01 | credential ID長(u16 BE) | credential ID | PRF入力(32) | HKDF salt(32) | wrap nonce(12) | wrapped data key(48)`。HKDF infoはorigin・attribute・credential IDに、両方のGCM AADはorigin・attribute・revisionに結び付ける。PRF出力とdata keyはサーバーに送らない。PRF非対応Passkey、紛失したPasskey、移転前のoriginで作った値はそのまま復号できない。別Passkeyへの再包み・復旧機能はまだない。
+
+PUTの新規作成には`If-None-Match: *`、更新・DELETEには`If-Match: "<revision>"`を要求する。書込みには同一originの`Origin`と43文字の`X-Operation-ID`が必要であり、SSO cookieから本人を確定する。同じoperation IDと同じ要求は既存結果を返し、異なる要求は409とする。D1の条件付き確定時にもSSO・credential・accountの有効性を再確認する。削除はrevision付きtombstoneで、古い端末の上書きを防ぐ。1アカウントの属性IDは最大32個、直近60秒の書込みは20回まで。日次Cronが24時間以上前のR2 blobを走査し、D1 headに参照がないものだけを削除する。操作再試行記録は90日後に少しずつ削除する。R2とD1をまたぐtransactionはないため、回収が成功するまで孤立blobは残る。
 
 ## 目的と信頼境界
 
@@ -51,7 +53,7 @@ PEPが作るAuthZEN評価では、subjectを検証済みの`mikaki-service`とse
 
 ## Storage APIの最初の縦切り
 
-1. 本人だけが読める小さな暗号化属性snapshotを一つ保存・取得する。D1をhead、revision、operation IDの正本とし、R2には不変ciphertextを置く。期待revisionによる競合検出、同じ操作の再試行、削除tombstoneを試験する。孤立blob回収は公開前に追加する。
+1. 本人だけが読める小さな暗号化属性snapshotを一つ保存・取得する。D1をhead、revision、operation IDの正本とし、R2には不変ciphertextを置く。期待revisionによる競合検出、同じ操作の再試行、削除tombstone、孤立blob回収を実装・試験した。
 2. WorkerをPEPとし、[AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)のsubject/action/resource/contextとdecisionに対応する評価境界を設ける。actorは認証済みの内部AccountIdから確定し、HTTP本文の自己申告を使わない。deny・timeout・不正応答は失敗として閉じ、失効後のallow cacheを作らない。PDPの配置・認証・Grantの即時参照方法は別途決める。
 3. 属性単位のsystem recipient envelopeと共有Grantを追加し、公開版の一致・鍵用途分離・解除と再鍵化を確認する。その後でRP別のclaim開示同意とUserInfo投影を実装する。
 
@@ -59,7 +61,7 @@ FileNode/JMAPの名前付きファイル操作はこのVault属性経路とは�
 
 ## 実装前に確定する事項
 
-- 属性形式、属性ごとの鍵粒度、暗号suite/AAD、system recipientの鍵管理と鍵継続性、別端末での解錠手順。
+- system recipientの鍵管理と鍵継続性、別端末での解錠・鍵再包み・復旧手順。
 - 属性の存在や種類をmetadataとして公開する範囲。RPごとの同意画面、保存期間、再同意、取り消しと監査。
 - Claim serviceとOIDC Workerの信頼境界、PDPの配置・認証、Grantと開示許可の原子的更新・失効反映。
 - UserInfoでの要求とエラーのHTTP契約、RPが保存した属性の更新・削除の扱い。

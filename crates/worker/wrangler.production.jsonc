@@ -22,6 +22,15 @@
       "remote": true
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "VAULT_BLOBS",
+      "bucket_name": "mikaki-vault"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

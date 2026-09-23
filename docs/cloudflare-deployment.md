@@ -4,6 +4,10 @@ The normal-profile issuer is `https://mikaki.tossa.app`. Its Worker and D1 are c
 
 The initial D1 migration, generation 1 runtime policy, and ES256 public signing key were applied on 2026-09-23. The signing private JWK is a Worker secret, not a repository file. The ignored local secret file is `local/generated/mikaki-production-secrets.json` and must remain mode 0600. Preserve it securely for future deployments or rotate the key with an overlapping public key before replacement.
 
+The owner-only Vault uses the `mikaki-vault` R2 bucket, D1 migration `0002_vault_attribute_storage.sql`, and a daily UTC 03:00 cleanup trigger. Apply the migration before deploying a Worker with the R2 binding. The `/vault` page needs an existing SSO session and a PRF-capable passkey; it is not an account enrollment or recovery flow. Keep R2 public access disabled.
+
+The bucket, migration, and Worker version `886b6008-33ea-4a6e-a1df-5aced50536ef` were deployed on 2026-09-23. Smoke checks returned 200 for health, discovery, JWKS, and the Vault script, while unauthenticated `/vault` returned 401. An authenticated production Vault write and PRF unlock have not yet been exercised.
+
 After modifying the Worker, build and deploy with the secret included in the **same** version:
 
 ```sh

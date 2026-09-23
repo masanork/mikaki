@@ -2,6 +2,8 @@ use std::{env, path::PathBuf, process::Command};
 
 fn main() {
     println!("cargo:rerun-if-changed=ui/login.ts");
+    println!("cargo:rerun-if-changed=ui/vault.ts");
+    println!("cargo:rerun-if-changed=ui/vault-crypto.ts");
     println!("cargo:rerun-if-changed=ui/tsconfig.json");
     if env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
         return;
@@ -16,5 +18,5 @@ fn main() {
         .arg(&output)
         .status()
         .expect("TypeScript 7 compiler is required; run npm ci");
-    assert!(status.success(), "login TypeScript compilation failed");
+    assert!(status.success(), "Worker UI TypeScript compilation failed");
 }

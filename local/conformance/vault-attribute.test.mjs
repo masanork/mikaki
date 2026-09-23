@@ -32,6 +32,18 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
       ),
     ]);
     const url = 'https://mikaki.test/vault/attributes/name';
+    assert.equal((await worker.fetch('https://mikaki.test/vault')).status, 401);
+    const page = await worker.fetch('https://mikaki.test/vault', {
+      headers: { Cookie: `__Host-op-sso=${secret}` },
+    });
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /vault\/vault\.js/);
+    assert.equal((await worker.fetch('https://mikaki.test/vault/vault.js')).status, 200);
+    assert.equal((await worker.fetch('https://mikaki.test/vault/vault-crypto.js')).status, 200);
+    const session = await worker.fetch('https://mikaki.test/vault/session', {
+      headers: { Cookie: `__Host-op-sso=${secret}` },
+    });
+    assert.deepEqual(await session.json(), { credential_id: 'credential' });
     const operation = () => randomBytes(32).toString('base64url');
     const content = (value) =>
       JSON.stringify({
@@ -129,18 +141,35 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
     });
     assert.equal(removed.status, 200);
     assert.equal(removed.headers.get('etag'), '"4"');
-    assert.equal(
-      (await worker.fetch(url, { headers: { Cookie: `__Host-op-sso=${secret}` } })).status,
-      404,
-    );
+    const tombstone = await worker.fetch(url, { headers: { Cookie: `__Host-op-sso=${secret}` } });
+    assert.equal(tombstone.status, 404);
+    assert.equal(tombstone.headers.get('etag'), '"4"');
+    const recreate = await worker.fetch(url, {
+      method: 'PUT',
+      headers: headers(operation(), { 'If-Match': '"4"' }),
+      body: content('recreated'),
+    });
+    assert.equal(recreate.status, 200);
+    assert.equal(recreate.headers.get('etag'), '"5"');
+    const active = await env.DB.prepare(
+      "SELECT object_key FROM vault_attribute_head WHERE account_id='owner' AND attribute_id='name'",
+    ).first();
     assert.equal((await worker.fetch(url)).status, 401);
     await env.DB.prepare("UPDATE sso_session SET revoked=1 WHERE sso_id='session'").run();
     const afterRevoke = await worker.fetch(url, {
       method: 'PUT',
-      headers: headers(operation(), { 'If-Match': '"4"' }),
+      headers: headers(operation(), { 'If-Match': '"5"' }),
       body: content('after-revoke'),
     });
     assert.equal(afterRevoke.status, 401);
+    await env.VAULT_BLOBS.put('vault-attribute/orphan-test', 'orphan');
+    await worker.scheduled({
+      cron: '0 3 * * *',
+      scheduledTime: new Date(Date.now() + 2 * 86400000),
+    });
+    assert.equal(await env.VAULT_BLOBS.get('vault-attribute/orphan-test'), null);
+    assert.equal(await env.VAULT_BLOBS.get(stored.object_key), null);
+    assert.ok(await env.VAULT_BLOBS.get(active.object_key));
   } finally {
     await harness.close();
   }

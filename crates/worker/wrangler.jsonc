@@ -16,5 +16,8 @@
       "binding": "VAULT_BLOBS",
       "bucket_name": "mikaki-vault-dev"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
 }

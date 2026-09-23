@@ -44,6 +44,7 @@ struct Mutation {
 struct Owner {
     account_id: String,
     secret_hash: String,
+    credential_id: String,
 }
 
 #[derive(Serialize)]
@@ -87,7 +88,7 @@ async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owne
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let hash = URL_SAFE_NO_PAD.encode(Sha256::digest(cookie.as_bytes()));
     db.prepare(
-        "SELECT ss.account_id,sx.secret_hash FROM sso_context sx \
+        "SELECT ss.account_id,sx.secret_hash,ss.credential_id FROM sso_context sx \
          JOIN sso_session ss ON ss.sso_id=sx.sso_id \
          JOIN account_security a ON a.account_id=ss.account_id \
          JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
@@ -97,6 +98,68 @@ async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owne
     .bind(&[JsValue::from_str(&hash), JsValue::from_f64(now as f64)])?
     .first::<Owner>(None)
     .await
+}
+
+#[derive(Serialize)]
+struct SessionResponse<'a> {
+    credential_id: &'a str,
+}
+
+pub async fn session(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let db = context.env.d1("DB")?;
+    let Some(owner) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&SessionResponse {
+            credential_id: &owner.credential_id,
+        })
+}
+
+pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let db = context.env.d1("DB")?;
+    if owner(&request, &db).await?.is_none() {
+        return error(401, "authentication_required");
+    }
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .with_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
+        .from_html(include_str!("../ui/vault.html"))
+}
+
+pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let script = include_str!(concat!(env!("OUT_DIR"), "/vault.js"));
+    Ok(Response::builder()
+        .with_header("Content-Type", "text/javascript; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(script.as_bytes().to_vec()))
+}
+
+pub async fn crypto_script(
+    _request: Request,
+    context: RouteContext<()>,
+) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let script = include_str!(concat!(env!("OUT_DIR"), "/vault-crypto.js"));
+    Ok(Response::builder()
+        .with_header("Content-Type", "text/javascript; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(script.as_bytes().to_vec()))
 }
 
 fn same_origin(request: &Request) -> worker::Result<bool> {
@@ -220,9 +283,17 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
         ])?
         .first::<Head>(None)
         .await?;
-    let Some(head) = head.filter(|head| head.deleted == 0) else {
+    let Some(head) = head else {
         return error(404, "not_found");
     };
+    if head.deleted != 0 {
+        return Ok(Response::builder()
+            .with_status(404)
+            .with_header("Cache-Control", "no-store")?
+            .with_header("ETag", &format!("\"{}\"", head.revision))?
+            .with_header("Content-Type", "application/json")?
+            .fixed(b"{\"error\":\"not_found\"}".to_vec()));
+    }
     let (Some(object_key), Some(digest), Some(envelope)) =
         (head.object_key, head.ciphertext_sha256, head.owner_envelope)
     else {
@@ -378,8 +449,10 @@ async fn write(
          AND EXISTS (SELECT 1 FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
            JOIN account_security a ON a.account_id=ss.account_id \
            JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
-           WHERE sx.secret_hash=?10 AND ss.account_id=?1 AND ss.revoked=0 AND ss.expires_at>?8 \
+         WHERE sx.secret_hash=?10 AND ss.account_id=?1 AND ss.revoked=0 AND ss.expires_at>?8 \
            AND a.active=1 AND a.epoch=ss.epoch AND c.active=1) \
+         AND (SELECT COUNT(*) FROM vault_attribute_mutation WHERE account_id=?1 AND created_at>?8-60)<20 \
+         AND (?9>0 OR (SELECT COUNT(*) FROM vault_attribute_head WHERE account_id=?1)<32) \
          ON CONFLICT(account_id,attribute_id) DO UPDATE SET \
            revision=excluded.revision,object_key=excluded.object_key, \
            ciphertext_sha256=excluded.ciphertext_sha256,owner_envelope=excluded.owner_envelope, \

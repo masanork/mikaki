@@ -25,3 +25,9 @@ CREATE TABLE vault_attribute_mutation (
   created_at INTEGER NOT NULL CHECK(created_at > 0),
   PRIMARY KEY(account_id, operation_id)
 ) STRICT;
+
+CREATE TABLE vault_gc_cursor (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  cursor TEXT
+) STRICT;
+INSERT INTO vault_gc_cursor(id, cursor) VALUES(1, NULL);

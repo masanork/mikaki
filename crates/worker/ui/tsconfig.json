@@ -18,5 +18,5 @@
     "rootDir": ".",
     "outDir": "../../../target/login-js"
   },
-  "include": ["login.ts"]
+  "include": ["login.ts", "vault.ts", "vault-crypto.ts"]
 }
