@@ -1,7 +1,7 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "95165eb",
+    "commit": "023e820",
     "code": {
       "implementationLines": 4308,
       "testLines": 2641,
@@ -89,6 +89,22 @@
         ]
       }
     },
-    "coverage": null
+    "coverage": {
+      "lines": {
+        "covered": 1419,
+        "count": 1589,
+        "percent": 89.30144745122719
+      },
+      "regions": {
+        "covered": 2548,
+        "count": 3084,
+        "percent": 82.61997405966277
+      },
+      "functions": {
+        "covered": 144,
+        "count": 161,
+        "percent": 89.44099378881988
+      }
+    }
   }
 ]
