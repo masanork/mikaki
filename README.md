@@ -8,6 +8,8 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 **開発中の試作です。本番サービスとして公開・運用しておらず、アカウントや利用者データを保護する目的では使わないでください。**
 
+脆弱性の報告方法は[SECURITY.md](SECURITY.md)を参照してください。
+
 セッション期限等の運用パラメーターは設定へ分離する。[統合設定見本](config/runtime-policy.example.toml)と[設定変更の適用契約](docs/runtime-configuration.md)を参照する。ローカル実装では検証済み設定をビルド時に読み込む。本番用の設定適用・履歴管理は未実装。
 
 [ローカルの認証縦切り実装](local/README.md)で、招待登録・Passkey・OIDC・RPセッション・ログアウトまで接続した。Svelte 5とTypeScript 7（svelte-check --tsgo）を使用する。起動手順、検証範囲、本番公開前に残る事項は同文書を参照する。
