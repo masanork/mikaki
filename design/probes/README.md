@@ -49,6 +49,18 @@ D1 batchによるロールバックとchanges()はローカル互換環境で成
 
 鍵生成・乱数源・実際の秘密保管、RS256互換経路、暗号処理のタイミング特性、負荷性能、実ブラウザのPasskey、OP conformanceは未検証。公開前には別途確認する。この試作から本番へ公開RFC秘密鍵やfixture用の署名関数をコピーしてはならない。
 
+### Rust JOSE 依存スパイク（初期評価）
+
+隔離crate [`jose`](jose/) で jsonwebtoken 11.1.0 の API と target build を確認する。Native と `wasm32-unknown-unknown` の `cargo check --all-targets` は成功した。Wasmでは `getrandom 0.2` の `js` feature をtarget限定で明示する必要があった。独立した `Cargo.lock` は87 crateを固定し、2026-09-23時点の `cargo audit` は指摘なし。
+
+```sh
+cargo check --locked --manifest-path design/probes/jose/Cargo.toml --all-targets
+cargo check --locked --manifest-path design/probes/jose/Cargo.toml --target wasm32-unknown-unknown --all-targets
+cargo audit --file design/probes/jose/Cargo.lock
+```
+
+この初期評価はcompileと依存監査だけで、署名ベクトルの実行・相互署名、鍵更新、改変/claim/alg拒否、Wasm runtime、サイズ・遅延の受入条件は未達。`rust_crypto` featureはRSA crateも依存グラフへ含む。監査結果だけでRSA秘密鍵署名を本番採用せず、既知のRSA timing勧告と公開鍵検証/秘密鍵操作の境界を別途評価する。spike内の検証関数は固定algを使うAPI形状の試作であり、OIDC claim・issuer・audience・時刻検証を実装していない。
+
 ## 次の実装
 
 一つの隔離RPを使い、[ADR 0005](../../docs/adr/0005-invitation-bootstrap-and-recovery.md)に従う登録からログアウトまでを縦に実装する。最初にauthとOIDCの登録/認証確定境界、本番schema、Workerへの署名アダプターを接続する。招待・bootstrapの競合試験は今回のcode交換模型とは別に追加する。
