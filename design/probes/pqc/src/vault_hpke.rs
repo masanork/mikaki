@@ -1,11 +1,55 @@
-//! Draft-only Vault recipient wrapping exercise. No wire format or production keys.
+//! Draft-only Vault recipient wrapping and candidate frame exercise. No production keys.
 
 use hpke::kem::MlKem768;
 use hpke::rand_core::SeedableRng;
-use hpke::{Kem as _, OpModeR, OpModeS, aead::AesGcm256, kdf::HkdfSha256};
+use hpke::{
+    Deserializable as _, Kem as _, OpModeR, OpModeS, Serializable as _, aead::AesGcm256,
+    kdf::HkdfSha256,
+};
 use rand_chacha::ChaCha20Rng;
+use sha2::{Digest as _, Sha256};
 
 type RecipientKem = MlKem768;
+const FORMAT_VERSION: [u8; 1] = [1];
+const SUITE_IDS: [u8; 6] = [0, 0x41, 0, 1, 0, 2];
+const PROBE_DOMAIN: &[u8] = b"mikaki-vault-recipient-envelope-v1-draft04";
+const FRAME_MAGIC: &[u8; 4] = b"MKVE";
+const ENC_LEN: usize = 1088;
+const CT_LEN: usize = 48;
+const FRAME_LEN: usize = 4 + 1 + 6 + 32 + 8 + ENC_LEN + CT_LEN;
+
+fn encode_frame(enc: &[u8], ct: &[u8], key_id: &[u8; 32], generation: u64) -> Option<Vec<u8>> {
+    if enc.len() != ENC_LEN || ct.len() != CT_LEN || generation == 0 {
+        return None;
+    }
+    let mut frame = Vec::with_capacity(FRAME_LEN);
+    frame.extend_from_slice(FRAME_MAGIC);
+    frame.extend_from_slice(&FORMAT_VERSION);
+    frame.extend_from_slice(&SUITE_IDS);
+    frame.extend_from_slice(key_id);
+    frame.extend_from_slice(&generation.to_be_bytes());
+    frame.extend_from_slice(enc);
+    frame.extend_from_slice(ct);
+    Some(frame)
+}
+
+fn decode_frame<'a>(
+    frame: &'a [u8],
+    expected_key_id: &[u8; 32],
+    expected_generation: u64,
+) -> Option<(&'a [u8], &'a [u8])> {
+    if frame.len() != FRAME_LEN
+        || &frame[..4] != FRAME_MAGIC
+        || frame[4] != FORMAT_VERSION[0]
+        || frame[5..11] != SUITE_IDS
+        || frame[11..43] != *expected_key_id
+        || frame[43..51] != expected_generation.to_be_bytes()
+        || expected_generation == 0
+    {
+        return None;
+    }
+    Some((&frame[51..51 + ENC_LEN], &frame[51 + ENC_LEN..]))
+}
 
 fn context(parts: &[&[u8]]) -> Option<Vec<u8>> {
     let mut output = Vec::new();
@@ -24,15 +68,17 @@ pub fn self_test() -> bool {
     let account = b"test-account-1";
     let attribute = b"name";
     let recipient = b"userinfo";
-    let key_id = b"test-key-1";
+    let key_id: [u8; 32] = Sha256::digest(public_key.to_bytes()).into();
     let purpose = b"oidc.userinfo.name";
+    let blob_digest: [u8; 32] = Sha256::digest(b"test-vault-ciphertext").into();
     let generation = 1_u64.to_be_bytes();
     let revision = 9_u64.to_be_bytes();
     let info = match context(&[
-        b"mikaki-vault-recipient-hpke-probe",
-        b"draft-ietf-hpke-pq-04",
+        PROBE_DOMAIN,
+        &FORMAT_VERSION,
+        &SUITE_IDS,
         recipient,
-        key_id,
+        &key_id,
         &generation,
     ]) {
         Some(value) => value,
@@ -44,9 +90,8 @@ pub fn self_test() -> bool {
         attribute,
         &revision,
         recipient,
-        key_id,
-        &generation,
         purpose,
+        &blob_digest,
     ]) {
         Some(value) => value,
         None => return false,
@@ -65,17 +110,33 @@ pub fn self_test() -> bool {
         Ok(value) => value,
         Err(_) => return false,
     };
+    let generation_number = u64::from_be_bytes(generation);
+    let Some(frame) = encode_frame(
+        encapped.to_bytes().as_slice(),
+        &ciphertext,
+        &key_id,
+        generation_number,
+    ) else {
+        return false;
+    };
+    let Some((received_enc, received_ct)) = decode_frame(&frame, &key_id, generation_number) else {
+        return false;
+    };
+    let Ok(received_enc) = <RecipientKem as hpke::Kem>::EncappedKey::from_bytes(received_enc)
+    else {
+        return false;
+    };
     let open = |info: &[u8], aad: &[u8], ciphertext: &[u8]| {
         let mut receiver = hpke::setup_receiver::<AesGcm256, HkdfSha256, RecipientKem>(
             &OpModeR::Base,
             &private_key,
-            &encapped,
+            &received_enc,
             info,
         )
         .ok()?;
         receiver.open(ciphertext, aad).ok()
     };
-    if open(&info, &aad, &ciphertext).as_deref() != Some(&data_key) {
+    if open(&info, &aad, received_ct).as_deref() != Some(&data_key) {
         return false;
     }
     let wrong_revision = 10_u64.to_be_bytes();
@@ -85,9 +146,8 @@ pub fn self_test() -> bool {
         attribute,
         &wrong_revision,
         recipient,
-        key_id,
-        &generation,
         purpose,
+        &blob_digest,
     ]) else {
         return false;
     };
@@ -97,9 +157,8 @@ pub fn self_test() -> bool {
         attribute,
         &revision,
         recipient,
-        key_id,
-        &generation,
         purpose,
+        &blob_digest,
     ]) else {
         return false;
     };
@@ -109,9 +168,8 @@ pub fn self_test() -> bool {
         b"email",
         &revision,
         recipient,
-        key_id,
-        &generation,
         purpose,
+        &blob_digest,
     ]) else {
         return false;
     };
@@ -121,40 +179,104 @@ pub fn self_test() -> bool {
         attribute,
         &revision,
         recipient,
-        key_id,
-        &generation,
         b"oidc.id_token.name",
+        &blob_digest,
     ]) else {
         return false;
     };
-    let Some(wrong_key_info) = context(&[
-        b"mikaki-vault-recipient-hpke-probe",
-        b"draft-ietf-hpke-pq-04",
+    let wrong_blob_digest: [u8; 32] = Sha256::digest(b"other-vault-ciphertext").into();
+    let Some(wrong_blob_aad) = context(&[
+        origin,
+        account,
+        attribute,
+        &revision,
         recipient,
-        b"test-key-2",
+        purpose,
+        &wrong_blob_digest,
+    ]) else {
+        return false;
+    };
+    let mut wrong_key_id = key_id;
+    wrong_key_id[0] ^= 1;
+    let Some(wrong_key_info) = context(&[
+        PROBE_DOMAIN,
+        &FORMAT_VERSION,
+        &SUITE_IDS,
+        recipient,
+        &wrong_key_id,
         &generation,
     ]) else {
         return false;
     };
     let wrong_generation = 2_u64.to_be_bytes();
     let Some(wrong_generation_info) = context(&[
-        b"mikaki-vault-recipient-hpke-probe",
-        b"draft-ietf-hpke-pq-04",
+        PROBE_DOMAIN,
+        &FORMAT_VERSION,
+        &SUITE_IDS,
         recipient,
-        key_id,
+        &key_id,
         &wrong_generation,
     ]) else {
         return false;
     };
     let mut changed = ciphertext.clone();
     changed[0] ^= 1;
+    let mut changed_header = frame.clone();
+    changed_header[4] ^= 1;
+    let mut changed_suite = frame.clone();
+    changed_suite[10] ^= 1;
+    let mut changed_enc = frame.clone();
+    changed_enc[51] ^= 1;
+    let mut changed_ct = frame.clone();
+    changed_ct[51 + ENC_LEN] ^= 1;
+    let open_frame = |frame: &[u8]| {
+        let (enc, ct) = decode_frame(frame, &key_id, generation_number)?;
+        let enc = <RecipientKem as hpke::Kem>::EncappedKey::from_bytes(enc).ok()?;
+        let mut receiver = hpke::setup_receiver::<AesGcm256, HkdfSha256, RecipientKem>(
+            &OpModeR::Base,
+            &private_key,
+            &enc,
+            &info,
+        )
+        .ok()?;
+        receiver.open(ct, &aad).ok()
+    };
     open(&info, &wrong_revision_aad, &ciphertext).is_none()
         && open(&info, &wrong_account_aad, &ciphertext).is_none()
         && open(&info, &wrong_attribute_aad, &ciphertext).is_none()
         && open(&info, &wrong_purpose_aad, &ciphertext).is_none()
+        && open(&info, &wrong_blob_aad, &ciphertext).is_none()
         && open(&wrong_key_info, &aad, &ciphertext).is_none()
         && open(&wrong_generation_info, &aad, &ciphertext).is_none()
         && open(&info, &aad, &changed).is_none()
+        && decode_frame(&frame[..FRAME_LEN - 1], &key_id, generation_number).is_none()
+        && decode_frame(
+            &[frame.as_slice(), &[0]].concat(),
+            &key_id,
+            generation_number,
+        )
+        .is_none()
+        && decode_frame(&changed_header, &key_id, generation_number).is_none()
+        && decode_frame(&changed_suite, &key_id, generation_number).is_none()
+        && decode_frame(&frame, &wrong_key_id, generation_number).is_none()
+        && decode_frame(&frame, &key_id, generation_number + 1).is_none()
+        && encode_frame(
+            &frame[51..51 + ENC_LEN - 1],
+            &ciphertext,
+            &key_id,
+            generation_number,
+        )
+        .is_none()
+        && encode_frame(
+            encapped.to_bytes().as_slice(),
+            &ciphertext[..CT_LEN - 1],
+            &key_id,
+            generation_number,
+        )
+        .is_none()
+        && encode_frame(encapped.to_bytes().as_slice(), &ciphertext, &key_id, 0).is_none()
+        && open_frame(&changed_enc).is_none()
+        && open_frame(&changed_ct).is_none()
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
