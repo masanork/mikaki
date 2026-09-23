@@ -212,7 +212,8 @@ struct DiscoveryResponse {
     subject_types_supported: [&'static str; 1],
     id_token_signing_alg_values_supported: [&'static str; 2],
     scopes_supported: [&'static str; 1],
-    claims_supported: [&'static str; 8],
+    claims_supported: [&'static str; 9],
+    acr_values_supported: [&'static str; 1],
     token_endpoint_auth_methods_supported: Vec<&'static str>,
     token_endpoint_auth_signing_alg_values_supported: [&'static str; 1],
     code_challenge_methods_supported: [&'static str; 1],
@@ -2169,7 +2170,9 @@ async fn discovery_route(
                 "nonce",
                 "auth_time",
                 "sid",
+                "acr",
             ],
+            acr_values_supported: [mikaki_oidc::PASSKEY_UV_ACR],
             token_endpoint_auth_methods_supported: if conformance_deployment(&context.env)? {
                 vec![
                     "private_key_jwt",

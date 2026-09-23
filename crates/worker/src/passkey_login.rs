@@ -111,26 +111,10 @@ pub(super) async fn get(
         .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let mut random = WorkersCryptoRandom;
     let nonce = random_secret(&mut random)?;
-    let tx_js = serde_json::to_string(tx)?;
-    let challenge_js = serde_json::to_string(&login.challenge)?;
-    let rp_id_js = serde_json::to_string(&rp_id)?;
+    let script = include_str!(concat!(env!("OUT_DIR"), "/login.js"));
     let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Sign in to mikaki</title></head><body><main><h1>Sign in with a passkey</h1><label><input id="consent" type="checkbox">Allow this client to receive my account identifier</label><button id="passkey" type="button">Sign in with passkey</button><p id="error" role="alert" hidden>Authentication failed. Please try again.</p></main><script nonce="{nonce}">
-const tx={tx_js}, challenge={challenge_js}, rpId={rp_id_js};
-const decode=s=>Uint8Array.from(atob(s.replaceAll('-', '+').replaceAll('_', '/')), c=>c.charCodeAt(0));
-const encode=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
-document.getElementById('passkey').addEventListener('click', async()=>{{
-  if(!document.getElementById('consent').checked) return;
-  try {{
-    const credential=await navigator.credentials.get({{publicKey:{{challenge:decode(challenge),rpId,userVerification:'required',timeout:120000}}}});
-    if(!credential) throw Error('cancelled');
-    const response={{id:credential.id,client_data:encode(credential.response.clientDataJSON),authenticator_data:encode(credential.response.authenticatorData),signature:encode(credential.response.signature),user_handle:credential.response.userHandle?encode(credential.response.userHandle):null}};
-    const result=await fetch('/login/finish',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{tx,consent:true,response}})}});
-    if(!result.ok) throw Error('rejected');
-    location.assign((await result.json()).location);
-  }} catch {{ document.getElementById('error').hidden=false; }}
-}});
-</script></body></html>"#
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Sign in to mikaki</title></head><body><main id="login" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}"><h1>Sign in with a passkey</h1><label><input id="consent" type="checkbox">Allow this client to receive my account identifier</label><button id="passkey" type="button">Sign in with passkey</button><p id="error" role="alert" hidden>Authentication failed. Please try again.</p></main><script nonce="{nonce}">{script}</script></body></html>"#,
+        challenge = login.challenge,
     );
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?

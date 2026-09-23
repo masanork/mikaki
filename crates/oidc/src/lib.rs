@@ -18,7 +18,7 @@ pub use exchange::{
     TokenEndpointInputError, ValidatedTokenEndpointInput,
 };
 pub use signing::{
-    IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner,
+    IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner, PASSKEY_UV_ACR,
     RsaPrivateTokenKey,
 };
 

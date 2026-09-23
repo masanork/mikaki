@@ -40,8 +40,11 @@ jobs:
           python3.14 scripts/test_oidc_sql.py
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown
           npm run format:check
           npm run check:ui
+          npm run check:worker-ui
+          npm run check:product-sources
           npm run check:i18n
       - name: Native tests and measured coverage
         run: |

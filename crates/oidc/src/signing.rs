@@ -116,7 +116,11 @@ struct IdTokenClaims<'a> {
     nonce: Option<&'a str>,
     sid: &'a str,
     auth_time: u64,
+    acr: &'static str,
 }
+
+/// Authentication context established by the Worker's UV-required passkey ceremony.
+pub const PASSKEY_UV_ACR: &str = "urn:mikaki:acr:passkey-uv";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidSigningKey;
@@ -296,6 +300,7 @@ impl P256TokenSigner {
             nonce,
             sid,
             auth_time,
+            acr: PASSKEY_UV_ACR,
         })
         .map_err(|_| InvalidIdTokenClaims)?;
         let signing_input = format!("{}.{}", B64.encode(header), B64.encode(claims));
@@ -428,6 +433,7 @@ impl IdTokenSigningInput {
             nonce,
             sid,
             auth_time,
+            acr: PASSKEY_UV_ACR,
         })
         .map_err(|_| InvalidIdTokenClaims)?;
         Ok(Self {
