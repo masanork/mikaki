@@ -4,6 +4,9 @@
 mod passkey_login;
 
 #[cfg(target_arch = "wasm32")]
+mod vault_attributes;
+
+#[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "wasm32")]
@@ -2308,6 +2311,9 @@ pub async fn main(
         .get_async("/userinfo", userinfo_route)
         .post_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
+        .get_async("/vault/attributes/:attribute", vault_attributes::get)
+        .put_async("/vault/attributes/:attribute", vault_attributes::put)
+        .delete_async("/vault/attributes/:attribute", vault_attributes::delete)
         .run(req, env)
         .await
 }

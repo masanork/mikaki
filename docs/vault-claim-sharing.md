@@ -1,6 +1,14 @@
 # Vault属性のUserInfoへの開示（設計案）
 
-2026-09-23 / Draft 0。実装・採用済みの契約ではない。
+2026-09-23 / Draft 1。以下の限定したStorage API以外は設計案であり、採用・実装済みの契約ではない。
+
+## 実装中の最初のStorage API
+
+Rust Workerに本人専用の実験的な`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`を追加した。dev Workerだけに`VAULT_BLOBS` R2 bindingを置き、bindingのない本番Workerでは404を返す。`0002_vault_attribute_storage.sql`がD1のheadと操作再試行記録を作る。UserInfoのclaim公開、system recipient、AuthZEN PDP、属性の暗号化・解錠UIは未実装である。このAPIを実利用者のデータ保存先として公開しない。
+
+`attribute`は1〜64文字の小文字ASCII英数字・`-`・`_`。PUTは`format_version: 1`、base64urlの`ciphertext`（最大24 KiB）と`owner_envelope`（最大8 KiB）のJSONを受ける。サーバーは暗号文をR2のランダムな不変keyに保存し、D1のheadにSHA-256 digestと本人用envelopeを記録する。暗号形式と鍵包みの中身はまだ確定しておらず、サーバーは復号可能性を保証しない。GETは同じ値とrevisionを返し、保存blobのdigestを検証する。
+
+PUTの新規作成には`If-None-Match: *`、更新・DELETEには`If-Match: "<revision>"`を要求する。書込みには同一originの`Origin`と43文字の`X-Operation-ID`が必要であり、SSO cookieから本人を確定する。同じoperation IDと同じ要求は既存結果を返し、異なる要求は409とする。D1の条件付き確定時にもSSO・credential・accountの有効性を再確認する。削除はrevision付きtombstoneで、古い端末の上書きを防ぐ。R2とD1をまたぐtransactionはないため、確定失敗でできる孤立blobのGCは別途実装する。
 
 ## 目的と信頼境界
 

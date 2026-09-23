@@ -34,6 +34,7 @@ jobs:
           npm run build:policy
           worker-build --release crates/worker
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.mjs
+          node --test local/conformance/vault-attribute.test.mjs
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain

@@ -10,5 +10,11 @@
       "migrations_dir": "migrations",
       "remote": false
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "VAULT_BLOBS",
+      "bucket_name": "mikaki-vault-dev"
+    }
   ]
 }
