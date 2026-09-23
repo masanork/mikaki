@@ -53,6 +53,14 @@ jobs:
           cargo llvm-cov --locked --workspace --exclude mikaki-browser-wasm --exclude mikaki-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
       - name: Shared WebAuthn tests on Wasm
         run: wasm-pack test --node crates/webauthn --locked
+      - name: Isolated PQC feasibility probe
+        run: |
+          cargo fmt --manifest-path design/probes/pqc/Cargo.toml -- --check
+          npx prettier --check design/probes/pqc/check.mjs
+          cargo test --locked --manifest-path design/probes/pqc/Cargo.toml
+          cargo clippy --locked --manifest-path design/probes/pqc/Cargo.toml --all-targets -- -D warnings
+          wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked
+          node design/probes/pqc/check.mjs
       - name: Build Wasm and UI
         run: npm run build
       - name: Project size, coverage, and dependency trends
@@ -67,6 +75,7 @@ jobs:
         run: |
           cargo install cargo-audit --version 0.22.2 --locked
           cargo audit --file Cargo.lock
+          cargo audit --file design/probes/pqc/Cargo.lock
           npm audit --audit-level=low
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

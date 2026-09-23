@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/webauthn", "crates/auth", "crates/oidc", "crates/browser-wasm", "crates/worker"]
-exclude = ["design/probes/es256", "fuzz"]
+exclude = ["design/probes/es256", "design/probes/pqc", "fuzz"]
 resolver = "3"
 
 [workspace.package]

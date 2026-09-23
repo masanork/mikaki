@@ -2,6 +2,8 @@
 
 本番用コードではない。ES256の秘密鍵は公開RFCテストベクトル、account/client/tokenは合成値だけを使う。RustのJWTパーサーやOIDC Provider、管理CLI、ログイン画面は実装していない。
 
+ML-KEM・ML-DSAの独立検証は[`pqc/`](pqc/)に分けている。
+
 ## workers-rs adapter probe
 
 [`workers-rs/`](workers-rs/) は独立したRust Worker proof of conceptで、`worker` 0.8.6を使う。本番用ではない。Wranglerのローカルworkerd上でRust async fetch、D1 batch rollback、`FirstPrimary` read、並行exchangeの一回性、Rust OIDC coreの認可code準備にWorkers WebCrypto CSPRNGを接続する経路、非同期ES256署名を確認する。追加のRS256ケースでは合成2048-bit RSA鍵をRustで検査し、非抽出JWKとしてWorkers WebCryptoへimportしてID Tokenに署名する。生成JWSを[`jose-custom`](jose-custom/)のRust/Wasm verifierで検証し、署名改ざんを拒否する。鍵はNode test processで実行時生成し、ローカルWorkerへだけ渡す。remote D1やCloudflareアカウントには接続しない。
