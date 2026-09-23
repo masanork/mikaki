@@ -2,6 +2,7 @@
 **/node_modules/
 **/pkg/
 **/pkg-web/
+crates/userinfo-claim-worker/wrangler.production.jsonc
 **/.wrangler/
 **/.dev.vars*
 **/__pycache__/

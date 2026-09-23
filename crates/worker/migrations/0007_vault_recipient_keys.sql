@@ -49,3 +49,13 @@ BEGIN SELECT RAISE(ABORT, 'invalid vault recipient key transition'); END;
 
 CREATE TRIGGER vault_recipient_key_no_delete BEFORE DELETE ON vault_recipient_key
 BEGIN SELECT RAISE(ABORT, 'vault recipient key history cannot be deleted'); END;
+
+CREATE TABLE vault_recipient_key_audit (
+  operation_id TEXT PRIMARY KEY NOT NULL,
+  key_id TEXT NOT NULL REFERENCES vault_recipient_key(key_id),
+  action TEXT NOT NULL CHECK(action IN ('stage', 'activate', 'rotate', 'disable')),
+  actor TEXT NOT NULL CHECK(length(actor) BETWEEN 1 AND 128),
+  reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 512),
+  revision INTEGER NOT NULL CHECK(revision > 0),
+  occurred_at INTEGER NOT NULL CHECK(occurred_at > 0)
+) STRICT;

@@ -1,6 +1,7 @@
 """Emit a source-reviewed CycloneDX 1.7 cryptography inventory for the Worker."""
 
 import json
+import argparse
 import os
 import subprocess
 import sys
@@ -58,8 +59,43 @@ ASSETS = (
     ),
 )
 
+CLAIM_ASSETS = (
+    (
+        "ML-KEM-768",
+        "algorithm",
+        {"primitive": "kem", "algorithmFamily": "ML-KEM", "cryptoFunctions": ["keygen"]},
+        "crates/userinfo-claim-worker/src/lib.rs",
+        "DecapsulationKey::<MlKem768>::from_seed",
+    ),
+    (
+        "SHA-256 recipient key ID",
+        "algorithm",
+        {"primitive": "hash", "algorithmFamily": "SHA-2", "cryptoFunctions": ["digest"]},
+        "crates/userinfo-claim-worker/src/lib.rs",
+        "Sha256::digest",
+    ),
+    (
+        "UserInfo ML-KEM private seed binding",
+        "related-crypto-material",
+        {"type": "private-key", "id": "VAULT_USERINFO_MLKEM_*", "securedBy": {"mechanism": "Software"}},
+        "crates/userinfo-claim-worker/src/lib.rs",
+        "env.secret_store(&row.secret_ref)",
+    ),
+    (
+        "UserInfo recipient public keys",
+        "related-crypto-material",
+        {"type": "public-key", "id": "vault_recipient_key.public_key"},
+        "crates/worker/migrations/0007_vault_recipient_keys.sql",
+        "public_key BLOB NOT NULL",
+    ),
+)
+
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--component", choices=("worker", "userinfo-claim-worker"), default="worker")
+    args = parser.parse_args()
+    assets = ASSETS if args.component == "worker" else CLAIM_ASSETS
     revision = os.environ.get("GITHUB_SHA") or subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
@@ -71,7 +107,7 @@ def main() -> None:
     )
     timestamp = created.isoformat().replace("+00:00", "Z")
     components = []
-    for name, asset_type, properties, source, marker in ASSETS:
+    for name, asset_type, properties, source, marker in assets:
         if marker not in (ROOT / source).read_text():
             raise SystemExit(f"CBOM source marker missing: {name} ({source})")
         crypto = {"assetType": asset_type}
@@ -87,11 +123,11 @@ def main() -> None:
     document = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.7",
-        "serialNumber": f"urn:uuid:{uuid5(NAMESPACE_URL, 'mikaki-worker-cbom:' + revision)}",
+        "serialNumber": f"urn:uuid:{uuid5(NAMESPACE_URL, 'mikaki-' + args.component + '-cbom:' + revision)}",
         "version": 1,
         "metadata": {
             "timestamp": timestamp,
-            "component": {"type": "application", "name": "mikaki-worker", "version": revision},
+            "component": {"type": "application", "name": "mikaki-" + args.component, "version": revision},
         },
         "components": components,
     }

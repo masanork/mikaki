@@ -33,8 +33,10 @@ jobs:
         run: |
           npm run build:policy
           worker-build --release crates/worker
+          worker-build --release crates/userinfo-claim-worker
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.mjs
           node --test local/conformance/vault-attribute.test.mjs
+          node --test local/conformance/userinfo-claim-worker.test.mjs
           node --test local/conformance/vault-crypto.test.mjs
           node --test local/conformance/client-admin.test.mjs
           node --test local/conformance/enrollment.test.mjs
@@ -49,13 +51,20 @@ jobs:
           mkdir -p artifacts/supply-chain
           cargo cyclonedx --manifest-path crates/worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename worker-rust.cdx
           cp crates/worker/worker-rust.cdx.json artifacts/supply-chain/worker-rust.cdx.json
+          cargo cyclonedx --manifest-path crates/userinfo-claim-worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename userinfo-claim-rust.cdx
+          cp crates/userinfo-claim-worker/userinfo-claim-rust.cdx.json artifacts/supply-chain/userinfo-claim-rust.cdx.json
           npm sbom --sbom-format=cyclonedx --sbom-type=application > artifacts/supply-chain/npm-build.cdx.json
           python3.14 scripts/build_cbom.py > artifacts/supply-chain/worker-crypto.cdx.json
+          python3.14 scripts/build_cbom.py --component userinfo-claim-worker > artifacts/supply-chain/userinfo-claim-crypto.cdx.json
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-rust.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-rust.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/npm-build.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-crypto.cdx.json --input-version v1_7 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-crypto.cdx.json --input-version v1_7 --fail-on-errors
       - name: Archive the built Worker
-        run: tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+        run: |
+          tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+          tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -65,11 +74,25 @@ jobs:
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
           sbom-path: artifacts/supply-chain/worker-rust.cdx.json
+      - name: Attest UserInfo claim Worker provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
+      - name: Attest UserInfo claim Worker SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
+          sbom-path: artifacts/supply-chain/userinfo-claim-rust.cdx.json
       - name: Attest CBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
           sbom-path: artifacts/supply-chain/worker-crypto.cdx.json
+      - name: Attest UserInfo claim Worker CBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
+          sbom-path: artifacts/supply-chain/userinfo-claim-crypto.cdx.json
       - name: Upload Worker and inventories
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
