@@ -8,5 +8,5 @@ JOIN client c ON c.client_id=?4 AND c.active=1 AND c.revision=?5
 JOIN client_redirect_uri r ON r.client_id=c.client_id AND r.redirect_uri=?6
 JOIN app_connection g ON g.account_id=ss.account_id AND g.client_id=c.client_id AND g.active=1
 JOIN pairwise_subject ps ON ps.account_id=ss.account_id AND ps.sector_identifier=c.sector_identifier
-WHERE ss.sso_id=?2 AND sx.secret_hash=?3 AND ss.revoked=0 AND ss.expires_at>?7
+WHERE ss.sso_id=?2 AND sx.secret_hash=?3 AND ss.revoked=0 AND ss.expires_at>?7 AND r.active=1
   AND a.active=1 AND a.epoch=ss.epoch AND cr.active=1

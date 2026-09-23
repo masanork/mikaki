@@ -2,11 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
 import {
+  addRedirect,
   addKey,
   disableClient,
   listClients,
   registerClient,
+  retireRedirect,
   retireKey,
+  validateRedirect,
   validateKey,
   validateRegistration,
 } from './client-admin-store.mjs';
@@ -34,11 +37,19 @@ if (
   Object.keys(options).some((key) => !allowed.has(key)) ||
   !options['--config'] ||
   !['yes', 'no'].includes(options['--remote']) ||
-  !['register', 'add-key', 'retire-key', 'disable', 'list'].includes(options['--action']) ||
+  ![
+    'register',
+    'add-key',
+    'retire-key',
+    'add-redirect',
+    'retire-redirect',
+    'disable',
+    'list',
+  ].includes(options['--action']) ||
   !['yes', 'no'].includes(options['--apply'])
 ) {
   throw new Error(
-    'usage: node scripts/client-admin.mjs --config CONFIG --remote yes|no --action register|add-key|retire-key|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
+    'usage: node scripts/client-admin.mjs --config CONFIG --remote yes|no --action register|add-key|retire-key|add-redirect|retire-redirect|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
   );
 }
 const remote = options['--remote'] === 'yes';
@@ -54,10 +65,14 @@ const input = options['--input']
   : null;
 if (action === 'register') validateRegistration(input);
 if (action === 'add-key') validateKey(input);
+if (action === 'add-redirect' || action === 'retire-redirect') validateRedirect(input);
 if (action !== 'list' && (!options['--actor'] || !options['--reason'])) {
   throw new Error('actor and reason are required for a change');
 }
-if (['add-key', 'retire-key', 'disable'].includes(action) && !options['--client']) {
+if (
+  ['add-key', 'retire-key', 'add-redirect', 'retire-redirect', 'disable'].includes(action) &&
+  !options['--client']
+) {
   throw new Error('client ID is required');
 }
 if (action === 'retire-key' && !options['--kid']) throw new Error('key ID is required');
@@ -80,6 +95,22 @@ try {
       db,
       options['--client'],
       options['--kid'],
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'add-redirect')
+    result = await addRedirect(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'retire-redirect')
+    result = await retireRedirect(
+      db,
+      options['--client'],
+      input,
       options['--actor'],
       options['--reason'],
     );

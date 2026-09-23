@@ -6,7 +6,9 @@ The initial D1 migration, generation 1 runtime policy, and ES256 public signing 
 
 The owner-only Vault uses the `mikaki-vault` R2 bucket, D1 migration `0002_vault_attribute_storage.sql`, and a daily UTC 03:00 cleanup trigger. Apply the migration before deploying a Worker with the R2 binding. The `/vault` page needs an existing SSO session and a PRF-capable passkey; it is not an account enrollment or recovery flow. Keep R2 public access disabled.
 
-The bucket, migration, and Worker version `2c8eb289-ae2b-46ab-98db-96d50a4287fe` were deployed on 2026-09-23. Smoke checks returned 200 for health, discovery, JWKS, and the Vault script, while unauthenticated `/vault` returned 401. An authenticated production Vault write and PRF unlock have not yet been exercised.
+The bucket and migration were deployed on 2026-09-23. D1 migration `0003_client_administration.sql` was applied, and the active runtime policy was moved to schema 5, generation 2, projection `0900d2cf091a3b06e8f07e8a7fcb1fc26dd99bb0701067c041bab8f05f7ea9b9`. Worker version `6fa5c112-144c-479e-908d-61641945ca26` serves the Svelte 5 login and Vault assets. Smoke checks returned 200 for health, Discovery, JWKS and login JS, while unauthenticated `/vault` returned 401. Production still has no registered RP or account; an authenticated Vault write and PRF unlock have not been exercised.
+
+Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). Apply new migrations before deploying a Worker that queries new columns.
 
 After modifying the Worker, build and deploy with the secret included in the **same** version:
 
@@ -26,4 +28,4 @@ curl -fsS https://mikaki.tossa.app/.well-known/openid-configuration
 curl -fsS https://mikaki.tossa.app/jwks
 ```
 
-This deployment serves protocol endpoints but has no self-service account enrollment, recovery, or registered public clients. Do not treat its availability as a user-ready launch or an OIDF certification result.
+This deployment serves protocol endpoints but has no account enrollment, recovery, or registered production clients. Do not treat its availability as a user-ready launch or an OIDF certification result.

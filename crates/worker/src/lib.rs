@@ -1785,7 +1785,7 @@ async fn authorize_route(
         .prepare(
             "SELECT c.revision AS client_revision,c.sector_identifier,c.allow_missing_pkce \
              FROM client c JOIN client_redirect_uri r ON r.client_id=c.client_id \
-             WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2",
+             WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2 AND r.active=1",
         )
         .bind(&[
             JsValue::from_str(client_id),
@@ -1973,7 +1973,7 @@ async fn authorize_route(
              JOIN account_security a ON a.account_id=ss.account_id \
              JOIN credential cr ON cr.credential_id=ss.credential_id AND cr.account_id=ss.account_id \
              JOIN client c ON c.client_id=?2 JOIN client_redirect_uri r \
-               ON r.client_id=c.client_id AND r.redirect_uri=?3 \
+               ON r.client_id=c.client_id AND r.redirect_uri=?3 AND r.active=1 \
              JOIN app_connection g ON g.account_id=ss.account_id AND g.client_id=c.client_id \
              WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>?4 \
              AND a.active=1 AND a.epoch=ss.epoch AND cr.active=1 \

@@ -65,6 +65,12 @@ export function validateKey(input) {
   return { kid: input.kid, sec1: new Uint8Array(Buffer.concat([Buffer.from([4]), x, y])) };
 }
 
+export function validateRedirect(input) {
+  exactKeys(input, ['redirect_uri']);
+  const uri = httpsUri(input.redirect_uri);
+  return { uri: uri.href, sector: uri.hostname };
+}
+
 function metadata(actor, reason) {
   if (
     typeof actor !== 'string' ||
@@ -150,6 +156,52 @@ export async function retireKey(db, clientId, kid, actor, reason) {
   return { clientId, kid };
 }
 
+export async function addRedirect(db, clientId, input, actor, reason) {
+  const redirect = validateRedirect(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO client_redirect_uri(client_id,redirect_uri,active) SELECT c.client_id,?,1 FROM client c WHERE c.client_id=? AND c.active=1 AND c.sector_identifier=? AND (SELECT COUNT(*) FROM client_redirect_uri WHERE client_id=c.client_id AND active=1)<8 ON CONFLICT(client_id,redirect_uri) DO UPDATE SET active=1 WHERE active=0',
+      )
+      .bind(redirect.uri, clientId, redirect.sector),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    db
+      .prepare('UPDATE client SET revision=revision+1 WHERE client_id=? AND active=1')
+      .bind(clientId),
+    audit(db, meta, clientId, 'add-redirect'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId, redirectUri: redirect.uri };
+}
+
+export async function retireRedirect(db, clientId, input, actor, reason) {
+  const redirect = validateRedirect(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'UPDATE client_redirect_uri SET active=0 WHERE client_id=? AND redirect_uri=? AND active=1 AND EXISTS(SELECT 1 FROM client WHERE client_id=? AND active=1) AND (SELECT COUNT(*) FROM client_redirect_uri WHERE client_id=? AND active=1)>1',
+      )
+      .bind(clientId, redirect.uri, clientId, clientId),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    db
+      .prepare('UPDATE client SET revision=revision+1 WHERE client_id=? AND active=1')
+      .bind(clientId),
+    audit(db, meta, clientId, 'retire-redirect'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId, redirectUri: redirect.uri };
+}
+
 export async function disableClient(db, clientId, actor, reason) {
   const meta = metadata(actor, reason);
   await db.batch([
@@ -170,7 +222,7 @@ export async function disableClient(db, clientId, actor, reason) {
 export async function listClients(db) {
   return db
     .prepare(
-      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(redirect_uri) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c ORDER BY c.client_id",
+      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c ORDER BY c.client_id",
     )
     .all();
 }

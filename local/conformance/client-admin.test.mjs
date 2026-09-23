@@ -3,10 +3,12 @@ import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { createTestHarness } from 'wrangler';
 import {
+  addRedirect,
   addKey,
   disableClient,
   listClients,
   registerClient,
+  retireRedirect,
   retireKey,
   validateRegistration,
 } from '../../scripts/client-admin-store.mjs';
@@ -51,6 +53,51 @@ test('managed RP registration and key changes are audited and constrained', asyn
     await registerClient(DB, registration, 'operator', 'first RP');
     await assert.rejects(registerClient(DB, registration, 'operator', 'duplicate'));
     assert.equal((await listClients(DB)).results[0].client_id, client_id);
+    await assert.rejects(
+      retireRedirect(
+        DB,
+        client_id,
+        { redirect_uri: 'https://rp.example/callback' },
+        'operator',
+        'last URI',
+      ),
+    );
+    await assert.rejects(
+      addRedirect(
+        DB,
+        client_id,
+        { redirect_uri: 'https://other.example/callback' },
+        'operator',
+        'wrong sector',
+      ),
+    );
+    await addRedirect(
+      DB,
+      client_id,
+      { redirect_uri: 'https://rp.example/next-callback' },
+      'operator',
+      'callback rotation',
+    );
+    await retireRedirect(
+      DB,
+      client_id,
+      { redirect_uri: 'https://rp.example/callback' },
+      'operator',
+      'callback rotation complete',
+    );
+    assert.deepEqual(
+      (
+        await DB.prepare(
+          'SELECT redirect_uri,active FROM client_redirect_uri WHERE client_id=? ORDER BY redirect_uri',
+        )
+          .bind(client_id)
+          .all()
+      ).results.map(({ redirect_uri, active }) => [redirect_uri, active]),
+      [
+        ['https://rp.example/callback', 0],
+        ['https://rp.example/next-callback', 1],
+      ],
+    );
     await assert.rejects(retireKey(DB, client_id, 'first', 'operator', 'would remove last key'));
     await addKey(DB, client_id, key('second'), 'operator', 'rotation overlap');
     await retireKey(DB, client_id, 'first', 'operator', 'rotation complete');
@@ -74,7 +121,7 @@ test('managed RP registration and key changes are audited and constrained', asyn
     );
     assert.equal(
       (await DB.prepare('SELECT COUNT(*) AS count FROM client_admin_audit').first()).count,
-      4,
+      6,
     );
   } finally {
     await harness.close();

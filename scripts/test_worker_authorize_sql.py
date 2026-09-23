@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / 'crates/worker/migrations/0001_oidc_initial.sql'
+ADMIN_MIGRATION = ROOT / 'crates/worker/migrations/0003_client_administration.sql'
+REDIRECT_MIGRATION = ROOT / 'crates/worker/migrations/0004_client_redirect_lifecycle.sql'
 SQL = ROOT / 'crates/worker/sql'
 REDIRECT = 'https://client.example/callback'
 COOKIE_HASH = 'C' * 43
@@ -42,11 +44,13 @@ def seeded_db():
     db = sqlite3.connect(':memory:')
     db.execute('PRAGMA foreign_keys=ON')
     db.executescript(MIGRATION.read_text())
+    db.executescript(ADMIN_MIGRATION.read_text())
+    db.executescript(REDIRECT_MIGRATION.read_text())
     now = int(time.time())
     db.execute("INSERT INTO account_security VALUES('account',0,1)")
     db.execute("INSERT INTO credential VALUES('cred','account',1)")
-    db.execute("INSERT INTO client VALUES('client',1,1,'sector.example')")
-    db.execute('INSERT INTO client_redirect_uri VALUES(?,?)', ('client', REDIRECT))
+    db.execute("INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('client',1,1,'sector.example')")
+    db.execute('INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES(?,?)', ('client', REDIRECT))
     db.execute("INSERT INTO app_connection VALUES('account','client',1,1)")
     db.execute("INSERT INTO sso_session VALUES('sso','account','cred',0,?,0)", (now + 600,))
     db.execute('INSERT INTO sso_context VALUES(?,?,?)', ('sso', COOKIE_HASH, now - 10))
@@ -77,6 +81,13 @@ class WorkerAuthorizationSql(unittest.TestCase):
     def test_unregistered_redirect_rolls_back_pairwise_and_session(self):
         with self.assertRaises(sqlite3.IntegrityError):
             run_batch(self.db, redirect='https://evil.example/callback')
+        self.assertEqual(self.counts(), (0, 0, 0, 0, 0))
+
+    def test_retired_redirect_cannot_issue_code(self):
+        self.db.execute('UPDATE client_redirect_uri SET active=0 WHERE client_id=?', ('client',))
+        self.db.commit()
+        with self.assertRaises(sqlite3.IntegrityError):
+            run_batch(self.db)
         self.assertEqual(self.counts(), (0, 0, 0, 0, 0))
 
     def test_wrong_cookie_or_stale_client_revision_cannot_issue(self):
