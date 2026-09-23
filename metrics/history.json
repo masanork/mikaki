@@ -1,27 +1,23 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "bda7d00",
+    "commit": "5fc3d6f",
     "code": {
-      "implementationLines": 10867,
-      "testLines": 2828,
-      "implementationFiles": 50,
+      "implementationLines": 10908,
+      "testLines": 2904,
+      "implementationFiles": 51,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 7653,
-          "testLines": 1334
+          "implementationLines": 7677,
+          "testLines": 1410
         },
         "svelte": {
           "implementationLines": 800,
           "testLines": 0
         },
         "typescript": {
-          "implementationLines": 473,
-          "testLines": 0
-        },
-        "javascript": {
-          "implementationLines": 1941,
+          "implementationLines": 2431,
           "testLines": 1494
         }
       }
@@ -29,21 +25,21 @@
     "dependencies": {
       "npm": {
         "runtime": 2,
-        "dev": 11
+        "dev": 12
       },
       "rust": {
         "runtime": 23,
         "build": 0,
-        "dev": 8
+        "dev": 9
       },
       "sourceLines": {
         "npmRuntime": 108465,
-        "rustRuntime": 1042383,
-        "total": 1150848
+        "rustRuntime": 1042808,
+        "total": 1151273
       },
       "sourcePackages": {
         "npmRuntime": 19,
-        "rustRuntime": 136
+        "rustRuntime": 137
       },
       "names": {
         "npmRuntime": [
@@ -55,6 +51,7 @@
           "@inlang/plugin-message-format",
           "@playwright/test",
           "@sveltejs/vite-plugin-svelte",
+          "@types/node",
           "@typescript/native",
           "prettier",
           "prettier-plugin-svelte",
@@ -92,6 +89,7 @@
         "rustDev": [
           "base64",
           "ciborium",
+          "hpke",
           "p256",
           "rusqlite",
           "serde_json",
@@ -103,19 +101,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1773,
-        "count": 2417,
-        "percent": 73.35539925527513
+        "covered": 1843,
+        "count": 2486,
+        "percent": 74.13515687851971
       },
       "regions": {
-        "covered": 3171,
-        "count": 4371,
-        "percent": 72.54632807137955
+        "covered": 3298,
+        "count": 4498,
+        "percent": 73.32147621164961
       },
       "functions": {
-        "covered": 183,
-        "count": 263,
-        "percent": 69.58174904942965
+        "covered": 187,
+        "count": 267,
+        "percent": 70.0374531835206
       }
     }
   }
