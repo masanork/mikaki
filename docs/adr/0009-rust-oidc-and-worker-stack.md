@@ -27,7 +27,7 @@ Rust Workerへの全面移行前に、隔離したprobeで固定Cloudflare runti
 
 **2026-09-23のローカル結果:** `worker` 0.8.6、Wrangler 4.136.2 / workerd 1.20260921.1で、async Rust fetch handler、D1 batch rollback、`FirstPrimary` read、並行する一回限りのexchange（勝者一つ）、Rustからの非同期WebCrypto ES256署名と既存Rust/Wasm verifierによる検証を確認した。実行手順は[probe README](../../design/probes/README.md)に記録した。これはD1/cryptoのローカル実証であり、ゲート全体の完了ではない。
 
-**未確認:** 本番Cloudflare上のD1 failure/session semantics、実プロジェクトのSQLとの一致、scheduled/`waitUntil`、失効とlogoutの競合、Native/Wasm共通試験、最適化後のサイズ・cold start、依存監査、実際の設定・cookie/HTTP境界。これらを確認するまではSDK選定を最終確定せず、本番OIDC実装へ進める前に残項目を評価する。このゲートを満たさない場合は、**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
+**未確認:** 本番Cloudflare上のD1 failure/session semantics、実プロジェクトのSQLとの一致、scheduled/`waitUntil`、失効とlogoutの競合、Native/Wasm共通試験、最適化済みWasmのサイズ予算とcold start、実際の設定・cookie/HTTP境界。`cargo audit`は83 crateを検査し、2026-09-23時点でadvisoryを報告しなかった。最適化済みprobe Wasmは296,681 bytes（gzip 96,903 bytes）だが、Worker全体のcold start・配布サイズ予算とは照合していない。残りの項目を実装着手前に評価し、ゲートを満たさない場合は**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
 
 ## TypeScript 7の適用範囲と静的検査
 
