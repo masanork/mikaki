@@ -1,4 +1,10 @@
 //! Policy for the static, confidential ES256 client profile. JOSE uses jose/WebCrypto.
+mod code;
+
+pub use code::{
+    CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
+};
+
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,6 +24,10 @@ pub struct Authorization {
 
 /// An authorization request that has passed the static-client profile checks.
 /// Fields are private and this type deliberately does not implement `Deserialize`.
+///
+/// ```compile_fail
+/// let _: sakimori_oidc::ValidatedAuthorization = serde_json::from_str("{}").unwrap();
+/// ```
 #[must_use = "only a validated request may start an authorization transaction"]
 pub struct ValidatedAuthorization {
     client_id: String,
@@ -25,6 +35,35 @@ pub struct ValidatedAuthorization {
     state: String,
     nonce: String,
     code_challenge: String,
+}
+
+/// A validated authorization request paired with its one-time code material.
+#[must_use = "commit this authorization atomically before returning the bearer code"]
+pub struct PreparedAuthorizationCode {
+    authorization: ValidatedAuthorization,
+    code: code::IssuedAuthorizationCode,
+}
+
+impl PreparedAuthorizationCode {
+    pub fn authorization(&self) -> &ValidatedAuthorization {
+        &self.authorization
+    }
+
+    pub fn expires_at(&self) -> u64 {
+        self.code.expires_at()
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        ValidatedAuthorization,
+        PresentedAuthorizationCode,
+        CodeDigest,
+        u64,
+    ) {
+        let (presented, digest, expires_at) = self.code.into_parts();
+        (self.authorization, presented, digest, expires_at)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,6 +105,21 @@ impl Authorization {
 }
 
 impl ValidatedAuthorization {
+    pub fn prepare_code(
+        self,
+        random: &mut impl CryptographicRandom,
+        now: u64,
+        lifetime_seconds: u64,
+        parent_expires_at: u64,
+    ) -> Result<PreparedAuthorizationCode, CodeIssueError> {
+        let code =
+            code::issue_authorization_code(random, now, lifetime_seconds, parent_expires_at)?;
+        Ok(PreparedAuthorizationCode {
+            authorization: self,
+            code,
+        })
+    }
+
     pub fn client_id(&self) -> &str {
         &self.client_id
     }
