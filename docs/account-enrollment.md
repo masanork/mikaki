@@ -7,7 +7,7 @@ Account creation requires an invitation and a discoverable, user-verified Passke
 Apply `0005_account_enrollment.sql` and deploy the Worker before issuing an invitation. The bootstrap gate can create exactly one administrator and closes permanently when that account is registered. On an operator machine, issue the short-lived invitation into a new file (mode 0600):
 
 ```sh
-node scripts/bootstrap-admin.mjs \
+node scripts/bootstrap-admin.ts \
   --config crates/worker/wrangler.production.jsonc \
   --remote yes \
   --actor masanork \

@@ -61,6 +61,78 @@ fn context(parts: &[&[u8]]) -> Option<Vec<u8>> {
     Some(output)
 }
 
+// Public, deterministic fixture seed. This must never be used for a real recipient.
+const FIXTURE_SEED: [u8; 64] = [0x71; 64];
+const FIXTURE_DATA_KEY: [u8; 32] = [0x51; 32];
+
+fn fixture_context(key_id: &[u8; 32]) -> Option<(Vec<u8>, Vec<u8>)> {
+    let generation = 1_u64.to_be_bytes();
+    let revision = 9_u64.to_be_bytes();
+    let blob_digest: [u8; 32] = Sha256::digest(b"test-vault-ciphertext").into();
+    let info = context(&[
+        PROBE_DOMAIN,
+        &FORMAT_VERSION,
+        &SUITE_IDS,
+        b"userinfo",
+        key_id,
+        &generation,
+    ])?;
+    let aad = context(&[
+        b"https://mikaki.example",
+        b"test-account-1",
+        b"name",
+        &revision,
+        b"userinfo",
+        b"oidc.userinfo.name",
+        &blob_digest,
+    ])?;
+    Some((info, aad))
+}
+
+pub fn fixture_frame() -> Option<Vec<u8>> {
+    let private_key = <RecipientKem as hpke::Kem>::PrivateKey::from_bytes(&FIXTURE_SEED).ok()?;
+    let public_key = RecipientKem::sk_to_pk(&private_key);
+    let key_id: [u8; 32] = Sha256::digest(public_key.to_bytes()).into();
+    let (info, aad) = fixture_context(&key_id)?;
+    let mut rng = ChaCha20Rng::from_seed([0x50; 32]);
+    let (encapped, mut sender) =
+        hpke::setup_sender_with_rng::<AesGcm256, HkdfSha256, RecipientKem>(
+            &OpModeS::Base,
+            &public_key,
+            &info,
+            &mut rng,
+        )
+        .ok()?;
+    let ciphertext = sender.seal(&FIXTURE_DATA_KEY, &aad).ok()?;
+    encode_frame(encapped.to_bytes().as_slice(), &ciphertext, &key_id, 1)
+}
+
+pub fn fixture_opens(frame: &[u8]) -> bool {
+    let Ok(private_key) = <RecipientKem as hpke::Kem>::PrivateKey::from_bytes(&FIXTURE_SEED) else {
+        return false;
+    };
+    let public_key = RecipientKem::sk_to_pk(&private_key);
+    let key_id: [u8; 32] = Sha256::digest(public_key.to_bytes()).into();
+    let Some((enc, ciphertext)) = decode_frame(frame, &key_id, 1) else {
+        return false;
+    };
+    let Ok(enc) = <RecipientKem as hpke::Kem>::EncappedKey::from_bytes(enc) else {
+        return false;
+    };
+    let Some((info, aad)) = fixture_context(&key_id) else {
+        return false;
+    };
+    let Ok(mut receiver) = hpke::setup_receiver::<AesGcm256, HkdfSha256, RecipientKem>(
+        &OpModeR::Base,
+        &private_key,
+        &enc,
+        &info,
+    ) else {
+        return false;
+    };
+    matches!(receiver.open(ciphertext, &aad), Ok(data_key) if data_key == FIXTURE_DATA_KEY)
+}
+
 pub fn self_test() -> bool {
     let mut rng = ChaCha20Rng::from_seed([0x50; 32]);
     let (private_key, public_key) = RecipientKem::gen_keypair_with_rng(&mut rng);

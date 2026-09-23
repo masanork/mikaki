@@ -4,8 +4,11 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ## [Unreleased]
 
-### Added
+### Changed
 
+- Migrated handwritten Node scripts, local integration harnesses, and design probes to TypeScript 7, including test entrypoints and Wrangler source entries. CI now checks these sources after the Wasm build.
+
+### Added
 - A short project README and a documentation map that distinguish deployed behavior, local verification, accepted decisions, and proposals.
 - English project-status, architecture, local-development, roadmap, and contribution guides.
 - English versions of the existing architecture decision records and the RP integration guide.

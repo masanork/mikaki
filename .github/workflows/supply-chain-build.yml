@@ -34,19 +34,19 @@ jobs:
           npm run build:policy
           worker-build --release crates/worker
           worker-build --release crates/userinfo-claim-worker
-          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.mjs
-          node --test local/conformance/vault-attribute.test.mjs
-          node --test local/conformance/recipient-directory.test.mjs
-          node --test local/conformance/userinfo-claim-worker.test.mjs
-          node --test local/conformance/vault-crypto.test.mjs
-          node --test local/conformance/client-admin.test.mjs
-          node --test local/conformance/enrollment.test.mjs
-          node --test local/conformance/session-check.test.mjs
+          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
+          node --test local/conformance/vault-attribute.test.ts
+          node --test local/conformance/recipient-directory.test.ts
+          node --test local/conformance/userinfo-claim-worker.test.ts
+          node --test local/conformance/vault-crypto.test.ts
+          node --test local/conformance/client-admin.test.ts
+          node --test local/conformance/enrollment.test.ts
+          node --test local/conformance/session-check.test.ts
       - name: Verify Worker Svelte screens in Chromium
         run: |
           npx playwright install --with-deps chromium
-          node --test local/conformance/worker-ui.test.mjs
-          node --test local/conformance/enrollment-browser.test.mjs
+          node --test local/conformance/worker-ui.test.ts
+          node --test local/conformance/enrollment-browser.test.ts
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain

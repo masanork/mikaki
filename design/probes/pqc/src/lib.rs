@@ -13,6 +13,16 @@ pub fn self_test() -> bool {
 }
 
 #[wasm_bindgen]
+pub fn fixture_vault_envelope_frame() -> Vec<u8> {
+    vault_hpke::fixture_frame().expect("fixed Vault HPKE fixture must seal")
+}
+
+#[wasm_bindgen]
+pub fn fixture_vault_envelope_opens(frame: &[u8]) -> bool {
+    vault_hpke::fixture_opens(frame)
+}
+
+#[wasm_bindgen]
 pub fn fixture_kem_public_key() -> Vec<u8> {
     DecapsulationKey::<MlKem768>::from_seed(Seed::from([0x41; 64]))
         .encapsulation_key()

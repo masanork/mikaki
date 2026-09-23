@@ -11,7 +11,7 @@
 
 The virtual authenticator always simulated UV. Core counter behavior was tested separately with fixtures, not with physical backup/sync behavior. An SPUSB/SPBluetooth inventory did not identify a named external FIDO device, which is not proof none was attached.
 
-`slice.test.mjs` uses Playwright Chromium by default and `WebAuthn.addVirtualAuthenticator` for resident-key/UV capable CTAP2.1. Set `MIKAKI_BROWSER_CHANNEL=chrome` or `chrome-canary` before `npm run test:e2e` to select another Chrome channel. Each run uses disposable loopback issuer/RP/DB. Tests cover invitation enrollment, `credProps.rk`, discoverable passkey login and relogin, UV, code exchange, WebAuthn response checks, OIDC, and sessions. CDP makes them repeatable but does not reproduce biometric UI, OS permissions, passkey sync, USB/NFC/Bluetooth, or hardware firmware.
+`slice.test.ts` uses Playwright Chromium by default and `WebAuthn.addVirtualAuthenticator` for resident-key/UV capable CTAP2.1. Set `MIKAKI_BROWSER_CHANNEL=chrome` or `chrome-canary` before `npm run test:e2e` to select another Chrome channel. Each run uses disposable loopback issuer/RP/DB. Tests cover invitation enrollment, `credProps.rk`, discoverable passkey login and relogin, UV, code exchange, WebAuthn response checks, OIDC, and sessions. CDP makes them repeatable but does not reproduce biometric UI, OS permissions, passkey sync, USB/NFC/Bluetooth, or hardware firmware.
 
 A headed Chrome Touch ID attempt on 2026-09-23 did not display a usable window/prompt and was not completed. It was excluded from automated results and is not evidence of real-device compatibility.
 

@@ -15,13 +15,13 @@ cargo build --locked --manifest-path design/probes/workers-rs/Cargo.toml --targe
 worker-build --release design/probes/workers-rs
 worker-build --release crates/worker
 wasm-pack build design/probes/jose-custom --target nodejs --release --out-dir pkg -- --locked
-node design/probes/workers-rs/test.mjs
-node design/probes/workers-rs/token-exchange.mjs
-node design/probes/workers-rs/secret-auth.mjs
+node design/probes/workers-rs/test.ts
+node design/probes/workers-rs/token-exchange.ts
+node design/probes/workers-rs/secret-auth.ts
 cargo audit --file design/probes/workers-rs/Cargo.lock
 ```
 
-`token-exchange.mjs` needs `local/generated/worker-policy.json` from `npm run build:policy`. It builds isolated D1, activates a policy, seeds synthetic client/session rows, and tests fail-closed preactivation, revision changes, stale/concurrent activation rejection, authorization through `private_key_jwt` token exchange and UserInfo, replay revocation, and concurrent exchange with one winner. `secret-auth.mjs` checks profile-specific Discovery, two Basic and one Post secret client, normal-profile rejection, wrong/mixed methods, cross-client binding, replay, revision enforcement, and per-client secret-attempt limits. Secrets and signing keys are generated in memory.
+`token-exchange.ts` needs `local/generated/worker-policy.json` from `npm run build:policy`. It builds isolated D1, activates a policy, seeds synthetic client/session rows, and tests fail-closed preactivation, revision changes, stale/concurrent activation rejection, authorization through `private_key_jwt` token exchange and UserInfo, replay revocation, and concurrent exchange with one winner. `secret-auth.ts` checks profile-specific Discovery, two Basic and one Post secret client, normal-profile rejection, wrong/mixed methods, cross-client binding, replay, revision enforcement, and per-client secret-attempt limits. Secrets and signing keys are generated in memory.
 
 By 2026-09-23 those local D1, signing, and CSPRNG/code-preparation checks passed. Cargo audit reported no advisory among the 93 locked probe crates. An earlier optimized probe `index_bg.wasm` measured 321,262 bytes raw and 104,541 gzip, before the RS256 addition. It is not a full-Worker size or cold-start measurement. `FirstPrimary` on local workerd confirms the API path, not production replica freshness. Remaining gates are in [ADR 0009](../../docs/adr/0009-rust-oidc-and-worker-stack.md).
 

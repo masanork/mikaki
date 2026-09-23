@@ -17,8 +17,8 @@ Migration `0001_oidc_initial.sql` creates policy-version, active-pointer, and au
 ```sh
 npm run build:policy
 npx wrangler d1 migrations apply DB --local --config crates/worker/wrangler.jsonc
-node scripts/activate-worker-policy.mjs --config crates/worker/wrangler.jsonc --policy local/generated/worker-policy.json --expected none --actor local-operator --reason initial-policy --remote no --apply no
-node scripts/activate-worker-policy.mjs --config crates/worker/wrangler.jsonc --policy local/generated/worker-policy.json --expected none --actor local-operator --reason initial-policy --remote no --apply yes
+node scripts/activate-worker-policy.ts --config crates/worker/wrangler.jsonc --policy local/generated/worker-policy.json --expected none --actor local-operator --reason initial-policy --remote no --apply no
+node scripts/activate-worker-policy.ts --config crates/worker/wrangler.jsonc --policy local/generated/worker-policy.json --expected none --actor local-operator --reason initial-policy --remote no --apply yes
 ```
 
 Require `schema_version`; reject unknown versions/keys, duplicate keys, missing fields, and wrong types. An example lists every active field explicitly; omission does not fall back to a hidden code default. Read only fields needed at a product stage, so P0 does not need a working P1 Vault loader.

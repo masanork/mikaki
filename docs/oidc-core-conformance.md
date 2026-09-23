@@ -46,7 +46,7 @@ OIDC Core leaves the method of authenticating the end user to the OP. The Basic 
 | OP endpoints | Discovery, JWKS, authorization, token, and UserInfo routes exist. A local workerd probe covers one ES256 code exchange and UserInfo, including replay and concurrent exchange. | Check Discovery against actual deployed signing keys and behavior; run RS256 end to end and negative protocol cases. |
 | Hosted run | The local Colima OIDF suite ran Config OP and a complete Basic OP plan against an ephemeral HTTPS workerd fixture. `oidcc-server` passed through passkey login. The normal-profile issuer is deployed at `https://mikaki.tossa.app` with a dedicated D1, runtime policy, and ES256 signing key. | Test a separate public conformance deployment; the normal issuer has no public enrollment or registered clients yet. |
 
-The local Svelte/JavaScript OP exercises a broader login flow, but it is a separate test adapter; it does not establish that the Rust Worker can complete the hosted flow.
+The local Svelte/TypeScript OP exercises a broader login flow, but it is a separate test adapter; it does not establish that the Rust Worker can complete the hosted flow.
 
 ## Implementation gates
 

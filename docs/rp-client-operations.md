@@ -21,9 +21,9 @@ Apply D1 migrations before using the CLI. The registration input is a local JSON
 Generate a fresh UUIDv4 for each client and environment. Replace the example coordinates with the RP's public P-256 coordinates. The CLI rejects private JWK fields, non-HTTPS or noncanonical redirects, duplicate redirects, and redirects outside the registered sector host. Keep the private key in the RP's secret store.
 
 ```sh
-node scripts/client-admin.mjs --config crates/worker/wrangler.production.jsonc --remote yes --action register --input /private/path/rp-public.json --actor operator --reason 'initial RP registration' --apply no
-node scripts/client-admin.mjs --config crates/worker/wrangler.production.jsonc --remote yes --action register --input /private/path/rp-public.json --actor operator --reason 'initial RP registration' --apply yes
-node scripts/client-admin.mjs --config crates/worker/wrangler.production.jsonc --remote yes --action list --apply no
+node scripts/client-admin.ts --config crates/worker/wrangler.production.jsonc --remote yes --action register --input /private/path/rp-public.json --actor operator --reason 'initial RP registration' --apply no
+node scripts/client-admin.ts --config crates/worker/wrangler.production.jsonc --remote yes --action register --input /private/path/rp-public.json --actor operator --reason 'initial RP registration' --apply yes
+node scripts/client-admin.ts --config crates/worker/wrangler.production.jsonc --remote yes --action list --apply no
 ```
 
 Key rotation uses an overlapping public key: `add-key` with an input file shaped as `{ "kid": "new-kid", "jwk": { ... } }`, switch the RP to the new private key, verify token exchange, then `retire-key --kid old-kid`. The CLI rejects retirement of the last active key. A suspected compromise can use `disable --client CLIENT_ID` to stop the entire client; this increments the client revision and prevents outstanding codes from being exchanged.

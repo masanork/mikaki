@@ -9,9 +9,9 @@ cargo test --locked --manifest-path design/probes/pqc/Cargo.toml
 cargo clippy --locked --manifest-path design/probes/pqc/Cargo.toml --all-targets -- -D warnings
 wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked
 npm ci --prefix design/probes
-node design/probes/pqc/check.mjs
+node design/probes/pqc/check.ts
 wasm-pack build design/probes/pqc --target web --release --out-dir pkg-web -- --locked
-node design/probes/pqc/browser.mjs
+node design/probes/pqc/browser.ts
 cargo audit --file design/probes/pqc/Cargo.lock
 npm audit --prefix design/probes --audit-level=low
 ```
@@ -24,4 +24,4 @@ The NIST sample vectors and noble comparison improve correctness coverage; they 
 
 ## FIDO device arrival
 
-Run `node design/probes/pqc/fido-eval.mjs` and open `http://localhost:8789/` in the target browser. The isolated page offers an ML-DSA-65-only registration (`COSE -49`) and an ES256 control (`COSE -7`), followed by an assertion. Download the result JSON, then run `node design/probes/pqc/analyze-fido.mjs path/to/result.json`. The analyzer checks origin, challenges, RP ID hash, credential binding, COSE algorithm, and the assertion signature with noble (ML-DSA-65) or Node crypto (ES256). It does not validate attestation chains or certify the device model. Record the dongle model, firmware, OS, and browser version separately. Use a test browser profile and test authenticator credential. `node --test design/probes/pqc/analyze-fido.test.mjs` checks the analyzer with synthetic credentials; real-device behavior remains untested until the dongle arrives.
+Run `node design/probes/pqc/fido-eval.ts` and open `http://localhost:8789/` in the target browser. The isolated page offers an ML-DSA-65-only registration (`COSE -49`) and an ES256 control (`COSE -7`), followed by an assertion. Download the result JSON, then run `node design/probes/pqc/analyze-fido.ts path/to/result.json`. The analyzer checks origin, challenges, RP ID hash, credential binding, COSE algorithm, and the assertion signature with noble (ML-DSA-65) or Node crypto (ES256). It does not validate attestation chains or certify the device model. Record the dongle model, firmware, OS, and browser version separately. Use a test browser profile and test authenticator credential. `node --test design/probes/pqc/analyze-fido.test.ts` checks the analyzer with synthetic credentials; real-device behavior remains untested until the dongle arrives.

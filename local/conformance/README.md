@@ -6,8 +6,8 @@ This is an isolated test adapter. A persistent Rust server is used for native pe
 npm run build:wasm
 cargo build --release --locked -p mikaki-browser-wasm --example conformance
 python3 local/conformance/extract-metadata.py
-node local/conformance/prepare.mjs
-node local/conformance/server.mjs
+node local/conformance/prepare.ts
+node local/conformance/server.ts
 # Stop the previous server before measuring native performance:
 cargo build --release --locked -p mikaki-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-file.log 2>&1
@@ -28,20 +28,20 @@ Count reached tests as well as successes: a rejected unsupported format can make
 
 On 2026-09-22 both native and Wasm passed all 155 mandatory cases. Fourteen optional cases were not selected; formal certification submission is separate.
 
-`extract-metadata.py` copies public metadata from an installed suite into `target/fido-metadata`. `prepare.mjs` registers the localhost RP origin with the official MDS test service and saves BLOB/CRL data under `target/fido-mds`. `FIDO_ASAR` and `FIDO_PORT` select installation and port. These ignored files contain neither suite source nor private keys.
+`extract-metadata.py` copies public metadata from an installed suite into `target/fido-metadata`. `prepare.ts` registers the localhost RP origin with the official MDS test service and saves BLOB/CRL data under `target/fido-mds`. `FIDO_ASAR` and `FIDO_PORT` select installation and port. These ignored files contain neither suite source nor private keys.
 
-Network fetches are restricted to two official HTTPS hosts, including redirects, size limits, and timeouts. A failed BLOB does not supply trusted roots or metadata. On startup, each target revalidates BLOB/CRL using current time and its Rust verifier, then selects only verified metadata by AAGUID or certificate key identifier. The test-root SPKI is only in `prepare.mjs` and never added to product trust. Re-run preparation when saved material expires or the service changes; do not bypass MDS validity checks. GUI suite and network preparation are outside ordinary CI, which uses independent fixed fixtures.
+Network fetches are restricted to two official HTTPS hosts, including redirects, size limits, and timeouts. A failed BLOB does not supply trusted roots or metadata. On startup, each target revalidates BLOB/CRL using current time and its Rust verifier, then selects only verified metadata by AAGUID or certificate key identifier. The test-root SPKI is only in `prepare.ts` and never added to product trust. Re-run preparation when saved material expires or the service changes; do not bypass MDS validity checks. GUI suite and network preparation are outside ordinary CI, which uses independent fixed fixtures.
 
 ## Performance measurements
 
-The native suite uses a release binary. `FIDO_TIMING=1` records metadata lookup, Rust verification, SQLite, and handler timings. `ms` runs to response construction; `response_ms` measures the respond call, neither including queue time or completed client receipt. Failure verification/DB time is included. Sequence and monotonic receipt time are logged without identifiers or response bodies. Summarize with `summarize-timing.mjs`; see [native results](performance-native-2026-09-23.md).
+The native suite uses a release binary. `FIDO_TIMING=1` records metadata lookup, Rust verification, SQLite, and handler timings. `ms` runs to response construction; `response_ms` measures the respond call, neither including queue time or completed client receipt. Failure verification/DB time is included. Sequence and monotonic receipt time are logged without identifiers or response bodies. Summarize with `summarize-timing.ts`; see [native results](performance-native-2026-09-23.md).
 
 Persistent-server regression tests are part of `cargo test --locked --workspace`, covering counter update, replay/expiry/challenge rejection, DB failure, and registration rollback. Separate core/process microbenchmarks can be run after all builds finish:
 
 ```sh
 cargo build --locked --workspace --examples
 cargo build --release --locked --workspace --examples
-node local/conformance/benchmark.mjs
+node local/conformance/benchmark.ts
 ```
 
 They re-verify public fixtures and write `artifacts/webauthn-performance.json`, distinguishing native core, Wasm/JSON boundary, process startup, and metadata lookup. They do not include DB, HTTP, or official-suite duration. See the [performance investigation](performance-2026-09-23.md).
@@ -54,14 +54,14 @@ Start OIDF Conformance Suite 5.2.4 in Colima at `https://localhost:8443`, then s
 npm run build:policy
 worker-build --release crates/worker
 openssl req -x509 -nodes -newkey rsa:2048 -days 1 -keyout local/generated/oidf-local.key -out local/generated/oidf-local.crt -subj '/CN=host.docker.internal'
-node local/conformance/oidf-local-worker.mjs
+node local/conformance/oidf-local-worker.ts
 ```
 
 The fixture creates isolated D1 and prechecks passkey login with a single-use transaction. Run the Chromium virtual-authenticator driver separately:
 
 ```sh
-node local/conformance/run-passkey-oidf.mjs all 1
-node local/conformance/run-passkey-oidf.mjs oidcc-discovery-endpoint-verification 1 oidcc-config-certification-test-plan
+node local/conformance/run-passkey-oidf.ts all 1
+node local/conformance/run-passkey-oidf.ts oidcc-discovery-endpoint-verification 1 oidcc-config-certification-test-plan
 ```
 
 The `1` is the signature counter after fixture precheck. Modules share one virtual authenticator and carry its counter forward. The driver uploads screenshots required for `REVIEW` and saves summary/logs as `local/generated/oidf-passkey-*.json`. This local test is distinct from formal certification at a public issuer; see [OIDC conformance status](../../docs/oidc-core-conformance.md).

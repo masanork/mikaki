@@ -6,8 +6,8 @@ The [local config](wrangler.local.jsonc) has no secret binding and is used to te
 
 ```sh
 worker-build --release crates/userinfo-claim-worker
-node --test local/conformance/userinfo-claim-worker.test.mjs
+node --test local/conformance/userinfo-claim-worker.test.ts
 cargo test --locked -p mikaki-userinfo-claim-worker
 ```
 
-The offline [key generator](../../design/probes/pqc/src/bin/recipient_key.rs) creates a seed and public record. The [secret administration CLI](../../scripts/recipient-secret-admin.mjs) checks the seed and provisions Secrets Store through standard input. The [key administration CLI](../../scripts/recipient-key-admin.mjs) stages, verifies, activates, rotates, or immediately disables a key. Activation and rotation require the deployed claim Worker to verify every involved key through the [remote `USERINFO_CLAIMS` service binding](../worker/wrangler.recipient-admin.jsonc). Each state change has an actor and reason in `vault_recipient_key_audit`. Generation 1 is active in production; no recipient envelope or Grant is issued yet.
+The offline [key generator](../../design/probes/pqc/src/bin/recipient_key.rs) creates a seed and public record. The [secret administration CLI](../../scripts/recipient-secret-admin.ts) checks the seed and provisions Secrets Store through standard input. The [key administration CLI](../../scripts/recipient-key-admin.ts) stages, verifies, activates, rotates, or immediately disables a key. Activation and rotation require the deployed claim Worker to verify every involved key through the [remote `USERINFO_CLAIMS` service binding](../worker/wrangler.recipient-admin.jsonc). Each state change has an actor and reason in `vault_recipient_key_audit`. Generation 1 is active in production; no recipient envelope or Grant is issued yet.

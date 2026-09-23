@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:crypto": "node --test --test-concurrency=1 crypto.test.mjs jose.test.mjs jose-custom.test.mjs",
-    "test:crypto:workers": "node jose-workers.mjs",
-    "bench:crypto": "node jose.bench.mjs",
-    "test:d1": "node --test d1.test.mjs"
+    "test:crypto": "node --test --test-concurrency=1 crypto.test.ts jose.test.ts jose-custom.test.ts",
+    "test:crypto:workers": "node jose-workers.ts",
+    "bench:crypto": "node jose.bench.ts",
+    "test:d1": "node --test d1.test.ts"
   },
   "devDependencies": {
     "@noble/post-quantum": "0.7.1",

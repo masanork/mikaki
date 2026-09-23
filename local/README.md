@@ -19,7 +19,7 @@ The runner recreates keys and databases on startup. Accounts disappear when it s
 ## Boundaries
 
 - Rust owns WebAuthn verification, JSON/CBOR limits, ceremony purpose/browser/expiry/attempt rules, and OIDC request/PKCE core logic. The separate [WebAuthn core](../crates/webauthn/README.md) has broader conformance capabilities than the local product profile.
-- The JavaScript local OP adapter owns HTTP, D1 atomic operations, the harness OIDC flow, and JWT signing/verification through `jose` and WebCrypto. It is a behavior fixture, not the product state-machine authority. `mikaki-browser-wasm` is the browser/test Wasm boundary; `mikaki-worker` is the separate Cloudflare adapter.
+- The TypeScript local OP adapter owns HTTP, D1 atomic operations, the harness OIDC flow, and JWT signing/verification through `jose` and WebCrypto. It is a behavior fixture, not the product state-machine authority. `mikaki-browser-wasm` is the browser/test Wasm boundary; `mikaki-worker` is the separate Cloudflare adapter.
 - The OP UI uses Svelte 5 and a small typed Japanese/English catalog. The RP UI is diagnostic HTML.
 - Local tables extend the [atomic SQL model](../design/sql/oidc-critical-schema.sql); they are not production migrations.
 - A validated TOML policy is converted to second-based JSON and a revision at build time. Rebuild after a local config change. Some fields describe later features and are not used by the local slice.
@@ -28,21 +28,21 @@ The initial local slice used one RP and a static ES256 key. Do not infer product
 
 ## Logout delivery
 
-The [delivery module](logout-delivery.mjs) stores a single-SSO `sso_logout_event` in the same D1 batch as revocation, then expands notifications in batches of 100. This differs from an account-wide `revocation_event`. Immediate delivery uses `waitUntil`; a scheduled handler resumes work if that invocation is lost.
+The [delivery module](logout-delivery.ts) stores a single-SSO `sso_logout_event` in the same D1 batch as revocation, then expands notifications in batches of 100. This differs from an account-wide `revocation_event`. Immediate delivery uses `waitUntil`; a scheduled handler resumes work if that invocation is lost.
 
 It acquires an atomic lease immediately before sending, limits concurrency per client, and rejects results from stale lease owners. Retryable 408/429/5xx and transport failures use backoff, jitter, Retry-After, attempt limits, and a deadline measured from committed revocation. It does not follow 3xx; other 4xx and 3xx are permanent failures. Each attempt signs a fresh Logout Token and limits response-body reading. Neither tokens nor response bodies are logged.
 
-The module counts unexpanded events, outstanding deliveries, oldest backlog, permanent failures, and expiry, emitting structured warnings at thresholds. The local runner invokes the Worker scheduled handler at `scheduler_interval` (initially one minute); DB leases coordinate with other invocation paths. Backoff is an earliest send time because the next scan may occur later. There is no production Cron Trigger, alert destination, or production administrator authentication here. A runner restart also resets D1, so it does not prove persistence across process restarts. [Integration tests](test/logout-delivery.test.mjs) cover batch rollback, concurrent fanout, leases, deadlines, permanent failure, and scheduled recovery.
+The module counts unexpanded events, outstanding deliveries, oldest backlog, permanent failures, and expiry, emitting structured warnings at thresholds. The local runner invokes the Worker scheduled handler at `scheduler_interval` (initially one minute); DB leases coordinate with other invocation paths. Backoff is an earliest send time because the next scan may occur later. There is no production Cron Trigger, alert destination, or production administrator authentication here. A runner restart also resets D1, so it does not prove persistence across process restarts. [Integration tests](test/logout-delivery.test.ts) cover batch rollback, concurrent fanout, leases, deadlines, permanent failure, and scheduled recovery.
 
 ## Retention and garbage collection
 
-[GC](gc.mjs) runs through OP and RP scheduled handlers at `retention.gc_interval` (initially one hour), deleting at most `gc_batch_size` rows per database/run (initially 500). Each DELETE rechecks its own conditions atomically; logs contain counts only.
+[GC](gc.ts) runs through OP and RP scheduled handlers at `retention.gc_interval` (initially one hour), deleting at most `gc_batch_size` rows per database/run (initially 500). Each DELETE rechecks its own conditions atomically; logs contain counts only.
 
 It covers expired ceremonies and transactions, safe replay-prevention records and rate windows, expired RP sessions and revocation evidence, and completed SSO/logout histories after their retention conditions. It never deletes an unfinished delivery solely because a time passed. `gc_after` is fixed at issuance from expiry, clock skew, and grace, not recalculated under a later shorter policy. RP revoked-sid retention covers the actual parent SSO expiry, pending transactions, and retries, increasing monotonically for duplicate notifications.
 
 Callback commit and idle renewal recheck expiry and any lease, so a long-paused callback cannot restore a session after GC. SSO records persist beyond absolute expiry when audit, issued-code evidence, or outstanding logout work requires them. Deletion proceeds from delivery children through events, issuance records, client sessions, and finally SSO parents, checking references at every step; a partial batch can resume next time. Invitations, accounts, credentials, consents, subjects, and keys are outside this GC.
 
-Account-wide events are removed only after expansion, audit retention, and removal of affected old-epoch SSO records. This local harness does not provide production audit storage, migration, Cron, or administrator authentication. See [GC tests](test/gc.test.mjs) and [lifecycle tests](test/gc-lifecycle.test.mjs).
+Account-wide events are removed only after expansion, audit retention, and removal of affected old-epoch SSO records. This local harness does not provide production audit storage, migration, Cron, or administrator authentication. See [GC tests](test/gc.test.ts) and [lifecycle tests](test/gc-lifecycle.test.ts).
 
 ## Local operator commands
 
@@ -57,7 +57,7 @@ logout-retry EVENT_ID REVISION DEADLINE_UTC RETAIN_UNTIL_UTC REASON
 
 Only fully expanded events whose deliveries are terminal and include a failed or expired delivery can be retried. Successful notifications are not resent. The selected attempt count resets, then normal signing, leasing, and backoff resume on the next scheduled run. One D1 batch extends deadlines, increments revision, records audit, and requeues work. Audit keeps operation/event IDs, old revision, actor, reason, timestamps, old/new deadlines, requested retention, sid, and previous delivery state; it never stores tokens, cookies, or response bodies. Audit can outlive the event.
 
-The batch refuses a retry if some delivery rows were already GC'd, if the event is not eligible, or if a concurrent operator won the revision. It leaves no partial audit or deadline change on failure. See [retry tests](test/logout-admin.test.mjs).
+The batch refuses a retry if some delivery rows were already GC'd, if the event is not eligible, or if a concurrent operator won the revision. It leaves no partial audit or deadline change on failure. See [retry tests](test/logout-admin.test.ts).
 
 For account-wide session invalidation:
 
@@ -68,7 +68,7 @@ account-revoke ACCOUNT_ID EXPECTED_EPOCH REASON
 
 `account-list` shows up to 100 accounts. A matching active account may advance its epoch and create a `revocation_event` in one batch, with reason `session_reset` or `security_incident`. Duplicate or stale-epoch operations fail. Old-epoch SSO is invalid at the OP immediately; RPs observe notification or lease expiry. Scheduled fanout expands up to 100 old-epoch SSO records at a time into single-SSO events without resetting the original retry deadline. Overlapping logouts converge on one SSO event; an already failed delivery needs explicit `logout-retry`.
 
-Pending account events protect affected SSO/delivery records from GC and appear in backlog metrics. New-epoch SSO is unaffected, and old-epoch SSO is excluded from the concurrent-session limit. Credentials remain usable for a fresh passkey login; account suspension and credential removal are separate. [Account tests](test/account-admin.test.mjs) cover races, rollback, fanout, GC, and delayed-notification safety.
+Pending account events protect affected SSO/delivery records from GC and appear in backlog metrics. New-epoch SSO is unaffected, and old-epoch SSO is excluded from the concurrent-session limit. Credentials remain usable for a fresh passkey login; account suspension and credential removal are separate. [Account tests](test/account-admin.test.ts) cover races, rollback, fanout, GC, and delayed-notification safety.
 
 ## TypeScript and checks
 

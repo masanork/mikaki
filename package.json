@@ -8,14 +8,15 @@
     "build:wasm": "wasm-pack build crates/browser-wasm --target web --release --out-dir pkg -- --locked",
     "build:ui": "vite build --config local/ui/vite.config.ts",
     "build": "npm run build:policy && npm run build:wasm && npm run build:ui",
-    "test:e2e": "node --test --test-concurrency=1 local/test/*.test.mjs",
+    "test:e2e": "node --test --test-concurrency=1 local/test/*.test.ts",
+    "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json",
     "check:ui": "svelte-check --tsconfig local/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:worker-ui": "node_modules/@typescript/native/bin/tsc --project crates/worker/ui/tsconfig.json --noEmit && svelte-check --tsconfig crates/worker/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:product-sources": "python3 scripts/check_product_sources.py",
-    "check:i18n": "node scripts/check_i18n.mjs",
-    "format:check": "prettier --check 'local/**/*.mjs' 'local/ui/src/**/*.{ts,svelte}' 'local/ui/*.ts' 'crates/worker/ui/*.{ts,svelte,json}' 'scripts/*.mjs' package.json .prettierrc.json",
-    "health": "node scripts/health.mjs",
-    "dev": "node local/dev.mjs"
+    "check:i18n": "node scripts/check_i18n.ts",
+    "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/worker/ui/*.{ts,svelte,json}' 'scripts/*.ts' 'design/probes/**/*.ts' package.json .prettierrc.json tsconfig.node.json",
+    "health": "node scripts/health.ts",
+    "dev": "node local/dev.ts"
   },
   "dependencies": {
     "jose": "6.2.12",
@@ -26,6 +27,7 @@
     "@inlang/plugin-message-format": "^4.4.4",
     "@playwright/test": "1.63.0",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@types/node": "^26.6.2",
     "@typescript/native": "npm:typescript@7.0.2",
     "prettier": "3.9.8",
     "prettier-plugin-svelte": "4.1.1",

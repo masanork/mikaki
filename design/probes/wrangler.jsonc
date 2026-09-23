@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mikaki-local-design-probe",
-  "main": "worker.mjs",
+  "main": "worker.ts",
   "compatibility_date": "2026-09-22",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,

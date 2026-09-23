@@ -27,8 +27,9 @@ The bootstrap invitation lasts 15 minutes and can be used once. The runner does 
 ```sh
 cargo test --workspace
 npm run test:e2e
+npm run check:node
 npm run check:ui
 npm run check:i18n
 ```
 
-The local runner's JavaScript OP adapter, test RP, D1 fixtures, and generated configuration are verification tools. They do not establish that the production Rust Worker has passed the same browser flow. For the exact deployed capabilities and test results, see [status](status.md). For code organization and review expectations, see [contributing](contributing.md).
+The local runner's TypeScript OP adapter, test RP, D1 fixtures, and generated configuration are verification tools. They do not establish that the production Rust Worker has passed the same browser flow. For the exact deployed capabilities and test results, see [status](status.md). For code organization and review expectations, see [contributing](contributing.md).
