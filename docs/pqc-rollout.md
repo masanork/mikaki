@@ -12,11 +12,11 @@ ML-KEM establishes a shared secret for key delivery; it is not a passkey signatu
 
 ## Sequence before product use
 
-1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds private seeds. The directory, verification route, service binding, lifecycle CLI, and browser validator exist. Seed provisioning, calling the validator from the future envelope flow, and operational activation remain.
+1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds the private seed. Generation 1 is active and verified. Calling the browser validator from the future envelope flow and defining recovery before shared data depends on this key remain.
 2. Only when the owner unlocks an attribute, create an additional recipient envelope for that revision's data key. Bind origin, attribute, revision, service, and key ID in HPKE info/AAD. Keep the owner envelope. Publish the envelope and grant in the same version; disable system sharing for an update whose key delivery fails.
 3. Test revocation, rotation, attribute updates, wrong key/revision/attribute substitution, and key-service failures across Worker and browser before connecting UserInfo. Owner-only Vault use must not require a PQC key or ML-DSA-capable FIDO device.
 
-The isolated HPKE probe validates part of step 2's cryptographic boundary. Directory and lifecycle code exists, but Secrets Store provisioning, operational activation, grants, and browser sharing are not connected to the product.
+The isolated HPKE probe validates part of step 2's cryptographic boundary. Directory and lifecycle code and a provisioned generation-1 recipient exist, but grants and browser sharing are not connected to the product.
 
 An assigned COSE number does not establish support in an available FIDO device, browser, or OS. An existing credential cannot be converted to PQC on the server. Enroll a new credential on verified hardware and run it alongside ES256 before migration. Do not advertise `-49` in `pubKeyCredParams` until verification works, or label an implicit fallback as PQC support.
 

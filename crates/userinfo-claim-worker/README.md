@@ -2,7 +2,7 @@
 
 This Worker holds the future UserInfo recipient's ML-KEM private seed binding. Its only current operation, `GET /internal/recipient-keys/{key_id}/verify`, reads the key directory from the OP's D1 database and the seed from Cloudflare Secrets Store. It derives the public key and SHA-256 key ID, then returns 204 only if both match the D1 row. Missing bindings, disabled keys, and mismatches fail closed. No key material is returned.
 
-The [local config](wrangler.local.jsonc) has no secret binding and is used to test failure behavior. The [deployment template](wrangler.example.jsonc) needs the OP D1 ID, Secrets Store ID, and per-key secret name. It has `workers_dev: false` and no public route. The OP service binding, activation, recipient envelopes, Grants, and claim release are still to be connected. Do not deploy the template with placeholder IDs or activate a key yet.
+The [local config](wrangler.local.jsonc) has no secret binding and is used to test failure behavior. The [production config](wrangler.production.jsonc) binds the generation-1 secret and has `workers_dev: false`, disabled preview URLs, and no public route. The OP uses a service binding. Recipient envelopes, Grants, and claim release remain to be connected.
 
 ```sh
 worker-build --release crates/userinfo-claim-worker
@@ -10,4 +10,4 @@ node --test local/conformance/userinfo-claim-worker.test.mjs
 cargo test --locked -p mikaki-userinfo-claim-worker
 ```
 
-The offline [key generator](../../design/probes/pqc/src/bin/recipient_key.rs) creates a seed and public record. The [admin CLI](../../scripts/recipient-key-admin.mjs) validates that public record before staging it in D1, and can immediately disable a key. It also supports activation and rotation through the [`USERINFO_CLAIMS` service binding](../worker/wrangler.recipient-admin.jsonc), but both actions fail unless the deployed claim Worker verifies every involved key. Each state change has an actor and reason in `vault_recipient_key_audit`. The management config is for the CLI, not the public OP deployment. No key has been provisioned or activated yet.
+The offline [key generator](../../design/probes/pqc/src/bin/recipient_key.rs) creates a seed and public record. The [secret administration CLI](../../scripts/recipient-secret-admin.mjs) checks the seed and provisions Secrets Store through standard input. The [key administration CLI](../../scripts/recipient-key-admin.mjs) stages, verifies, activates, rotates, or immediately disables a key. Activation and rotation require the deployed claim Worker to verify every involved key through the [remote `USERINFO_CLAIMS` service binding](../worker/wrangler.recipient-admin.jsonc). Each state change has an actor and reason in `vault_recipient_key_audit`. Generation 1 is active in production; no recipient envelope or Grant is issued yet.

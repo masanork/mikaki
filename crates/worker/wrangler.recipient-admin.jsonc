@@ -17,7 +17,8 @@
   "services": [
     {
       "binding": "USERINFO_CLAIMS",
-      "service": "mikaki-userinfo-claim-worker"
+      "service": "mikaki-userinfo-claim-worker",
+      "remote": true
     }
   ]
 }

@@ -77,6 +77,7 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
         .first::<RecipientKey>(None)
         .await?;
     let Some(row) = row else {
+        worker::console_warn!("recipient verification unavailable: directory row missing");
         return Ok(false);
     };
     if row.key_id != key_id
@@ -85,14 +86,29 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
         || row.state == "disabled"
         || !valid_binding(&row.secret_ref)
     {
+        worker::console_warn!("recipient verification unavailable: directory state or metadata");
         return Ok(false);
     }
-    let binding = env.secret_store(&row.secret_ref)?;
-    let Some(value) = binding.get().await? else {
-        return Ok(false);
+    let binding = match env.secret_store(&row.secret_ref) {
+        Ok(binding) => binding,
+        Err(_) => {
+            worker::console_warn!("recipient verification unavailable: secret binding");
+            return Ok(false);
+        }
+    };
+    let value = match binding.get().await {
+        Ok(Some(value)) => value,
+        _ => {
+            worker::console_warn!("recipient verification unavailable: secret read");
+            return Ok(false);
+        }
     };
     let value = Zeroizing::new(value);
-    Ok(public_key_matches(key_id, &row.public_key, &value))
+    let matches = public_key_matches(key_id, &row.public_key, &value);
+    if !matches {
+        worker::console_warn!("recipient verification unavailable: public key mismatch");
+    }
+    Ok(matches)
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
@@ -112,7 +128,13 @@ pub async fn main(
     let Some(key_id) = key_id else {
         return Ok(worker::Response::builder().with_status(404).empty());
     };
-    let verified = verify_key(&env, key_id).await.unwrap_or(false);
+    let verified = match verify_key(&env, key_id).await {
+        Ok(verified) => verified,
+        Err(_) => {
+            worker::console_warn!("recipient verification unavailable: directory query");
+            false
+        }
+    };
     Ok(worker::Response::builder()
         .with_status(if verified { 204 } else { 503 })
         .with_header("Cache-Control", "no-store")?

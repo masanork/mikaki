@@ -16,5 +16,12 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
-  }
+  },
+  "secrets_store_secrets": [
+    {
+      "binding": "VAULT_USERINFO_MLKEM_A",
+      "store_id": "0297c270b4b74bb19f6d8d513fd280f5",
+      "secret_name": "VAULT_USERINFO_MLKEM_A"
+    }
+  ]
 }

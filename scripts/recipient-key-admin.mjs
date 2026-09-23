@@ -56,7 +56,7 @@ function parseOptions(args) {
     Object.keys(options).some((key) => !allowed.has(key)) ||
     !options['--config'] ||
     !['yes', 'no'].includes(options['--remote']) ||
-    !['stage', 'activate', 'rotate', 'disable'].includes(options['--action']) ||
+    !['stage', 'verify', 'activate', 'rotate', 'disable'].includes(options['--action']) ||
     !['yes', 'no'].includes(options['--apply']) ||
     !options['--actor'] ||
     options['--actor'].length > 128 ||
@@ -66,7 +66,7 @@ function parseOptions(args) {
     (options['--action'] !== 'stage' && !options['--key-id'])
   ) {
     throw new Error(
-      'usage: node scripts/recipient-key-admin.mjs --config CONFIG --remote yes|no --action stage|activate|rotate|disable --input PUBLIC_JSON --key-id KEY_ID --actor NAME --reason TEXT --apply yes|no',
+      'usage: node scripts/recipient-key-admin.mjs --config CONFIG --remote yes|no --action stage|verify|activate|rotate|disable --input PUBLIC_JSON --key-id KEY_ID --actor NAME --reason TEXT --apply yes|no',
     );
   }
   return options;
@@ -128,13 +128,15 @@ async function verifyBinding(claims, keyId) {
     { method: 'GET' },
   );
   if (response.status !== 204)
-    throw new Error(`recipient key binding verification failed for ${keyId}`);
+    throw new Error(
+      `recipient key binding verification failed for ${keyId}: HTTP ${response.status}`,
+    );
 }
 
 function requiredService(config) {
   const binding = config.services?.find((item) => item.binding === 'USERINFO_CLAIMS');
-  if (binding?.service !== 'mikaki-userinfo-claim-worker') {
-    throw new Error('USERINFO_CLAIMS must bind the dedicated claim Worker');
+  if (binding?.service !== 'mikaki-userinfo-claim-worker' || binding.remote !== true) {
+    throw new Error('USERINFO_CLAIMS must remotely bind the dedicated claim Worker');
   }
 }
 
@@ -249,7 +251,7 @@ async function main() {
     throw new Error('DB binding and --remote do not identify the same database');
   }
   const action = options['--action'];
-  if (action === 'activate' || action === 'rotate') requiredService(config);
+  if (action === 'verify' || action === 'activate' || action === 'rotate') requiredService(config);
   const record =
     action === 'stage' ? JSON.parse(await readFile(resolve(options['--input']), 'utf8')) : null;
   if (record) validatePublicRecord(record);
@@ -262,7 +264,11 @@ async function main() {
   try {
     const db = platform.env.DB;
     const now = Math.floor(Date.now() / 1000);
-    if (action === 'stage') {
+    if (action === 'verify') {
+      const claims = platform.env.USERINFO_CLAIMS;
+      if (!claims?.fetch) throw new Error('USERINFO_CLAIMS binding is unavailable');
+      await verifyBinding(claims, keyId);
+    } else if (action === 'stage') {
       await stageKey(db, record, options['--actor'], options['--reason'], now);
     } else if (action === 'activate' || action === 'rotate') {
       const claims = platform.env.USERINFO_CLAIMS;

@@ -1,6 +1,6 @@
 # UserInfo recipient-key lifecycle
 
-**Status, 2026-09-23:** The claim Worker verification route, OP service binding, owner-authenticated directory route, D1 constraints, and audited staging/activation/rotation/emergency-disable CLI exist. No private seed has been provisioned into Secrets Store, no key has been activated, and no grant or claim-sharing flow is enabled.
+**Status, 2026-09-24:** Generation 1 (`ne7gDOPjARDMKT1Be_BZ3Qo9fWPRYsHcZBqtkg39MnE`) is active in production. Its seed is in Secrets Store, the claim Worker verified the D1 public key through a remote service binding, and D1 recorded staged and activated audit events. The temporary local seed copy was removed. No recipient envelope, Grant, or claim-sharing flow is enabled.
 
 ## Responsibilities
 
@@ -36,7 +36,7 @@ node scripts/recipient-secret-admin.mjs --seed /private/tmp/vault-userinfo-seed.
 node scripts/recipient-secret-admin.mjs --seed /private/tmp/vault-userinfo-seed.txt --public /private/tmp/vault-userinfo-public.json --store-id STORE_ID --config crates/userinfo-claim-worker/wrangler.production.jsonc --apply yes
 ```
 
-The browser-side [directory validator](../crates/worker/ui/recipient-directory.ts) checks canonical encoding, the public-key SHA-256 ID, expected service and algorithm, and generation continuity. It stores the highest observed generation and key ID in same-origin browser storage and fails closed if that checkpoint is invalid or unavailable. Clearing browser storage also clears this local checkpoint; the OP's verified D1 directory remains authoritative. The validator is prepared for the recipient-envelope flow and is not invoked by owner-only Vault operations.
+The browser-side [directory validator](../crates/worker/ui/recipient-directory.ts) checks canonical encoding, the public-key SHA-256 ID, expected service and algorithm, and generation and revision continuity. It stores the highest observed generation, key ID, and revision in same-origin browser storage and fails closed if that checkpoint is invalid or unavailable. Clearing browser storage also clears this local checkpoint; the OP's verified D1 directory remains authoritative. The validator is prepared for the recipient-envelope flow and is not invoked by owner-only Vault operations.
 
 The [management CLI](../scripts/recipient-key-admin.mjs) validates the public JSON digest and can stage, activate, rotate, or immediately disable a key. Every change is audited through D1 batches. Activation checks the staged key through the claim Worker; rotation checks both keys and atomically moves the old key to `decrypt_only`. `--apply no` is a dry run; a mismatch between `--remote` and the config's D1 binding is rejected. Activation and rotation require the [management service-binding config](../crates/worker/wrangler.recipient-admin.jsonc) and a provisioned, deployed claim Worker.
 
@@ -45,6 +45,7 @@ node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.jsonc --rem
 node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.jsonc --remote no --action disable --key-id KEY_ID --actor operator --reason 'emergency stop' --apply no
 node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.recipient-admin.jsonc --remote yes --action activate --key-id KEY_ID --actor operator --reason 'activate verified recipient' --apply no
 node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.recipient-admin.jsonc --remote yes --action rotate --key-id NEW_KEY_ID --actor operator --reason 'rotate verified recipient' --apply no
+node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.recipient-admin.jsonc --remote yes --action verify --key-id KEY_ID --actor operator --reason 'check recipient binding' --apply yes
 ```
 
 ## Rotation and incident response
@@ -54,4 +55,4 @@ node scripts/recipient-key-admin.mjs --config crates/worker/wrangler.recipient-a
 3. Rewrap old envelopes only for attributes with valid grants, checking attribute revision and recipient key ID. After none remain and the recovery retention period passes, disable the old key and remove its binding and seed. Reject envelopes created offline for a retired generation.
 4. On compromise, disable the key in D1 immediately and fail closed for reads, unwrap, and claim issuance. An attribute dependent on that key is unavailable to UserInfo until its owner unlocks and wraps it to a new key. Already disclosed plaintext cannot be recalled.
 
-Recipient envelopes and grants remain future product work. The directory is unavailable until a matching seed is provisioned; browser use must also enforce key-ID and generation continuity checks. Finalize HPKE suite and envelope version after interoperability checks against the [current working draft](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05).
+Recipient envelopes and grants remain future product work. The directory is available to authenticated owners; its positive response has not yet been checked with a production owner session. The Secrets Store copy is the only retained seed copy. Establish a recovery policy before relying on this key for shared attributes. Finalize HPKE suite and envelope version after interoperability checks against the [current working draft](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05).
