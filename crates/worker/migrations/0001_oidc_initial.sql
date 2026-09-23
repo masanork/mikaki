@@ -52,7 +52,7 @@ CREATE TABLE signing_key (
   kid TEXT PRIMARY KEY NOT NULL CHECK(length(kid) BETWEEN 1 AND 128),
   generation INTEGER NOT NULL CHECK(generation >= 0),
   active INTEGER NOT NULL CHECK(active IN (0, 1)),
-  algorithm TEXT NOT NULL CHECK(algorithm = 'ES256'),
+  algorithm TEXT NOT NULL CHECK(algorithm IN ('ES256', 'RS256')),
   public_jwk TEXT NOT NULL CHECK(length(public_jwk) BETWEEN 1 AND 2048)
 ) STRICT;
 

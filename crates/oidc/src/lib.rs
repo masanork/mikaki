@@ -17,7 +17,10 @@ pub use exchange::{
     PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, TokenEndpointInput,
     TokenEndpointInputError, ValidatedTokenEndpointInput,
 };
-pub use signing::{InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner};
+pub use signing::{
+    IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner,
+    RsaPrivateTokenKey,
+};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};

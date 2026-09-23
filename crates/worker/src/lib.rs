@@ -64,6 +64,7 @@ struct AuthorizationCodeContextRow {
     auth_time: i64,
     parent_expires_at: i64,
     signing_generation: i64,
+    signing_algorithm: String,
     public_jwk: String,
 }
 
@@ -121,7 +122,7 @@ struct DiscoveryResponse {
     response_modes_supported: [&'static str; 1],
     grant_types_supported: [&'static str; 1],
     subject_types_supported: [&'static str; 1],
-    id_token_signing_alg_values_supported: [&'static str; 1],
+    id_token_signing_alg_values_supported: [&'static str; 2],
     scopes_supported: [&'static str; 1],
     claims_supported: [&'static str; 8],
     token_endpoint_auth_methods_supported: [&'static str; 1],
@@ -146,8 +147,143 @@ pub struct AuthorizationCodeContext {
     auth_time: u64,
     parent_expires_at: u64,
     signing_kid: String,
+    signing_algorithm: String,
     signing_generation: u64,
     public_jwk: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+enum WorkerTokenSigner {
+    Es256(sakimori_oidc::P256TokenSigner),
+    Rs256 {
+        key: sakimori_oidc::RsaPrivateTokenKey,
+        crypto_key: web_sys::CryptoKey,
+    },
+}
+
+#[cfg(target_arch = "wasm32")]
+impl WorkerTokenSigner {
+    async fn from_secret(input: &str) -> worker::Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(input)
+            .map_err(|_| worker::Error::RustError("server_error".into()))?;
+        match value.get("kty").and_then(serde_json::Value::as_str) {
+            Some("EC") => sakimori_oidc::P256TokenSigner::from_private_jwk(input)
+                .map(Self::Es256)
+                .map_err(|_| worker::Error::RustError("server_error".into())),
+            Some("RSA") => {
+                let key = sakimori_oidc::RsaPrivateTokenKey::from_private_jwk(input)
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let global = js_sys::global();
+                let crypto = js_sys::Reflect::get(&global, &"crypto".into())
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?
+                    .dyn_into::<web_sys::Crypto>()
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let subtle = crypto.subtle();
+                let jwk = js_sys::JSON::parse(
+                    &key.webcrypto_private_jwk_json()
+                        .map_err(|_| worker::Error::RustError("server_error".into()))?,
+                )?
+                .dyn_into::<js_sys::Object>()
+                .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let algorithm = js_sys::JSON::parse(
+                    r#"{"name":"RSASSA-PKCS1-v1_5","hash":{"name":"SHA-256"}}"#,
+                )?
+                .dyn_into::<js_sys::Object>()
+                .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let usages = js_sys::Array::new();
+                usages.push(&wasm_bindgen::JsValue::from_str("sign"));
+                let imported =
+                    wasm_bindgen_futures::JsFuture::from(subtle.import_key_with_object(
+                        "jwk",
+                        &jwk,
+                        &algorithm,
+                        false,
+                        usages.as_ref(),
+                    )?)
+                    .await?;
+                let crypto_key = imported
+                    .dyn_into::<web_sys::CryptoKey>()
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                Ok(Self::Rs256 { key, crypto_key })
+            }
+            _ => Err(worker::Error::RustError("server_error".into())),
+        }
+    }
+
+    fn kid(&self) -> &str {
+        match self {
+            Self::Es256(key) => key.kid(),
+            Self::Rs256 { key, .. } => key.kid(),
+        }
+    }
+
+    fn algorithm(&self) -> &'static str {
+        match self {
+            Self::Es256(_) => "ES256",
+            Self::Rs256 { .. } => "RS256",
+        }
+    }
+
+    fn matches_public_jwk(&self, jwk: &str) -> bool {
+        match self {
+            Self::Es256(key) => key.matches_public_jwk(jwk),
+            Self::Rs256 { key, .. } => key.matches_public_jwk(jwk),
+        }
+    }
+
+    async fn sign_id_token(
+        &self,
+        issuer: &str,
+        subject: &str,
+        audience: &str,
+        sid: &str,
+        nonce: &str,
+        auth_time: u64,
+        issued_at: u64,
+        expires_at: u64,
+    ) -> worker::Result<String> {
+        match self {
+            Self::Es256(key) => key
+                .sign_id_token(
+                    issuer, subject, audience, sid, nonce, auth_time, issued_at, expires_at,
+                )
+                .map_err(|_| worker::Error::RustError("server_error".into())),
+            Self::Rs256 { key, crypto_key } => {
+                let input = sakimori_oidc::IdTokenSigningInput::new(
+                    "RS256",
+                    key.kid(),
+                    issuer,
+                    subject,
+                    audience,
+                    sid,
+                    nonce,
+                    auth_time,
+                    issued_at,
+                    expires_at,
+                )
+                .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let global = js_sys::global();
+                let crypto = js_sys::Reflect::get(&global, &"crypto".into())?
+                    .dyn_into::<web_sys::Crypto>()
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let signature = wasm_bindgen_futures::JsFuture::from(
+                    crypto.subtle().sign_with_str_and_u8_array(
+                        "RSASSA-PKCS1-v1_5",
+                        crypto_key,
+                        input.as_bytes(),
+                    )?,
+                )
+                .await?;
+                let signature = js_sys::Uint8Array::new(&signature).to_vec();
+                if signature.len() != key.modulus_bytes() {
+                    return Err(worker::Error::RustError("server_error".into()));
+                }
+                input
+                    .finish(&signature)
+                    .map_err(|_| worker::Error::RustError("server_error".into()))
+            }
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -575,10 +711,10 @@ pub async fn authenticate_token_request(
 /// Read the one-use code's immutable claims and current eligibility facts
 /// before signing. The commit step must repeat the conditional predicates.
 #[cfg(target_arch = "wasm32")]
-pub async fn load_authorization_code_context(
+async fn load_authorization_code_context(
     db: &worker::d1::D1Database,
     input: &AuthenticatedTokenRequest,
-    signer: &sakimori_oidc::P256TokenSigner,
+    signer: &WorkerTokenSigner,
     random: &mut impl sakimori_oidc::CryptographicRandom,
 ) -> worker::Result<AuthorizationCodeContext> {
     use wasm_bindgen::JsValue;
@@ -599,11 +735,13 @@ pub async fn load_authorization_code_context(
         JsValue::from_str(input.assertion_reservation_id()),
         JsValue::from_str(&assertion.retain_until().to_string()),
         JsValue::from_str(signer.kid()),
+        JsValue::from_str(signer.algorithm()),
     ];
     let row = db
         .prepare(
             "SELECT ac.client_id, cs.sid, v.sub, cc.nonce, sx.auth_time, \
              v.expires_at AS parent_expires_at, sk.generation AS signing_generation, \
+             sk.algorithm AS signing_algorithm, \
              sk.public_jwk AS public_jwk \
              FROM authorization_code ac \
              JOIN eligible_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
@@ -621,7 +759,7 @@ pub async fn load_authorization_code_context(
              AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1 \
              AND au.jti=?8 AND au.endpoint=?9 AND au.accepted_by=?10 \
              AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER) \
-             AND sk.active=1 LIMIT 1",
+             AND sk.active=1 AND sk.algorithm=?13 LIMIT 1",
         )
         .bind(&values)?
         .first::<AuthorizationCodeContextRow>(None)
@@ -647,6 +785,7 @@ pub async fn load_authorization_code_context(
         auth_time,
         parent_expires_at,
         signing_kid: signer.kid().to_owned(),
+        signing_algorithm: row.signing_algorithm,
         signing_generation,
         public_jwk: row.public_jwk,
     })
@@ -726,7 +865,7 @@ async fn commit_authorization_code_exchange(
     db: &worker::d1::D1Database,
     input: &AuthenticatedTokenRequest,
     context: &AuthorizationCodeContext,
-    signer: &sakimori_oidc::P256TokenSigner,
+    signer: &WorkerTokenSigner,
     issuer: &str,
     now: u64,
     access_ttl_seconds: u64,
@@ -738,6 +877,7 @@ async fn commit_authorization_code_exchange(
 
     if context.client_id() != input.request().client_id()
         || context.signing_kid() != signer.kid()
+        || context.signing_algorithm != signer.algorithm()
         || now > i64::MAX as u64
     {
         return Err(worker::Error::RustError("invalid_grant".into()));
@@ -764,7 +904,7 @@ async fn commit_authorization_code_exchange(
             now,
             id_token_expires_at,
         )
-        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+        .await?;
 
     let mut access_secret = [0u8; 32];
     random
@@ -820,6 +960,7 @@ async fn commit_authorization_code_exchange(
         JsValue::from_str(&id_token_expires_at.to_string()),
         JsValue::from_str(&access_hash),
         JsValue::from_str(&context.public_jwk),
+        JsValue::from_str(&context.signing_algorithm),
     ];
     db.batch(vec![
         db.prepare(
@@ -842,7 +983,8 @@ async fn commit_authorization_code_exchange(
                AND au.jti=?8 AND au.endpoint=?9 AND au.accepted_by=?10 \
                AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER)) \
              AND EXISTS (SELECT 1 FROM signing_key sk WHERE sk.kid=?12 \
-               AND sk.generation=?13 AND sk.active=1 AND sk.public_jwk=?23) \
+               AND sk.generation=?13 AND sk.active=1 AND sk.public_jwk=?23 \
+               AND sk.algorithm=?24) \
              AND ?20 > CAST(strftime('%s','now') AS INTEGER) AND ?20 <= ?18 \
              AND ?21 > CAST(strftime('%s','now') AS INTEGER) AND ?21 <= ?18",
         )
@@ -981,8 +1123,7 @@ async fn issue_token_response(
         .secret("OP_PRIVATE_JWK")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
-    let signer = sakimori_oidc::P256TokenSigner::from_private_jwk(&private_jwk)
-        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+    let signer = WorkerTokenSigner::from_secret(&private_jwk).await?;
     let context =
         load_authorization_code_context(&db, &authenticated, &signer, &mut random).await?;
     let response = commit_authorization_code_exchange(
@@ -1454,7 +1595,7 @@ async fn jwks_route(
     let rows = db
         .prepare(
             "SELECT public_jwk FROM signing_key \
-             WHERE active=1 AND algorithm='ES256' ORDER BY kid",
+             WHERE active=1 AND algorithm IN ('ES256','RS256') ORDER BY kid",
         )
         .all()
         .await?
@@ -1498,7 +1639,7 @@ async fn discovery_route(
             response_modes_supported: ["query"],
             grant_types_supported: ["authorization_code"],
             subject_types_supported: ["pairwise"],
-            id_token_signing_alg_values_supported: ["ES256"],
+            id_token_signing_alg_values_supported: ["ES256", "RS256"],
             scopes_supported: ["openid"],
             claims_supported: [
                 "iss",
