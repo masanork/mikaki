@@ -1,0 +1,33 @@
+// Keep UI copy outside components; production catalog/code generation remains a later step.
+export const messages = {
+  ja: {
+    title: 'sakimoriにログイン',
+    intro: 'Passkeyで安全にログインします。',
+    invite: '招待コード',
+    register: '招待で登録する',
+    login: 'Passkeyでログイン',
+    consent: 'このアプリへのログインを許可する',
+    continue: '許可して続ける',
+    recovery: 'すべてのPasskeyを失うと、このアカウントは復旧できません。',
+    local: 'ローカル開発用',
+    error: '操作を完了できませんでした。もう一度お試しください。',
+    expired: 'ログインをアプリから再開してください。',
+    busy: '確認中…',
+    app: '接続するアプリ',
+  },
+  en: {
+    title: 'Sign in to sakimori',
+    intro: 'Use your passkey to sign in securely.',
+    invite: 'Invitation code',
+    register: 'Register with invitation',
+    login: 'Sign in with passkey',
+    consent: 'Allow sign-in to this app',
+    continue: 'Allow and continue',
+    recovery: 'If you lose all passkeys, this account cannot be recovered.',
+    local: 'Local development',
+    error: 'Could not complete the operation. Please try again.',
+    expired: 'Restart sign-in from the app.',
+    busy: 'Checking…',
+    app: 'Connecting to',
+  },
+} as const;

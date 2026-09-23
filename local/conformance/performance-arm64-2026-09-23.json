@@ -1,0 +1,345 @@
+{
+  "recorded_at": "2026-09-22T15:53:32.784Z",
+  "environment": {
+    "cpu": "Apple M3",
+    "os": "macOS 27.0 (26A428)",
+    "rust": "1.98.1",
+    "suite": "1.9.2 ARM64",
+    "server": "native release opt-level=s LTO",
+    "storage": "fresh file SQLite WAL synchronous=FULL",
+    "origin": "http://localhost:8080",
+    "optional": false,
+    "autoscroll": false,
+    "profiling_during_runs": false
+  },
+  "runs": [
+    {
+      "file": "target/performance-native-1.9.2-run1.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 40.388,
+        "p50_ms": 0.061542,
+        "p95_ms": 0.583,
+        "p99_ms": 0.853333,
+        "max_ms": 1.752083
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 0.982,
+        "p50_ms": 0,
+        "p95_ms": 0.012167,
+        "p99_ms": 0.020292,
+        "max_ms": 0.053208000000000005
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 13.94,
+        "p50_ms": 0,
+        "p95_ms": 0.38837499999999997,
+        "p99_ms": 0.41791700000000004,
+        "max_ms": 0.836708
+      },
+      "database": {
+        "count": 320,
+        "sum_ms": 16.597,
+        "p50_ms": 0.029290999999999998,
+        "p95_ms": 0.210834,
+        "p99_ms": 0.421958,
+        "max_ms": 0.8629169999999999
+      },
+      "response": {
+        "count": 320,
+        "sum_ms": 4.563,
+        "p50_ms": 0.010750000000000003,
+        "p95_ms": 0.030959000000000014,
+        "p99_ms": 0.064833,
+        "max_ms": 0.4525
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 7.629,
+          "p50_ms": 0.06125,
+          "p95_ms": 0.12245800000000001,
+          "p99_ms": 0.253166,
+          "max_ms": 0.27599999999999997
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 25.862,
+          "p50_ms": 0.080667,
+          "p95_ms": 0.815625,
+          "p99_ms": 1.314084,
+          "max_ms": 1.752083
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 2.356,
+          "p50_ms": 0.038083,
+          "p95_ms": 0.07216700000000001,
+          "p99_ms": 0.13525,
+          "max_ms": 0.13525
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 4.541,
+          "p50_ms": 0.040791,
+          "p95_ms": 0.342292,
+          "p99_ms": 0.3975,
+          "max_ms": 0.3975
+        }
+      },
+      "suite": {
+        "version": "1.9.2",
+        "architecture": "ARM64",
+        "passed": 155,
+        "failed": 0,
+        "duration_s": 5.31,
+        "state": "first run after application launch"
+      },
+      "arrival_span_ms": 5305.234333000002,
+      "between_handlers": {
+        "sum_ms": 5260.283293,
+        "largest": [
+          {
+            "after": "/assertion/result",
+            "before": "/attestation/options",
+            "ms": 2873.174791999999
+          },
+          {
+            "after": "/attestation/options",
+            "before": "/attestation/result",
+            "ms": 188.47870800000007
+          },
+          {
+            "after": "/attestation/options",
+            "before": "/attestation/result",
+            "ms": 156.97625000000014
+          },
+          {
+            "after": "/attestation/result",
+            "before": "/attestation/options",
+            "ms": 135.2510830000009
+          },
+          {
+            "after": "/attestation/result",
+            "before": "/attestation/options",
+            "ms": 133.3529590000005
+          }
+        ]
+      },
+      "outcomes": {
+        "/attestation/options": {
+          "ok": 110,
+          "failed": 0
+        },
+        "/attestation/result": {
+          "ok": 24,
+          "failed": 80
+        },
+        "/assertion/options": {
+          "ok": 55,
+          "failed": 0
+        },
+        "/assertion/result": {
+          "ok": 8,
+          "failed": 43
+        }
+      }
+    },
+    {
+      "file": "target/performance-native-1.9.2-run2.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 42.374,
+        "p50_ms": 0.058792000000000004,
+        "p95_ms": 0.585542,
+        "p99_ms": 0.980542,
+        "max_ms": 1.8471250000000001
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 1.004,
+        "p50_ms": 0,
+        "p95_ms": 0.014708,
+        "p99_ms": 0.022541,
+        "max_ms": 0.029292
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 14.773,
+        "p50_ms": 0,
+        "p95_ms": 0.397417,
+        "p99_ms": 0.455292,
+        "max_ms": 1.202709
+      },
+      "database": {
+        "count": 320,
+        "sum_ms": 17.855,
+        "p50_ms": 0.030625,
+        "p95_ms": 0.231125,
+        "p99_ms": 0.46358400000000005,
+        "max_ms": 0.7581249999999999
+      },
+      "response": {
+        "count": 320,
+        "sum_ms": 4.229,
+        "p50_ms": 0.011166000000000002,
+        "p95_ms": 0.026957999999999982,
+        "p99_ms": 0.04283400000000001,
+        "max_ms": 0.064708
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 7.834,
+          "p50_ms": 0.059667000000000005,
+          "p95_ms": 0.14183300000000001,
+          "p99_ms": 0.19487500000000002,
+          "max_ms": 0.195167
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 27.667,
+          "p50_ms": 0.094208,
+          "p95_ms": 0.876916,
+          "p99_ms": 1.703083,
+          "max_ms": 1.8471250000000001
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 2.564,
+          "p50_ms": 0.036541000000000004,
+          "p95_ms": 0.118125,
+          "p99_ms": 0.127417,
+          "max_ms": 0.127417
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 4.309,
+          "p50_ms": 0.043375,
+          "p95_ms": 0.297875,
+          "p99_ms": 0.347,
+          "max_ms": 0.347
+        }
+      },
+      "suite": {
+        "version": "1.9.2",
+        "architecture": "ARM64",
+        "passed": 155,
+        "failed": 0,
+        "duration_s": 3.09,
+        "state": "same Suite process; fresh server and DB"
+      },
+      "arrival_span_ms": 3085.9450840000063,
+      "between_handlers": {
+        "sum_ms": 3039.342803000009,
+        "largest": [
+          {
+            "after": "/assertion/result",
+            "before": "/attestation/options",
+            "ms": 863.2958749999979
+          },
+          {
+            "after": "/attestation/options",
+            "before": "/attestation/result",
+            "ms": 183.054750000001
+          },
+          {
+            "after": "/attestation/options",
+            "before": "/attestation/result",
+            "ms": 145.88029199999838
+          },
+          {
+            "after": "/attestation/result",
+            "before": "/attestation/options",
+            "ms": 133.46320800000512
+          },
+          {
+            "after": "/attestation/result",
+            "before": "/attestation/options",
+            "ms": 128.75500000000662
+          }
+        ]
+      },
+      "outcomes": {
+        "/attestation/options": {
+          "ok": 110,
+          "failed": 0
+        },
+        "/attestation/result": {
+          "ok": 24,
+          "failed": 80
+        },
+        "/assertion/options": {
+          "ok": 55,
+          "failed": 0
+        },
+        "/assertion/result": {
+          "ok": 8,
+          "failed": 43
+        }
+      }
+    }
+  ],
+  "transport": {
+    "recorded_at": "2026-09-22T15:43:06.421Z",
+    "node": "v26.9.0",
+    "origin": "http://localhost:8080",
+    "algorithm": "ES256",
+    "storage": "running server configuration; record alongside server log",
+    "runs": [
+      {
+        "keep_alive": true,
+        "warmup_ceremonies": 5,
+        "options": {
+          "count": 100,
+          "sum_ms": 10.895876999999942,
+          "p50_ms": 0.10387500000000216,
+          "p95_ms": 0.13887499999999875,
+          "p99_ms": 0.16049999999999898,
+          "max_ms": 0.17158299999999826
+        },
+        "assertion_result": {
+          "count": 100,
+          "sum_ms": 29.832250999999978,
+          "p50_ms": 0.2932909999999964,
+          "p95_ms": 0.3488749999999996,
+          "p99_ms": 0.37708299999999895,
+          "max_ms": 0.387833999999998
+        }
+      },
+      {
+        "keep_alive": false,
+        "warmup_ceremonies": 5,
+        "options": {
+          "count": 100,
+          "sum_ms": 35.296795000000046,
+          "p50_ms": 0.333958999999993,
+          "p95_ms": 0.4435420000000079,
+          "p99_ms": 0.9791670000000039,
+          "max_ms": 1.0979580000000055
+        },
+        "assertion_result": {
+          "count": 100,
+          "sum_ms": 53.492084000000034,
+          "p50_ms": 0.5121660000000077,
+          "p95_ms": 0.6112499999999841,
+          "p99_ms": 0.7026249999999834,
+          "max_ms": 1.9844170000000076
+        }
+      }
+    ]
+  },
+  "sha256": {
+    "Cargo.toml": "5fbfcc1aeb723bc6707bd6a4819b2b7ff9ca8e2a339d8b828dc3ce65a681ff33",
+    "Cargo.lock": "b01a28a9e3b234c6d4f47a738f1fb29e35caa63fe6544be13ec1b1227aa82908",
+    "crates/worker/examples/conformance_server.rs": "9cff171310ed6c392bda0652419a037f223caf81cacd57e05dcd2d3d28e0c3f2",
+    "crates/worker/examples/support/conformance_http.rs": "50464b80acd14b3851ebb3419e957929990da36a40eb835fe529f0a5f486f119",
+    "local/conformance/transport-benchmark.mjs": "540f4a8dd0fb15170053b36a72001c724c34dd2069ddd84dc892b7322a6999a1",
+    "target/release/examples/conformance_server": "fc2af6dfabfea7fc538da3a3872373b8a2aa6c6c0cb2a3a2034010d7364fbc8a",
+    "target/fido-1.9.2-architecture.sample.txt": "3dafe287aaf185ea46cd3d39a87063b9f1b96b09163a4203f72d26071afdff2d",
+    "target/performance-native-1.9.2-run1.log": "9fd40a3c5d98de7f935fccedc8e2b6d1d258fc8c389b2652e2a9c0df5919702f",
+    "target/performance-native-1.9.2-run2.log": "71821b1050c365ed944a189b19970487f008d6655366d547dacb19f422872d26"
+  }
+}

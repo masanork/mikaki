@@ -1,0 +1,501 @@
+{
+  "microbenchmark": {
+    "recorded_at": "2026-09-22T14:56:03.254Z",
+    "node": "v26.9.0",
+    "cpu": "Apple M3",
+    "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "native": [
+      {
+        "profile": "debug",
+        "boundary": "native core, including owned-response copies; excludes JSON/HTTP/DB",
+        "cases": [
+          {
+            "iterations_per_sample": 20,
+            "max_us": 11353.18125,
+            "median_us": 11247.35415,
+            "min_us": 11190.3,
+            "name": "packed chain",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 20,
+            "max_us": 8849.3479,
+            "median_us": 8806.8125,
+            "min_us": 8779.04585,
+            "name": "U2F",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 20,
+            "max_us": 9675.31045,
+            "median_us": 9568.120850000001,
+            "min_us": 9521.91875,
+            "name": "TPM RSA",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 20,
+            "max_us": 29.716649999999998,
+            "median_us": 28.94375,
+            "min_us": 28.87085,
+            "name": "none ES256",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 20,
+            "max_us": 2378.18545,
+            "median_us": 2327.2896,
+            "min_us": 2322.18125,
+            "name": "assertion ES256",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 20,
+            "max_us": 2304.7104,
+            "median_us": 2289.75625,
+            "min_us": 2283.0875,
+            "name": "assertion invalid signature",
+            "samples": 7
+          }
+        ],
+        "debug_assertions": true
+      },
+      {
+        "profile": "release",
+        "boundary": "native core, including owned-response copies; excludes JSON/HTTP/DB",
+        "cases": [
+          {
+            "iterations_per_sample": 100,
+            "max_us": 791.26792,
+            "median_us": 780.1575,
+            "min_us": 778.5125,
+            "name": "packed chain",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 100,
+            "max_us": 636.2708299999999,
+            "median_us": 633.43917,
+            "min_us": 631.2733299999999,
+            "name": "U2F",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 100,
+            "max_us": 708.9875,
+            "median_us": 707.2608399999999,
+            "min_us": 706.27084,
+            "name": "TPM RSA",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 100,
+            "max_us": 2.73125,
+            "median_us": 2.6466700000000003,
+            "min_us": 2.63833,
+            "name": "none ES256",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 100,
+            "max_us": 139.9375,
+            "median_us": 139.24208000000002,
+            "min_us": 138.11083,
+            "name": "assertion ES256",
+            "samples": 7
+          },
+          {
+            "iterations_per_sample": 100,
+            "max_us": 138.62542,
+            "median_us": 136.48292,
+            "min_us": 136.21167,
+            "name": "assertion invalid signature",
+            "samples": 7
+          }
+        ],
+        "debug_assertions": false
+      }
+    ],
+    "wasm_json_boundary": [
+      {
+        "name": "packed chain",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 2740.332500000004,
+        "min_us": 2703.6675000000105,
+        "max_us": 2896.064580000002
+      },
+      {
+        "name": "U2F",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 2278.548329999994,
+        "min_us": 2270.3254200000083,
+        "max_us": 2310.4112499999974
+      },
+      {
+        "name": "TPM RSA",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 2528.5925000000134,
+        "min_us": 2521.153749999994,
+        "max_us": 2535.788339999999
+      },
+      {
+        "name": "none ES256",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 8.864169999997102,
+        "min_us": 8.517499999998108,
+        "max_us": 9.53125
+      },
+      {
+        "name": "assertion ES256",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 416.4341699999932,
+        "min_us": 415.65333000000464,
+        "max_us": 417.8491700000086
+      },
+      {
+        "name": "assertion invalid signature",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 408.43542000000525,
+        "min_us": 407.8425000000061,
+        "max_us": 411.9954200000029
+      }
+    ],
+    "native_process_json_boundary": [
+      {
+        "profile": "debug",
+        "name": "packed chain",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 13495.533400000204,
+        "min_us": 13324.258399999962,
+        "max_us": 13708.658400000058
+      },
+      {
+        "profile": "release",
+        "name": "packed chain",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 2778.4249999996973,
+        "min_us": 2546.808400000009,
+        "max_us": 3470.125000000189
+      },
+      {
+        "profile": "debug",
+        "name": "U2F",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 10942.608200000177,
+        "min_us": 10868.500000000131,
+        "max_us": 11264.341799999966
+      },
+      {
+        "profile": "release",
+        "name": "U2F",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 2335.3250000000116,
+        "min_us": 2258.808399999907,
+        "max_us": 2495.6999999998516
+      },
+      {
+        "profile": "debug",
+        "name": "TPM RSA",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 11905.041600000186,
+        "min_us": 11819.43339999998,
+        "max_us": 12402.724999999919
+      },
+      {
+        "profile": "release",
+        "name": "TPM RSA",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 2493.5750000000553,
+        "min_us": 2314.458200000081,
+        "max_us": 2909.6165999999357
+      },
+      {
+        "profile": "debug",
+        "name": "none ES256",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 1835.200000000259,
+        "min_us": 1761.4833999999973,
+        "max_us": 2022.1833999999944
+      },
+      {
+        "profile": "release",
+        "name": "none ES256",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 1647.608400000172,
+        "min_us": 1562.7584000001661,
+        "max_us": 1726.3749999998254
+      },
+      {
+        "profile": "debug",
+        "name": "assertion ES256",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 4275.475000000006,
+        "min_us": 4178.650000000198,
+        "max_us": 4420.416800000021
+      },
+      {
+        "profile": "release",
+        "name": "assertion ES256",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 1791.3666000000376,
+        "min_us": 1718.0668000000878,
+        "max_us": 1901.8166000001656
+      },
+      {
+        "profile": "debug",
+        "name": "assertion invalid signature",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 4247.075000000041,
+        "min_us": 4198.183199999767,
+        "max_us": 4417.525000000023
+      },
+      {
+        "profile": "release",
+        "name": "assertion invalid signature",
+        "iterations_per_sample": 5,
+        "samples": 7,
+        "median_us": 1783.3082000001014,
+        "min_us": 1731.9416000002093,
+        "max_us": 1831.266599999799
+      }
+    ],
+    "metadata_lookup": [
+      {
+        "case": "packed chain",
+        "before": {
+          "name": "decode per metadata entry",
+          "iterations_per_sample": 20,
+          "samples": 7,
+          "median_us": 592.791650000072,
+          "min_us": 591.0729500000343,
+          "max_us": 619.7396000000481
+        },
+        "after": {
+          "name": "decode once per response",
+          "iterations_per_sample": 100,
+          "samples": 7,
+          "median_us": 6.432910000003176,
+          "min_us": 6.184159999993426,
+          "max_us": 7.035829999986163
+        }
+      },
+      {
+        "case": "U2F",
+        "before": {
+          "name": "decode per metadata entry",
+          "iterations_per_sample": 20,
+          "samples": 7,
+          "median_us": 1035.0124999999935,
+          "min_us": 1026.6145499999766,
+          "max_us": 1041.2499999999454
+        },
+        "after": {
+          "name": "decode once per response",
+          "iterations_per_sample": 100,
+          "samples": 7,
+          "median_us": 9.198749999995925,
+          "min_us": 9.109170000010636,
+          "max_us": 9.416249999994761
+        }
+      },
+      {
+        "case": "TPM RSA",
+        "before": {
+          "name": "decode per metadata entry",
+          "iterations_per_sample": 20,
+          "samples": 7,
+          "median_us": 1122.2687499999665,
+          "min_us": 1117.693749999944,
+          "max_us": 1124.5291999999608
+        },
+        "after": {
+          "name": "decode once per response",
+          "iterations_per_sample": 100,
+          "samples": 7,
+          "median_us": 10.189589999972668,
+          "min_us": 9.980419999992591,
+          "max_us": 10.496669999993173
+        }
+      },
+      {
+        "case": "none ES256",
+        "before": {
+          "name": "decode per metadata entry",
+          "iterations_per_sample": 20,
+          "samples": 7,
+          "median_us": 170.1771000000008,
+          "min_us": 168.39790000012727,
+          "max_us": 177.147899999909
+        },
+        "after": {
+          "name": "decode once per response",
+          "iterations_per_sample": 100,
+          "samples": 7,
+          "median_us": 2.4562499999956344,
+          "min_us": 2.4429199999940465,
+          "max_us": 2.5616699999955017
+        }
+      }
+    ],
+    "metadata_entries": 125
+  },
+  "http_timings": [
+    {
+      "file": "target/performance-wasm.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 157.452,
+        "p50_ms": 0.28,
+        "p95_ms": 1.834,
+        "max_ms": 6.645
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 4.489,
+        "p50_ms": 0,
+        "p95_ms": 0.051,
+        "max_ms": 0.866
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 68.457,
+        "p50_ms": 0,
+        "p95_ms": 1.46,
+        "max_ms": 5.362
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 32.834,
+          "p50_ms": 0.227,
+          "p95_ms": 0.517,
+          "max_ms": 3.887
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 91.856,
+          "p50_ms": 0.423,
+          "p95_ms": 2.159,
+          "max_ms": 6.645
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 13.207,
+          "p50_ms": 0.201,
+          "p95_ms": 0.487,
+          "max_ms": 0.723
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 19.555,
+          "p50_ms": 0.27,
+          "p95_ms": 1.003,
+          "max_ms": 1.52
+        }
+      }
+    },
+    {
+      "file": "target/performance-native.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 544.764,
+        "p50_ms": 0.333,
+        "p95_ms": 5.003,
+        "max_ms": 10.497
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 9.674,
+        "p50_ms": 0,
+        "p95_ms": 0.079,
+        "max_ms": 2.159
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 448.25,
+        "p50_ms": 0,
+        "p95_ms": 4.614,
+        "max_ms": 9.133
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 32.628,
+          "p50_ms": 0.21,
+          "p95_ms": 0.609,
+          "max_ms": 3.972
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 351.628,
+          "p50_ms": 3.608,
+          "p95_ms": 5.935,
+          "max_ms": 10.497
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 11.922,
+          "p50_ms": 0.196,
+          "p95_ms": 0.357,
+          "max_ms": 0.631
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 148.586,
+          "p50_ms": 3.106,
+          "p95_ms": 5.192,
+          "max_ms": 5.65
+        }
+      }
+    }
+  ],
+  "suite": {
+    "version": "1.9.1",
+    "selection": "all Server Tests; additional OPTIONAL off; AUTOSCROLL off",
+    "origin": "http://localhost:8080",
+    "runs": [
+      {
+        "target": "wasm",
+        "passed": 155,
+        "failed": 0,
+        "seconds": 46.66
+      },
+      {
+        "target": "native release",
+        "passed": 155,
+        "failed": 0,
+        "seconds": 48.2
+      }
+    ]
+  },
+  "sha256": {
+    "Cargo.lock": "759b9a30493104b1ee7a6026ff8e85c4d0658e53332d596bc90689aecc1b2081",
+    "Cargo.toml": "5fbfcc1aeb723bc6707bd6a4819b2b7ff9ca8e2a339d8b828dc3ce65a681ff33",
+    "crates/webauthn/examples/benchmark.rs": "24b34fc668e37c6c17f43589fd1e263dd83248b6ac0f22d472526cb417585e33",
+    "local/conformance/benchmark.mjs": "b5d60dc94b7e9b51c4f5033bf4cbcb77c72de1d48be8d70580e2b0a66a29ec54",
+    "local/conformance/server.mjs": "ddb718a939c0a2a44339d74362f1c640d4a1a8bca5c4d49202bae588f72ea4bd",
+    "local/conformance/summarize-timing.mjs": "bf8511afda387cd27895dc453e5e8c84ea6ae5291230f0f166da4ab21692a0a8",
+    "crates/worker/pkg/sakimori_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
+    "target/release/examples/conformance": "b18d9d7b5659a4ee015dcac2fd10e812cb6e5bb285b25ae2d2ea8d197675ecf8",
+    "target/release/examples/benchmark": "65bdf40ece3b5405d345466a03de9bce96030847168ebbee77ff13924b5b0c12",
+    "target/debug/examples/benchmark": "57e20b88d39ffd97dc5eb38e88da999d7c75bc3bd8251ec22bf6881b542961e0",
+    "crates/webauthn/testdata/attestations.json": "5cd91f47c1efbb9403239427d4aaa7a46aaeee0961066402e09ac2c8154af991"
+  }
+}

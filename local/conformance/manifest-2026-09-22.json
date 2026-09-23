@@ -1,0 +1,41 @@
+{
+  "recorded_at": "2026-09-22T14:50:00.515328+00:00",
+  "suite": "FIDO Conformance Tools 1.9.1 / FIDO2 Server",
+  "selection": "all Server Tests; additional OPTIONAL disabled; AUTOSCROLL off",
+  "origin": "http://localhost:8080",
+  "rp_id": "localhost",
+  "sha256": {
+    "Cargo.lock": "759b9a30493104b1ee7a6026ff8e85c4d0658e53332d596bc90689aecc1b2081",
+    "crates/webauthn/src/lib.rs": "df50ea95bc72a43e932c917a6c87478a09e0fc1f96864f80368dbd7c89fa1746",
+    "crates/webauthn/src/key.rs": "4f670c33d4eaf1fa503f76f7d422efb6fe8797ad2aa861a8c470eaa1ecd1ee68",
+    "crates/webauthn/src/certificate.rs": "a16dd8d5490bcc8b643650f39ba622b5b6a77a2287d0f5e1cc7b2c1f25616955",
+    "crates/webauthn/src/attestation.rs": "0ef0db1b8d66bacd7ee964759e6d8d45af3e1238cecf075e994a873dcdf01b20",
+    "crates/webauthn/src/attestation/tpm.rs": "86a90d2e6fa0b514cd16011573e0d7f477cdf95c549bf3bd69e9e1edc7ca5d16",
+    "crates/webauthn/src/metadata.rs": "fc954a48a27d7e1853bd051d9c85aa4ad91e5937001dc00504d4f1674ca9d38a",
+    "crates/auth/src/lib.rs": "e39740afa80a233b3ece692fe92768612c8fec613af936d2f960b62f679bf8b2",
+    "crates/worker/src/lib.rs": "f9c7b4a9a6c9dadee7f113b64c525c7294618bf72252e03df83ee2149463f984",
+    "crates/worker/examples/conformance.rs": "24be4b6b09e6a08c72a04eb26e1782da7d1acba72a3bb2247fdf4b81aac893b7",
+    "local/conformance/server.mjs": "5bb87549dd81304513622f664dc4d2dc01e9ee1051c2529c7e1ef705a18aacbc",
+    "local/conformance/prepare.mjs": "0711b2f18f7c1df7899b9e93ea087bcdbcc7fbe380523881e46f44678d3c7899",
+    "crates/worker/pkg/sakimori_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
+    "target/debug/examples/conformance": "3f6d99d5c1dda347f7f809ffb50377fff094f88967d52acf5b5147d2b8ccb9e4",
+    "crates/webauthn/testdata/attestations.json": "5cd91f47c1efbb9403239427d4aaa7a46aaeee0961066402e09ac2c8154af991"
+  },
+  "runs": [
+    {
+      "target": "native",
+      "passed": 155,
+      "failed": 0,
+      "duration_seconds": 47.49
+    },
+    {
+      "target": "wasm",
+      "passed": 155,
+      "failed": 0,
+      "duration_seconds": 48.35
+    }
+  ],
+  "optional_not_selected": 14,
+  "before_all_failures": 0,
+  "submitted": false
+}

@@ -1,0 +1,231 @@
+{
+  "recorded_at": "2026-09-22T15:33:05.175Z",
+  "cpu": "Apple M3",
+  "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "suite_version": "1.9.1",
+  "origin": "http://localhost:8080",
+  "optional": false,
+  "autoscroll": false,
+  "profile": {
+    "opt_level": "s",
+    "lto": true
+  },
+  "measurements": [
+    {
+      "file": "target/performance-native-file.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 112.784,
+        "p50_ms": 0.158208,
+        "p95_ms": 1.6605,
+        "p99_ms": 2.814667,
+        "max_ms": 3.106458
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 2.544,
+        "p50_ms": 0,
+        "p95_ms": 0.033958,
+        "p99_ms": 0.062583,
+        "max_ms": 0.084542
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 45.685,
+        "p50_ms": 0,
+        "p95_ms": 0.9787909999999999,
+        "p99_ms": 1.9697909999999998,
+        "max_ms": 2.5127499999999996
+      },
+      "database": {
+        "count": 320,
+        "sum_ms": 40.269,
+        "p50_ms": 0.07266600000000001,
+        "p95_ms": 0.610333,
+        "p99_ms": 0.782957,
+        "max_ms": 0.941834
+      },
+      "response": {
+        "count": 320,
+        "sum_ms": 15.464,
+        "p50_ms": 0.04266600000000009,
+        "p95_ms": 0.09812500000000002,
+        "p99_ms": 0.16808299999999976,
+        "max_ms": 0.37041599999999997
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 19.216,
+          "p50_ms": 0.153584,
+          "p95_ms": 0.313042,
+          "p99_ms": 0.54725,
+          "max_ms": 0.605
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 73.315,
+          "p50_ms": 0.268333,
+          "p95_ms": 2.447458,
+          "p99_ms": 3.0873749999999998,
+          "max_ms": 3.106458
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 6.389,
+          "p50_ms": 0.106959,
+          "p95_ms": 0.176625,
+          "p99_ms": 0.246333,
+          "max_ms": 0.246333
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 13.865,
+          "p50_ms": 0.135833,
+          "p95_ms": 1.1619169999999999,
+          "p99_ms": 1.3470000000000002,
+          "max_ms": 1.3470000000000002
+        }
+      },
+      "suite": {
+        "passed": 155,
+        "failed": 0,
+        "duration_s": 40.68
+      },
+      "outcomes": {
+        "/attestation/options": {
+          "ok": 110,
+          "failed": 0
+        },
+        "/attestation/result": {
+          "ok": 24,
+          "failed": 80
+        },
+        "/assertion/options": {
+          "ok": 55,
+          "failed": 0
+        },
+        "/assertion/result": {
+          "ok": 8,
+          "failed": 43
+        }
+      }
+    },
+    {
+      "file": "target/performance-native-memory.log",
+      "total": {
+        "count": 320,
+        "sum_ms": 96.651,
+        "p50_ms": 0.14008299999999999,
+        "p95_ms": 1.30925,
+        "p99_ms": 2.415666,
+        "max_ms": 2.8823339999999997
+      },
+      "metadata": {
+        "count": 320,
+        "sum_ms": 2.741,
+        "p50_ms": 0,
+        "p95_ms": 0.036167,
+        "p99_ms": 0.077834,
+        "max_ms": 0.147916
+      },
+      "verification_boundary": {
+        "count": 320,
+        "sum_ms": 47.441,
+        "p50_ms": 0,
+        "p95_ms": 1.057833,
+        "p99_ms": 1.773666,
+        "max_ms": 2.250542
+      },
+      "database": {
+        "count": 320,
+        "sum_ms": 21.341,
+        "p50_ms": 0.053875,
+        "p95_ms": 0.14325,
+        "p99_ms": 0.294291,
+        "max_ms": 0.47641700000000003
+      },
+      "response": {
+        "count": 320,
+        "sum_ms": 14.861,
+        "p50_ms": 0.04162500000000002,
+        "p95_ms": 0.08445799999999998,
+        "p99_ms": 0.134625,
+        "max_ms": 0.231792
+      },
+      "routes": {
+        "/attestation/options": {
+          "count": 110,
+          "sum_ms": 16.046,
+          "p50_ms": 0.123292,
+          "p95_ms": 0.257541,
+          "p99_ms": 0.42579100000000003,
+          "max_ms": 0.555542
+        },
+        "/attestation/result": {
+          "count": 104,
+          "sum_ms": 61.576,
+          "p50_ms": 0.250542,
+          "p95_ms": 1.9650420000000002,
+          "p99_ms": 2.6654169999999997,
+          "max_ms": 2.8823339999999997
+        },
+        "/assertion/options": {
+          "count": 55,
+          "sum_ms": 5.979,
+          "p50_ms": 0.097292,
+          "p95_ms": 0.180166,
+          "p99_ms": 0.22625,
+          "max_ms": 0.22625
+        },
+        "/assertion/result": {
+          "count": 51,
+          "sum_ms": 13.049,
+          "p50_ms": 0.141041,
+          "p95_ms": 0.967917,
+          "p99_ms": 1.1359160000000001,
+          "max_ms": 1.1359160000000001
+        }
+      },
+      "suite": {
+        "passed": 155,
+        "failed": 0,
+        "duration_s": 40.78
+      },
+      "outcomes": {
+        "/attestation/options": {
+          "ok": 110,
+          "failed": 0
+        },
+        "/attestation/result": {
+          "ok": 24,
+          "failed": 80
+        },
+        "/assertion/options": {
+          "ok": 55,
+          "failed": 0
+        },
+        "/assertion/result": {
+          "ok": 8,
+          "failed": 43
+        }
+      }
+    }
+  ],
+  "sqlite_file_check": {
+    "users": 24,
+    "credentials": 24,
+    "integrity_check": "ok"
+  },
+  "sha256": {
+    "Cargo.toml": "5fbfcc1aeb723bc6707bd6a4819b2b7ff9ca8e2a339d8b828dc3ce65a681ff33",
+    "Cargo.lock": "b01a28a9e3b234c6d4f47a738f1fb29e35caa63fe6544be13ec1b1227aa82908",
+    "crates/worker/Cargo.toml": "ba0d4c0a3559a96343b0afdc6b7d1605ecb47ca0c2fbc7af8b93345098882118",
+    "crates/worker/examples/conformance_server.rs": "9cff171310ed6c392bda0652419a037f223caf81cacd57e05dcd2d3d28e0c3f2",
+    "crates/worker/examples/support/conformance_http.rs": "bed55bb52a16cc4c72e3674b9b5ab8281abf4d595bdf29ce056769df65bdc0a1",
+    "local/conformance/summarize-timing.mjs": "9f585c84e119a1c2f2535ba5441e8f38a5ea76848cf15f04cb88ab8acd314956",
+    "target/release/examples/conformance_server": "a75461678bd57baaaa7b5982be4911801943c07e20cc90ecc90ac7edcf036cdb",
+    "target/performance-native-file.log": "b075156fa5c1b9d40564c6a43823bb4689a3afe02b4d1734c39e89eb08504ec2",
+    "target/performance-native-memory.log": "219f80434159b32fa833c4c7dfc8c2a6a09d36fe49ca0deb31ce4384476c4bc3"
+  }
+}

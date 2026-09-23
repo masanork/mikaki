@@ -1,0 +1,24 @@
+[package]
+name = "sakimori-webauthn"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+[dependencies]
+base64.workspace = true
+ciborium.workspace = true
+p256.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+rsa = { version = "=0.10.0-rc.18", default-features = false, features = ["encoding"] }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["alloc"] }
+sha1 = "=0.11.0"
+der = { version = "=0.8.2", features = ["derive", "alloc"] }
+x509-cert = { version = "=0.3.0", default-features = false }
+p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.78"
+
+[lints]
+workspace = true

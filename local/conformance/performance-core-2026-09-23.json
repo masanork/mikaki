@@ -1,0 +1,357 @@
+{
+  "recorded_at": "2026-09-23T00:00:34.341Z",
+  "node": "v26.9.0",
+  "cpu": "Apple M3",
+  "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "native": [
+    {
+      "profile": "debug",
+      "boundary": "native core, including owned-response copies; excludes JSON/HTTP/DB",
+      "cases": [
+        {
+          "iterations_per_sample": 20,
+          "max_us": 11493.35625,
+          "median_us": 11169.925,
+          "min_us": 11145.49375,
+          "name": "packed chain",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 20,
+          "max_us": 8908.24375,
+          "median_us": 8855.122899999998,
+          "min_us": 8797.902100000001,
+          "name": "U2F",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 20,
+          "max_us": 9756.86665,
+          "median_us": 9488.8875,
+          "min_us": 9475.08125,
+          "name": "TPM RSA",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 20,
+          "max_us": 31.3354,
+          "median_us": 30.541649999999997,
+          "min_us": 30.377049999999997,
+          "name": "none ES256",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 20,
+          "max_us": 2328.08335,
+          "median_us": 2322.43125,
+          "min_us": 2315.9458000000004,
+          "name": "assertion ES256",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 20,
+          "max_us": 2308.18125,
+          "median_us": 2285.2417,
+          "min_us": 2280.4521,
+          "name": "assertion invalid signature",
+          "samples": 7
+        }
+      ],
+      "debug_assertions": true
+    },
+    {
+      "profile": "release",
+      "boundary": "native core, including owned-response copies; excludes JSON/HTTP/DB",
+      "cases": [
+        {
+          "iterations_per_sample": 100,
+          "max_us": 782.14,
+          "median_us": 781.035,
+          "min_us": 780.61541,
+          "name": "packed chain",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 100,
+          "max_us": 639.01959,
+          "median_us": 635.6475,
+          "min_us": 634.3941599999999,
+          "name": "U2F",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 100,
+          "max_us": 709.49208,
+          "median_us": 708.00334,
+          "min_us": 706.47792,
+          "name": "TPM RSA",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 100,
+          "max_us": 2.7541700000000002,
+          "median_us": 2.6275,
+          "min_us": 2.57834,
+          "name": "none ES256",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 100,
+          "max_us": 139.09417,
+          "median_us": 138.65291,
+          "min_us": 137.36958,
+          "name": "assertion ES256",
+          "samples": 7
+        },
+        {
+          "iterations_per_sample": 100,
+          "max_us": 139.05792,
+          "median_us": 136.2275,
+          "min_us": 134.96167,
+          "name": "assertion invalid signature",
+          "samples": 7
+        }
+      ],
+      "debug_assertions": false
+    }
+  ],
+  "wasm_json_boundary": [
+    {
+      "name": "packed chain",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 2721.660420000007,
+      "min_us": 2717.9604199999994,
+      "max_us": 2864.018749999995
+    },
+    {
+      "name": "U2F",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 2299.8925000000054,
+      "min_us": 2279.240829999999,
+      "max_us": 2603.0566700000054
+    },
+    {
+      "name": "TPM RSA",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 2539.872910000013,
+      "min_us": 2523.8741599999958,
+      "max_us": 2587.0574999999917
+    },
+    {
+      "name": "none ES256",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 9.432919999999285,
+      "min_us": 9.320829999996931,
+      "max_us": 9.838330000002316
+    },
+    {
+      "name": "assertion ES256",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 417.0945800000118,
+      "min_us": 415.05709000000934,
+      "max_us": 418.0029099999956
+    },
+    {
+      "name": "assertion invalid signature",
+      "iterations_per_sample": 100,
+      "samples": 7,
+      "median_us": 409.64500000000044,
+      "min_us": 408.2916599999953,
+      "max_us": 416.1516699999993
+    }
+  ],
+  "native_process_json_boundary": [
+    {
+      "profile": "debug",
+      "name": "packed chain",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 14076.625000000058,
+      "min_us": 13814.700000000084,
+      "max_us": 14863.791599999968
+    },
+    {
+      "profile": "release",
+      "name": "packed chain",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 2617.3750000001746,
+      "min_us": 2467.7582000000257,
+      "max_us": 2731.999999999971
+    },
+    {
+      "profile": "debug",
+      "name": "U2F",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 11224.424999999974,
+      "min_us": 10976.050000000032,
+      "max_us": 11278.22500000002
+    },
+    {
+      "profile": "release",
+      "name": "U2F",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 2436.558199999854,
+      "min_us": 2347.4749999997584,
+      "max_us": 2499.0249999998923
+    },
+    {
+      "profile": "debug",
+      "name": "TPM RSA",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 12489.883200000259,
+      "min_us": 12044.5499999998,
+      "max_us": 12673.283199999787
+    },
+    {
+      "profile": "release",
+      "name": "TPM RSA",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 2501.54999999977,
+      "min_us": 2434.4999999997526,
+      "max_us": 2624.9665999999706
+    },
+    {
+      "profile": "debug",
+      "name": "none ES256",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 1820.9915999999794,
+      "min_us": 1804.175000000032,
+      "max_us": 2177.9834000000847
+    },
+    {
+      "profile": "release",
+      "name": "none ES256",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 1589.9750000000495,
+      "min_us": 1535.6916000000638,
+      "max_us": 1634.641599999668
+    },
+    {
+      "profile": "debug",
+      "name": "assertion ES256",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 4280.174999999872,
+      "min_us": 4139.583399999901,
+      "max_us": 4527.041599999939
+    },
+    {
+      "profile": "release",
+      "name": "assertion ES256",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 1743.7917999999627,
+      "min_us": 1709.0000000000146,
+      "max_us": 1768.2499999998981
+    },
+    {
+      "profile": "debug",
+      "name": "assertion invalid signature",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 4220.149999999921,
+      "min_us": 4143.999999999869,
+      "max_us": 4307.050000000163
+    },
+    {
+      "profile": "release",
+      "name": "assertion invalid signature",
+      "iterations_per_sample": 5,
+      "samples": 7,
+      "median_us": 1730.6668000001082,
+      "min_us": 1662.5584000001254,
+      "max_us": 1812.6667999997153
+    }
+  ],
+  "metadata_lookup": [
+    {
+      "case": "packed chain",
+      "before": {
+        "name": "decode per metadata entry",
+        "iterations_per_sample": 20,
+        "samples": 7,
+        "median_us": 118.36875000008149,
+        "min_us": 117.34999999998763,
+        "max_us": 126.73334999999497
+      },
+      "after": {
+        "name": "decode once per response",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 5.0941599999896425,
+        "min_us": 4.955420000005688,
+        "max_us": 5.31542000000627
+      }
+    },
+    {
+      "case": "U2F",
+      "before": {
+        "name": "decode per metadata entry",
+        "iterations_per_sample": 20,
+        "samples": 7,
+        "median_us": 200.30624999999418,
+        "min_us": 199.59165000000212,
+        "max_us": 205.99165000003268
+      },
+      "after": {
+        "name": "decode once per response",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 8.269159999999829,
+        "min_us": 8.15999999998894,
+        "max_us": 8.310419999997976
+      }
+    },
+    {
+      "case": "TPM RSA",
+      "before": {
+        "name": "decode per metadata entry",
+        "iterations_per_sample": 20,
+        "samples": 7,
+        "median_us": 205.11875000001965,
+        "min_us": 204.69165000004068,
+        "max_us": 220.32705000001442
+      },
+      "after": {
+        "name": "decode once per response",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 8.464170000006561,
+        "min_us": 8.395000000000437,
+        "max_us": 8.532500000001164
+      }
+    },
+    {
+      "case": "none ES256",
+      "before": {
+        "name": "decode per metadata entry",
+        "iterations_per_sample": 20,
+        "samples": 7,
+        "median_us": 33.87915000002977,
+        "min_us": 33.67914999998902,
+        "max_us": 35.16040000004068
+      },
+      "after": {
+        "name": "decode once per response",
+        "iterations_per_sample": 100,
+        "samples": 7,
+        "median_us": 1.6274999999950523,
+        "min_us": 1.5812499999992724,
+        "max_us": 1.8262499999946158
+      }
+    }
+  ],
+  "metadata_entries": 25
+}
