@@ -615,7 +615,12 @@ async fn accept_client_assertion(
              SELECT 1 FROM assertion_use WHERE accepted_by=?1 AND client_id=?2 AND jti=?3 AND endpoint=?4 \
              ) THEN 1 ELSE 0 END)",
         )
-        .bind(&values[..4])?,
+        .bind(&[
+            values[3].clone(),
+            values[0].clone(),
+            values[1].clone(),
+            values[2].clone(),
+        ])?,
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
             .bind(&[JsValue::from_str(&operation_id)])?,
     ])
@@ -835,7 +840,7 @@ async fn revoke_reused_code(
                  AND au.jti=?8 AND au.endpoint=?9 AND au.accepted_by=?10 \
                  AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER))",
         )
-        .bind(&values)?,
+        .bind(&values[..11])?,
         db.prepare(
             "INSERT INTO atomic_guard(operation_id,passed) VALUES(?12,CASE WHEN NOT EXISTS ( \
              SELECT 1 FROM token_issue ti \
@@ -911,7 +916,7 @@ async fn commit_authorization_code_exchange(
         .fill(&mut access_secret)
         .map_err(|_| worker::Error::RustError("server_error".into()))?;
     let access_token = URL_SAFE_NO_PAD.encode(access_secret);
-    let access_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(access_secret));
+    let access_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(access_token.as_bytes()));
     access_secret.fill(0);
     let mut operation = [0u8; 32];
     random
@@ -991,13 +996,13 @@ async fn commit_authorization_code_exchange(
         .bind(&values)?,
         db.prepare(
             "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked) \
-             SELECT ac.code_hash,?19,?22,MIN(?20,v.expires_at),?12,ac.consumed_at,0 \
+             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0 \
              FROM authorization_code ac JOIN eligible_client_session v \
                ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.consumed_by=?19 \
                AND ?20 > CAST(strftime('%s','now') AS INTEGER)",
         )
-        .bind(&values)?,
+        .bind(&values[..22])?,
         db.prepare(
             "INSERT INTO atomic_guard(operation_id,passed) VALUES(?19,CASE WHEN EXISTS ( \
              SELECT 1 FROM authorization_code ac JOIN token_issue ti ON ti.code_hash=ac.code_hash \
@@ -1008,8 +1013,8 @@ async fn commit_authorization_code_exchange(
                AND ?21 > CAST(strftime('%s','now') AS INTEGER) AND ?21 <= ?18 \
              ) THEN 1 ELSE 0 END)",
         )
-        .bind(&values)?,
-        db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19").bind(&values)?,
+        .bind(&values[..22])?,
+        db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19").bind(&values[..19])?,
     ])
     .await?;
 

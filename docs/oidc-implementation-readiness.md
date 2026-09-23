@@ -29,7 +29,7 @@
 
 G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`sakimori-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
 
-Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。実D1統合試験は未実施。初期Worker migrationに静的redirect URI、client sector、pairwise subjectの表を追加したが、migration・SQLの隔離D1実測はまだ行っていない。migrationも未配備であり、issuer変数・秘密鍵・policy projectionの配備設定は必要。DiscoveryとGET /authorizeをRust Workerへ接続した。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
+Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtによるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。本番migrationは未配備であり、issuer変数・秘密鍵・policy projectionの配備設定は必要。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
 
 時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
@@ -41,10 +41,10 @@ workerはHTTP制限、cookie、秘密管理、D1、時刻・乱数、外向き�
 
 | Endpoint | 処理と代表的な失敗 |
 | --- | --- |
-| Discovery / JWKS | GET、issuerと実装済みcode flowを掲載。active ES256/RS256公開鍵を掲載。RS256署名はローカルworkerdで確認、実D1統合は未完了 |
+| Discovery / JWKS | GET、issuerと実装済みcode flowを掲載。active ES256/RS256公開鍵を掲載。RS256署名はローカルworkerdで確認 |
 | GET /authorize | code/openid/S256を検証。現状は有効SSOと既存active connectionを要する。初回consent/login UIなし |
-| POST /token | form body、authorization_codeとprivate_key_jwt。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別。外部へ細かい内部失効理由は出さない |
-| GET・POST /userinfo | Bearer、subのJSON。Discoveryで公開。詳細はUserInfo仕様 |
+| POST /token | form body、authorization_codeとprivate_key_jwt。隔離D1/workerdで正常交換、code replay拒否、並行交換が一回だけ成立することを確認。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別 |
+| GET・POST /userinfo | Bearer、subのJSON。隔離D1/workerdで有効tokenの受入とreplay後失効を確認。詳細はUserInfo仕様 |
 | POST /session/check | client署名＋sid。200 active=falseと通信障害503を区別。存在照会は認証後に限定 |
 | GET・POST /logout | 標準のhint/登録済み戻り先/stateを検証し、必要な確認を表示。SSO失効とevent確定後に完了へ |
 | 各アプリのbackchannel URI | POST、logout_tokenを検証し、失効記録を保存して200。不正通知は400、一時ストア障害は503 |

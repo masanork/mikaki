@@ -37,7 +37,7 @@ Passing local checks or a single RP flow does not complete the milestone. Hosted
 
 ## Current status
 
-Rust currently exposes Discovery, `GET /authorize`, `POST /token`, `GET /jwks`, and GET/POST `/userinfo`. `/authorize` only issues a code when a valid SSO cookie and pre-approved active app connection already exist; Passkey login UI, first-consent processing, and app-connection creation are still absent. Static redirect/sector/pairwise-subject tables exist in the initial migration, which is not deployed. ES256 and RS256 signing paths compile for Worker WASM; the RS256 WebCrypto import/sign path has not yet been exercised in workerd. The production D1 migration is not deployed. Therefore the selected conformance milestone is not yet runnable.
+Rust currently exposes Discovery, `GET /authorize`, `POST /token`, `GET /jwks`, and GET/POST `/userinfo`. `/authorize` only issues a code when a valid SSO cookie and pre-approved active app connection already exist; Passkey login UI, first-consent processing, and app-connection creation are still absent. Static redirect/sector/pairwise-subject tables exist in the initial migration, which is not deployed. ES256 and RS256 signing paths compile for Worker WASM. Local workerd probes verified RSA import/signing and a full isolated D1 authorization, private_key_jwt code exchange, ES256 ID Token validation, UserInfo, replay revocation, and a concurrent code exchange with exactly one winner. The production D1 migration is not deployed. Therefore the selected conformance milestone is not yet runnable.
 
 ## References
 

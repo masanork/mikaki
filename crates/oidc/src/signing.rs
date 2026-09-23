@@ -561,6 +561,30 @@ mod tests {
     }
 
     #[test]
+    fn es256_private_key_matches_its_registered_public_jwk() {
+        let mut scalar = [0u8; 32];
+        scalar[31] = 1;
+        let key = SigningKey::from_slice(&scalar).unwrap();
+        let point = key.verifying_key().to_sec1_point(false);
+        let public_jwk = serde_json::json!({
+            "kty":"EC", "crv":"P-256", "kid":"op-1",
+            "x":B64.encode(point.x().unwrap()), "y":B64.encode(point.y().unwrap()),
+            "alg":"ES256", "use":"sig"
+        })
+        .to_string();
+        let private_jwk = serde_json::json!({
+            "kty":"EC", "crv":"P-256", "kid":"op-1",
+            "d":B64.encode(scalar), "x":B64.encode(point.x().unwrap()),
+            "y":B64.encode(point.y().unwrap()), "alg":"ES256", "use":"sig"
+        })
+        .to_string();
+        let signer = P256TokenSigner::from_private_jwk(&private_jwk).unwrap();
+        assert!(signer.matches_public_jwk(&public_jwk));
+        let different = public_jwk.replace("op-1", "op-2");
+        assert!(!signer.matches_public_jwk(&different));
+    }
+
+    #[test]
     fn rs256_jws_input_requires_a_modulus_sized_signature() {
         let input = IdTokenSigningInput::new(
             "RS256",
