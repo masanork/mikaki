@@ -4,7 +4,9 @@
 
 ## 実装中の最初のStorage API
 
-Rust Workerに本人専用の実験的な`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`を追加した。dev Workerだけに`VAULT_BLOBS` R2 bindingを置き、bindingのない本番Workerでは404を返す。`0002_vault_attribute_storage.sql`がD1のheadと操作再試行記録を作る。UserInfoのclaim公開、system recipient、AuthZEN PDP、属性の暗号化・解錠UIは未実装である。このAPIを実利用者のデータ保存先として公開しない。
+Rust Workerに本人専用の実験的な`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`を追加した。dev Workerだけに`VAULT_BLOBS` R2 bindingを置き、bindingのない本番Workerでは404を返す。`0002_vault_attribute_storage.sql`がD1のheadと操作再試行記録を作る。現在の認可判断はAuthZENのsubject/action/resource/decision形状を持つRustのローカルowner policyであり、HTTP PDP配置とGrant照会は未実装である。UserInfoのclaim公開、system recipient、属性の暗号化・解錠UIも未実装である。このAPIを実利用者のデータ保存先として公開しない。
+
+ローカルprofileのsubjectは検証済みAccountIdを`type=mikaki-account`で表し、resourceは`type=mikaki-vault-attribute`、IDは`vault-attribute:<owner>:<attribute>`とする。許可するactionは`vault.attribute.read-ciphertext`、`vault.attribute.read-owner-envelope`、`vault.attribute.write`、`vault.attribute.delete`の4つだけ。service principalや未知actionはdenyする。これらは[AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)の情報モデルを使うmikaki固有の語彙で、外部PDP相互運用を実証したものではない。
 
 `attribute`は1〜64文字の小文字ASCII英数字・`-`・`_`。PUTは`format_version: 1`、base64urlの`ciphertext`（最大24 KiB）と`owner_envelope`（最大8 KiB）のJSONを受ける。サーバーは暗号文をR2のランダムな不変keyに保存し、D1のheadにSHA-256 digestと本人用envelopeを記録する。暗号形式と鍵包みの中身はまだ確定しておらず、サーバーは復号可能性を保証しない。GETは同じ値とrevisionを返し、保存blobのdigestを検証する。
 

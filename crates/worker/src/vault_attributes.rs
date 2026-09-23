@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use wasm_bindgen::JsValue;
 use worker::{D1Database, Request, Response, RouteContext};
 
+use crate::vault_authzen;
 use crate::{WorkersCryptoRandom, browser_cookie, now_seconds, read_bounded_body};
 
 const MAX_REQUEST_BYTES: usize = 48 * 1024;
@@ -199,6 +200,15 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     let Some(owner) = owner(&request, &db).await? else {
         return error(401, "authentication_required");
     };
+    if !owner_allowed(&owner.account_id, attribute, vault_authzen::READ_CIPHERTEXT)
+        || !owner_allowed(
+            &owner.account_id,
+            attribute,
+            vault_authzen::READ_OWNER_ENVELOPE,
+        )
+    {
+        return error(403, "access_denied");
+    }
     let head = db
         .prepare(
             "SELECT revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted \
@@ -278,6 +288,14 @@ async fn write(
     let Some(owner) = owner(request, &db).await? else {
         return error(401, "authentication_required");
     };
+    let action = if deleted {
+        vault_authzen::DELETE
+    } else {
+        vault_authzen::WRITE
+    };
+    if !owner_allowed(&owner.account_id, attribute, action) {
+        return error(403, "access_denied");
+    }
     let body = if deleted {
         String::new()
     } else {
@@ -389,4 +407,9 @@ async fn write(
         return mutation_response(previous, attribute, &hash, deleted);
     }
     error(409, "revision_conflict")
+}
+
+fn owner_allowed(account: &str, attribute: &str, action: &str) -> bool {
+    let evaluation = vault_authzen::owner_evaluation(account, action, account, attribute);
+    vault_authzen::evaluate_owner(&evaluation, account, attribute).decision
 }

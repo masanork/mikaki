@@ -3,6 +3,9 @@
 #[cfg(target_arch = "wasm32")]
 mod passkey_login;
 
+#[cfg(any(target_arch = "wasm32", test))]
+mod vault_authzen;
+
 #[cfg(target_arch = "wasm32")]
 mod vault_attributes;
 
