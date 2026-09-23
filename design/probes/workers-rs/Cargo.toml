@@ -1,0 +1,28 @@
+[package]
+name = "sakimori-workers-rs-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "=0.23.1"
+js-sys = "=0.3.105"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+wasm-bindgen = "=0.2.128"
+wasm-bindgen-futures = "=0.4.78"
+worker = { version = "=0.8.6", features = ["d1"] }
+web-sys = { version = "=0.3.105", features = ["Crypto", "CryptoKey", "CryptoKeyPair", "SubtleCrypto", "WorkerGlobalScope"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"

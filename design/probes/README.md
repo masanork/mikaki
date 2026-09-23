@@ -2,6 +2,21 @@
 
 本番用コードではない。ES256の秘密鍵は公開RFCテストベクトル、account/client/tokenは合成値だけを使う。RustのJWTパーサーやOIDC Provider、管理CLI、ログイン画面は実装していない。
 
+## workers-rs adapter probe
+
+[`workers-rs/`](workers-rs/) は独立したRust Worker proof of conceptで、`worker` 0.8.6を使う。本番コードではない。Wranglerのローカルworkerd上でRust async fetch、D1 batch rollback、`FirstPrimary` read、並行exchangeの一回性、WebCrypto ES256署名を確認し、生成JWSは [`jose-custom`](jose-custom/) のRust/Wasm verifierで検証する。合成データと実行時生成の一時鍵だけを使い、remote D1やCloudflareアカウントには接続しない。
+
+`worker-build` 0.8.6、`wasm32-unknown-unknown` target、`design/probes` のnpm依存を用意したうえで、リポジトリルートから実行する。
+
+```sh
+cargo build --locked --manifest-path design/probes/workers-rs/Cargo.toml --target wasm32-unknown-unknown
+worker-build --release --no-opt design/probes/workers-rs
+wasm-pack build design/probes/jose-custom --target nodejs --release --out-dir pkg -- --locked
+node design/probes/workers-rs/test.mjs
+```
+
+`--no-opt`は短時間のローカル実行用で、サイズ計測や本番build設定の評価には使わない。2026-09-23時点で上記のD1・署名試験が成功した。read replicaを持たないローカル環境の`FirstPrimary`はAPI経路の確認であり、本番のreplica整合性を検証しない。残りのゲート項目と結果は[ADR 0009](../docs/adr/0009-rust-oidc-and-worker-stack.md)に記録する。
+
 ## 実行環境と固定依存
 
 2026-09-22にmacOS arm64、Rust 1.98.1、Node 26.9.0、wasm-pack 0.15.0で実行した。

@@ -1,6 +1,6 @@
 # ADR 0009: OIDC状態機械をRustに置き、TypeScript 7をブラウザ境界に使う
 
-2026-09-23 / 採用方針。Workers runtime adapterのSDK選定は下記の実証ゲートを通過して確定する。
+2026-09-23 / 採用方針。workers-rsのローカル実証状況は「実証ゲート」節を参照。
 
 ## 背景
 
@@ -18,14 +18,16 @@
 
 ## workers-rsの実証ゲート
 
-Rust Workerへの全面移行前に、隔離したprobeで現在の固定Cloudflare runtimeに対して以下を確認する。外部Cloudflareアカウント、remote D1、production secretを使わない。
+Rust Workerへの全面移行前に、隔離したprobeで固定Cloudflare runtimeに対して以下を確認する。外部Cloudflareアカウント、remote D1、production secretを使わない。
 
 - Rust async fetch handlerが型付きの入力制限、cookie/response headers、エラー写像を行える。
 - D1 `batch`が全段階rollback、一回だけの並行code交換、失効競合を満たす。`with_session("first-primary")`の振舞いもlocal workerdで確認する。
 - Workers WebCrypto署名と公開鍵検証、D1、scheduled/`waitUntil`がRust adapterの非同期境界から利用できる。
 - Native/Wasm試験を共通化でき、Wasm size、cold start、依存監査が許容範囲にある。
 
-公式Cloudflare資料はworkers-rsを使うRust Worker、非同期Rust、D1 bindingを案内している。`worker` crateの公開APIにも`batch`・`with_session`がある。ただし実プロジェクトの採用版・D1 failure semantics・当リポジトリの既存SQL模型との一致は未確認である。このゲートを満たさない場合は、**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
+**2026-09-23のローカル結果:** `worker` 0.8.6、Wrangler 4.136.2 / workerd 1.20260921.1で、async Rust fetch handler、D1 batch rollback、`FirstPrimary` read、並行する一回限りのexchange（勝者一つ）、Rustからの非同期WebCrypto ES256署名と既存Rust/Wasm verifierによる検証を確認した。実行手順は[probe README](../../design/probes/README.md)に記録した。これはD1/cryptoのローカル実証であり、ゲート全体の完了ではない。
+
+**未確認:** 本番Cloudflare上のD1 failure/session semantics、実プロジェクトのSQLとの一致、scheduled/`waitUntil`、失効とlogoutの競合、Native/Wasm共通試験、最適化後のサイズ・cold start、依存監査、実際の設定・cookie/HTTP境界。これらを確認するまではSDK選定を最終確定せず、本番OIDC実装へ進める前に残項目を評価する。このゲートを満たさない場合は、**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
 
 ## TypeScript 7の適用範囲と静的検査
 
