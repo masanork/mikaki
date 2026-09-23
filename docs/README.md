@@ -62,6 +62,8 @@ ADRは仕様書ごとに一つ作る必要はない。次に追加すべき対�
 
 運用設定の実行時の正本は[設定契約](runtime-configuration.md)で定めるD1有効版とし、[runtime-policy.example.toml](../config/runtime-policy.example.toml)は初期投入・編集の見本とする。旧3断片は説明用であり、mergeして使わない。SQLとPythonは設計検証用で、本番のmigration/設定loaderではない。
 
+Cloudflareへの公開手順は[デプロイ文書](cloudflare-deployment.md)、SBOM・CBOM・ビルド証跡の対象と検証手順は[供給網証跡](supply-chain.md)に記録する。
+
 ## 矛盾の扱い
 
 明示的な合意と採用済みADRの契約を維持し、個別仕様は上記の担当範囲で具体化する。同じ内容を索引へ転載した場合は個別仕様への参照を添える。初期OIDCの旧候補を実装基準で選択済みの場合も、合意済みの保証を黙って変更しない。
