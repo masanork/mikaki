@@ -15,26 +15,71 @@ pub struct Authorization {
     pub code_challenge: String,
     pub code_challenge_method: String,
 }
+
+/// An authorization request that has passed the static-client profile checks.
+/// Fields are private and this type deliberately does not implement `Deserialize`.
+#[must_use = "only a validated request may start an authorization transaction"]
+pub struct ValidatedAuthorization {
+    client_id: String,
+    redirect_uri: String,
+    state: String,
+    nonce: String,
+    code_challenge: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidAuthorization;
+
 impl Authorization {
-    pub fn valid(
+    pub fn validate(
         &self,
         client_id: &str,
         redirect_uri: &str,
         state_limit: usize,
         nonce_limit: usize,
-    ) -> bool {
-        self.client_id == client_id
-            && self.redirect_uri == redirect_uri
-            && self.response_type == "code"
-            && self.scope == "openid"
-            && !self.state.is_empty()
-            && self.state.len() <= state_limit
-            && !self.nonce.is_empty()
-            && self.nonce.len() <= nonce_limit
-            && self.code_challenge_method == "S256"
-            && B64
-                .decode(&self.code_challenge)
-                .is_ok_and(|b| b.len() == 32 && B64.encode(b) == self.code_challenge)
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        let challenge = B64
+            .decode(&self.code_challenge)
+            .map_err(|_| InvalidAuthorization)?;
+        if self.client_id != client_id
+            || self.redirect_uri != redirect_uri
+            || self.response_type != "code"
+            || self.scope != "openid"
+            || self.state.is_empty()
+            || self.state.len() > state_limit
+            || self.nonce.is_empty()
+            || self.nonce.len() > nonce_limit
+            || self.code_challenge_method != "S256"
+            || challenge.len() != 32
+            || B64.encode(challenge) != self.code_challenge
+        {
+            return Err(InvalidAuthorization);
+        }
+        Ok(ValidatedAuthorization {
+            client_id: self.client_id.clone(),
+            redirect_uri: self.redirect_uri.clone(),
+            state: self.state.clone(),
+            nonce: self.nonce.clone(),
+            code_challenge: self.code_challenge.clone(),
+        })
+    }
+}
+
+impl ValidatedAuthorization {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+    pub fn redirect_uri(&self) -> &str {
+        &self.redirect_uri
+    }
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+    pub fn nonce(&self) -> &str {
+        &self.nonce
+    }
+    pub fn code_challenge(&self) -> &str {
+        &self.code_challenge
     }
 }
 pub fn pkce(verifier: &str) -> Option<String> {
@@ -62,8 +107,14 @@ mod tests {
             code_challenge: pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
             code_challenge_method: "S256".into(),
         };
-        let valid = |r: &Authorization| r.valid("client", "https://app.example/callback", 256, 256);
-        assert!(valid(&request));
+        let validate =
+            |r: &Authorization| r.validate("client", "https://app.example/callback", 256, 256);
+        let validated = validate(&request).unwrap();
+        assert_eq!(validated.client_id(), "client");
+        assert_eq!(validated.redirect_uri(), "https://app.example/callback");
+        assert_eq!(validated.state(), "state");
+        assert_eq!(validated.nonce(), "nonce");
+        assert_eq!(validated.code_challenge(), request.code_challenge);
         for field in [
             "client_id",
             "redirect_uri",
@@ -77,16 +128,16 @@ mod tests {
             let mut value = serde_json::to_value(&request).unwrap();
             value[field] = serde_json::json!("");
             let changed: Authorization = serde_json::from_value(value).unwrap();
-            assert!(!valid(&changed));
+            assert!(validate(&changed).is_err());
         }
         request.state = "x".repeat(257);
-        assert!(!valid(&request));
+        assert!(validate(&request).is_err());
         request.state = "s".into();
         request.nonce = "x".repeat(257);
-        assert!(!valid(&request));
+        assert!(validate(&request).is_err());
         request.nonce = "n".into();
         request.code_challenge.push('=');
-        assert!(!valid(&request));
+        assert!(validate(&request).is_err());
         let mut value = serde_json::to_value(&request).unwrap();
         value["prompt"] = serde_json::json!("none");
         assert!(serde_json::from_value::<Authorization>(value).is_err());

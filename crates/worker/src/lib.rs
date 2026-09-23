@@ -64,7 +64,9 @@ pub fn authorize(
     let Ok(request) = serde_json::from_str::<sakimori_oidc::Authorization>(input) else {
         return false;
     };
-    request.valid(client, redirect, state_limit, nonce_limit)
+    request
+        .validate(client, redirect, state_limit, nonce_limit)
+        .is_ok()
 }
 #[wasm_bindgen]
 pub fn pkce(verifier: &str) -> Result<String, JsValue> {
