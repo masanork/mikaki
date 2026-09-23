@@ -1,18 +1,18 @@
 use super::*;
 use wasm_bindgen::JsValue;
 
-fn valid_tx(tx: &str) -> bool {
+pub(super) fn valid_tx(tx: &str) -> bool {
     tx.len() == 43
         && tx
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
 }
 
-fn hash(value: &str) -> String {
+pub(super) fn hash(value: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(value.as_bytes()))
 }
 
-fn random_secret(random: &mut WorkersCryptoRandom) -> worker::Result<String> {
+pub(super) fn random_secret(random: &mut WorkersCryptoRandom) -> worker::Result<String> {
     let mut bytes = [0u8; 32];
     random
         .fill(&mut bytes)
@@ -66,7 +66,7 @@ pub(super) async fn start(
         .empty())
 }
 
-async fn transaction(
+pub(super) async fn transaction(
     db: &worker::d1::D1Database,
     tx: &str,
     browser_hash: &str,
@@ -120,11 +120,21 @@ pub(super) async fn get(
                 .map(|(_, value)| value.into_owned())
         });
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
+    let enrollment = login.client_id == "mikaki-internal-enrollment";
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         locale = strings.locale,
-        title = crate::i18n::html_escape(strings.message("title")),
-        client = crate::i18n::html_escape(&login.client_id),
+        title = crate::i18n::html_escape(strings.message(if enrollment {
+            "enrollHeading"
+        } else {
+            "title"
+        })),
+        client = crate::i18n::html_escape(if enrollment {
+            "mikaki"
+        } else {
+            &login.client_id
+        }),
+        enrollment = if enrollment { "true" } else { "false" },
         challenge = login.challenge,
     );
     worker::Response::builder()

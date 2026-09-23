@@ -19,5 +19,13 @@
     "rootDir": ".",
     "outDir": "../../../target/login-js"
   },
-  "include": ["login.ts", "vault.ts", "locale.ts", "vault-crypto.ts", "*.svelte"]
+  "include": [
+    "login.ts",
+    "vault.ts",
+    "admin.ts",
+    "complete.ts",
+    "locale.ts",
+    "vault-crypto.ts",
+    "*.svelte"
+  ]
 }

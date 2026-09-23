@@ -1,6 +1,10 @@
 //! Cloudflare Workers platform adapter. Protocol decisions remain in `mikaki-oidc`.
 
 #[cfg(target_arch = "wasm32")]
+mod admin_invitations;
+#[cfg(target_arch = "wasm32")]
+mod enrollment;
+#[cfg(target_arch = "wasm32")]
 mod passkey_login;
 
 #[cfg(target_arch = "wasm32")]
@@ -2339,6 +2343,15 @@ pub async fn main(
         .get_async("/login", passkey_login::get)
         .get_async("/login/login.js", passkey_login::script)
         .post_async("/login/finish", passkey_login::finish)
+        .post_async("/register/start", enrollment::start)
+        .post_async("/register/finish", enrollment::finish)
+        .get_async("/enroll", enrollment::entry)
+        .get_async("/enroll/complete", enrollment::complete)
+        .get_async("/enroll/complete.js", enrollment::complete_script)
+        .post_async("/admin/invitations/start", admin_invitations::start)
+        .post_async("/admin/invitations/finish", admin_invitations::finish)
+        .get_async("/admin", admin_invitations::page)
+        .get_async("/admin/admin.js", admin_invitations::script)
         .get_async("/jwks", jwks_route)
         .get_async("/userinfo", userinfo_route)
         .post_async("/userinfo", userinfo_route)

@@ -165,6 +165,30 @@ pub struct VerifiedRegistration {
     user_verified: bool,
 }
 impl VerifiedRegistration {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn public_key(&self) -> &str {
+        &self.public_key
+    }
+
+    pub fn counter(&self) -> u32 {
+        self.counter
+    }
+
+    pub fn backup_eligible(&self) -> bool {
+        self.backup_eligible
+    }
+
+    pub fn backup_state(&self) -> bool {
+        self.backup_state
+    }
+
+    pub fn user_verified(&self) -> bool {
+        self.user_verified
+    }
+
     pub fn attestation(&self) -> &AttestationEvidence {
         &self.attestation
     }

@@ -85,6 +85,11 @@ function metadata(actor, reason) {
   return { operation: randomUUID(), now: Math.floor(Date.now() / 1000), actor, reason };
 }
 
+function managedClientId(clientId) {
+  if (clientId === 'mikaki-internal-enrollment')
+    throw new Error('internal client is not managed here');
+}
+
 function audit(db, meta, clientId, action) {
   return db
     .prepare(
@@ -118,6 +123,7 @@ export async function registerClient(db, input, actor, reason) {
 }
 
 export async function addKey(db, clientId, input, actor, reason) {
+  managedClientId(clientId);
   const key = validateKey(input);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -138,6 +144,7 @@ export async function addKey(db, clientId, input, actor, reason) {
 }
 
 export async function retireKey(db, clientId, kid, actor, reason) {
+  managedClientId(clientId);
   const meta = metadata(actor, reason);
   await db.batch([
     db
@@ -157,6 +164,7 @@ export async function retireKey(db, clientId, kid, actor, reason) {
 }
 
 export async function addRedirect(db, clientId, input, actor, reason) {
+  managedClientId(clientId);
   const redirect = validateRedirect(input);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -180,6 +188,7 @@ export async function addRedirect(db, clientId, input, actor, reason) {
 }
 
 export async function retireRedirect(db, clientId, input, actor, reason) {
+  managedClientId(clientId);
   const redirect = validateRedirect(input);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -203,6 +212,7 @@ export async function retireRedirect(db, clientId, input, actor, reason) {
 }
 
 export async function disableClient(db, clientId, actor, reason) {
+  managedClientId(clientId);
   const meta = metadata(actor, reason);
   await db.batch([
     db
@@ -222,7 +232,7 @@ export async function disableClient(db, clientId, actor, reason) {
 export async function listClients(db) {
   return db
     .prepare(
-      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c ORDER BY c.client_id",
+      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c WHERE c.client_id<>'mikaki-internal-enrollment' ORDER BY c.client_id",
     )
     .all();
 }

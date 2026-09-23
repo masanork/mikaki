@@ -45,5 +45,19 @@
   "vaultOperationFailed": "The operation failed.",
   "vaultLoadFailed": "Loading failed.",
   "invalidRedirectTitle": "Invalid client URL",
-  "invalidRedirectBody": "This client's redirect URL is not registered."
+  "invalidRedirectBody": "This client's redirect URL is not registered.",
+  "adminTitle": "mikaki invitations",
+  "adminHeading": "Issue an invitation",
+  "adminIntro": "Verify with your passkey to issue a single-use invitation for a new account.",
+  "adminIssue": "Issue invitation with passkey",
+  "adminInvitation": "Invitation code",
+  "adminExpires": "Expires",
+  "adminError": "The invitation could not be issued. Please try again.",
+  "adminReady": "Share the invitation code through a secure channel.",
+  "enrollHeading": "Create an account",
+  "enrollIntro": "Enter your invitation code and register a passkey.",
+  "enrollCompleteTitle": "mikaki registration complete",
+  "enrollCompleteHeading": "Registration complete",
+  "enrollCompleteBody": "You can now sign in to mikaki with your passkey.",
+  "enrollAdminLink": "Manage invitations"
 }

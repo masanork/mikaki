@@ -4,6 +4,10 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/login.ts");
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/Login.svelte");
+    println!("cargo:rerun-if-changed=ui/Admin.svelte");
+    println!("cargo:rerun-if-changed=ui/admin.ts");
+    println!("cargo:rerun-if-changed=ui/Complete.svelte");
+    println!("cargo:rerun-if-changed=ui/complete.ts");
     println!("cargo:rerun-if-changed=ui/Vault.svelte");
     println!("cargo:rerun-if-changed=ui/locale.ts");
     println!("cargo:rerun-if-changed=ui/vault-crypto.ts");
@@ -46,7 +50,7 @@ fn main() {
         .expect("svelte-check is required; run npm ci");
     assert!(status.success(), "Worker UI Svelte check failed");
     let vite = manifest.join("../../node_modules/.bin/vite");
-    for entry in ["login", "vault"] {
+    for entry in ["login", "vault", "admin", "complete"] {
         let status = Command::new(&vite)
             .arg("build")
             .arg("--config")

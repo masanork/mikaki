@@ -45,5 +45,19 @@
   "vaultOperationFailed": "操作に失敗しました。",
   "vaultLoadFailed": "読み込みに失敗しました。",
   "invalidRedirectTitle": "接続先のURLが無効です",
-  "invalidRedirectBody": "この接続先のリダイレクトURLは登録されていません。"
+  "invalidRedirectBody": "この接続先のリダイレクトURLは登録されていません。",
+  "adminTitle": "mikaki 招待管理",
+  "adminHeading": "招待を発行",
+  "adminIntro": "Passkeyで本人確認して、一回限りの新規アカウント招待を発行します。",
+  "adminIssue": "Passkeyで招待を発行",
+  "adminInvitation": "招待コード",
+  "adminExpires": "有効期限",
+  "adminError": "招待を発行できませんでした。再試行してください。",
+  "adminReady": "招待コードを安全な経路で相手に伝えてください。",
+  "enrollHeading": "アカウントを登録",
+  "enrollIntro": "招待コードを入力し、Passkeyを登録してください。",
+  "enrollCompleteTitle": "mikaki 登録完了",
+  "enrollCompleteHeading": "登録が完了しました",
+  "enrollCompleteBody": "Passkeyでmikakiにログインできます。",
+  "enrollAdminLink": "招待管理へ"
 }

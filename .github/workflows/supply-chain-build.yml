@@ -37,10 +37,12 @@ jobs:
           node --test local/conformance/vault-attribute.test.mjs
           node --test local/conformance/vault-crypto.test.mjs
           node --test local/conformance/client-admin.test.mjs
+          node --test local/conformance/enrollment.test.mjs
       - name: Verify Worker Svelte screens in Chromium
         run: |
           npx playwright install --with-deps chromium
           node --test local/conformance/worker-ui.test.mjs
+          node --test local/conformance/enrollment-browser.test.mjs
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain
