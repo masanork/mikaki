@@ -46,6 +46,7 @@ jobs:
           npm run format:check
           npm run check:ui
           npm run check:worker-ui
+          node --test local/conformance/recipient-directory-browser.test.mjs
           npm run check:product-sources
           npm run check:i18n
       - name: Native tests and measured coverage
@@ -61,8 +62,9 @@ jobs:
           cargo fmt --manifest-path design/probes/pqc/Cargo.toml -- --check
           npx prettier --check design/probes/pqc/check.mjs design/probes/pqc/browser.mjs design/probes/pqc/fido-eval.mjs design/probes/pqc/fido-eval.html design/probes/pqc/analyze-fido.mjs design/probes/pqc/analyze-fido.test.mjs design/probes/pqc/nist-acvp-fixtures.json design/probes/pqc/hpke-pq-draft05-vector.json
           node --test design/probes/pqc/analyze-fido.test.mjs
-          npx prettier --check design/probes/recipient-key-admin.test.mjs
+          npx prettier --check design/probes/recipient-key-admin.test.mjs design/probes/recipient-secret-admin.test.mjs
           node --test design/probes/recipient-key-admin.test.mjs
+          node --test design/probes/recipient-secret-admin.test.mjs
           cargo test --locked --manifest-path design/probes/pqc/Cargo.toml
           cargo clippy --locked --manifest-path design/probes/pqc/Cargo.toml --all-targets -- -D warnings
           wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked

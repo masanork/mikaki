@@ -12,7 +12,7 @@ ML-KEM establishes a shared secret for key delivery; it is not a passkey signatu
 
 ## Sequence before product use
 
-1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds private seeds. The directory, verification route, service binding, and lifecycle CLI exist. Seed provisioning, browser continuity checks, and operational activation remain.
+1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds private seeds. The directory, verification route, service binding, lifecycle CLI, and browser validator exist. Seed provisioning, calling the validator from the future envelope flow, and operational activation remain.
 2. Only when the owner unlocks an attribute, create an additional recipient envelope for that revision's data key. Bind origin, attribute, revision, service, and key ID in HPKE info/AAD. Keep the owner envelope. Publish the envelope and grant in the same version; disable system sharing for an update whose key delivery fails.
 3. Test revocation, rotation, attribute updates, wrong key/revision/attribute substitution, and key-service failures across Worker and browser before connecting UserInfo. Owner-only Vault use must not require a PQC key or ML-DSA-capable FIDO device.
 

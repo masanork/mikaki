@@ -26,6 +26,7 @@
     "complete.ts",
     "locale.ts",
     "vault-crypto.ts",
+    "recipient-directory.ts",
     "*.svelte"
   ]
 }

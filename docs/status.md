@@ -1,6 +1,6 @@
 # Project status
 
-This page distinguishes deployed behavior, local verification, and planned work. It reflects the evidence recorded on 2026-09-23; later changes need their own verification.
+This page distinguishes deployed behavior, local verification, and planned work. It reflects evidence recorded through 2026-09-24; later changes need their own verification.
 
 | Capability | Evidence | Limit |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ This page distinguishes deployed behavior, local verification, and planned work.
 | Normal-profile Worker | `https://mikaki.tossa.app` serves health, Discovery, JWKS, and deployed account, client, session, and Vault routes. | No registered production RP or account, authenticated Vault write, or production PRF unlock has been demonstrated. See [deployment](cloudflare-deployment.md). |
 | Runtime policy | D1 contains an active versioned policy; selected Worker projections and a change CLI exist. | Not every example TOML field has a complete product loader or enforcement path. See [runtime configuration](runtime-configuration.md). |
 | Vault | An owner-only R2 bucket, D1 migration, cleanup trigger, and page are deployed. | Depends on an existing SSO session and PRF-capable passkey; no production write/unlock evidence yet. |
-| UserInfo recipient keys | A local D1 key directory, claim Worker verification route, staging/disable CLI, and audit checks are implemented or under test. | The OP service binding, Secrets Store provisioning, activation/rotation, grants, and claim sharing are not enabled. See the [key lifecycle contract](vault-recipient-key-lifecycle.md). |
+| UserInfo recipient keys | Migration 0007, the claim Worker, OP service binding, and owner-authenticated directory are deployed. The lifecycle CLI and browser-side directory validator pass local checks. | No secret seed has been provisioned or key activated; the browser validator is not connected to an envelope flow. Grants and claim sharing are unavailable. See the [key lifecycle contract](vault-recipient-key-lifecycle.md). |
 | Post-quantum cryptography | Isolated ML-KEM/ML-DSA and Vault HPKE probes exercised native, Wasm, browser, known-answer, and interoperability paths under recorded conditions. | No post-quantum algorithm is enabled for product passkeys, OIDC signing, or Vault recipients. See the [rollout plan](pqc-rollout.md). |
 | Supply-chain attestations | CI builds and attests a Worker archive, Rust SBOM, and source-based CBOM. | The currently deployed Worker was uploaded from a developer machine; CI attestations do not identify its running bytes. See [supply-chain evidence](supply-chain.md). |
 
