@@ -2,8 +2,6 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde::Deserialize;
 
-const MAX_ASSERTION_BYTES: usize = 16_384;
-
 /// A public key snapshot loaded from trusted client registration storage.
 /// Do not build this from the assertion itself. Its revision and key id must
 /// be rechecked by the final D1 operation.
@@ -122,11 +120,13 @@ impl ClientAssertionKey {
         expected_audience: &str,
         now: u64,
         policy: ClientAssertionPolicy,
+        max_assertion_bytes: usize,
     ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
         if !self.active
             || self.client_id.is_empty()
             || self.key_id.is_empty()
-            || compact.len() > MAX_ASSERTION_BYTES
+            || max_assertion_bytes == 0
+            || compact.len() > max_assertion_bytes
             || expected_audience.is_empty()
         {
             return Err(InvalidClientAssertion);
@@ -195,8 +195,11 @@ impl ClientAssertionKey {
 /// Read `kid` only for a bounded registration lookup. This does not establish
 /// client identity or validate the assertion; callers must still verify the
 /// complete JWS with the matching registered key.
-pub fn client_assertion_key_id(compact: &str) -> Result<String, InvalidClientAssertion> {
-    if compact.len() > MAX_ASSERTION_BYTES {
+pub fn client_assertion_key_id(
+    compact: &str,
+    max_assertion_bytes: usize,
+) -> Result<String, InvalidClientAssertion> {
+    if max_assertion_bytes == 0 || compact.len() > max_assertion_bytes {
         return Err(InvalidClientAssertion);
     }
     let mut parts = compact.split('.');

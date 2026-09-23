@@ -98,14 +98,18 @@ impl AuthorizationCodeExchange {
 }
 
 impl TokenEndpointInput {
-    pub fn validate(self) -> Result<ValidatedTokenEndpointInput, InvalidTokenEndpointInput> {
+    pub fn validate(
+        self,
+        max_assertion_bytes: usize,
+    ) -> Result<ValidatedTokenEndpointInput, InvalidTokenEndpointInput> {
         if self.grant_type != "authorization_code"
             || self.client_assertion_type != PRIVATE_KEY_JWT_ASSERTION_TYPE
             || self.client_id.is_empty()
             || self.client_id.len() > 128
             || self.client_id.bytes().any(|byte| byte.is_ascii_control())
             || self.client_assertion.is_empty()
-            || self.client_assertion.len() > 16_384
+            || max_assertion_bytes == 0
+            || self.client_assertion.len() > max_assertion_bytes
         {
             return Err(InvalidTokenEndpointInput);
         }

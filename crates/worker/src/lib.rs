@@ -4,6 +4,9 @@
 use serde::Deserialize;
 
 #[cfg(target_arch = "wasm32")]
+use sha2::{Digest, Sha256};
+
+#[cfg(target_arch = "wasm32")]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 #[cfg(target_arch = "wasm32")]
@@ -26,17 +29,117 @@ struct ClientAssertionKeyRow {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompiledWorkerPolicy {
+    schema_version: u32,
+    policy_revision: String,
+    projection_revision: String,
+    assertion_ttl_seconds: u64,
+    clock_skew_seconds: u64,
+    jwt_bytes: u64,
+    form_body_bytes: u64,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct WorkerRuntimePolicy {
+    assertion: sakimori_oidc::ClientAssertionPolicy,
+    jwt_bytes: usize,
+    form_body_bytes: usize,
+    policy_revision: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl WorkerRuntimePolicy {
+    pub fn from_env(env: &worker::Env) -> worker::Result<Self> {
+        let json = env
+            .var("SAKIMORI_WORKER_POLICY")
+            .map_err(|_| worker::Error::RustError("runtime policy is unavailable".into()))?
+            .to_string();
+        Self::from_compiled_json(&json)
+    }
+
+    pub fn from_compiled_json(json: &str) -> worker::Result<Self> {
+        let compiled: CompiledWorkerPolicy = serde_json::from_str(json)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        if compiled.schema_version != 1
+            || compiled.policy_revision.len() != 64
+            || compiled.projection_revision.len() != 64
+            || !compiled
+                .policy_revision
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || compiled.jwt_bytes == 0
+            || compiled.jwt_bytes > 1_048_576
+            || compiled.form_body_bytes == 0
+            || compiled.form_body_bytes > 1_048_576
+            || compiled.jwt_bytes.saturating_add(4096) > compiled.form_body_bytes
+        {
+            return Err(worker::Error::RustError("invalid runtime policy".into()));
+        }
+        let canonical = serde_json::json!({
+            "assertion_ttl_seconds": compiled.assertion_ttl_seconds,
+            "clock_skew_seconds": compiled.clock_skew_seconds,
+            "form_body_bytes": compiled.form_body_bytes,
+            "jwt_bytes": compiled.jwt_bytes,
+            "policy_revision": compiled.policy_revision,
+            "schema_version": compiled.schema_version,
+        });
+        let canonical = serde_json::to_vec(&canonical)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let digest = Sha256::digest(canonical);
+        let actual_projection_revision: String =
+            digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        if actual_projection_revision != compiled.projection_revision {
+            return Err(worker::Error::RustError("invalid runtime policy".into()));
+        }
+        let valid_revision = |revision: &str| {
+            revision.len() == 64
+                && revision
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        };
+        if !valid_revision(&compiled.policy_revision)
+            || !valid_revision(&compiled.projection_revision)
+            || compiled.assertion_ttl_seconds > i32::MAX as u64
+            || compiled.clock_skew_seconds > i32::MAX as u64
+        {
+            return Err(worker::Error::RustError("invalid runtime policy".into()));
+        }
+        let jwt_bytes = usize::try_from(compiled.jwt_bytes)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let form_body_bytes = usize::try_from(compiled.form_body_bytes)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let assertion = sakimori_oidc::ClientAssertionPolicy::from_seconds(
+            compiled.assertion_ttl_seconds,
+            compiled.clock_skew_seconds,
+        )
+        .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        Ok(Self {
+            assertion,
+            jwt_bytes,
+            form_body_bytes,
+            policy_revision: compiled.policy_revision,
+        })
+    }
+
+    pub fn policy_revision(&self) -> &str {
+        &self.policy_revision
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 pub fn parse_token_endpoint_form(
     body: &str,
-    max_body_bytes: usize,
+    policy: &WorkerRuntimePolicy,
 ) -> worker::Result<sakimori_oidc::ValidatedTokenEndpointInput> {
-    if body.len() > max_body_bytes {
+    if body.len() > policy.form_body_bytes {
         return Err(worker::Error::RustError("invalid_request".into()));
     }
     let input: sakimori_oidc::TokenEndpointInput = serde_urlencoded::from_str(body)
         .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
     input
-        .validate()
+        .validate(policy.jwt_bytes)
         .map_err(|_| worker::Error::RustError("invalid_request".into()))
 }
 
@@ -127,7 +230,7 @@ pub async fn verify_and_accept_client_assertion(
     audience: &str,
     endpoint: &str,
     now: u64,
-    policy: sakimori_oidc::ClientAssertionPolicy,
+    policy: &WorkerRuntimePolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
 ) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
     use wasm_bindgen::JsValue;
@@ -135,7 +238,7 @@ pub async fn verify_and_accept_client_assertion(
     if client_id.is_empty() || client_id.len() > 128 {
         return Err(worker::Error::RustError("invalid_client".into()));
     }
-    let kid = sakimori_oidc::client_assertion_key_id(compact)
+    let kid = sakimori_oidc::client_assertion_key_id(compact, policy.jwt_bytes)
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     let values = [JsValue::from_str(client_id), JsValue::from_str(&kid)];
     let row = db
@@ -167,7 +270,7 @@ pub async fn verify_and_accept_client_assertion(
         row.public_key_sec1,
     );
     let assertion = key
-        .verify_private_key_jwt(compact, audience, now, policy)
+        .verify_private_key_jwt(compact, audience, now, policy.assertion, policy.jwt_bytes)
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     accept_client_assertion(db, &assertion, endpoint, random).await?;
     Ok(assertion)
@@ -179,7 +282,7 @@ pub async fn authenticate_token_request(
     input: &sakimori_oidc::ValidatedTokenEndpointInput,
     token_endpoint: &str,
     now: u64,
-    policy: sakimori_oidc::ClientAssertionPolicy,
+    policy: &WorkerRuntimePolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
 ) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
     verify_and_accept_client_assertion(

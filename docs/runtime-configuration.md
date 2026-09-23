@@ -2,7 +2,7 @@
 
 2026-09-22 / Revision 1（設定外部化の方針採用）
 
-セッション関連の期間・回数を型付き設定に集約し、コードに数値を散在させない。設計書の採用済み数値は初期設定値とし、運用変更を可能にする。設定外部化の決定は[ADR 0004](adr/0004-runtime-policy-configuration.md)に記録する。現時点では仕様と設定見本のみで、設定を読み込む実装やCLIは存在しない。
+セッション関連の期間・回数を型付き設定に集約し、コードに数値を散在させない。設計書の採用済み数値は初期設定値とし、運用変更を可能にする。設定外部化の決定は[ADR 0004](adr/0004-runtime-policy-configuration.md)に記録する。全runtime policyを読む製品loader/CLIはまだないが、Python設計検証器とWorker用の部分projection loaderを実装している。
 
 ## 設定形式と入力元
 
@@ -11,6 +11,8 @@
 起動時にファイルシステムを利用できない配置では、配備処理が同じTOMLを検証し、実行環境の設定入力へ渡す。実行時の具体的な受け渡し方法はアダプターの実装時に決める。サーバーcoreはファイルや環境変数を直接読まず、検証済み設定を受け取る。
 
 同一配置につき有効な設定の入力元は一つに限定する。環境変数ごとの上書き、複数ファイルの暗黙merge、ブラウザ要求による上書きを初期には設けない。秘密鍵・client_secretは秘密管理から別途供給する。issuer・RP ID・origin・redirect URI等の配備/識別設定も、この期間・回数の設定とは区別する。
+
+現時点では全runtime policyのloader/CLIは未実装。`sakimori-worker`はOIDC token endpointに必要なassertion TTL、clock skew、JWT/form byte上限だけを、schema versionと全policy由来revision・projection自身のhashを含むstrict JSON projectionとして読む型を持つ。`npm run build:policy`は単一TOMLを検証した後、ローカル用`local/generated/worker-policy.json`も生成する。Worker環境にはそのprojectionを単一の`SAKIMORI_WORKER_POLICY`値として設定し、他の値と混ぜない。HTTP endpointはまだこの値を読み込んでいない。
 
 `schema_version`を必須とし、未知の版・キー・重複・型不一致・必須値の欠落は拒否する。見本の有効項目はすべて明示する方式を採り、省略時にコード内の別の既定値へ戻さない。導入済みの段階で必要な設定だけを読み込む。P0はVault処理を実装するためにP1の設定を要求しない。
 
