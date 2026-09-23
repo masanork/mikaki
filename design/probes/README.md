@@ -20,6 +20,7 @@ cargo test --locked --manifest-path design/probes/es256/Cargo.toml
 cargo build --locked --manifest-path design/probes/es256/Cargo.toml --bin fixture
 wasm-pack build design/probes/es256 --target nodejs --release --out-dir pkg -- --locked
 npm run test:crypto --prefix design/probes
+npm run test:crypto:workers --prefix design/probes
 npm run test:d1 --prefix design/probes
 cargo clippy --locked --manifest-path design/probes/es256/Cargo.toml --all-targets -- -D warnings
 cargo audit --file design/probes/es256/Cargo.lock
@@ -71,7 +72,7 @@ Wasmのrelease生成物は637,956 byte（gzip 253,443 byte）。2026-09-23のロ
 
 別の[`jose-custom`](jose-custom/) crateは組込みbackend featureを無効にし、ES256・RS256の検証providerだけを実装した。Native/Wasmとも独立jose署名を受理し、改変・alg・失効鍵・issuer/audience/expiry不一致・重複claimを拒否した。RS256 JWKは`DecodingKey`内のn/eがcustom providerへ公開されないため、probeでn/eからPKCS#1 DERを作る前処理を置いた。Wasmは307,963 byte（gzip 120,871 byte）で、組込みRustCrypto版よりraw約52%小さい。10,000回のNative/Wasm検証はES256が約216/681 µs、RS256が約228/417 µs。RSA JWKからDERへの変換も毎回含むため、鍵をcacheする実装の予測には使わない。`cargo audit`は両lockfileとも指摘なし。
 
-非同期署名境界も追加確認した。Node WebCryptoの`subtle.sign`でJWS signing inputへ署名し、結果を公開`jsonwebtoken::jws::Jws`構造体へ格納して、独自providerの検証をNative/Wasmで通した。改変したpayloadは拒否した。したがってjsonwebtokenの同期`JwtSigner`は使わず、アプリ側でprotected header/payloadのbase64url化とJWS組立てを行えば、署名自体を非同期ポートの外側に保ったまま同crateの検証APIを利用できる。ただし今回の署名元はNode WebCryptoであり、Cloudflare WorkersのKMS/WebCrypto連携・鍵形式・エラー処理・署名API設計は未検証。製品コードに組み込む前にその配備先で確認する。
+非同期署名境界も追加確認した。Node WebCryptoの`subtle.sign`でJWS signing inputへ署名し、結果を公開`jsonwebtoken::jws::Jws`構造体へ格納して、独自providerの検証をNative/Wasmで通した。さらにWrangler 4.136.2が含むworkerd 1.20260921.1上で一時ES256鍵を生成し、Workerの非同期`crypto.subtle.sign`が出したcompact JWSをNode上のRust/Wasm検証器で受理した。payload改変はいずれも拒否した。したがって同期`JwtSigner`を使わず、アプリ側でprotected header/payloadのbase64url化とJWS組立てを行えば非同期WebCrypto署名と検証APIをつなげられる。これはローカルworkerdと一時鍵の結果で、Workers KMS binding連携・永続鍵形式・運用時エラー処理は未検証。試験Workerは`async-signer-worker.mjs`、実行テストは`jose-workers.mjs`。
 
 ## 次の実装
 
