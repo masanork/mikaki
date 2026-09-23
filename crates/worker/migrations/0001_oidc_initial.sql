@@ -147,6 +147,39 @@ CREATE TABLE atomic_guard (
   passed INTEGER NOT NULL CHECK(passed = 1)
 ) STRICT;
 
+-- No policy is active after migration. A complete version must be staged and
+-- activated before the authorization and token endpoints can issue anything.
+CREATE TABLE runtime_policy_version (
+  projection_revision TEXT PRIMARY KEY NOT NULL CHECK(length(projection_revision) = 64),
+  policy_revision TEXT NOT NULL CHECK(length(policy_revision) = 64),
+  projection_json TEXT NOT NULL CHECK(length(projection_json) BETWEEN 1 AND 16384),
+  created_at INTEGER NOT NULL CHECK(created_at > 0)
+) STRICT;
+
+CREATE TABLE runtime_policy_active (
+  id INTEGER PRIMARY KEY NOT NULL CHECK(id = 1),
+  projection_revision TEXT NOT NULL REFERENCES runtime_policy_version(projection_revision),
+  generation INTEGER NOT NULL CHECK(generation > 0)
+) STRICT;
+
+CREATE TABLE runtime_policy_audit (
+  generation INTEGER PRIMARY KEY NOT NULL CHECK(generation > 0),
+  previous_revision TEXT,
+  projection_revision TEXT NOT NULL REFERENCES runtime_policy_version(projection_revision),
+  changed_at INTEGER NOT NULL CHECK(changed_at > 0),
+  actor TEXT NOT NULL CHECK(length(actor) BETWEEN 1 AND 128),
+  reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 512)
+) STRICT;
+
+CREATE TRIGGER runtime_policy_version_no_update BEFORE UPDATE ON runtime_policy_version
+BEGIN SELECT RAISE(ABORT, 'runtime policy versions are immutable'); END;
+CREATE TRIGGER runtime_policy_version_no_delete BEFORE DELETE ON runtime_policy_version
+BEGIN SELECT RAISE(ABORT, 'runtime policy versions are immutable'); END;
+CREATE TRIGGER runtime_policy_audit_no_update BEFORE UPDATE ON runtime_policy_audit
+BEGIN SELECT RAISE(ABORT, 'runtime policy audit is immutable'); END;
+CREATE TRIGGER runtime_policy_audit_no_delete BEFORE DELETE ON runtime_policy_audit
+BEGIN SELECT RAISE(ABORT, 'runtime policy audit is immutable'); END;
+
 CREATE INDEX client_session_sso ON client_session(sso_id, client_id, sid);
 CREATE INDEX sso_account_epoch ON sso_session(account_id, epoch);
 CREATE INDEX assertion_gc ON assertion_use(retain_until);

@@ -359,6 +359,14 @@ struct CompiledWorkerPolicy {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct ActiveWorkerPolicyRow {
+    projection_revision: String,
+    policy_revision: String,
+    projection_json: String,
+}
+
+#[cfg(target_arch = "wasm32")]
 pub struct WorkerRuntimePolicy {
     assertion: mikaki_oidc::ClientAssertionPolicy,
     authorization_code_ttl_seconds: u64,
@@ -372,16 +380,28 @@ pub struct WorkerRuntimePolicy {
     id_token_ttl_seconds: u64,
     response_bytes: usize,
     policy_revision: String,
+    projection_revision: String,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl WorkerRuntimePolicy {
-    pub fn from_env(env: &worker::Env) -> worker::Result<Self> {
-        let json = env
-            .var("MIKAKI_WORKER_POLICY")
-            .map_err(|_| worker::Error::RustError("runtime policy is unavailable".into()))?
-            .to_string();
-        Self::from_compiled_json(&json)
+    pub async fn from_db(db: &worker::d1::D1Database) -> worker::Result<Self> {
+        let row = db
+            .prepare(
+                "SELECT v.projection_revision,v.policy_revision,v.projection_json \
+                 FROM runtime_policy_active a JOIN runtime_policy_version v \
+                   ON v.projection_revision=a.projection_revision WHERE a.id=1",
+            )
+            .first::<ActiveWorkerPolicyRow>(None)
+            .await?
+            .ok_or_else(|| worker::Error::RustError("runtime policy is unavailable".into()))?;
+        let policy = Self::from_compiled_json(&row.projection_json)?;
+        if policy.policy_revision != row.policy_revision
+            || policy.projection_revision != row.projection_revision
+        {
+            return Err(worker::Error::RustError("invalid runtime policy".into()));
+        }
+        Ok(policy)
     }
 
     pub fn from_compiled_json(json: &str) -> worker::Result<Self> {
@@ -487,6 +507,7 @@ impl WorkerRuntimePolicy {
             id_token_ttl_seconds: compiled.id_token_ttl_seconds,
             response_bytes,
             policy_revision: compiled.policy_revision,
+            projection_revision: compiled.projection_revision,
         })
     }
 
@@ -1092,7 +1113,8 @@ async fn issue_token_response(
     request: &mut worker::Request,
     env: &worker::Env,
 ) -> worker::Result<TokenEndpointSuccess> {
-    let policy = WorkerRuntimePolicy::from_env(env)?;
+    let db = env.d1("DB")?;
+    let policy = WorkerRuntimePolicy::from_db(&db).await?;
     let issuer = env
         .var("MIKAKI_ISSUER")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
@@ -1122,7 +1144,6 @@ async fn issue_token_response(
     }
     let now = (now_ms / 1000.0).floor() as u64;
     let mut random = WorkersCryptoRandom;
-    let db = env.d1("DB")?;
     let authenticated =
         authenticate_token_request(&db, input, &token_endpoint, now, &policy, &mut random).await?;
     let private_jwk = env
@@ -1256,7 +1277,8 @@ async fn authorize_route(
 ) -> worker::Result<worker::Response> {
     use wasm_bindgen::JsValue;
 
-    let policy = WorkerRuntimePolicy::from_env(&context.env)?;
+    let db = context.env.d1("DB")?;
+    let policy = WorkerRuntimePolicy::from_db(&db).await?;
     let request_url = request.url()?;
     let Some(parsed) = parse_authorization_parameters(
         &request_url,
@@ -1316,7 +1338,6 @@ async fn authorize_route(
         return Err(worker::Error::RustError("invalid_request".into()));
     }
 
-    let db = context.env.d1("DB")?;
     let registration = db
         .prepare(
             "SELECT c.revision AS client_revision,c.sector_identifier \

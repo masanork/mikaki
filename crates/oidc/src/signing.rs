@@ -258,6 +258,7 @@ impl P256TokenSigner {
             && point.y().is_some_and(|actual| actual.as_slice() == y)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn sign_id_token(
         &self,
         issuer: &str,

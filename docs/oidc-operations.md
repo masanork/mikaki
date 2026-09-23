@@ -2,7 +2,7 @@
 
 2026-09-22 / 初期実装向け設計
 
-設定の正本となる見本は[runtime-policy.example.toml](../config/runtime-policy.example.toml)。従来のsession・flow・keyの見本を明示的に統合し、追加値を揃えた。運用値は実測後に調整する。秘密・配備ドメイン・client登録・暗号プロファイルは別の型付き設定で管理する。
+初期投入と編集の見本は[runtime-policy.example.toml](../config/runtime-policy.example.toml)。実行時の有効版は[運用設定契約](runtime-configuration.md)に従ってD1で管理する。従来のsession・flow・keyの見本を明示的に統合し、追加値を揃えた。運用値は実測後に調整する。秘密・配備ドメイン・client登録・暗号プロファイルは別の型付き設定で管理する。
 
 ## 入力と応答の境界
 

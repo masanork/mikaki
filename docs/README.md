@@ -1,6 +1,6 @@
 # 設計文書の案内・決定状態
 
-2026-09-23 / 名称変更を含む文書案内。機能や新しい設計の採用を意味しない。
+2026-09-23 / 文書案内。機能や新しい設計の採用を意味しない。
 
 ## 文書の役割
 
@@ -23,7 +23,7 @@ ADRは「何を、なぜ選んだか」という長期的な決定を記録す�
 | [0007](adr/0007-packed-self-attestation.md)           | none既定を維持しES256 packed selfの検証を追加                 | crates/webauthn、local/conformance                        |
 | [0008](adr/0008-webauthn-conformance.md)              | Conformance全通過を完成条件とし、製品既定と検証能力を分離     | crates/webauthn、local/conformance                        |
 | [0009](adr/0009-rust-oidc-and-worker-stack.md)        | OIDC状態機械・Worker adapterはRust、ブラウザ境界はTypeScript 7 | implementation-spec、oidc-implementation-readiness       |
-| [0010](adr/0010-project-name-mikaki.md)                | プロジェクト名を御垣（MIKAKI）に変更し、コード識別子も統一     | README、crate、Worker設定                                 |
+| [0011](adr/0011-d1-runtime-policy.md)                 | 運用設定の有効版をD1で管理し、検証後に原子的に切り替える      | runtime-configuration、Worker設定loader                   |
 
 0004は0003の数値を変更可能な既定値として補足する。0002は0001当時に保留していたOIDC採用を確定する。旧ADRの理由は残し、後続決定への参照で関係を示す。
 
@@ -60,7 +60,7 @@ ADRは仕様書ごとに一つ作る必要はない。次に追加すべき対�
 | [personal-vault](personal-vault.md)、[federated-messaging](federated-messaging.md) | 合意した将来方向と候補。G2以降の詳細をP0へ持ち込まない                                          |
 | [storage-api](storage-api.md)                                                        | 一般ファイルストレージの設計案。Vault同期とは別機能で、API・S3互換backend・AuthZEN profileは未決 |
 
-設定の正本は[runtime-policy.example.toml](../config/runtime-policy.example.toml)。旧3断片は説明用であり、mergeして使わない。SQLとPythonは設計検証用で、本番のmigration/設定loaderではない。
+運用設定の実行時の正本は[設定契約](runtime-configuration.md)で定めるD1有効版とし、[runtime-policy.example.toml](../config/runtime-policy.example.toml)は初期投入・編集の見本とする。旧3断片は説明用であり、mergeして使わない。SQLとPythonは設計検証用で、本番のmigration/設定loaderではない。
 
 ## 矛盾の扱い
 

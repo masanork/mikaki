@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import init, * as wasm from '../../crates/browser-wasm/pkg/mikaki_browser_wasm.js';
 const root = new URL('../../', import.meta.url);
 const path = (p) => fileURLToPath(new URL(p, root));
-await init({ module_or_path: readFileSync(path('crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm')) });
+await init({
+  module_or_path: readFileSync(path('crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm')),
+});
 const cases = JSON.parse(execFileSync(path('target/release/examples/benchmark'), ['--export']));
 const measure = (name, operation, iterations = 100) => {
   for (let i = 0; i < 5; i++) operation();

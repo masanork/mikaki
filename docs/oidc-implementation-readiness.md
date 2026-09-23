@@ -12,7 +12,7 @@
 | ID | 通常IDはUUIDv4、小文字36文字。初期D1ではTEXTとして保存。内部v7は必要性を測定するまで導入しない |
 | sub | account/sectorごとの永続UUIDv4。接続解除・鍵更新で維持 |
 | ログイン | 静的登録のサーバー側client、Code＋PKCE S256、state必須・nonce任意 |
-| client認証 | private_key_jwt、client/環境/用途別鍵、assertion一回限り |
+| client認証 | 通常配備はprivate_key_jwt、client/環境/用途別鍵、assertion一回限り。隔離conformance配備のみ登録済み試験clientへclient_secret_basic/postを追加 |
 | 署名 | 通常はJOSE ES256。client登録にも明記。RS256は規格適合・明示的な互換プロファイルで実装対象 |
 | EdDSA/PQC | 初期既定にはしない。鍵・方式の境界は追加可能にし、標準と実装の対応を確認して導入 |
 | SHA-1 | 必要な互換用途の実装を許容。通常署名では有効化せず、用途別に許可 |
@@ -20,7 +20,7 @@
 | UserInfo | subのみ、GET/POST＋Bearer、通常ログインで呼出し不要 |
 | セッション | SSO最大30日、アプリ未操作7日かつ親期限内、失効確認lease最大5分 |
 | ログアウト | RP-Initiated＋Back-Channel、失効と永続outboxを同時確定 |
-| 設定 | 単一の[runtime-policy.example.toml](../config/runtime-policy.example.toml)から型付き入力を作る。秘密・配備情報は別 |
+| 設定 | [runtime-policy.example.toml](../config/runtime-policy.example.toml)を初期見本とし、有効版はD1で管理する。秘密・配備境界は別 |
 | ストア | D1一つでmikakiの認証/OIDCを確定。アプリDBとの分散transactionなし |
 
 詳細は[UX](oidc-login.md)、[ログイン取引](oidc-login-flow.md)、[token/UserInfo](oidc-access-token-and-userinfo.md)、[ストア](oidc-store-contract.md)、[運用制限・復旧](oidc-operations.md)、[暗号移行](crypto-agility.md)に従う。
@@ -29,7 +29,7 @@
 
 G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`mikaki-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
 
-Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtによるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。本番migrationは未配備であり、issuer変数・秘密鍵・policy projectionの配備設定は必要。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
+Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtによるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。本番migrationは未配備であり、issuer変数・秘密鍵・D1 policy版の投入が必要。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
 
 時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
@@ -53,7 +53,7 @@ OAuthのエラーコードとHTTP statusは対象規格の規則に従う。サ�
 
 /session/checkのactive=true応答はsub、auth_time、expires_at、lease_ttl（秒）、app_idle_timeout（秒）、policy_revisionを返す。app_idle_timeoutは新規アプリセッションに適用し、既存値を延長しない。active=falseには他の主体情報を付けない。issuer、client、sidは照会先と認証済み要求から結び付ける。
 
-Discoveryはresponse_types_supported=[code]、grant_types_supported=[authorization_code]、subject_types_supported=[pairwise]、scopes_supported=[openid]、code_challenge_methods_supported=[S256]、token_endpoint_auth_methods_supported=[private_key_jwt]を公開する。署名方式は実装・相互運用試験に通ったES256とRS256を掲載し、まだ使えない方式を予告掲載しない。backchannel_logout_supportedとbackchannel_logout_session_supportedをtrueにするのは実装後とする。
+Discoveryはresponse_types_supported=[code]、grant_types_supported=[authorization_code]、subject_types_supported=[pairwise]、scopes_supported=[openid]、code_challenge_methods_supported=[S256]を公開する。token_endpoint_auth_methods_supportedは実配備で利用可能な方式に一致させ、通常配備は[private_key_jwt]、隔離conformance配備だけに有効化したsecret方式を追加する。署名方式は実装・相互運用試験に通ったES256とRS256を掲載し、まだ使えない方式を予告掲載しない。backchannel_logout_supportedとbackchannel_logout_session_supportedをtrueにするのは実装後とする。
 
 ID Tokenはiss、sub、aud、exp、iat、auth_time、sidを発行し、nonceは認可要求に含まれた場合に限り発行する。通常は単一aud。acr/amrは検証済みの意味と値の体系を決めずに推測で付けない。claims_supportedは実際のID Token/UserInfoのclaimを記載する。独自のsession APIをUserInfo claimとして宣伝しない。
 
@@ -114,7 +114,7 @@ python3 scripts/check_design.py
 
 2026-09-23時点で、段階5のうち単一RP向けログアウトoutboxのlease・再試行・期限・scheduled復旧・集計警告を[ローカル実装](../local/README.md#ログアウト通知の配送2026-09-23)で検証した。期限切れ認証取引・再使用防止記録・RPセッションに加え、OPのSSO配下と完了した単一SSO通知履歴のGC、標準入力からの運用者再配送と原子的な監査記録、アカウント全セッション失効と旧epochへの通知展開もローカルD1で検証済み。本番migration、管理操作、アカウント停止・監査の外部保管、外部監視連携と復旧訓練は残り、段階5全体の完了ではない。
 
-conformanceの最初の目標は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。OIDF試験で必要な互換機能を明示して実装し、RS256が使えることだけで全面適合とせず、試験用の例外を本番既定へ持ち込まない。署名方式以外のprompt・claim・エラー・Discovery等も確認する。
+conformanceの最初の目標候補は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。通常環境のclient認証は`private_key_jwt`既定を維持し、Basic OPの手動登録で求められる`client_secret_basic`・`client_secret_post`は隔離したconformance配備と登録済み試験clientに限って追加する。配備ごとにissuer・D1・鍵・テストaccountを分離し、requestからprofileを切り替えられないようにする。実際のplanでPKCEの有無を確認し、必要な互換条件だけを試験client単位で定義する。RS256が使えることだけで全面適合とせず、prompt・claim・エラー・Discovery等も確認する。
 
 受入試験には、(1)既存UXの画面数、(2)code/state/nonce/PKCE/aud/iss/alg、(3)assertion再使用と鍵停止、(4)親SSO・grant・credential失効、(5)通知/確認/callbackの全順序、(6)新旧設定/鍵の混在とrollback、(7)body/JSON/パラメーターの境界・fuzz、(8)負荷時の容量とrate制御、(9)秘密がログ/ブラウザ保存へ出ないこと、(10)PQC向けの大きな公開鍵/署名を想定した制限変更を含める。
 
