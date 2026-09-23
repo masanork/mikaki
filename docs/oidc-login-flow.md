@@ -2,7 +2,7 @@
 
 2026-09-22 / Draft 1（レビュー用）
 
-[ログインUX](oidc-login.md)と[セッション契約](session-lifecycle.md)を満たす初期案。以下のクライアント認証方式、HTTPパス、新しい設定値は提案であり、実装済みを意味しない。
+[ログインUX](oidc-login.md)と[セッション契約](session-lifecycle.md)を満たす初期案。Rust Workerは既存SSOと既存app connectionを使った`GET /authorize` code発行を実装したが、Passkey login UI・初回同意・connection作成は未実装。Discovery/token/UserInfo等の実装範囲は[実装基準](oidc-implementation-readiness.md)に記録する。以下のフロー全体への適合やconformance通過を意味しない。
 
 ## クライアント認証
 

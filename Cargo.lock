@@ -1069,6 +1069,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "sha2",
+ "url",
  "wasm-bindgen",
  "web-sys",
  "worker",

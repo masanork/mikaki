@@ -13,6 +13,12 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use wasm_bindgen::JsCast;
 
 #[cfg(target_arch = "wasm32")]
+use std::collections::{HashMap, HashSet};
+
+#[cfg(target_arch = "wasm32")]
+use sakimori_oidc::CryptographicRandom;
+
+#[cfg(target_arch = "wasm32")]
 pub struct WorkersCryptoRandom;
 
 /// Token request whose assertion replay reservation is tied to this request.
@@ -74,6 +80,24 @@ struct UserInfoRow {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct AuthorizationContextRow {
+    client_revision: i64,
+    sector_identifier: String,
+    sso_id: String,
+    account_id: String,
+    parent_expires_at: i64,
+    auth_time: i64,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct ClientRegistrationRow {
+    client_revision: i64,
+    sector_identifier: String,
+}
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct JwksResponse {
     keys: Vec<serde_json::Value>,
@@ -83,6 +107,30 @@ struct JwksResponse {
 #[derive(Serialize)]
 struct UserInfoResponse {
     sub: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct DiscoveryResponse {
+    issuer: String,
+    authorization_endpoint: String,
+    token_endpoint: String,
+    jwks_uri: String,
+    userinfo_endpoint: String,
+    response_types_supported: [&'static str; 1],
+    response_modes_supported: [&'static str; 1],
+    grant_types_supported: [&'static str; 1],
+    subject_types_supported: [&'static str; 1],
+    id_token_signing_alg_values_supported: [&'static str; 1],
+    scopes_supported: [&'static str; 1],
+    claims_supported: [&'static str; 8],
+    token_endpoint_auth_methods_supported: [&'static str; 1],
+    token_endpoint_auth_signing_alg_values_supported: [&'static str; 1],
+    code_challenge_methods_supported: [&'static str; 1],
+    authorization_response_iss_parameter_supported: bool,
+    request_parameter_supported: bool,
+    request_uri_parameter_supported: bool,
+    claims_parameter_supported: bool,
 }
 
 /// Current authorization and session facts needed to create the signed token
@@ -162,6 +210,11 @@ struct CompiledWorkerPolicy {
     projection_revision: String,
     assertion_ttl_seconds: u64,
     clock_skew_seconds: u64,
+    authorization_code_ttl_seconds: u64,
+    request_target_bytes: u64,
+    parameter_count: u64,
+    state_bytes: u64,
+    nonce_bytes: u64,
     access_token_ttl_seconds: u64,
     id_token_ttl_seconds: u64,
     response_bytes: u64,
@@ -172,6 +225,11 @@ struct CompiledWorkerPolicy {
 #[cfg(target_arch = "wasm32")]
 pub struct WorkerRuntimePolicy {
     assertion: sakimori_oidc::ClientAssertionPolicy,
+    authorization_code_ttl_seconds: u64,
+    request_target_bytes: usize,
+    parameter_count: usize,
+    state_bytes: usize,
+    nonce_bytes: usize,
     jwt_bytes: usize,
     form_body_bytes: usize,
     access_token_ttl_seconds: u64,
@@ -193,7 +251,7 @@ impl WorkerRuntimePolicy {
     pub fn from_compiled_json(json: &str) -> worker::Result<Self> {
         let compiled: CompiledWorkerPolicy = serde_json::from_str(json)
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
-        if compiled.schema_version != 2
+        if compiled.schema_version != 4
             || compiled.policy_revision.len() != 64
             || compiled.projection_revision.len() != 64
             || !compiled
@@ -207,8 +265,18 @@ impl WorkerRuntimePolicy {
             || compiled.jwt_bytes.saturating_add(4096) > compiled.form_body_bytes
             || compiled.access_token_ttl_seconds == 0
             || compiled.id_token_ttl_seconds == 0
+            || compiled.authorization_code_ttl_seconds == 0
             || compiled.access_token_ttl_seconds > i32::MAX as u64
             || compiled.id_token_ttl_seconds > i32::MAX as u64
+            || compiled.authorization_code_ttl_seconds > i32::MAX as u64
+            || compiled.request_target_bytes == 0
+            || compiled.request_target_bytes > 1_048_576
+            || compiled.parameter_count == 0
+            || compiled.parameter_count > 128
+            || compiled.state_bytes == 0
+            || compiled.state_bytes > compiled.request_target_bytes
+            || compiled.nonce_bytes == 0
+            || compiled.nonce_bytes > compiled.request_target_bytes
             || compiled.response_bytes == 0
             || compiled.response_bytes > 1_048_576
         {
@@ -217,6 +285,11 @@ impl WorkerRuntimePolicy {
         let canonical = serde_json::json!({
             "assertion_ttl_seconds": compiled.assertion_ttl_seconds,
             "clock_skew_seconds": compiled.clock_skew_seconds,
+            "authorization_code_ttl_seconds": compiled.authorization_code_ttl_seconds,
+            "request_target_bytes": compiled.request_target_bytes,
+            "parameter_count": compiled.parameter_count,
+            "state_bytes": compiled.state_bytes,
+            "nonce_bytes": compiled.nonce_bytes,
             "access_token_ttl_seconds": compiled.access_token_ttl_seconds,
             "form_body_bytes": compiled.form_body_bytes,
             "id_token_ttl_seconds": compiled.id_token_ttl_seconds,
@@ -252,6 +325,14 @@ impl WorkerRuntimePolicy {
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
         let response_bytes = usize::try_from(compiled.response_bytes)
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let request_target_bytes = usize::try_from(compiled.request_target_bytes)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let parameter_count = usize::try_from(compiled.parameter_count)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let state_bytes = usize::try_from(compiled.state_bytes)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
+        let nonce_bytes = usize::try_from(compiled.nonce_bytes)
+            .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
         let assertion = sakimori_oidc::ClientAssertionPolicy::from_seconds(
             compiled.assertion_ttl_seconds,
             compiled.clock_skew_seconds,
@@ -259,6 +340,11 @@ impl WorkerRuntimePolicy {
         .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
         Ok(Self {
             assertion,
+            authorization_code_ttl_seconds: compiled.authorization_code_ttl_seconds,
+            request_target_bytes,
+            parameter_count,
+            state_bytes,
+            nonce_bytes,
             jwt_bytes,
             form_body_bytes,
             access_token_ttl_seconds: compiled.access_token_ttl_seconds,
@@ -270,6 +356,23 @@ impl WorkerRuntimePolicy {
 
     pub fn policy_revision(&self) -> &str {
         &self.policy_revision
+    }
+
+    pub fn authorization_code_ttl_seconds(&self) -> u64 {
+        self.authorization_code_ttl_seconds
+    }
+
+    pub fn request_target_bytes(&self) -> usize {
+        self.request_target_bytes
+    }
+    pub fn parameter_count(&self) -> usize {
+        self.parameter_count
+    }
+    pub fn state_bytes(&self) -> usize {
+        self.state_bytes
+    }
+    pub fn nonce_bytes(&self) -> usize {
+        self.nonce_bytes
     }
 
     pub fn access_token_ttl_seconds(&self) -> u64 {
@@ -916,6 +1019,433 @@ async fn token_route(
 }
 
 #[cfg(target_arch = "wasm32")]
+struct ParsedAuthorizationParameters {
+    values: HashMap<String, String>,
+    duplicates: HashSet<String>,
+    too_many: bool,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn parse_authorization_parameters(
+    request_url: &url::Url,
+    request_target_bytes: usize,
+    parameter_count: usize,
+) -> Option<ParsedAuthorizationParameters> {
+    if request_url.as_str().len() > request_target_bytes {
+        return None;
+    }
+    let mut parameters = HashMap::new();
+    let mut duplicates = HashSet::new();
+    let mut count = 0usize;
+    for (key, value) in request_url.query_pairs() {
+        count += 1;
+        let key = key.into_owned();
+        if parameters.contains_key(&key) {
+            duplicates.insert(key);
+        } else {
+            parameters.insert(key, value.into_owned());
+        }
+    }
+    Some(ParsedAuthorizationParameters {
+        values: parameters,
+        duplicates,
+        too_many: count > parameter_count,
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn authorization_error_response(
+    redirect_uri: &str,
+    state: Option<&str>,
+    issuer: &str,
+    error: &str,
+) -> worker::Result<worker::Response> {
+    let mut target = url::Url::parse(redirect_uri)
+        .map_err(|_| worker::Error::RustError("invalid registered redirect".into()))?;
+    {
+        let mut query = target.query_pairs_mut();
+        query.append_pair("error", error);
+        if let Some(state) = state {
+            query.append_pair("state", state);
+        }
+        query.append_pair("iss", issuer);
+    }
+    Ok(worker::Response::builder()
+        .with_status(302)
+        .with_header("Location", target.as_str())?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Pragma", "no-cache")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .empty())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_cookie(request: &worker::Request, cookie_name: &str) -> worker::Result<Option<String>> {
+    let Some(header) = request.headers().get("cookie")? else {
+        return Ok(None);
+    };
+    if header.len() > 4096 {
+        return Ok(None);
+    }
+    let mut found = None;
+    for part in header.split(';') {
+        let Some((name, value)) = part.trim().split_once('=') else {
+            continue;
+        };
+        if name == cookie_name {
+            if found.is_some() || value.is_empty() || value.len() > 512 {
+                return Ok(None);
+            }
+            found = Some(value.to_owned());
+        }
+    }
+    Ok(found)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn authorize_route(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    use wasm_bindgen::JsValue;
+
+    let policy = WorkerRuntimePolicy::from_env(&context.env)?;
+    let request_url = request.url()?;
+    let Some(parsed) = parse_authorization_parameters(
+        &request_url,
+        policy.request_target_bytes(),
+        policy.parameter_count(),
+    ) else {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    };
+    let parameters = &parsed.values;
+    let Some(client_id) = parameters.get("client_id") else {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    };
+    if parsed.duplicates.contains("client_id") || parsed.duplicates.contains("redirect_uri") {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    }
+    let Some(redirect_uri) = parameters.get("redirect_uri") else {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    };
+    if client_id.is_empty() || client_id.len() > 128 || redirect_uri.len() > 2048 {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    }
+
+    let issuer = context
+        .env
+        .var("SAKIMORI_ISSUER")
+        .map_err(|_| worker::Error::RustError("server_error".into()))?
+        .to_string();
+    let issuer = configured_issuer(&issuer)
+        .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let authorization_endpoint = format!("{issuer}/authorize");
+    if request_url.as_str().split('?').next() != Some(authorization_endpoint.as_str()) {
+        return Err(worker::Error::RustError("invalid_request".into()));
+    }
+
+    let db = context.env.d1("DB")?;
+    let registration = db
+        .prepare(
+            "SELECT c.revision AS client_revision,c.sector_identifier \
+             FROM client c JOIN client_redirect_uri r ON r.client_id=c.client_id \
+             WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2",
+        )
+        .bind(&[
+            JsValue::from_str(client_id),
+            JsValue::from_str(redirect_uri),
+        ])?
+        .first::<ClientRegistrationRow>(None)
+        .await?;
+    let Some(registration) = registration else {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    };
+
+    let state = if parsed.duplicates.contains("state") {
+        None
+    } else {
+        parameters.get("state").map(String::as_str)
+    };
+    let oauth_error = if parsed.too_many || !parsed.duplicates.is_empty() {
+        Some("invalid_request")
+    } else if parameters.contains_key("request") || parameters.contains_key("request_uri") {
+        Some("request_not_supported")
+    } else if parameters
+        .get("response_type")
+        .is_some_and(|value| value != "code")
+    {
+        Some("unsupported_response_type")
+    } else if parameters
+        .get("scope")
+        .is_some_and(|value| value != "openid")
+    {
+        Some("invalid_scope")
+    } else if parameters
+        .get("response_mode")
+        .is_some_and(|value| value != "query")
+    {
+        Some("invalid_request")
+    } else if [
+        "client_id",
+        "redirect_uri",
+        "response_type",
+        "scope",
+        "state",
+        "nonce",
+        "code_challenge",
+        "code_challenge_method",
+    ]
+    .iter()
+    .any(|name| !parameters.contains_key(*name))
+    {
+        Some("invalid_request")
+    } else {
+        None
+    };
+    if let Some(error) = oauth_error {
+        return authorization_error_response(redirect_uri, state, &issuer, error);
+    }
+
+    let raw = sakimori_oidc::Authorization {
+        client_id: client_id.clone(),
+        redirect_uri: redirect_uri.clone(),
+        response_type: parameters["response_type"].clone(),
+        scope: parameters["scope"].clone(),
+        state: parameters["state"].clone(),
+        nonce: parameters["nonce"].clone(),
+        code_challenge: parameters["code_challenge"].clone(),
+        code_challenge_method: parameters["code_challenge_method"].clone(),
+    };
+    let validated = match raw.validate(
+        client_id,
+        redirect_uri,
+        policy.state_bytes(),
+        policy.nonce_bytes(),
+    ) {
+        Ok(validated) => validated,
+        Err(_) => {
+            return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
+        }
+    };
+
+    let mut prompts = Vec::new();
+    if let Some(prompt) = parameters.get("prompt") {
+        for item in prompt.split_ascii_whitespace() {
+            if !["none", "login", "consent", "select_account"].contains(&item)
+                || prompts.contains(&item)
+            {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "invalid_request",
+                );
+            }
+            prompts.push(item);
+        }
+    }
+    if prompts.contains(&"none") && prompts.len() > 1 {
+        return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
+    }
+    if prompts.contains(&"login") {
+        return authorization_error_response(redirect_uri, state, &issuer, "login_required");
+    }
+    if prompts.contains(&"consent") {
+        return authorization_error_response(redirect_uri, state, &issuer, "consent_required");
+    }
+    if prompts.contains(&"select_account") {
+        return authorization_error_response(
+            redirect_uri,
+            state,
+            &issuer,
+            "account_selection_required",
+        );
+    }
+
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+
+    let Some(cookie) = browser_cookie(&request, "__Host-op-sso")? else {
+        return authorization_error_response(redirect_uri, state, &issuer, "login_required");
+    };
+    let cookie_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(cookie.as_bytes()));
+    let sso_values = [JsValue::from_str(&cookie_hash)];
+    let sso = db
+        .prepare(
+            "SELECT ss.sso_id,ss.account_id,ss.expires_at AS parent_expires_at, \
+             sx.auth_time,c.revision AS client_revision,c.sector_identifier \
+             FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
+             JOIN account_security a ON a.account_id=ss.account_id \
+             JOIN credential cr ON cr.credential_id=ss.credential_id AND cr.account_id=ss.account_id \
+             JOIN client c ON c.client_id=?2 JOIN client_redirect_uri r \
+               ON r.client_id=c.client_id AND r.redirect_uri=?3 \
+             JOIN app_connection g ON g.account_id=ss.account_id AND g.client_id=c.client_id \
+             WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>?4 \
+             AND a.active=1 AND a.epoch=ss.epoch AND cr.active=1 \
+             AND c.active=1 AND g.active=1",
+        )
+        .bind(&[
+            sso_values[0].clone(),
+            JsValue::from_str(client_id),
+            JsValue::from_str(redirect_uri),
+            JsValue::from_f64(now as f64),
+        ])?
+        .first::<AuthorizationContextRow>(None)
+        .await?;
+    let Some(sso) = sso else {
+        return authorization_error_response(redirect_uri, state, &issuer, "login_required");
+    };
+    if registration.client_revision != sso.client_revision
+        || registration.sector_identifier != sso.sector_identifier
+    {
+        return authorization_error_response(
+            redirect_uri,
+            state,
+            &issuer,
+            "temporarily_unavailable",
+        );
+    }
+    if let Some(max_age) = parameters.get("max_age") {
+        let Ok(max_age) = max_age.parse::<u64>() else {
+            return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
+        };
+        if sso.auth_time < 0 || (sso.auth_time as u64).saturating_add(max_age) <= now {
+            return authorization_error_response(redirect_uri, state, &issuer, "login_required");
+        }
+    }
+
+    let mut random = WorkersCryptoRandom;
+    let prepared = validated
+        .prepare_code(
+            &mut random,
+            now,
+            policy.authorization_code_ttl_seconds(),
+            sso.parent_expires_at as u64,
+        )
+        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+    let (validated, presented_code, digest, expires_at) = prepared.into_parts();
+    let mut sid_secret = [0u8; 32];
+    let mut subject_secret = [0u8; 32];
+    random
+        .fill(&mut sid_secret)
+        .and_then(|_| random.fill(&mut subject_secret))
+        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+    let sid = URL_SAFE_NO_PAD.encode(sid_secret);
+    let candidate_sub = URL_SAFE_NO_PAD.encode(subject_secret);
+    let expires_at =
+        i64::try_from(expires_at).map_err(|_| worker::Error::RustError("server_error".into()))?;
+    let code_hash = digest.as_base64url();
+    let pairwise_values = [
+        JsValue::from_str(&sso.account_id),
+        JsValue::from_str(&sso.sector_identifier),
+        JsValue::from_str(&candidate_sub),
+    ];
+    let session_values = [
+        JsValue::from_str(&sid),
+        JsValue::from_str(&sso.sso_id),
+        JsValue::from_str(&cookie_hash),
+        JsValue::from_str(client_id),
+        JsValue::from_str(&sso.client_revision.to_string()),
+        JsValue::from_str(redirect_uri),
+        JsValue::from_str(&now.to_string()),
+    ];
+    let code_values = [
+        JsValue::from_str(code_hash),
+        JsValue::from_str(client_id),
+        JsValue::from_str(&sid),
+        JsValue::from_str(&sso.client_revision.to_string()),
+        JsValue::from_str(redirect_uri),
+        JsValue::from_str(validated.code_challenge()),
+        JsValue::from_str(&expires_at.to_string()),
+        JsValue::from_str(&now.to_string()),
+    ];
+    let guard_values = [
+        JsValue::from_str(code_hash),
+        JsValue::from_str(client_id),
+        JsValue::from_str(redirect_uri),
+        JsValue::from_str(validated.nonce()),
+    ];
+    db.batch(vec![
+        db.prepare(include_str!("../sql/insert-pairwise-subject.sql"))
+            .bind(&pairwise_values)?,
+        db.prepare(include_str!(
+            "../sql/insert-authorization-client-session.sql"
+        ))
+        .bind(&session_values)?,
+        db.prepare(include_str!("../sql/insert-authorization-code.sql"))
+            .bind(&code_values)?,
+        db.prepare(include_str!("../sql/insert-authorization-code-context.sql"))
+            .bind(&[code_values[0].clone(), JsValue::from_str(validated.nonce())])?,
+        db.prepare(include_str!("../sql/guard-authorization-code.sql"))
+            .bind(&[
+                guard_values[0].clone(),
+                guard_values[1].clone(),
+                guard_values[2].clone(),
+                guard_values[3].clone(),
+                JsValue::from_str(&now.to_string()),
+            ])?,
+        db.prepare(include_str!("../sql/delete-authorization-code-guard.sql"))
+            .bind(&[guard_values[0].clone()])?,
+    ])
+    .await?;
+
+    let mut target = url::Url::parse(validated.redirect_uri())
+        .map_err(|_| worker::Error::RustError("invalid registered redirect".into()))?;
+    {
+        let mut query = target.query_pairs_mut();
+        query.append_pair("code", presented_code.as_str());
+        query.append_pair("state", validated.state());
+        query.append_pair("iss", &issuer);
+    }
+    Ok(worker::Response::builder()
+        .with_status(302)
+        .with_header("Location", target.as_str())?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Pragma", "no-cache")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .empty())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_seconds() -> Option<u64> {
+    let milliseconds = js_sys::Date::now();
+    if milliseconds.is_finite() && milliseconds >= 0.0 {
+        Some((milliseconds / 1000.0).floor() as u64)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn jwks_route(
     _request: worker::Request,
     context: worker::RouteContext<()>,
@@ -942,6 +1472,52 @@ async fn jwks_route(
     worker::Response::builder()
         .with_header("Cache-Control", "public, max-age=60")?
         .from_json(&JwksResponse { keys })
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn discovery_route(
+    _request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let issuer = context
+        .env
+        .var("SAKIMORI_ISSUER")
+        .map_err(|_| worker::Error::RustError("server_error".into()))?
+        .to_string();
+    let issuer = configured_issuer(&issuer)
+        .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    worker::Response::builder()
+        .with_header("Cache-Control", "public, max-age=300")?
+        .from_json(&DiscoveryResponse {
+            authorization_endpoint: format!("{issuer}/authorize"),
+            token_endpoint: format!("{issuer}/token"),
+            jwks_uri: format!("{issuer}/jwks"),
+            userinfo_endpoint: format!("{issuer}/userinfo"),
+            issuer,
+            response_types_supported: ["code"],
+            response_modes_supported: ["query"],
+            grant_types_supported: ["authorization_code"],
+            subject_types_supported: ["pairwise"],
+            id_token_signing_alg_values_supported: ["ES256"],
+            scopes_supported: ["openid"],
+            claims_supported: [
+                "iss",
+                "sub",
+                "aud",
+                "exp",
+                "iat",
+                "nonce",
+                "auth_time",
+                "sid",
+            ],
+            token_endpoint_auth_methods_supported: ["private_key_jwt"],
+            token_endpoint_auth_signing_alg_values_supported: ["ES256"],
+            code_challenge_methods_supported: ["S256"],
+            authorization_response_iss_parameter_supported: true,
+            request_parameter_supported: false,
+            request_uri_parameter_supported: false,
+            claims_parameter_supported: false,
+        })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1019,6 +1595,8 @@ pub async fn main(
 ) -> worker::Result<worker::Response> {
     worker::Router::with_data(())
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
+        .get_async("/.well-known/openid-configuration", discovery_route)
+        .get_async("/authorize", authorize_route)
         .get_async("/jwks", jwks_route)
         .get_async("/userinfo", userinfo_route)
         .post_async("/userinfo", userinfo_route)

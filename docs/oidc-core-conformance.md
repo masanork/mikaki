@@ -37,7 +37,7 @@ Passing local checks or a single RP flow does not complete the milestone. Hosted
 
 ## Current status
 
-Rust currently exposes `POST /token`, `GET /jwks`, and GET/POST `/userinfo`. The initial Worker migration now defines exact static client redirect URIs, a client sector identifier, and stable pairwise-subject storage; no `/authorize` or Discovery endpoint consumes these tables yet. There is no authentication-to-code issuance path and only ES256 signing. The production D1 migration is not deployed. Therefore the selected conformance milestone is not yet runnable.
+Rust currently exposes Discovery, `GET /authorize`, `POST /token`, `GET /jwks`, and GET/POST `/userinfo`. `/authorize` only issues a code when a valid SSO cookie and pre-approved active app connection already exist; Passkey login UI, first-consent processing, and app-connection creation are still absent. Static redirect/sector/pairwise-subject tables exist in the initial migration, which is not deployed. Signing currently supports ES256 only. The production D1 migration is not deployed. Therefore the selected conformance milestone is not yet runnable.
 
 ## References
 
