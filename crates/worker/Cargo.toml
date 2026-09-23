@@ -13,6 +13,7 @@ default = ["worker-entry"]
 worker-entry = []
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+base64.workspace = true
 js-sys = "=0.3.105"
 sakimori-oidc = { path = "../oidc" }
 wasm-bindgen = "=0.2.128"

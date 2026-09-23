@@ -1032,6 +1032,7 @@ name = "sakimori-oidc"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "p256",
  "serde",
  "serde_json",
  "sha2",
@@ -1060,6 +1061,7 @@ dependencies = [
 name = "sakimori-worker"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "js-sys",
  "sakimori-oidc",
  "wasm-bindgen",
