@@ -178,6 +178,10 @@ try {
   assert.equal(resumed.status, 302);
   assert.ok(new URL(resumed.headers.get('location')).searchParams.get('code'));
   console.log('passkey authorization preflight passed');
+  if (process.env.MIKAKI_PREFLIGHT_ONLY === '1') {
+    await harness.close();
+    process.exit(0);
+  }
   await writeFile(
     new URL('../generated/oidf-local-config.json', import.meta.url),
     JSON.stringify(config, null, 2),

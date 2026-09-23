@@ -105,3 +105,12 @@ jobs:
             git commit -m "chore: update project metrics"
             git push origin HEAD:main
           fi
+
+  supply-chain:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/supply-chain-build.yml

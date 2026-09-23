@@ -10,6 +10,7 @@
 /coverage/
 **/.svelte-check/
 /crates/worker/build/
+**/*.cdx.json
 
 /fuzz/corpus/
 /fuzz/artifacts/

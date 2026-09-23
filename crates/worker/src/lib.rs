@@ -2256,7 +2256,6 @@ async fn userinfo_route(
         return unauthorized();
     };
     if token.len() != 43
-        || token.len() != 43
         || !token
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')

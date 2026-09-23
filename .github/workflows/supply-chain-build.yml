@@ -1,0 +1,64 @@
+name: attested-worker-build
+on:
+  workflow_call:
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - run: npm ci
+      - name: Install pinned BOM and Worker build tools
+        run: |
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo install worker-build --version 0.8.6 --locked
+          curl -fsSL -o /tmp/cyclonedx https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.33.1/cyclonedx-linux-x64
+          echo 'bfc8b2538da86fe239bc53658bbb63c1c8c510a293c1e6891aa5bea5d3c58746  /tmp/cyclonedx' | sha256sum -c -
+          chmod 755 /tmp/cyclonedx
+      - name: Build Worker and run passkey preflight
+        run: |
+          npm run build:policy
+          worker-build --release crates/worker
+          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.mjs
+      - name: Generate and validate BOMs
+        run: |
+          mkdir -p artifacts/supply-chain
+          cargo cyclonedx --manifest-path crates/worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename worker-rust.cdx
+          cp crates/worker/worker-rust.cdx.json artifacts/supply-chain/worker-rust.cdx.json
+          npm sbom --sbom-format=cyclonedx --sbom-type=application > artifacts/supply-chain/npm-build.cdx.json
+          python3.14 scripts/build_cbom.py > artifacts/supply-chain/worker-crypto.cdx.json
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-rust.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/npm-build.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-crypto.cdx.json --input-version v1_7 --fail-on-errors
+      - name: Archive the built Worker
+        run: tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-worker.tar.gz
+      - name: Attest runtime SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-worker.tar.gz
+          sbom-path: artifacts/supply-chain/worker-rust.cdx.json
+      - name: Upload Worker and inventories
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attested-worker-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
