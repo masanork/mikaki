@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createCipheriv, createDecipheriv, createHash, createHmac } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
+import fixture from './hpke-envelope-fixture.json' with { type: 'json' };
 
 const require = createRequire(import.meta.url);
 const rust = require('./pkg/mikaki_pqc_probe.js');
@@ -116,6 +117,8 @@ assert.equal(rust.fixture_vault_envelope_opens(rustFrame), true);
 // noble ML-KEM and Node crypto sender -> RustCrypto HPKE receiver.
 const nobleKem = ml_kem768.encapsulate(keys.publicKey, Buffer.alloc(32, 0x42));
 const nobleFrame = frame(nobleKem.cipherText, seal(nobleKem.sharedSecret, dataKey));
+assert.deepEqual(Buffer.from(fixture.seed, 'base64url'), seed);
+assert.deepEqual(Buffer.from(fixture.frame, 'base64url'), nobleFrame);
 assert.equal(rust.fixture_vault_envelope_opens(nobleFrame), true);
 
 for (const offset of [4, 10, 11, 43, 51, 1139, 1186]) {

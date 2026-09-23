@@ -23,5 +23,9 @@ zeroize = "=1.9.0"
 wasm-bindgen.workspace = true
 worker = { version = "=0.8.6", features = ["d1"] }
 
+[dev-dependencies]
+hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
+serde_json.workspace = true
+
 [lints]
 workspace = true

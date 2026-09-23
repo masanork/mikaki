@@ -4,6 +4,8 @@ This Worker holds the future UserInfo recipient's ML-KEM private seed binding. I
 
 The [local config](wrangler.local.jsonc) has no secret binding and is used to test failure behavior. The [production config](wrangler.production.jsonc) binds the generation-1 secret and has `workers_dev: false`, disabled preview URLs, and no public route. The OP uses a service binding. Recipient envelopes, Grants, and claim release remain to be connected.
 
+The native unit test decodes a public fixture seed through the same canonical validation used after Secrets Store `get()`, then opens a noble/Node-produced HPKE envelope. This checks key representation and the candidate envelope bytes without adding an unwrap endpoint. It does not test a live binding read or authorize claim release.
+
 ```sh
 worker-build --release crates/userinfo-claim-worker
 node --test local/conformance/userinfo-claim-worker.test.ts

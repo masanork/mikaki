@@ -25,22 +25,24 @@ fn valid_binding(name: &str) -> bool {
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
+fn decode_seed(encoded_seed: &str) -> Option<Zeroizing<[u8; 64]>> {
+    let seed_bytes = Zeroizing::new(URL_SAFE_NO_PAD.decode(encoded_seed).ok()?);
+    let canonical = Zeroizing::new(URL_SAFE_NO_PAD.encode(&seed_bytes));
+    if canonical.as_str() != encoded_seed {
+        return None;
+    }
+    let seed = seed_bytes.as_slice().try_into().ok()?;
+    Some(Zeroizing::new(seed))
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
 fn public_key_matches(key_id: &str, public_key: &[u8], encoded_seed: &str) -> bool {
     if key_id.len() != 43 || public_key.len() != 1184 {
         return false;
     }
-    let Ok(seed_bytes) = URL_SAFE_NO_PAD.decode(encoded_seed) else {
+    let Some(seed) = decode_seed(encoded_seed) else {
         return false;
     };
-    let seed_bytes = Zeroizing::new(seed_bytes);
-    let canonical = Zeroizing::new(URL_SAFE_NO_PAD.encode(&seed_bytes));
-    if canonical.as_str() != encoded_seed {
-        return false;
-    }
-    let Ok(seed): Result<[u8; 64], _> = seed_bytes.as_slice().try_into() else {
-        return false;
-    };
-    let seed = Zeroizing::new(seed);
     let derived = DecapsulationKey::<MlKem768>::from_seed(Seed::from(*seed));
     let derived_public = derived.encapsulation_key().to_bytes();
     URL_SAFE_NO_PAD.encode(Sha256::digest(derived_public)) == key_id
@@ -144,6 +146,17 @@ pub async fn main(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hpke::{Deserializable as _, OpModeR, aead::AesGcm256, kdf::HkdfSha256};
+
+    fn context(parts: &[&[u8]]) -> Vec<u8> {
+        let mut output = Vec::new();
+        for part in parts {
+            let length = u16::try_from(part.len()).expect("fixture context part fits");
+            output.extend_from_slice(&length.to_be_bytes());
+            output.extend_from_slice(part);
+        }
+        output
+    }
 
     #[test]
     fn binding_name_and_public_key_must_match_seed() {
@@ -164,5 +177,70 @@ mod tests {
         let mut changed = public;
         changed[0] ^= 1;
         assert!(!public_key_matches(&key_id, &changed, &encoded));
+    }
+
+    #[test]
+    fn validated_seed_opens_noble_vault_envelope_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../design/probes/pqc/hpke-envelope-fixture.json"
+        ))
+        .unwrap();
+        let encoded_seed = fixture["seed"].as_str().unwrap();
+        let seed = decode_seed(encoded_seed).unwrap();
+        assert!(decode_seed(&format!("{encoded_seed}=")).is_none());
+        let public = DecapsulationKey::<MlKem768>::from_seed(Seed::from(*seed))
+            .encapsulation_key()
+            .to_bytes();
+        let key_id = Sha256::digest(public);
+        assert!(public_key_matches(
+            &URL_SAFE_NO_PAD.encode(key_id),
+            public.as_slice(),
+            encoded_seed
+        ));
+        let frame = URL_SAFE_NO_PAD
+            .decode(fixture["frame"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(frame.len(), 1187);
+        assert_eq!(&frame[..4], b"MKVE");
+        assert_eq!(frame[4], 1);
+        assert_eq!(&frame[5..11], &[0, 0x41, 0, 1, 0, 2]);
+        assert_eq!(&frame[11..43], key_id.as_slice());
+        assert_eq!(&frame[43..51], &1_u64.to_be_bytes());
+
+        let info = context(&[
+            b"mikaki-vault-recipient-envelope-v1-draft04",
+            &[1],
+            &[0, 0x41, 0, 1, 0, 2],
+            b"userinfo",
+            key_id.as_slice(),
+            &1_u64.to_be_bytes(),
+        ]);
+        let blob_digest = Sha256::digest(b"test-vault-ciphertext");
+        let aad = context(&[
+            b"https://mikaki.example",
+            b"test-account-1",
+            b"name",
+            &9_u64.to_be_bytes(),
+            b"userinfo",
+            b"oidc.userinfo.name",
+            blob_digest.as_slice(),
+        ]);
+        let private = <hpke::kem::MlKem768 as hpke::Kem>::PrivateKey::from_bytes(&*seed).unwrap();
+        let enc =
+            <hpke::kem::MlKem768 as hpke::Kem>::EncappedKey::from_bytes(&frame[51..1139]).unwrap();
+        let open = |ciphertext: &[u8]| {
+            let mut receiver = hpke::setup_receiver::<AesGcm256, HkdfSha256, hpke::kem::MlKem768>(
+                &OpModeR::Base,
+                &private,
+                &enc,
+                &info,
+            )
+            .unwrap();
+            receiver.open(ciphertext, &aad)
+        };
+        assert_eq!(open(&frame[1139..]).unwrap(), [0x51; 32]);
+        let mut changed = frame[1139..].to_vec();
+        changed[0] ^= 1;
+        assert!(open(&changed).is_err());
     }
 }
