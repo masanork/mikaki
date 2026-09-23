@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -37,6 +38,17 @@ try {
   }));
   assert.equal(exchanges.filter(({ accepted }) => accepted).length, 1);
 
+  const codeReports = await Promise.all([worker.fetch('/code'), worker.fetch('/code')]);
+  const issuedCodes = await Promise.all(codeReports.map(async (response) => {
+    assert.equal(response.status, 200);
+    return response.json();
+  }));
+  const [firstCode, secondCode] = issuedCodes;
+  assert.match(firstCode.code, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(firstCode.expires_at, 1050);
+  assert.equal(firstCode.digest, createHash('sha256').update(Buffer.from(firstCode.code, 'base64url')).digest('base64url'));
+  assert.notEqual(firstCode.code, secondCode.code);
+
   const signedResponse = await worker.fetch('/sign');
   assert.equal(signedResponse.status, 200);
   const { token, jwk } = await signedResponse.json();
@@ -46,7 +58,7 @@ try {
   const changed = `${header}.${payload.slice(0, -1)}${payload.endsWith('A') ? 'B' : 'A'}.${signature}`;
   assert.equal(verifier.verify_es256(changed, publicJwk), false);
 
-  console.log('workers-rs: D1 rollback, first-primary read, one-time exchange, and async WebCrypto JWS passed');
+  console.log('workers-rs: D1 atomicity, WebCrypto code entropy/signing, and Rust OIDC code preparation passed');
 } finally {
   await worker.stop();
 }
