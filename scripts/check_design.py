@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""設計成果物の検証。Python 3.11+。製品の設定loaderではない。"""
+"""Validate design artifacts with Python 3.11+; this is not the product policy loader."""
 import copy
 import hashlib
 import json

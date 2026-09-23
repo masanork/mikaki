@@ -1,130 +1,38 @@
-# 初期OIDCの実装基準と受入計画
+# OIDC implementation readiness
 
-> Historical readiness plan. Several stages below have since been implemented or locally tested. Use [project status](status.md), [OIDC conformance results](oidc-core-conformance.md), and [deployment status](cloudflare-deployment.md) for the current evidence. Unresolved gates remain useful planning input.
+This is the current integration baseline and release checklist. See [project status](status.md), [local implementation](../local/README.md), and [Core conformance](oidc-core-conformance.md) for evidence and remaining work.
 
-2026-09-22 / 設計統合版。本文には当時の実装経過を含む。現在の配備状態は[Cloudflare deployment](cloudflare-deployment.md)、RP実装手順は[RP向け接続手順](rp-integration.md)を参照。
+## Fixed profile
 
-これまでの初期OIDC設計を実装へ進めるための基準としてまとめる。過去文書の旧候補のうち以下で絞り込んだ事項を示すが、採用済みADRの契約を上書きしない。担当範囲・決定状態・ADR未記録の項目は[文書案内](README.md)を参照する。この文書の段階表は公開条件を示し、個々の段階が完了したという記録ではない。Vault・連合・MCPの後続ゲートは本書の対象外。
-
-## 実装へ渡す決定
-
-| 項目 | 初期基準 |
+| Area | Baseline |
 | --- | --- |
-| アカウント | mikaki共通アカウント、アプリごとのSubjectId。メール一致の統合なし |
-| ID | 通常IDはUUIDv4、小文字36文字。初期D1ではTEXTとして保存。内部v7は必要性を測定するまで導入しない |
-| sub | account/sectorごとの永続UUIDv4。接続解除・鍵更新で維持 |
-| ログイン | 静的登録のサーバー側client、Code＋PKCE S256、state必須・nonce任意 |
-| client認証 | 通常配備はprivate_key_jwt、client/環境/用途別鍵、assertion一回限り。隔離conformance配備のみ登録済み試験clientへclient_secret_basic/postを追加 |
-| 署名 | 通常はJOSE ES256。client登録にも明記。RS256は規格適合・明示的な互換プロファイルで実装対象 |
-| EdDSA/PQC | 初期既定にはしない。鍵・方式の境界は追加可能にし、標準と実装の対応を確認して導入 |
-| SHA-1 | 必要な互換用途の実装を許容。通常署名では有効化せず、用途別に許可 |
-| Access Token | CSPRNG 32 byte、不透明、UserInfo専用、既定5分、refreshなし |
-| UserInfo | subのみ、GET/POST＋Bearer、通常ログインで呼出し不要 |
-| セッション | SSO最大30日、アプリ未操作7日かつ親期限内、失効確認lease最大5分 |
-| ログアウト | RP-Initiated＋Back-Channel、失効と永続outboxを同時確定 |
-| 設定 | [runtime-policy.example.toml](../config/runtime-policy.example.toml)を初期見本とし、有効版はD1で管理する。秘密・配備境界は別 |
-| ストア | D1一つでmikakiの認証/OIDCを確定。アプリDBとの分散transactionなし |
+| Identity | Shared account, app owned SubjectId; no email based merging. UUIDv4 identifiers stored as TEXT in initial D1; persistent pairwise UUIDv4 `sub` per account/sector. |
+| Login | Static server side clients, Authorization Code + PKCE S256; `state` required, `nonce` optional. |
+| Client authentication | ES256 `private_key_jwt` normally; registered test clients in isolated conformance deployment may use `client_secret_basic/post`. |
+| Signing | ES256 normal issuance, explicit RS256 compatibility profile; EdDSA/PQC not initial defaults. |
+| Access Token / UserInfo | 32 random byte opaque token, five minute default, no refresh; UserInfo returns `sub` only. |
+| Sessions | SSO at most 30 days; app idle limit seven days within parent lifetime; validity lease at most five minutes. |
+| Logout | RP Initiated and Back Channel target; revocation and durable outbox commit together. |
+| Storage | One D1 database commits Mikaki auth/OIDC state; no distributed transaction with RP databases. |
+| Policy | Typed [runtime policy](../config/runtime-policy.example.toml), active revision in D1; separate secrets and deployment settings. |
 
-詳細は[UX](oidc-login.md)、[ログイン取引](oidc-login-flow.md)、[token/UserInfo](oidc-access-token-and-userinfo.md)、[ストア](oidc-store-contract.md)、[運用制限・復旧](oidc-operations.md)、[暗号移行](crypto-agility.md)に従う。
+## Implementation boundary and evidence
 
-## モジュール境界
+`mikaki-webauthn` verifies protocol and cryptography; `mikaki-auth` owns ceremonies/accounts; `mikaki-oidc` owns authorization, client authentication, sessions, JOSE purposes and outbox; the Worker handles HTTP, D1, secrets, clock, randomness, and outbound requests. Dependency direction is Worker → OIDC → Auth → WebAuthn. Do not deserialize a bare HTTP AccountId as authentication proof.
 
-G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`mikaki-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
+The OIDC crate has validated authorization and token request types, strict form decoding, opaque code/digest handling, ES256 client assertion validation, and ID Token signing. The Worker connects `/authorize`, `/token`, `/jwks`, `/userinfo`, and `/session/check`. It bounds streamed request bodies, rejects duplicate/unknown token form fields, and rechecks current state in the final D1 batch. It supports ES256 and an RS256 compatibility path. Isolated workerd/D1 tests covered code/PKCE exchange, replay revocation, UserInfo, parallel exchange, passkey authentication and first consent. Production migration and invitation registration have been deployed. Local conformance and logout outbox work is recorded under [local](../local/README.md). Account recovery, complete RP callback/logout integration, operational drills, and public readiness remain open.
 
-Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。通常配備はprivate_key_jwtのみ、隔離conformance配備は登録済みclientごとに固定したclient_secret_basic/postも受け付ける。secretはD1にSHA-256 verifierだけを保存し、一定時間の試行回数を制限する。認証後は共通の短期receiptを保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient認証・session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtとsecret方式によるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。authorizeはpasskeyによる本人確認と明示的な初回consentからSSO cookieとapp_connectionを作成でき、ローカルOIDF Basic OPの認可を完了した。現在は本番migration、Passkey招待登録、`/session/check`も配備済みです。アカウント復旧、logout、RP側callbackを含む全操作の統合試験は未完了で、公開可能を意味しません。
+Discovery must advertise only deployed endpoints, claims, algorithms, and authentication methods. In the normal deployment, `token_endpoint_auth_methods_supported` is `private_key_jwt`; isolated conformance can add secret methods. Backchannel flags become true only after implementation. `request`/`request_uri`, dynamic registration, arbitrary claim requests, and encrypted UserInfo are outside the initial profile. Enforce `prompt` and `max_age` semantics and use defined errors. Distinguish invalid input, unauthenticated, forbidden, expired, replayed, conflict, limited, unavailable, and unknown outcome internally.
 
-時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
+Cryptographic dependencies require native and Wasm tests, known vectors, algorithm restrictions, duplicate JSON handling, key rotation, bundle size/latency measurement, and audit. The 2026-09-23 JOSE probes measured ES256/RS256 verification in both targets and checked mutation, issuer, audience, expiry, and key substitution. Those measurements parse a JWK each call and are not cached key production latency. See [probe notes](../design/probes/README.md). Keep RSA private key handling behind a reviewed runtime/KMS boundary; the RustSec RSA timing advisory remains relevant to dependency selection.
 
-mikaki-oidcは認可取引、client認証、JOSEの用途別検証、セッション、outboxの業務契約を担当する。authが返す検証済み本人認証の型を受け取り、HTTPから同型をdeserializeできないようにする。認証結果はaccount・credential・ceremony・ブラウザ取引・epoch・期限に結び付け、再利用可能な裸のAccountIdを本人認証の証拠にしない。
+## Release gates
 
-workerはHTTP制限、cookie、秘密管理、D1、時刻・乱数、外向き通信を担当する。ストアと署名のポートは必要な業務操作に限り、汎用プラグインを作らない。署名ポートは将来KMS/WebCrypto等を利用できる非同期境界とし、公開鍵形式や署名サイズをRSAへ固定しない。
+1. Typed policy, separated secrets/deployment values, and reproducible native/Wasm cryptography evidence.
+2. Production migrations and atomic auth/OIDC operations, including every failure point and primary D1 reads.
+3. Code Flow, client authentication, Discovery/JWKS, UserInfo, token purpose and key rotation tests against standard RPs.
+4. Browser callbacks and cookies in tossa and tsudoi, including first login, returning login, multiple tabs, cancellation, and lost responses.
+5. Management, RP and Back Channel Logout, durable outbox, GC, monitoring, key compromise and DB restore drills.
+6. Target OP conformance, load evidence, limitations, and operating procedures.
 
-## HTTP契約の補足
-
-| Endpoint | 処理と代表的な失敗 |
-| --- | --- |
-| Discovery / JWKS | GET、issuerと実装済みcode flowを掲載。active ES256/RS256公開鍵を掲載。RS256署名はローカルworkerdで確認 |
-| GET /authorize | code/openid/S256を検証。対話可能な要求で有効SSOがなければpasskeyログイン取引を開始し、初回consent後にconnectionを作る。`prompt=none`は対話しない |
-| POST /token | form body、authorization_codeと通常配備のprivate_key_jwt、隔離conformance配備のclient_secret_basic/post。隔離D1/workerdで正常交換、code replay拒否、並行交換が一回だけ成立することを確認。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別 |
-| GET・POST /userinfo | Bearer、subのJSON。隔離D1/workerdで有効tokenの受入とreplay後失効を確認。詳細はUserInfo仕様 |
-| POST /session/check | client署名＋sid。200 active=falseと通信障害503を区別。存在照会は認証後に限定 |
-| GET・POST /logout（未実装） | 標準のhint/登録済み戻り先/stateを検証し、必要な確認を表示。SSO失効とevent確定後に完了へ |
-| 各アプリのbackchannel URI | POST、logout_tokenを検証し、失効記録を保存して200。不正通知は400、一時ストア障害は503 |
-
-OAuthのエラーコードとHTTP statusは対象規格の規則に従う。サイズ超過・過負荷・一時障害をすべてinvalid_grantへ丸めない。内部結果はInvalidInput / Unauthenticated / Forbidden / Expired / Replayed / Conflict / Limited / Unavailable / OutcomeUnknownに分け、外部へはendpointごとに写像する。
-
-/session/checkのactive=true応答はsub、auth_time、expires_at、lease_ttl（秒）、app_idle_timeout（秒）、policy_revisionを返す。app_idle_timeoutは新規アプリセッションに適用し、既存値を延長しない。active=falseには他の主体情報を付けない。issuer、client、sidは照会先と認証済み要求から結び付ける。
-
-Discoveryはresponse_types_supported=[code]、grant_types_supported=[authorization_code]、subject_types_supported=[pairwise]、scopes_supported=[openid]、code_challenge_methods_supported=[S256]を公開する。token_endpoint_auth_methods_supportedは実配備で利用可能な方式に一致させ、通常配備は[private_key_jwt]、隔離conformance配備だけに有効化したsecret方式を追加する。署名方式は実装・相互運用試験に通ったES256とRS256を掲載し、まだ使えない方式を予告掲載しない。backchannel_logout_supportedとbackchannel_logout_session_supportedをtrueにするのは実装後とする。
-
-ID Tokenはiss、sub、aud、exp、iat、auth_time、sidを発行し、nonceは認可要求に含まれた場合に限り発行する。通常は単一aud。acr/amrは検証済みの意味と値の体系を決めずに推測で付けない。claims_supportedは実際のID Token/UserInfoのclaimを記載する。独自のsession APIをUserInfo claimとして宣伝しない。
-
-request/request_uri、動的登録、claims parameter、署名/暗号化UserInfoは初期未対応としてメタデータと要求処理を一致させる。request/request_uriを送られた場合は規定の非対応エラーを返し、URLを取得しない。promptのnone/login/consent/select_account、max_ageとauth_timeを実装する。display、ui_locales、claims_locales、acr_valuesは規格の最低対応を満たし、未提供の言語/保証を偽って返さない。max_age=0は再認証要求として扱い、noneと対話が必要な条件が両立しなければ規定のエラーにする。
-
-## 依存の評価と採用条件
-
-暗号プリミティブとJWT形式は既存ライブラリを利用する。JSON/URL/PKCE等を含むOPの状態遷移はmikakiの契約として実装するが、独自の暗号方式や署名検証を作らない。
-
-| 対象 | 評価対象と選択条件 |
-| --- | --- |
-| Rust JOSE | jsonwebtoken 11.1.0を検証候補とする。default algを使わず用途別にES256/RS256等を指定。署名発行は同期`Signer` traitで非同期KMS/WebCrypto portに直結できないが、外部で署名した値を公開JWS構造体へ渡す境界はprobe済み。鍵形式、重複JSON、時刻注入、配備先Wasmを確認して採否を確定 |
-| ES256/WebAuthn | RustCrypto p256等の保守された実装。JOSEの固定長R\|SとWebAuthnのDER署名を混同しない。各仕様の形式変換は既存のパーサーを使用 |
-| RSA互換 | 保守されたruntime/KMS等の秘密鍵操作を優先評価。RS256 3072 bitを初期互換発行プロファイルの基準とし、client公開鍵検証は明示登録された2048 bit以上を評価 |
-| RustのRP相互運用 | openidconnect-rs。これはRP用でありmikaki OPの実装を提供するものではない。private_key_jwtを含む対応は実試験で確認 |
-| JSON/URL/UUID/秘密型 | serde/serde_json、url、uuid、zeroize等。入力検証と秘密のDebug禁止は呼出し側でも契約化。重複JSONキー拒否は通常のmap deserializeに任せない |
-| Workers/D1 | workers-rsの採用版でbatch・session APIの可用性を確認。不足時はworkerアダプター内だけに小さなJS境界を置き、coreへJS型を漏らさない |
-
-2026-09-23の隔離spikeでは、公開版jsonwebtoken 11.1.0のRustCrypto backendがES256/RS256のNode jose署名をNativeとWasmで検証し、alg・改変・issuer・audience・期限・鍵差替えを確認した。release Wasmは638 KB、gzip 253 KB。検証APIが毎回JWKをparseするベンチで、10,000回の1検証はNative/WasmでES256が約214/690 µs、RS256が約109/461 µsだった。実アプリのJWKS cacheを反映しない保守的な上限値として扱う。
-
-組込みbackendを無効にした独自CryptoProviderでもES256/RS256検証を保ったまま308 KB（gzip 121 KB）に縮んだ。probeではissuer/audience/expiryとduplicate claimも確認した。Native/Wasmの10,000回測定ではES256が約216/681 µs、RS256が約228/417 µs。毎回JWKから鍵を作るため、cache済み鍵の性能値ではない。RSA JWKのn/eをDERへ変換する独自前処理が必要である。[crypto module](https://docs.rs/jsonwebtoken/11.1.0/jsonwebtoken/crypto/)の`JwtSigner`は同期traitのためasync KMS/WebCrypto signerを直接統合できないが、Node WebCrypto署名のJWS構造体受渡しに加え、workerd 1.20260921.1の`crypto.subtle.sign`が作ったcompact ES256 JWSをRust/Wasmで検証するprobeも成功した。これは一時生成鍵によるローカルruntime確認であり、Workers KMS binding・永続鍵形式・エラー処理は未検証。時刻注入、重複header/payloadの全境界、キャッシュ済み鍵の性能、実D1との統合を確認して依存選択を確定する。依存spikeの再実行・制約は[隔離JOSE probe](../design/probes/README.md#rust-jose-依存スパイク初期評価)に記録した。
-
-2026-09-23時点で`rust_crypto` featureはrsa/p256/p384/ed25519-dalek等をまとめて有効化し、本番で使わないアルゴリズムも依存グラフに入る。openidconnect-rsのmain manifestは4.0.1で、既定HTTP依存はreqwest/rustls。Workers向けに既定featureを無検討で有効化しない。
-
-RustSecのRUSTSEC-2023-0071は、参照時点でRustCrypto rsaの秘密鍵操作に対するtiming問題を未修正としていた。RSA対応自体を取りやめる理由とはせず、当該実装を公開サービスの秘密鍵処理へ採用する根拠が揃うまで採用しない。公開鍵検証だけの経路と秘密鍵操作を分け、依存監査で脆弱なコードがリンク/到達する範囲も記録する。勧告を丸ごとignoreして先へ進めない。
-
-したがって本段階で本番Cargo.lockを作ったり、未検証のWasm対応を断言したりしない。依存spikeは同じテストベクトルによるNativeとwasm32-unknown-unknownのビルド・実行、ES256/RS256の相互署名検証、鍵更新、JWT改変、バンドルサイズ/遅延、cargo auditを採用条件とする。jsonwebtokenが署名境界を満たさなければ、crypto agilityのインターフェースを維持して別JOSEライブラリを比較する。
-
-## 実行可能な設計検証
-
-[ES256/JOSE・ローカルD1の試作](../design/probes/README.md)で、Nativeの3試験、Node上のWasm/JOSE相互運用6試験、workerd/D1互換環境の6試験が通った。製品のRust JOSE層、RSA互換経路、遠隔D1のread consistency、ログインUIを検証済みとはしない。依存版と再実行方法は試作READMEに記録した。
-
-[縮小SQL schema](../design/sql/oidc-critical-schema.sql)、[assertion受理](../design/sql/accept-assertion.sql)、[code交換](../design/sql/exchange-code.sql)、[全ログアウト](../design/sql/revoke-all.sql)を用意した。本番schemaではなく、暗号検証済み入力を前提とする原子性の検証模型である。管理許可消費、認可code作成、ブラウザ結び付け、復旧世代、全レコードの保持は本番実装で加える。
-
-```sh
-python3 scripts/test_oidc_sql.py
-python3 scripts/check_design.py
-```
-
-設定検証はPython 3.11以降が必要。SQL試験は標準sqlite3を使い、外部サービスへ接続しない。13試験で並行交換、一回性、endpoint取り違え、0件更新、全SQL段階の失敗、制約違反、失効・世代変更・期限境界、token発行前後のsession状態を確認する。D1 batchの実行コンテキストでchanges()とCHECK制約が同じ契約を満たすことは、実D1でも確認する。
-
-設定検証は未知/欠落キー、型・単位・整数上限、設定間の関係、正規化したpolicy_revision、旧断片との一致と文書リンクを確認する。これらは設計用ツールであり、Rustの製品loaderの代わりではない。
-
-## 実装順と公開条件
-
-現在の[ローカル縦切り実装と検証範囲](../local/README.md)を別記した。単一RPでのブラウザ経路が動いても、下記の本番migration、運用、conformanceの完了を意味しない。
-
-フロントのSvelte 5・初期ja/en・規模とcoverage測定・CIの具体的な推奨案は[フロントと品質CI](frontend-and-ci.md)を参照する。製品コード追加時から対象の品質ゲートを導入する。
-
-| 段階 | 実装・確認 | 完了の証拠 |
-| --- | --- | --- |
-| 1 | 型付き設定、秘密/配備情報の分離、Native/Wasm暗号依存spike | lock・監査結果・既知解・両targetの実行結果 |
-| 2 | 本番migration、authからOIDCまでの原子操作 | 全失敗点/競合試験、隔離D1でのbatch・primary読み取り確認 |
-| 3 | Code Flow・client認証・Discovery/JWKS・UserInfo | 標準RPとの相互運用、token取り違えと鍵更新試験 |
-| 4 | tossa・tsudoiのcallback、cookie、セッション確認 | 両アプリの通常/初回/複数タブ/キャンセル/応答喪失のブラウザ試験 |
-| 5 | 管理、RP/Back-Channel Logout、outbox、GC、監視 | 失効上限、通知重複・欠落、GC競合、鍵漏えい/DB復元の訓練 |
-| 6 | 対象OPプロファイルのconformanceと負荷・公開前確認 | 試験スイートの版・設定・結果、未対応範囲、実測と運用手順 |
-
-2026-09-23時点で、段階5のうち単一RP向けログアウトoutboxのlease・再試行・期限・scheduled復旧・集計警告を[ローカル実装](../local/README.md#ログアウト通知の配送2026-09-23)で検証した。期限切れ認証取引・再使用防止記録・RPセッションに加え、OPのSSO配下と完了した単一SSO通知履歴のGC、標準入力からの運用者再配送と原子的な監査記録、アカウント全セッション失効と旧epochへの通知展開もローカルD1で検証済み。本番migration、管理操作、アカウント停止・監査の外部保管、外部監視連携と復旧訓練は残り、段階5全体の完了ではない。
-
-conformanceの最初の目標候補は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。通常環境のclient認証は`private_key_jwt`既定を維持し、Basic OPの手動登録で求められる`client_secret_basic`・`client_secret_post`は隔離したconformance配備と登録済み試験clientに限って追加する。配備ごとにissuer・D1・鍵・テストaccountを分離し、requestからprofileを切り替えられないようにする。実際のBasic OP planはPKCEを送らなかったため、隔離配備のsecret clientだけにD1登録値で省略を許可する。RS256が使えることだけで全面適合とせず、prompt・claim・エラー・Discovery等も確認する。
-
-受入試験には、(1)既存UXの画面数、(2)code/state/nonce/PKCE/aud/iss/alg、(3)assertion再使用と鍵停止、(4)親SSO・grant・credential失効、(5)通知/確認/callbackの全順序、(6)新旧設定/鍵の混在とrollback、(7)body/JSON/パラメーターの境界・fuzz、(8)負荷時の容量とrate制御、(9)秘密がログ/ブラウザ保存へ出ないこと、(10)PQC向けの大きな公開鍵/署名を想定した制限変更を含める。
-
-残る外部入力は本番issuer・RP ID・origin、両アプリのredirect/post-logout/backchannel URL、配備先アカウント、対象ブラウザ/認証器である。これらを推測した実値で埋めない。実環境の作成や公開を伴わず進められる設計作業は本書で一式まとめたが、公開条件は実装・検証を終えるまで未達である。
-
-## 参照
-
-- [jsonwebtoken公式manifest](https://github.com/Keats/jsonwebtoken/blob/master/Cargo.toml)・[README](https://github.com/Keats/jsonwebtoken)：暗号featureと対応方式。
-- [openidconnect-rs公式manifest](https://github.com/ramosbugs/openidconnect-rs/blob/main/Cargo.toml)：RP用実装と依存。
-- [RustSec RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html)：RSA実装のtiming勧告。
-- [OIDC Core §15](https://openid.net/specs/openid-connect-core-1_0.html#ImplementationConsiderations)：必須実装と静的接続の区分。
+The first conformance target is Basic OP + Config OP in an isolated deployment, with its own issuer, D1, keys, and test accounts. Keep normal private_key_jwt configuration separate from Basic OP test client secrets. The Basic OP plan may omit PKCE; allow that only for its explicitly registered test client. RS256 alone is not a conformance result. Remaining external inputs include the production issuer/RP ID/origin, both apps' registered URLs, deployment account, and tested browser/authenticator set. Do not invent these values.

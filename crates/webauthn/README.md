@@ -1,44 +1,36 @@
 # mikaki-webauthn
 
-native/Wasmで共有するWebAuthn検証コア。[ADR 0006](../../docs/adr/0006-compact-portable-webauthn.md)のコンパクトな実装方針と、[ADR 0008](../../docs/adr/0008-webauthn-conformance.md)の公式Conformance完成条件に従う。
+This is the WebAuthn verification core shared by native Rust and Wasm. It follows the compact-core choice in [ADR 0006](../../docs/adr/0006-compact-portable-webauthn.md) and the conformance gate in [ADR 0008](../../docs/adr/0008-webauthn-conformance.md).
 
-## 境界と対応範囲
+## Boundary and supported behavior
 
-`register` / `authenticate`は、信頼された呼び出し側から渡されたchallenge・origin・RP IDとceremony policyを検証し、外部から構築できない検証結果を返す。HTTP、DB、時計、乱数、OIDC、Vaultには依存しない。`Context`は保存済み取引とサーバー設定から組み立て、credential応答から設定を採用しない。
+`register` and `authenticate` verify the challenge, origin, RP ID, and ceremony policy supplied by a trusted caller. They return result types that external Rust code cannot construct. The core has no HTTP, database, clock, randomness, OIDC, or Vault dependency. Build `Context` from saved transaction state and server configuration, never from the credential response.
 
-- credential署名: ES256、Ed25519、RS256、互換用途のRS1。既定のallow-listはES256のみ。保存公開鍵はbase64url COSE。
-- attestation: none、packed self/full、FIDO U2F、TPM 2.0。証明書付き方式は明示的に与えられた信頼情報がなければ拒否する。
-- UP必須、UV required/preferred/discouraged、identified/discoverable認証、account・allow-list・userHandleの照合、backup/counter、拡張CBORの構造検査と認証署名への包含、厳密なJSON/CBOR/COSE境界。
-- 証明書: 署名・アルゴリズムと鍵の対応、時刻、issuer/subject、CA/key usage/path length、重複、critical extension、packed/TPM固有属性を検証する。TPMの公開鍵・extraData・certified nameは構造を解析して照合する。
-- MDS: ES256 BLOBの署名、設定されたroot SPKIまでのチェーン、署名付きCRLの期限・失効、`iat`、BLOB番号、任意の`nextUpdate`、AAGUID/U2F key identifier、status reportを検証・保持する。HTTP取得とstatefulな更新はコア外（[運用境界](../../docs/webauthn-mds-operation.md)）。
+- Credential signatures: ES256, Ed25519, RS256, and compatibility-only RS1. The default allow list contains only ES256. Stored public keys are base64url COSE.
+- Attestation: `none`, packed self/full, FIDO U2F, and TPM 2.0. Certificate-backed formats require explicit trusted metadata.
+- Assertions: user presence, required/preferred/discouraged user verification, identified and discoverable ceremonies, account/allow-list/user-handle binding, backup and counter checks, extension CBOR structure, and strict JSON/CBOR/COSE limits.
+- Certificates: signatures and key/algorithm consistency; time, issuer/subject, CA, key usage, path length, duplicates, critical extensions, and format-specific fields. TPM public key, extraData, and certified name are parsed and matched structurally.
+- MDS: ES256 BLOB signature, chain to a configured root SPKI, signed CRL validity and revocation, `iat`, BLOB number, optional `nextUpdate`, AAGUID/U2F identifiers, and status reports. HTTP retrieval and stateful updates are outside the core; see [MDS operation](../../docs/webauthn-mds-operation.md).
 
-`Context.attestation`には検証時刻と、認証済みのmetadataを渡す。`attestation_hint`は検索用の未検証ヒントであり、認証の証拠ではない。コアが改めてAAGUIDまたはU2F certificate key identifierを照合する。試験用rootは製品コアに含めない。
+`Context.attestation` supplies verification time and authenticated metadata. `attestation_hint` is an unverified lookup hint; the core matches AAGUID or U2F certificate key identifier itself. Test roots are not embedded in the product core.
 
-呼び出し側は、取引の目的・ブラウザーとの結び付き・期限・未消費、credentialの所有者を確認し、検証後のチャレンジ消費とcredential保存・更新を原子的に確定する。製品の既定はES256・UV required・discoverable・attestation要求noneのまま。
+The caller must validate transaction purpose, browser binding, expiry, unconsumed state, and credential ownership. It must atomically commit challenge consumption and credential insertion/update after verification. The product defaults remain ES256, required UV, discoverable credentials, and an attestation request of `none`.
 
-## 検証済みの範囲
+## Verification evidence
 
-2026-09-22、公式FIDO2 Server Conformance Tools 1.9.1の**必須155件をnative/Wasm両方で全通過**。before-all失敗による未到達はない。追加OPTIONAL項目14件は未選択。正式認証の申請・提出は行っていない。[実行条件と結果](../../local/conformance/results-2026-09-22.md)。
+On 2026-09-22, both native and Wasm adapters passed all **155 mandatory** FIDO2 Server Conformance Tools 1.9.1 cases, with no case hidden by a before-all failure. Fourteen optional cases were not selected. There has been no formal certification submission. See the [run record](../../local/conformance/results-2026-09-22.md).
 
 ```sh
 cargo test --locked -p mikaki-webauthn
 wasm-pack test --node crates/webauthn --locked
 ```
 
-同じ24テストと型境界のcompile-fail 4件を両ターゲットで実行する。独立したPython cryptography/OpenSSL fixtureでpacked/U2F/TPM、証明書の信頼・改変、MDS署名・CRL・失効・期限を確認する。fixtureに秘密鍵や公式Suiteのコードを保存しない。既存CIがこの回帰試験を実行する。公式GUI Suiteは[ローカル専用アダプター](../../local/conformance/README.md)で別途実行する。
+The shared native/Wasm suite runs 24 tests and four compile-fail type-boundary checks. Independent Python cryptography/OpenSSL fixtures cover packed/U2F/TPM, certificate trust and tampering, and MDS signature, CRL, revocation, and expiry. Fixtures contain no saved private keys or official suite code. CI runs the regression tests; the official GUI suite uses a separate [local adapter](../../local/conformance/README.md).
 
-## 限界と次の品質改善
+## Limits and follow-up
 
-汎用Web PKI validatorではない。name constraints、policy mappings/constraints/inhibitAnyPolicyや未処理critical extensionは拒否する。MDS検証は状態を持たず、永続snapshot、BLOB番号の高水位、定期更新、障害時の運用通知、statusのfirmware別適用は実装していない。製品はMDSを有効にしていない。クロスオリジンiframe、追加optionalアルゴリズム・platform attestationは未対応。legacy tokenBindingは構造を検査するがTLS Token Binding機能を提供しない。
+This is not a general Web PKI validator. It rejects unsupported name or policy constraints and unhandled critical extensions. MDS validation is stateless: durable snapshots, BLOB-number high-water mark, scheduled updates, failure alerts, and firmware-specific status application are not implemented. Product MDS is not enabled. Cross-origin iframes, some optional algorithms and platform attestation formats are unsupported. Legacy tokenBinding is parsed structurally but TLS Token Binding is not provided.
 
-次はパーサーのfuzzing、実認証器・複数ブラウザーでの相互運用、コア単体のサイズ・性能測定とAPIレビューを行う。Conformance成功をセキュリティ監査やwebauthn-rsに対する優位性の証明とは扱わない。
+Parser [fuzz targets](../../docs/webauthn-fuzzing.md), synthetic multi-browser checks, and scoped size/performance measurements now exist. Real authenticator interoperability and external security review remain separate gates. A conformance pass is not a security audit or proof of superiority over webauthn-rs.
 
-拡張ごとの要求・結果・保存と保証範囲は[拡張対応表](../../docs/webauthn-extensions.md)を参照する。構造検査と拡張固有の意味の検証は区別する。
-
-内部エラーの理由コードと公開応答の境界は[診断契約](../../docs/webauthn-errors.md)を参照。`Invalid`は入力値を含まない列挙型で、native/Wasm共通の`code()`・`stage()`を提供する。
-
-登録・認証入口では`Context::validate()`を必ず実行する。設定検証と呼び出し側の責務は[ceremony契約](../../docs/webauthn-ceremony-contract.md)を参照。
-
-`Context.attestation_policy`の`required_trusted`はnone/selfを拒否する。既定は`optional`。登録結果は方式・保証区分・metadata識別子・検証時刻・信頼anchor指紋を返す。[attestation契約](../../docs/webauthn-attestation.md)を参照。
-
-独立fixtureでseedする入力変異試験と実行範囲は[fuzzing記録](../../docs/webauthn-fuzzing.md)を参照。
+For extension-specific request/result/storage guarantees, see [extensions](../../docs/webauthn-extensions.md). For stable internal reason codes and public-response mapping, see [errors](../../docs/webauthn-errors.md). `Context::validate()` runs at both registration and authentication entry points; see the [ceremony contract](../../docs/webauthn-ceremony-contract.md). The optional attestation policy accepts `none`/self, while `required_trusted` rejects them; see [attestation](../../docs/webauthn-attestation.md).

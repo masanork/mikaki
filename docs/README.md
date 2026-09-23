@@ -30,7 +30,7 @@ Start with [architecture](architecture.md) for responsibilities and trust bounda
 
 The [roadmap](roadmap.md) distinguishes deployed components from intended capabilities. [PQC rollout](pqc-rollout.md) records isolated results and adoption gates; no PQC product algorithm is enabled. [Storage API](storage-api.md), [federated messaging](federated-messaging.md), and [crypto agility](crypto-agility.md) are design or future-work references.
 
-The [implementation spec](implementation-spec.md) and [OIDC implementation-readiness plan](oidc-implementation-readiness.md) were written before much of the current local and Worker implementation. Read them for original requirements and unresolved gates, then check [status](status.md) and the relevant current runbook before interpreting a sentence such as “not implemented.” The [frontend and CI plan](frontend-and-ci.md) also mixes decisions already applied with proposals.
+The [implementation spec](implementation-spec.md) preserves the cross-cutting acceptance gates and future design. The [OIDC implementation-readiness plan](oidc-implementation-readiness.md) combines an implementation baseline with release gates. Check [status](status.md) and the relevant runbook for current deployment evidence. The [frontend and CI plan](frontend-and-ci.md) includes implemented choices and proposed quality targets.
 
 ## Documentation rules
 
@@ -41,4 +41,4 @@ The [implementation spec](implementation-spec.md) and [OIDC implementation-readi
 
 The active versioned D1 policy is authoritative for deployed runtime values. The [TOML example](../config/runtime-policy.example.toml) is an editing/input example. SQL models and Python checks under `design/` and `scripts/` validate designs unless identified as production migrations or loaders.
 
-Several detailed early design notes remain in Japanese. The English overview, status, runbooks, roadmap, and ADRs provide the current reading path. Retain the source notes where their constraints or rationale have not yet been fully carried into the English references; do not infer current deployment state from their dates alone.
+Repository Markdown documentation is in English. The product UI still supports Japanese and English. Historical ADRs retain their sequence; topic documents present the current contract or a clearly marked proposal.

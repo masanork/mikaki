@@ -1,5 +1,5 @@
-# 初期OIDCの統合設定見本。設計用。秘密・ドメイン・公開鍵登録は別管理。
-# 既存の三つの断片見本に代わる、配備時の単一入力の形。
+# Integrated initial OIDC policy example. Secrets, domains, and public-key registration are separate.
+# This is the single deployment input shape in place of the three earlier fragments.
 schema_version = 1
 
 [registration]
@@ -75,8 +75,8 @@ registered_clients = 16
 credentials_per_account = 10
 response_bytes = 131072
 
-# 入口の概算制限。回数/window、Cloudflareではlocationごと。
-# client/account単位は認証してから適用。未認証の自己申告をキーにしない。
+# Approximate ingress limits per window and, on Cloudflare, per location.
+# Apply client/account limits after authentication; never key them from unverified claims.
 [rate_limit]
 window = "60s"
 discovery_per_ip = 120
@@ -114,6 +114,6 @@ delivery_result_ttl = "7d"
 rate_key_ttl = "10m"
 
 [vault]
-# P1から使用。初期OIDCの起動条件にはしない。
+# Used from P1 onward; not required to start initial OIDC.
 unlock_idle_timeout = "15m"
 unlock_absolute_ttl = "1h"

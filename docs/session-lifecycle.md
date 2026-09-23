@@ -1,95 +1,62 @@
-# セッション・ログアウト仕様
+# Session and logout contract
 
-2026-09-22 / Revision 2（初期方針・設定外部化採用）
+**Revision 2, 2026-09-22.** This contract elaborates the initial OIDC user experience and [ADR 0003](adr/0003-session-lifecycle.md). It defines accepted defaults and invariants; [status](status.md) and deployment records, not this design alone, establish implementation. Durations are defaults in [runtime policy](runtime-configuration.md), not immutable code constants. Single use, parent-session binding, and stopping protected operations after an expired validation lease remain invariant.
 
-初期OIDCのログインUXを具体化する。以下の期限・ログアウト既定値・失効確認方式を初期仕様として採用する。決定は[ADR 0003](adr/0003-session-lifecycle.md)に記録する。実装・検証済みを意味せず、G1ではAPI・永続化・競合制御を具体化し、受入試験で契約を確認する。ログインフローは[初期OIDCとログインUX](oidc-login.md)に従う。
+## Default lifetimes
 
-本書の数値は運用設定の既定値であり、コード内の固定値ではない。[設定契約](runtime-configuration.md)と[設定見本](../config/session-policy.example.toml)に従って変更できる。本文の「5分」「30日」等は既定設定での説明とし、設定変更時は対応する期間へ読み替える。一回性・親セッションへの結び付け・確認期限後の処理停止は不変とする。
-
-## 通常利用の初期値
-
-| 状態 | 初期値 | 更新・終了条件 |
+| State | Initial value | Renewal and end |
 | --- | --- | --- |
-| mikakiのSSOセッション | Passkeyでの本人認証から最大30日 | SSOやバックグラウンド通信で絶対期限を延長しない。期限後はPasskeyで再認証 |
-| アプリセッション | 未操作7日、最長で元のSSOセッションの絶対期限まで | 画面からの通常利用で未操作期限を更新。pollingだけでは延長しない |
-| アプリ側の失効確認の有効期間 | 最大5分 | 有効性をサーバー間で再確認。OIDCの再ログイン画面は不要 |
-| 管理操作の本人確認 | 対象操作用のPasskey認証から5分以内・一回限り | 対象アカウント・操作・削除対象等に固定。単なるSSOでは発行しない |
-| 認可code | 発行から60秒・一回限り | 交換応答が失われた場合は新しいログイン取引から再開 |
-| ID Token | 発行から5分 | アプリセッション作成時の検証用。期限をアプリのログイン保持期限に転用しない |
-| Vault解錠（P1） | 利用者の操作がない状態で15分、最長1時間 | ローカルで施錠。解錠画面の再読込・終了後は秘密を再利用しない |
+| Mikaki SSO | At most 30 days from passkey authentication | Neither SSO use nor background traffic extends absolute expiry |
+| RP application session | Seven-day idle limit, never past parent SSO absolute expiry | User activity may renew idle time; polling alone may not |
+| Managed RP status-check result | At most five minutes | Recheck server-to-server without showing another login screen |
+| Management authorization | Once within five minutes of operation-bound passkey verification | Bind account, action, and target; SSO alone is insufficient |
+| Authorization code | Single use, 60 seconds | Restart login after a lost exchange response |
+| ID Token | Five minutes | Validate at app-session creation; do not use as app-session lifetime |
+| Vault unlock | 15-minute idle, one-hour absolute | Lock locally; do not reuse secrets after page close/reload |
 
-30日や5分は標準が要求する値ではなく、mikakiの初期設定である。サーバーの期限判定は`now >= expires_at`で失効とする。時計ずれの許容はtoken検証に別途定め、session期限を暗黙に延長しない。
+These are Mikaki defaults, not standards-mandated values. Expiry uses `now >= expires_at`; token clock skew is separate and does not extend a session. A valid SSO plus connection grant can establish another app session without a passkey, unless the RP explicitly requests reauthentication or the user just logged out. Normal login does not evaluate PRF or unlock a vault. `auth_time` remains the actual user-authentication time, not code issuance or lease check. A new passkey authentication creates a new SSO ID; it does not lengthen sessions derived from the old one.
 
-有効なSSOと接続許可があれば、アプリセッションの再作成でPasskey操作を求めない。アプリが明示的に再認証を要求した場合と、利用者がログアウトした直後の挙動は別とする。通常のログインはPRF評価・Vault解錠を伴わない。
+## Logout scope
 
-`auth_time`は実際の本人認証時刻とし、codeやID Tokenの発行時刻、失効確認の時刻で上書きしない。新たなPasskey認証でSSOの期間を更新する場合はセッション識別子も更新し、旧セッションから派生したアプリセッションの上限は自動延長しない。
-
-## ログアウトの操作と範囲
-
-| 表示・操作 | 対象 | 対象外 |
+| User action | Revokes | Does not revoke |
 | --- | --- | --- |
-| 通常の「ログアウト」 | このブラウザのmikakiセッションと、それからログインした接続アプリ | 別ブラウザ・別端末のセッション、Passkey、接続許可そのもの |
-| 設定の「すべてのログインを終了」 | 現在分を含むアカウントの全セッションと派生アプリセッション | Passkey、保存済みデータ、接続許可そのもの |
-| 設定の「アプリとの接続を解除」 | 対象アプリへの接続許可、その許可に基づく全セッション、当該アプリへのVault grant | 共通アカウント、他アプリ、保存済みVaultデータ |
+| “Log out” | This browser's Mikaki SSO and connected app sessions derived from it | Other browsers/devices, passkeys, or connection permission |
+| “Log out everywhere” | All account SSO and derived app sessions | Passkeys, stored data, connection permission |
+| “Disconnect application” | Its connection grant, all sessions from that grant, and that app's Vault grant | Common account, other apps, Vault data |
 
-通常のログアウトでは範囲を「このブラウザのtossa・tsudoiからログアウト」等と明示する。OIDC RP-Initiated Logoutの確認をmikakiで一度行い、アプリごとの確認を重ねない。確認に進む前に起点アプリのセッションは失効させる。mikakiのログアウトを取り消した場合は「tossaのみログアウト」など実際の結果を示し、SSOを自動再開しない。
+Make the ordinary action's scope visible, e.g. logout from this browser's tossa and tsudoi. RP-Initiated Logout is confirmed once at Mikaki, not separately by every app. Revoke the initiating RP session before navigating to OP confirmation. If the user cancels OP logout, report the actual result and do not silently restore SSO.
 
-全ログアウトと接続解除は管理画面から本人確認して行う。別アプリからの要求だけでアカウント全体を失効させない。全ログアウトは認証器の無効化ではなく、盗まれたPasskeyでの再ログインは別途credential削除で止める。credential削除時は、そのcredentialで本人認証したSSOセッションと派生アプリセッションも失効させる。他のcredentialで確立したセッションは残す。
+“Everywhere” and disconnection require management reauthentication. An RP request cannot revoke the entire account. Everywhere logout does not disable a stolen passkey; credential removal is separate and revokes SSO authenticated with that credential and its derived app sessions, leaving sessions from other credentials intact. “This browser” denotes cookie-bound scope, not physical device identity. Closing a browser is not guaranteed logout. Show login/last-check time and browser description as hints, never use a device label or User-Agent as proof of identity.
 
-「このブラウザ」はcookieで識別するセッションの範囲を意味し、物理端末の同定を意味しない。ブラウザを閉じただけでログアウトしたとは保証しない。設定画面ではログイン日時・最終確認日時・ブラウザ情報を補助情報として示し、端末名やUser-Agentを本人確認に使わない。
+## OIDC logout and revocation
 
-## OIDCログアウトと失効の伝達
+Initial managed tossa/tsudoi integration includes RP-Initiated and Back-Channel Logout. RPs map ID Token `iss`/`sid` to their server sessions. Mikaki links SSO, per-client sid, and connection-grant revision without publishing the secret browser cookie as sid.
 
-初期のtossa・tsudoi統合にRP-Initiated LogoutとBack-Channel Logoutを含める。アプリはID Token内の`iss`・`sid`とローカルセッションの対応を保持する。mikakiはSSOセッションと、各client向けsid・接続許可の版を関連付ける。ブラウザ用cookieの秘密値をsidとして公開しない。
+RP-Initiated Logout validates ID Token hint and current session and restricts post-logout redirects to registered destinations. The initiating RP uses a CSRF-protected POST and checks callback state. Clearing a cookie alone is not server-side revocation.
 
-RP-Initiated LogoutではID Token hintと現在のセッションを照合し、戻り先を事前登録する。要求の検証・利用者への確認は標準に従う。アプリの起点操作はCSRF対策を持つPOSTとし、ログアウトcallbackのstateを検証する。cookieを消しただけでサーバー側失効を完了扱いにしない。
+For Back-Channel Logout, validate signature, issuer, client audience, time/expiry, events, and sid/sub; reject Logout Tokens containing a nonce. The receiving RP invalidates its server session before acknowledging, without relying on a visible browser. Mikaki atomically records SSO revocation and a durable notification outbox. Retry transient failures and record permanent ones; do not display “all apps complete” while notifications remain undelivered. Repeated signed delivery or an already-invalid session may be acknowledged safely.
 
-Back-Channel Logoutでは署名、issuer、clientのaudience、時刻、有効期限、events、sid/subを検証し、nonceのあるLogout Tokenを拒否する。受信アプリは対象のサーバーセッションを無効化してから応答する。cookie削除や利用者が画面を開くことを前提としない。
+## Lease when delivery is lost
 
-mikakiはセッション失効と通知outboxを同じ原子的操作で記録する。ネットワーク障害や一時障害時は再試行し、恒久的な拒否は障害として記録する。通知が未達のアプリを残したまま「全アプリで即時完了」と表示しない。署名付き通知の再受信と、対象セッションが既に無効な場合は安全に成功扱いにできる。
+Notifications alone cannot bound propagation after delivery failure. Managed tossa/tsudoi RPs therefore check app-session status server-to-server at most every five minutes when serving protected operations. This is a Mikaki-specific contract, not standard OIDC or a guarantee for arbitrary clients.
 
-## 通知未達でも失効を反映する契約
+- A client can query only a sid issued to itself, not another app's state by claiming an `AccountId`.
+- Check SSO and connection-grant revision before first app-session commit; afterward recheck on a protected request when the prior lease expired. Idle sessions need no polling.
+- Measure the lease from **check start**, not delayed response arrival, and cap it at parent SSO expiry.
+- Read revocation from fresh authoritative state, not a stale replica or added cache. RP storage must serialize notification and status-result writes so a late `active=true` cannot restore a revoked sid.
+- If Mikaki is unreachable, an existing confirmed session lasts only until its existing lease expires. Then stop protected work, preserve user input, and offer retry. Do not extend the lease or repeatedly ask for passkeys.
+- Reevaluate long-lived WebSocket-like connections at revocation notice or lease expiry; initial connection approval is not indefinite authorization.
 
-Back-Channel Logoutだけでは、未達時の反映時間の上限を決められない。そこで管理対象のtossa・tsudoiは、アプリセッションの有効性を最大5分ごとにmikakiへサーバー間で確認する。これはOIDCの標準endpointではなく、初期アプリ統合の追加契約である。任意のOIDCクライアントが同じ保証を持つとは表現しない。
+With default policy, new protected operations are rejected within at most five minutes after revocation commitment. In-progress operations and already disclosed data cannot be recalled. The availability cost is that a prolonged OP outage also pauses protected RP work. Changing this trade-off requires updated contract and acceptance tests.
 
-- 問い合わせたclient自身に発行したsidだけを照会できる。AccountIdだけの自己申告で他アプリの状態を取得しない。
-- 初回のアプリセッション作成時も、有効なSSO・接続許可の版を確認する。以後は保護対象の要求を受けたとき、確認結果の期限が過ぎていれば照会する。未使用セッションへの定期pollingは不要。
-- 確認結果の上限は照会開始時から5分とし、遅延応答の到着時から5分を数え直さない。SSOの絶対期限を超えない。
-- 失効状態の読み取りは古いレプリカや追加キャッシュに依存させない。アプリ側でも失効通知の受信と確認結果の保存を競合制御し、失効後に遅れて届いた有効応答で復活させない。
-- 確認不能の場合は既存の有効期間まで利用可能とする。期限後は保護対象の処理を停止し、入力を保持して再試行を示す。通信障害を理由に期限を延ばしたり、Passkeyを繰り返し要求したりしない。
-- WebSocket等の継続接続も、失効通知か確認期限の到来で認可を再評価する。接続確立時だけ確認して無期限にデータを送らない。
+## Races and Vault boundary
 
-失効確定から最大5分後には新しい保護対象処理を拒否する設計とする。既に認可・実行中の処理や送信済みデータの取り消しは保証しない。代償として、mikakiに接続できない状態が有効期間を超えるとアプリ利用も停止する。この上限と可用性の選択を初期契約とし、変更時は仕様と試験を更新する。
+Never reuse a revoked sid. Preserve tombstones long enough to cover related code/token/app-session lifetimes and notification retries. A delayed old callback must not recreate an app session. Account-wide revocation advances an epoch and targets sessions committed before it; a new SSO from later passkey authentication receives a different sid and must survive old notifications. Disconnection advances the grant revision so an old notification cannot undo a new connection.
 
-## 遅延・再ログインとの競合
+Bind a management ceremony to fixed operation contents before reauthentication. Atomically consume its one-time authorization, check target revision, and commit the change. A recent OIDC `auth_time` alone does not authorize arbitrary management.
 
-失効済みsidを再利用しない。アプリは失効記録を保持し、ログアウト通知の後に古いOIDC callbackが届いてもセッションを作り直さない。失効記録の保持期間は、関連するcode・token・アプリセッションの最長期限と通知の再試行期間を覆うよう定める。
+On same-browser logout or account switch, discard Vault secrets and decrypted display where possible and notify other tabs. A suspended tab must recheck time and session on resume. Remote logout stops future server access but cannot erase offline memory or plaintext/keys already given to an app. Vault unlock lifetime is independent of 30-day SSO and is not extended by sync or background work.
 
-アカウント全体の失効と、新しい本人認証によるログインを世代で区別する。すべてのログインを終了する際は、その確定以前のセッションを対象として記録する。遅延した通知で、確定後に新しいPasskey認証から作った別sidのセッションを消さない。接続解除でもgrant版を進め、再接続後の許可を古い通知で取り消さない。
+Acceptance tests should cover default expiry boundaries, unchanged `auth_time` under SSO reuse, ordinary/everywhere/disconnect scope, missing/duplicate/reordered notifications, delayed code/callback, revocation and lease races, OP outage and persistent connections, malformed Logout Tokens and cross-client sid, old notification after new login, no automatic relogin after logout, and locked/unlocked/offline Vault guarantees.
 
-管理操作の再認証は、操作内容を先に固定したceremonyへ結び付ける。認証成功後の一回限りの許可消費と、対象の版確認・変更は原子的に確定する。OIDCのauth_timeが新しいという理由だけで任意の管理操作を許可しない。
-
-## Vaultとの境界
-
-同じブラウザでログアウト・アカウント切替した場合、mikakiの解錠画面は秘密と復号済み表示を可能な範囲で破棄する。別タブへの通知も行うが、サスペンド中のタブを即座に実行できるとは仮定しない。復帰時は期限・セッションを確認してから復号や表示を再開する。
-
-遠隔ログアウトではサーバーへの以後のアクセスを止める。オフライン端末のメモリや、既にアプリへ渡した平文・鍵を遠隔消去できるとは扱わない。解錠期限はSSOの30日とは独立し、同期や自動処理だけで延長しない。
-
-## 受入試験
-
-- 30日の絶対期限と7日の未操作期限の境界、SSO再利用でもauth_timeが変わらないこと。
-- 通常ログアウトで同じブラウザの両アプリが停止し、別ブラウザのセッションは継続すること。
-- 全ログアウト、credential削除、接続解除がそれぞれ定めた範囲だけに作用すること。
-- 通知の欠落・重複・順序逆転、ログアウト前のcodeの遅延交換、callback遅延から失効状態が復活しないこと。
-- 失効直前の有効性照会と遅延応答、失効直後の照会、アプリへの通知との競合で確認期限が延びないこと。
-- mikakiへの接続不能では確認期限後に要求・継続接続を止め、入力を保ち、再認証ループを起こさないこと。
-- 不正なLogout Token、別clientのsid、未登録の戻り先を拒否し、再ログイン後の新sidを古い通知で失効させないこと。
-- ログアウト後は利用者がログインを選ぶまで自動で認可フローを再開しないこと。
-- Vaultの解錠中・施錠中・オフラインで保証範囲が区別され、セッションの存在だけで解錠されないこと。
-
-## 参照
-
-- [OIDC RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)：OPへのログアウト要求、確認、戻り先の契約。
-- [OIDC Back-Channel Logout 1.0, errata set 1](https://openid.net/specs/openid-connect-backchannel-1_0.html)：sid、署名付き通知、検証・再送の契約。
-- [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest)：auth_timeと再認証要求。
-- [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)：ブラウザのセッション復元を考慮し、閉じる操作を確実なログアウトとみなさない。
+References: [RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest), and [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).

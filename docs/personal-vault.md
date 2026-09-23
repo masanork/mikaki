@@ -1,122 +1,27 @@
-# 個人Vault・会話アーカイブ・MCPの方針
+# Personal Vault, conversation archive, and MCP
 
-2026-09-22時点の合意した方向性と、実装前に確定する設計事項を記録する。実装済み機能を示すものではない。
+This records planned direction and decisions still needed before implementation; it does not claim the complete features exist. The [implementation specification](implementation-spec.md) defines the technical contracts, while [Vault claim sharing](vault-claim-sharing.md) identifies the small implemented owner only attribute path.
 
-実装上の契約は[実装仕様](implementation-spec.md)で具体化する。鍵保護は第7節、同期は第8節、MCPは第12節、未決事項は第15節を参照する。矛盾時は実装仕様を優先する。
+## Boundaries
 
-## 目的と境界
+Passkey authentication, Vault storage/unlock, conversation import, federated messaging, and MCP delegation have separate responsibilities. A shared Mikaki login can serve tossa and tsudoi without creating or unlocking a Vault. App identities, memberships, and collections remain app specific. Another operator's Mikaki instance is a separate infrastructure and identity boundary. Binding an app to a Vault owner requires authenticated consent, not matching email or an app assertion.
 
-利用者が、自分の鍵で保護したデータを端末間で復元し、複数アプリの会話を本人の意思で保存・利用できるようにする。その先に、利用者の代理として動くAIへの限定的なアクセス委任を置く。
+The user should encrypt and restore personal data across devices, selectively archive app conversations, and later delegate narrow AI read access. The server stores ciphertext and wrapped keys, manages grants/versions, and enforces operation permissions. The normal Vault root remains client controlled; a separately authorized system recipient can decrypt only specifically shared attributes, with that disclosure clearly stated. See [claim sharing](vault-claim-sharing.md).
 
-| 層 | 責任 |
-| --- | --- |
-| 認証 | Passkeyによる本人確認、credentialの管理 |
-| 個人Vault | 所有者とアプリへの許可、暗号文・包まれた鍵の保管、同期 |
-| 会話アーカイブ | アプリごとの会話の取り込み、出所・重複・更新の扱い |
-| 連合メッセージング | 独立したmikaki間でのE2EEメッセージ配送 |
-| MCPアダプター | 委任された範囲のデータをAIへ提供し、操作履歴を記録 |
+## Keys and synchronization
 
-同じリポジトリで開発しても、認証coreはVault・会話・MCPを知らない。独立したmikaki間のメッセージ配送は、[連合E2EEメッセージング](federated-messaging.md)としてアーカイブの後に追加する。汎用PDS規格への対応やグループチャットは、最初の連合実装には含めない。
+Use a hierarchy in which a Vault root key protects collection/data keys; WebAuthn PRF can unwrap an owner key on a device. PRF is not required for ordinary OIDC login. Define PRF input, KDF, AEAD suite, versioned AAD, envelope format, key generations, recovery, and test vectors before permanent data. An additional passkey or device needs an explicit rewrap/transfer path; possession of the same AccountId is insufficient. Loss of every usable key may make old ciphertext irrecoverable unless a recovery scheme was previously established.
 
-## 共通アカウントとアプリの分離
+Keep encrypted object versions immutable in blob storage and metadata/head/revision in D1. Conditional updates and operation IDs prevent silent overwrites and make retries idempotent. A failed D1 commit leaves an unreferenced blob for GC while preserving the old head. A deletion creates a tombstone; an old offline device must not resurrect it. Distinguish missing data from decryption failure, and never regenerate or overwrite a key on decryption failure. D1/R2 do not form one distributed transaction. Revisions alone do not prove protection against a malicious store replaying an old valid ciphertext; define any rollback guarantee explicitly.
 
-- tossa・tsudoiの通常ログインはmikakiの共通アカウントを使う。Vaultはそのアカウントに必要時に作成し、通常ログインにVaultの作成・解錠を要求しない。アプリ内のユーザー・組織・参加者IDとは区別する。
-- 「共通」は単一の中央運営者への集約を意味しない。別のCloudflareアカウントに置かれたVault所有者との通信はDIDを使って識別する。Cloudflareアカウント、mikakiインスタンス、利用者、アプリ内subjectを同一視しない。
-- アプリとの結び付けは、Vault所有者の認証と明示的な許可に基づく。メールアドレスの一致やアプリの申告だけで行わない。
-- 共通認証は全データへの共通権限を意味しない。アプリごとに名前空間と鍵の範囲を分ける。
-- 許可は少なくとも対象アプリ、対象データ、操作、期限、失効状態を持つ。「会話を書き込む」ことと「既存の会話を読む」ことを分ける。
-- ブラウザの保存領域はoriginごとであり、PRFもcredentialに依存する。異なるアプリのPasskeyから同じVault鍵が得られる前提にしない。
-- インスタンスごとに一つの共通RP IDと認証・解錠originを採用する。本番アプリ接続には初期からOIDCを使う。実ドメイン、アプリの接続・解除手順とOIDCの実装契約は、本番アプリ接続前にG1で確定する。共通アカウントの採用は[ADR 0001](adr/0001-common-account.md)に記録する。
+Grants bind owner, app/delegate, collection, operation, expiry, and revocation version. Authentication and OIDC tokens do not grant Vault operations or unlock a key. Separate app namespaces and key scopes. Metadata such as size, timestamps, and access patterns remains visible to the service.
 
-## 保存と鍵
+## Archive and MCP
 
-ローカルはIndexedDB、遠隔保管はR2を基本とする。localStorageを同期データの本体や平文秘密鍵の保存先には使わない。両保存先には暗号文と、PRF由来の鍵で包んだVault鍵を置く。Lockerの標準状態では利用者端末だけが復号し、システムや共有相手用の鍵包みは付けない。利用者が特定データのシステム処理・共有を許可した場合だけ、対象を限定した追加recipient envelopeを将来機能として付ける。鍵包みは権限記録の代替ではなく、AuthZEN/Grantによる許可、暗号文取得、鍵包み取得をそれぞれ適用する。詳細は[実装仕様のサーバー可読データとLockerの暗号境界](implementation-spec.md#サーバー可読データとlockerの暗号境界)、[PRF・鍵保護](implementation-spec.md#7-prf鍵保護)、[Vaultと同期](implementation-spec.md#8-個人vaultと同期p1)を参照。
+Import only consented conversations, retaining source app, conversation/message IDs, sender identifier namespace, time, body, and format version. Deduplicate by source tuple, not display name. Specify edit/delete import, retention after leaving an app, and suppression of unwanted reimport. Label provenance separately from cryptographic author verification. An archive is a personal copy, not the shared chat's source of truth. Live messaging forward secrecy does not erase deliberately archived plaintext.
 
-- ランダムなVault鍵を生成し、PasskeyごとのPRF由来の鍵で包む。アプリ・コレクション単位の鍵の境界も設計し、単一の万能鍵をアプリやAIへ渡さない。
-- 鍵階層はVault root key、collection key、blob/object data keyに分け、本文はdata keyで一度だけ暗号化する。後続の共有/system processingでは対象鍵のenvelopeをrecipientごとに追加する。各envelopeは復号経路を与える（OR条件）。P1の実装対象はowner credential wrapのみとする。
-- PRF出力、解錠用の鍵、平文秘密鍵を同期先へ送らない。ログやエラーにも含めない。
-- アプリ、Vault、オブジェクト、世代、暗号形式のバージョンなどを認証付き暗号の文脈へ結び付け、暗号文や鍵包みの取り違えを検出する。
-- 認証器追加時は、既存の解錠経路から新しい認証器向けの鍵包みを作る。別のPasskeyから同じPRF出力が得られると仮定しない。
-- recipientの共有解除はAPIと鍵包み配布を直ちに拒否し、以後の更新を新しい鍵世代へ進める。過去の取得済みデータは回収できないため、履歴全体の再暗号化は既定にせず、必要性が明確な場合だけ行う。
-- 「データが存在しない」「取得に失敗した」「復号に失敗した」を区別する。復号失敗時に鍵を再生成して既存データを上書きしない。
-- 対象ブラウザ／OS／認証器の組み合わせで、別端末からのPRF利用を試験する。同じアカウントでPasskeyが同期されたという事実だけで、PRFによる復元成功を保証しない。
+Start MCP with list/search/read for selected conversations. Search snippets and counts obey the same scope. A local adapter or an unlocked browser bridge is the initial candidate because a remote unattended MCP server cannot derive PRF keys from an OAuth token. A permanently remote AI service would need selected plaintext or data keys and becomes a decrypting recipient, requiring a distinct design and consent. Show both the MCP client and downstream AI service to the user. Revocation stops future reads; it cannot recall already delivered plaintext, summaries, or embeddings. Log delegate, operation, target, time, and outcome, not bodies or keys. Treat imported text as untrusted; enforce tool permissions outside model reasoning.
 
-認証の復旧とデータの復旧は別である。初期Vaultで既存端末からの鍵の受け渡しを検証する。全端末・全認証器紛失時の復旧手段を提供するかは実装前に決め、提供しない場合のデータ喪失を明示する。
+Before implementation, settle origin/RP ID, app consent, data formats and quotas, device recovery, conflict/delete/retry/backup behavior, archive provenance and retention, and MCP execution, unlock lifetime, scope, expiry, and audit. Initial Vault acceptance requires device A to save encrypted data and a fresh device B to restore it through an authorized unlock, without losing good data under conflict, network failure, or decrypt failure.
 
-## 小さく始める同期
-
-最初は容量上限のある暗号化スナップショットを単位とする。アプリごと、許可を分けたいコレクションごとに単位を分け、Vault全体を一つの巨大な暗号文に固定しない。添付ファイル、大規模履歴、CRDT、自動マージは必要になるまで実装しない。
-
-- リモート更新は取得時の世代／ETagに対する条件付き書き込みを行う。新規作成にも既存データを上書きしない条件を付ける。
-- 競合時は未同期のローカル更新を保存して明示的に返し、無言で最後の書き込みを勝たせない。
-- 削除も世代を持つ操作として扱い、古い端末による復活を防ぐ。削除記録の保持期間と、長期オフライン端末の再同期方針を定める。
-- 書き込み成功後に応答が失われた場合を含め、再試行時に重複・上書き・鍵包みの欠落を起こさない手順を設計する。
-- R2オブジェクト間、D1とR2の間に一つのトランザクションがあると仮定しない。複数資源へ更新する場合は、公開する版の確定方法と失敗時の回復を定義する。
-- 同期はバックアップの代替としない。誤削除や破損が伝播した場合の復元と、保持する履歴の範囲を別に定める。
-
-オフライン利用は、ローカルで解錠できる範囲に限る。遠隔での権限失効がオフライン端末に即時反映されるとは保証しない。
-
-## 会話アーカイブ
-
-本人が許可した会話をアプリから取り込み、ブラウザ内で復号して横断的に参照・検索する。最初からサーバー全文検索や埋め込みインデックスを作らない。
-
-- 取り込み形式には、元アプリ、元会話ID、元メッセージID、送信者の識別子の名前空間、時刻、本文、形式バージョンを含める。
-- 元アプリ・会話・メッセージの組で重複を判定する。表示名の一致から同一人物と判断しない。
-- 編集・削除の取り込み方、元アプリでの退会後の保管可否、本人がアーカイブを削除した場合の再取り込み抑止を仕様化する。
-- 保存した内容の出所と、暗号学的に確認した送信者の真正性は区別する。初期のインポートデータを、送信者が署名した原本と表示しない。
-- 個人アーカイブは共有チャットの正本ではない。元アプリからの削除や参加者の変更によって、既に配布した平文・鍵を回収できるとは保証しない。
-- 連合メッセージの配送暗号と長期アーカイブの暗号は分ける。プロトコル上の古い鍵を削除しても、Vaultへ意図的に保存した本文が消えるわけではない。
-
-## 将来のMCPアクセス
-
-MCPは個人Vaultの上に置くアダプターとし、認証coreにAI機能を追加しない。最初は、許可された会話の一覧・検索・読み取りに限定する。検索結果・抜粋・件数などにも同じ認可を適用し、検索が許可外データの抜け道にならないようにする。
-
-### アクセス許可と復号は別
-
-OAuthなどのアクセストークンでVault APIへのアクセスを許可しても、PRFから導出する鍵が得られるわけではない。利用者が不在のリモートMCPサーバーが、暗号文を自由に検索・復号できる設計にはしない。
-
-最初の候補は、本人が解錠したブラウザと連携するブリッジ、または本人の端末上のMCPアダプターで、許可された範囲だけを復号しAIへ返す方式とする。ブラウザ連携／ローカルプロセス間の認証、鍵の保持先、解錠の有効期間は実装前に検証する。ブラウザを閉じた状態での動作を前提にしない。
-
-常時稼働のリモートAIへ委任する場合は、選択したデータのコピー、または限定したデータ鍵を別の実行主体へ渡す必要がある。その主体は復号できる受信者となり、保護の境界が変わる。Vault全体の解錠鍵を渡すことを既定にせず、この方式は別の利用要件が生じた段階で設計する。
-
-### 委任の範囲
-
-- 所有者、委任先クライアント、対象コレクション／会話、操作、期限、失効状態を明確にする。
-- 最初は選択した範囲の読み取りのみ。書き込み・削除・外部送信・権限付与は別の許可とし、自動的に付随させない。
-- 接続先MCPクライアントと、その先で平文を処理するAIサービスを利用者に示す。平文の提供は情報開示であり、E2EEで保存していたことだけを理由に無条件で送らない。
-- 他のmikakiから受信したメッセージにも同じ許可を適用する。連合相手やメッセージ本文は、MCPの権限を付与・変更できない。
-- 失効により以後の取得を停止する。既にAIへ渡した平文、鍵、派生した要約・埋め込みを遠隔で回収できるとは保証しない。
-- 監査記録には委任先・操作・対象・時刻・結果を残し、会話本文、トークン、PRF出力、秘密鍵は残さない。記録自体の閲覧権限と保持期間も定める。
-
-HTTPでMCPを公開する際は、その時点のMCP認可仕様に従う。MCPサーバー向けのaudienceと権限を検証し、他サービス向けのトークンをそのまま受け入れたり転送したりしない。OIDCログインのID TokenをVaultへのアクセス権として扱わない。ローカルSTDIO方式とHTTP方式の認可手順を混同しない。
-
-取り込んだ会話は信頼できないデータとして扱う。本文に含まれる「他の会話を取得せよ」「外部へ送信せよ」といった指示で、委任範囲や実行権限を拡大しない。認可はモデルの判断に任せず、各ツールの実行境界で強制する。許可範囲内の平文を読んだモデルの挙動すべてを保証できるとは表現しない。
-
-## 保証の範囲と実装前の決定事項
-
-暗号化によって保存先に平文を渡さないことを目指す。ただし、サイズ・時刻・アクセス先などのメタデータは残る。解錠中のブラウザのXSSや改変された配信コード、侵害された端末から平文を保護できるとは保証しない。
-
-条件付き更新は通常の競合を防ぐが、悪意ある保存先による古い正当な暗号文の再提示を、それだけで防ぐものではない。初期の脅威モデルでは保存先の改変・巻き戻しをどこまで扱うかを明示する。新規端末を含む完全な巻き戻し検知を根拠なく保証しない。
-
-各機能への着手前に、次を具体化する。
-
-1. 共通アカウントのRP ID・origin、アプリとの結び付けと許可画面。
-2. 最初に保存するデータ、容量上限、鍵の粒度、暗号形式とテストベクトル。
-3. 新端末・別認証器への鍵の受け渡し、全喪失時の復旧方針。
-4. 競合・削除・再試行・バックアップの手順と、許容するオフライン期間。
-5. 会話アーカイブの編集・削除・出所・保管方針。
-6. MCPの実行場所と復号主体、委任範囲、提供先、失効・監査の方法。
-
-最初のVaultの完成条件は、端末Aで登録・暗号化保存し、ローカルデータのない端末Bで許可された解錠手順を経て復元できること。並行更新・通信失敗・復号失敗時に、最後の正常なデータと未同期更新を失わないことも確認する。その後に会話アーカイブ、連合E2EEメッセージング、MCPでの限定的な参照を追加する。
-
-## 参照
-
-- [R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)
-- [R2の整合性](https://developers.cloudflare.com/r2/reference/consistency/)
-- [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
-- [Web Authentication Level 3: PRF extension](https://www.w3.org/TR/webauthn/#prf-extension)
-- [RFC 9180: Hybrid Public Key Encryption](https://www.rfc-editor.org/rfc/rfc9180.html)（将来の共有相手/system recipient envelopeの候補。採用suiteはG2/G5で確定）
-- [MCP Authorization（2025-11-25）](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
-- [MCP Security Best Practices](https://modelcontextprotocol.io/docs/2025-11-25/tutorials/security/security_best_practices)
-
-参照したMCP仕様は方針整理時の資料であり、将来の実装時には適用する仕様版を改めて確認する。
+References: [R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/), [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), [WebAuthn PRF](https://www.w3.org/TR/webauthn/#prf-extension), [HPKE RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html), [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), and [MCP security guidance](https://modelcontextprotocol.io/docs/2025-11-25/tutorials/security/security_best_practices). Recheck applicable MCP versions when implementing.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SQLite上の原子操作設計試験。D1/署名/HTTPの試験ではない。"""
+"""SQLite atomic-operation design tests, not D1, signing, or HTTP tests."""
 import concurrent.futures
 import sqlite3
 import tempfile
@@ -18,7 +18,7 @@ def statements(name):
 
 
 def batch(db, name, params, fail_after=None):
-    # D1 batch相当のロールバック境界をSQLite transactionで検証する。
+    # Check the D1-batch-like rollback boundary with a SQLite transaction.
     db.execute('BEGIN IMMEDIATE')
     try:
         for i, statement in enumerate(statements(name)):

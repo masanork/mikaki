@@ -1,76 +1,38 @@
-# 初期OIDCとログインUX
+# OIDC login experience
 
-2026-09-22 / Draft 3
+The first production app connection uses OIDC Authorization Code with PKCE S256. Users see a passkey login, without protocol configuration or an extra consent screen. [ADR 0002](adr/0002-oidc-from-first-release.md) records the decision; [implementation readiness](oidc-implementation-readiness.md) describes the current implementation.
 
-OIDCを最初の本番アプリ接続から採用する。利用者にはPasskeyによるログインとして提示し、プロトコルの導入を理由に設定・入力・確認画面を増やさない。採用判断は[ADR 0002](adr/0002-oidc-from-first-release.md)、認証coreの契約は[実装仕様](implementation-spec.md)を参照する。本書のUXを受入条件とし、プロトコルの詳細はG1で確定する。
+## User journey
 
-## 利用者の操作
+| Situation | Expected experience |
+| --- | --- |
+| First connection, signed out | Show the registered app name and information shared, then authenticate with a passkey. Record consent only after binding it to the authenticated account. |
+| First connection, signed in | Show the account and app, allow account switching, and confirm the connection. |
+| Previously approved connection, signed in | Complete a top level redirect without another prompt unless reauthentication is required. |
+| Previously approved connection, session expired | Authenticate again without repeating unchanged consent. |
+| New account | Validate an invitation and enroll a passkey in the login journey. Public self registration is outside scope. |
+| First Vault use | Explain the requested operation, then unlock/create the Vault and obtain a separate grant. |
+| Cancellation or expiry | Return safely to the app, preserve unsaved input where possible, and offer a retry without a redirect loop. |
 
-| 状況 | 表示・操作 | 完了後 |
-| --- | --- | --- |
-| 初回接続・未ログイン | アプリの「ログイン」からmikakiへ移動。「tossaにログイン」など接続先と共有情報を示し、「Passkeyで続ける」から認証する | 許可した接続を記録し、元のアプリへ戻る |
-| 初回接続・mikakiにログイン済み | 使用するアカウントと接続先を示し、「このアカウントで続ける」。別のアカウントも選べる | 初回接続の許可を記録して戻る |
-| 接続許可済み・mikakiにログイン済み | アプリの「ログイン」からトップレベルで往復する。再認証条件がなければ確認画面やPasskey操作を挟まない | アプリセッションを作成する |
-| 接続許可済み・mikakiのセッション切れ | Passkey認証を行う。許可内容に変更がなければ接続確認を繰り返さない | 元のアプリへ戻る |
-| アカウント未作成 | 招待を検証し、同じ認証画面内でPasskeyを登録する。続行するアプリと共有内容を事前に示す | 登録した本人との結び付けが成立すれば、そのままログインを続ける |
-| Vaultを初めて使う | 「会話を保存」等の操作時に、対象・操作を説明し、Vaultの作成・解錠と許可を行う | 通常ログインの許可と別に記録する |
-| キャンセル・期限切れ | 元のアプリへ安全に戻り、再試行を選べる。未保存の入力を保つ | 自動リダイレクトの無限ループを起こさない |
+The first connection decision is integrated into authentication. Display names and destinations come from registered client data, never request supplied labels. Ordinary login does not ask for an email address, password, IdP, issuer URL, or PRF output. Browser and authenticator passkey steps still vary by platform.
 
-初回の接続許可は認証画面に統合し、通常の未ログイン経路で認証後に同じ内容の同意画面を追加しない。接続先・共有内容を表示した上での続行操作を、そのログイン取引に対する意思表示として保持し、認証成功後に確定したAccountIdと結び付ける。未認証時点で永続的な許可を作らない。表示するアプリ名・接続先は登録情報から取得し、要求の自由文字列を信用しない。
+## Separate boundaries
 
-メールアドレス、パスワード、IdP選択、issuer URLの入力を通常ログインに要求しない。初期の各アプリには管理者が接続先mikakiを設定する。初回のアカウント登録には従来通り招待/承認が必要であり、公開自己登録は追加しない。
+Mikaki SSO, each app session, and Vault unlock are independent. An OIDC token neither unlocks the Vault nor grants a Vault operation. Apps decide their own membership and roles. Start with `openid`; do not request profile or Vault permissions by default.
 
-通常ログインにはパスワード入力欄を設けない。アカウント復旧でパスワードを採用する場合も、復旧の本人確認と試行制限を別の手順として設計し、OIDC認可中の通常ログインに流用しない。複数のPasskeyや回復コードも復旧手段の候補とする。
+Respect `prompt=login`, `prompt=consent`, `prompt=select_account`, `max_age`, and `prompt=none` semantics. Account switching must be available. Credential management requires fresh proof beyond an SSO session. Disconnection stops later automatic login; session termination follows [session lifecycle](session-lifecycle.md). A single app logout must not immediately trigger automatic SSO login.
 
-OS・ブラウザによるPasskey選択や本人確認は残る。操作回数はmikakiが追加する画面とOSの操作を分けて計測し、「常に1クリック」とは保証しない。
+## Initial protocol profile
 
-## 認証・許可・解錠の境界
+- Register server side clients statically. Require exact redirect URI matching, transaction bound `state`, `nonce`, and PKCE, and single use authorization codes.
+- The app backend exchanges the code and validates signature, algorithm, issuer, audience, applicable `azp`, expiry, nonce, and `auth_time` when reauthentication was requested.
+- Identify an external account by `(iss, sub)`, never by email equality. See [identity and signing keys](oidc-identity-and-keys.md).
+- Use protected app session cookies. Do not put ID/access tokens or client secrets in browser localStorage.
+- Publish Discovery and JWKS consistent with the actual issuer and deployed algorithms.
+- Implicit/Hybrid Flow, dynamic registration, refresh tokens, `offline_access`, and unrestricted third party clients are outside the initial profile.
 
-mikakiのログインセッション、各アプリのログインセッション、Vaultの解錠状態を独立して扱う。SSOでアプリへ戻れてもVaultが解錠されたとは扱わない。通常ログインではPRF評価を要求せず、必要な時点で解錠する。解錠済みの場合の再利用は別途定める解錠期限・grantの範囲に限る。
+A successful login must work without PRF or an existing Vault. Initial consent must not be duplicated. Reject cross app code confusion, mismatched state/nonce/PKCE, invalid token claims, and concurrent code exchange. See [login transactions](oidc-login-flow.md), [access tokens](oidc-access-token-and-userinfo.md), and [session lifecycle](session-lifecycle.md).
 
-初期ログインの要求範囲は`openid`を基本とし、氏名・メールやVault権限を一括要求しない。OIDCのID Tokenとaccess tokenはVaultの解錠鍵にもVault操作許可にもならない。アプリ参加資格や役割も各アプリで判定する。
+## Standards
 
-アカウント切替を利用者が選べる入口をアプリに用意する。`prompt=login`や`max_age`による再認証要求、`prompt=consent`や`select_account`の要求を、画面削減のために無視しない。`prompt=none`で対話が必要な場合は規定のエラーを返す。通常のログイン開始では不要な再認証要求を送らず、隠しiframeによるSSOを必須にしない。
-
-認証器の管理では別途本人確認を行い、SSOセッションだけで管理操作を許可しない。接続解除は以後の自動ログインを止める。保持期間・既存アプリセッションの失効・共通ログアウトは[セッション・ログアウト仕様](session-lifecycle.md)に従う。数値は運用設定とし、変更時は[設定契約](runtime-configuration.md)に従う。単一アプリのログアウト後に自動でSSOを再開して即ログインし直す動作は禁止する。
-
-## 初期のプロトコル範囲
-
-以下はmikakiの実装プロファイルであり、OIDC全機能への対応を意味しない。
-
-- Authorization Code FlowとPKCE `S256`を採用する。初期クライアントはサーバー側処理を持つtossa・tsudoiを静的に登録する。
-- redirect URIは登録値と完全一致で検証する。ログイン取引ごとの`state`・`nonce`・PKCEをブラウザセッションに結び付け、期限と一回性を管理する。
-- codeはclient・redirect URI・PKCE・認証結果に固定する。token endpointでクライアント認証と検証を行い、原子的に一度だけ交換する。無効なredirect URIへエラーを転送しない。
-- アプリのバックエンドがcodeを交換し、署名・許可したalg・issuer・audience・必要なazp・有効期限・nonceを検証してからアプリセッションを発行する。再認証を要求した場合はauth_timeも検証する。
-- アプリは`(iss, sub)`を外部アカウントの識別に使い、メール一致で統合しない。アプリ内SubjectIdとの対応を保持する。公開subと署名鍵の方式は[識別子・署名鍵設計案](oidc-identity-and-keys.md)で具体化し、G1で確定する。
-- ブラウザにはアプリセッション用の保護されたcookieを使い、ID/access tokenやクライアント秘密をlocalStorageへ保存しない。通常のアプリ利用をOIDCトークンのブラウザ保持に依存させない。
-- DiscoveryとJWKSを用意し、固定したissuerと整合させる。authorization・token・UserInfoの対応範囲、署名方式、鍵更新、client認証方式をG1で具体化し、採用する標準OIDCクライアントで照合する。
-- Implicit/Hybrid Flow、動的クライアント登録、offline_access・refresh token、第三者アプリの自由登録は初期対象外。必要な再ログインはトップレベルの認可フローで行う。
-
-WebAuthn署名のES256限定と、OIDCのトークン署名方式は別の選択とする。OIDCの必須実装要件と対象クライアントの互換性を確認してから署名方式を固定する。OIDCの状態遷移・セッション・署名処理をWebAuthn検証器へ混ぜず、モジュール/API境界と依存をG1で定める。
-
-## 完成条件
-
-- 初回の未ログイン接続で、アプリ名と共有内容を示す認証画面からPasskeyで続行でき、重複する同意画面が出ない。
-- 一度許可したアプリへの通常ログインは、有効なmikakiセッションがあれば、追加の確認・Passkey操作なく完了する。
-- PRF非対応・Vault未作成でも通常ログインが完了する。Vault操作を開始するまで解錠を求めない。
-- 接続先・共有範囲の変更、接続解除、明示的な再認証要求を自動通過させない。
-- アプリ間のcode取り違え、state/nonce/PKCE不一致、無効なissuer/audience/署名、codeの並行交換を拒否する。
-- code交換の応答喪失やログイン中断から安全に再開でき、入力の喪失やリダイレクトループがない。
-- mikaki、各アプリ、Vaultの状態を独立に切らした組合せで、不要な再認証と無許可の通過がないことを確認する。
-
-## G1で残る設計
-
-初期OIDCの設計判断は[統合実装基準](oidc-implementation-readiness.md)にまとめた。以下の経緯で具体化した事項については同書を優先し、G1では残る配備実値と実装・実環境検証を完了する。
-
-クライアント認証とログイン開始からアプリセッション確立までの具体案は、[クライアント認証とログイン取引](oidc-login-flow.md)にまとめる。private_key_jwt・APIパス・追加設定値は同書のレビュー対象とする。
-
-Access TokenはUserInfo専用の不透明token、有効期間は既定5分とする案を[Access TokenとUserInfo](oidc-access-token-and-userinfo.md)に定める。初期のUserInfoはsubのみを返し、通常ログインでの呼出しは必須にしない。
-
-実ドメインとissuer、subの方式、cookie属性、失効確認APIと永続化・競合制御、access tokenとLogout TokenのTTL、クライアント認証、署名鍵の保管とローテーション、公開endpointの制限、依存とcore外のモジュール構成を固定する。セッション・code・ID Tokenの初期期限とログアウト範囲はセッション仕様で確定しており、型付き設定と実装・試験で満たす。OIDC採用そのものは未決に戻さない。
-
-## 仕様根拠
-
-- [OpenID Connect Core 1.0, §3.1.2.4](https://openid.net/specs/openid-connect-core-1_0.html#Consent)：情報提供には認可判断が必要だが、毎回独立した同意画面を設けることは要求していない。上記の統合画面と許可の保持はmikakiのUX設計である。
-- [OpenID Connect Core 1.0, §3.1.2.1](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest)：promptとmax_ageの意味を定める。
-- [RFC 9700, §2.1.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1)：Code Flow、redirect URI検証、PKCE等の安全性要件を参照する。
+[OIDC Core authorization requests](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest), [OIDC Core consent](https://openid.net/specs/openid-connect-core-1_0.html#Consent), and [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1) inform this profile. The combined first connection screen is Mikaki's UX decision.

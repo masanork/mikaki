@@ -1,22 +1,16 @@
 # WebAuthn parser fuzzing
 
-2026-09-23 / WG-05のfuzz target、独立fixtureのcorpus、実行記録。
+**WG-05, 2026-09-23.** The isolated [fuzz package](../fuzz/Cargo.toml) stays outside the ordinary Cargo workspace so `libfuzzer-sys` is not a product dependency. Each run regenerates corpus seeds from independent [Python cryptography/OpenSSL fixtures](../crates/webauthn/testdata/README.md). The seed step checks registration and MDS expected outcomes and completes a valid signed assertion. Generated corpus files are ignored rather than committed.
 
-## 対象と入力の組み立て
-
-[fuzz package](../fuzz/Cargo.toml)は通常のCargo workspaceから除外し、製品依存に`libfuzzer-sys`を足さない。独立した[Python cryptography/OpenSSL生成fixture](../crates/webauthn/testdata/README.md)を各実行時にcorpusへ再生成する。seed生成時には登録fixtureの受理/拒否、MDS fixtureの検証結果を期待値と照合し、認証用fixtureは有効な署名を作って完了まで確認する。corpusファイルは無視対象で、変異による大量のcoverage入力をソース管理へ入れない。
-
-| target | 入力変異 | 通過させる処理 |
+| Target | Mutated input | Processing reached |
 | --- | --- | --- |
-| `registration` | 独立登録fixtureのattestationObject、clientDataJSON | JSON/Base64URL、CBOR、authenticatorData、COSE鍵、packed/U2F/TPM、証明書・metadata参照、署名 |
-| `assertion` | clientDataJSON、authenticatorData/拡張、COSE公開鍵、DER署名 | 保存credentialとの照合、key parse、flags/counter、署名検査 |
-| `metadata` | MDS JWT文字列/header、CRL bytes、署名済みMDS全体JSON | JWT/X.509、署名、CRL、期限、metadata JSON/entries |
+| `registration` | attestationObject and clientDataJSON | JSON/base64url, CBOR, authenticatorData, COSE, packed/U2F/TPM, certificates, metadata lookup, signature |
+| `assertion` | clientDataJSON, authenticatorData/extensions, COSE public key, DER signature | Saved-credential binding, flags/counter, key parse, signature |
+| `metadata` | MDS JWT/header, CRL bytes, signed BLOB JSON | JWT/X.509, signature, CRL, expiry, entries |
 
-rawフィールド変更後の署名失敗は想定した検証結果であり、fuzzerはpanic・ハング・libFuzzer timeoutを探索する。署名検証を無効化するcfgやtest専用の受理経路はない。有効署名付き全体MDS seedでは後段payload/entry parserへ到達しやすくする。暗号署名を保ったまま意味を変えるstructured mutationや、ローカルで認証器と比較する差分試験は対象外であり、Conformanceと既存の独立mutation fixtureで補う。
+Signature rejection after arbitrary raw mutation is expected. The fuzzers search for panic, hang, and libFuzzer timeout; there is no test-only signature bypass or acceptance route. A valid signed whole-BLOB seed helps reach later payload/entry parsing. Signature-preserving structured mutation and differential tests against a physical authenticator are outside this run; independent regression fixtures and Conformance provide other evidence.
 
-## 再実行
-
-nightly toolchainとcargo-fuzzを固定する。ローカルでは一度seedを生成し、targetごとに時間を区切る。
+## Reproduce and respond to a crash
 
 ```sh
 cargo run --manifest-path fuzz/Cargo.toml --locked --bin seed
@@ -25,20 +19,20 @@ cargo +nightly-2026-09-21 fuzz run assertion -- -max_total_time=120 -max_len=655
 cargo +nightly-2026-09-21 fuzz run metadata -- -max_total_time=120 -max_len=131074 -timeout=10
 ```
 
-`.github/workflows/webauthn-fuzz.yml`は日次ではなく毎週と手動で実行し、各targetを90秒実行する。所要時間、実行回数、peak RSS、対象targetとseed件数を記録する。結果はそのcommitの探索範囲でpanic/timeoutが見つからなかったことだけを示し、未到達コード、網羅性、暗号実装の正しさ、安全性を証明しない。
+The [workflow](../.github/workflows/webauthn-fuzz.yml) runs weekly or manually, not daily, with 90 seconds per target. Record duration, executions, peak RSS, target, and seed count. A clean run means only that no panic/timeout was found for that commit and exploration interval; it is not coverage, cryptographic correctness, or a security proof.
 
-crashを見つけたらartifact入力を保持し、`cargo +nightly-2026-09-21 fuzz tmin <target> <input>`で最小化する。原因と期待される受理/拒否を確認し、最小入力を通常のnative/Wasm共通回帰試験へ戻してからartifactを閉じる。署名付きfixtureが壊れて拒否されただけの入力は不具合としない。
+For a crash, retain and minimize the artifact using `cargo +nightly-2026-09-21 fuzz tmin <target> <input>`. Determine the intended acceptance/rejection, add the minimized input to shared native/Wasm regression tests, then close the artifact. A mutated signed fixture rejected because its signature broke is not itself a bug.
 
-## 2026-09-23のローカル実行
+## Recorded local runs
 
-| target | 固定時間 | 実行回数 | seed数 | 結果 |
+On macOS arm64 with nightly Rust 1.100.0, cargo-fuzz 0.13.2, and libfuzzer-sys 0.4.13:
+
+| Target | Time | Executions | Seeds | Result |
 | --- | ---: | ---: | ---: | --- |
-| registration | 25秒 | 268,184 | 42 | crash/timeoutなし |
-| assertion | 25秒 | 363,762 | 4 | crash/timeoutなし |
-| metadata | 25秒 | 259,561 | 43 | crash/timeoutなし |
+| Registration | 25 s | 268,184 | 42 | No crash/timeout |
+| Assertion | 25 s | 363,762 | 4 | No crash/timeout |
+| Metadata | 25 s | 259,561 | 43 | No crash/timeout |
 
-実測はmacOS arm64のnightly Rust 1.100.0、cargo-fuzz 0.13.2、libfuzzer-sys 0.4.13。並列3 targetが示すpeak RSSは各最大560 MiB。シンボライザー起動警告が出たためpanic stack traceのsymbolicationはできないが、終了状態・fuzzer統計は正常だった。初回はAddressSanitizer有効で各targetをビルド・実行しており、UBSanの実行は主張しない。
+The first AddressSanitizer-enabled build/run peaked at up to 560 MiB among three parallel targets. A symbolizer startup warning prevented symbolic panic stacks, but exit and fuzzer statistics were normal. UBSan was not claimed. A second default AddressSanitizer run of ten seconds each reached registration 88,391/42 seeds/476 MiB, assertion 111,850/4/511 MiB, metadata 89,231/43/440 MiB, with no crash, timeout, or sanitizer report. Durations and memory are separate measurements, not one combined run.
 
-続けてAddressSanitizerの既定設定（同nightly/cargo-fuzz）でも3 targetを各10秒実行した。registration 88,391回/seed 42/peak RSS 476 MiB、assertion 111,850回/seed 4/511 MiB、metadata 89,231回/seed 43/440 MiBで、crash・timeout・Sanitizer報告なし。2回の測定は同じmachineryでも実行時間・メモリーを独立に記録した。
-
-このfixture群はattestation/MDSの受理・拒否ベクトルであり、暗号署名された信頼連鎖に対する網羅的なmutation corpusではない。第三者レビュー・長期fuzz継続・実認証器互換性はWG-06/09等の別課題として残る。
+These seeds cover signed positive and negative attestation/MDS fixtures, not exhaustive signature-preserving mutation of trust chains. Long fuzzing, real-device compatibility, and external review remain separate tasks.

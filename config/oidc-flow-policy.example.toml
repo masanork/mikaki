@@ -1,5 +1,5 @@
-# ログイン取引の追加設定案。レビュー用であり、読み込み実装はない。
-# 採用時は単一の有効設定へ統合し、ファイルの暗黙mergeはしない。
+# Proposed additional login transaction settings; a review artifact, not a loaded runtime file.
+# Integrate accepted values into one active policy; do not implicitly merge fragments.
 schema_version = 1
 
 [oidc.login]
@@ -10,7 +10,7 @@ assertion_ttl = "60s"
 
 [oidc.access_token]
 ttl = "5m"
-# 実際の期限は元SSOの絶対期限を超えない。
+# Effective expiry never exceeds the parent SSO absolute expiry.
 
 [oidc.validation]
 clock_skew = "30s"

@@ -1,6 +1,6 @@
-# 識別子・署名鍵設計案の参考値。鍵方式・運用案の採用はG1で確定する。
-# セッション設定とは別の例であり、暗黙に重ねて読み込まない。
-# 採用後にruntime設定へ明示的に組み込む。秘密鍵本体はここに置かない。
+# Reference values for the identity/signing-key design; G1 fixes adopted keys and operations.
+# This is separate from the session example; do not merge fragments implicitly.
+# Integrate accepted values into runtime policy. Never store private key material here.
 schema_version = 1
 
 [oidc_logout]
@@ -11,5 +11,5 @@ rotation_interval = "90d"
 prepublish_duration = "24h"
 jwks_cache_max_age = "5m"
 verification_key_min_retention = "32d"
-# 実際の削除時刻は発行済みセッション・token等から求めた期限も満たすこと。
-# この値の短縮だけでは、既存の鍵の保持期限を短縮しない。
+# Actual deletion must also respect retention derived from issued sessions and tokens.
+# Shortening this value alone never shortens an existing key's retention deadline.

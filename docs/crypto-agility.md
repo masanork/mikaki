@@ -1,52 +1,34 @@
-# 暗号方式の移行方針
+# Cryptographic agility
 
-2026-09-22 / 設計条件。現行の方式とPQC試験・導入順は[段階導入](pqc-rollout.md)を参照。
+**Design condition, 2026-09-22.** Design for a possible PQC transition over the coming years without enabling unverified PQC or a custom hybrid in the initial product. Maintain a path for gradual addition, coexistence, and retirement. OIDC continues to use standard JWT/JOSE. See the [phased rollout](pqc-rollout.md) for current probes and activation gates.
 
-数年以内のPQC移行を設計上の前提とする。初期から未検証のPQC・独自hybridを導入せず、方式の追加・併存・停止を段階的に行える境界を持つ。OIDCでは標準のJWT/JOSEを維持する。
+## Initial signing and compatibility
 
-## 初期署名方式の見直し
+The prior proposal to issue ordinary tokens primarily with RS256/RSA-3072 was withdrawn. ES256 (ECDSA P-256) became the leading JOSE default, with Ed25519 as a comparison candidate; actual library/native/Wasm/RP interoperability and performance inform the chosen profile. `private_key_jwt` client keys are registered separately from OP ID Token signing keys and never shared with WebAuthn credentials.
 
-RS256/RSA 3072 bitを通常発行の第一候補とする前案を撤回し、JOSE ES256（ECDSA P-256）を第一候補、Ed25519を比較候補とする。実ライブラリ・Native/Wasm・対象アプリで相互運用と性能を確認してG1で確定する。private_key_jwtの方式はOPのID Token署名と別に登録でき、鍵を共有しない。WebAuthnの鍵とも共有しない。
+OIDC Core §15.1 requiring an OP to support RS256 does not require it as the ordinary issuance default. Implement and test RS256 for the relevant conformance/client profile without silent RSA fallback for an unsupported client. If Ed25519 is adopted, check the exact `alg=Ed25519` in RFC 9864 versus older `alg=EdDSA`, `crv=Ed25519` expectations in actual libraries and pin the registration profile; do not equate them unconditionally. Neither ES256 nor Ed25519 is post-quantum.
 
-OIDC Core §15.1のRS256対応要件は、通常発行の既定をRS256にする要求とは異なる。RS256を適合用の実装対象に含め、必要なclientには明示的な発行プロファイルとして設定できるようにする。G1で相互運用と適合範囲を確認する。未対応clientへの暗黙のRSAフォールバックは設けない。
+RSA and SHA-1 implementations may be needed for bounded backwards compatibility or conformance. Distinguish *implemented*, *accepted for verification*, and *default for new issuance*. Adding implementation code alone must not broaden production policy. RSA is a key family; RS256 uses SHA-256 and does not require SHA-1. A SHA-1 certificate identifier such as JOSE `x5t` does not authorize SHA-1 signatures. Each compatibility profile records the standard/test, allowed operation (identifier processing, verification, issuance), client/scope, and shutdown procedure. Use maintained cryptographic libraries, not new primitives.
 
-Ed25519採用時はRFC 9864のalg=Ed25519と、従来のalg=EdDSA・crv=Ed25519の対応を実ライブラリで確認し、登録プロファイルを固定する。alg値を無条件に同一視しない。ES256もEd25519もPQCではなく、これらへの変更だけで量子耐性を得たとは扱わない。
+## Boundaries prepared from the start
 
-## 互換実装と運用ポリシー
+- Key records carry purpose, `kid`, generation, algorithm/parameters, public format version, private-key reference, and state. Do not force every key into RSA n/e or fixed EC-coordinate columns; validate format-specific content in types.
+- Keep issuance profile separate from verifier allow lists, scoped per client and purpose. Reject unsupported algorithms; never select solely from untrusted token `alg`.
+- Permit old/new profiles and public keys to coexist during migration without inventing a multi-signature JWT format or building an unused provider framework.
+- Bound variable-length keys and signatures per algorithm, including possible multi-kilobyte PQC values. Reassess HTTP headers/bodies, JWKS, DB, and Wasm memory when adding one; do not make sizes unlimited.
+- Version Vault ciphertext, wrapping scheme, and key generation, authenticating selection headers. Distinguish readable old formats from new-write format and design resumable re-encryption/rewrapping at the Vault stage.
+- Deployment rollback cannot re-enable retired algorithms or revoked keys. Only implemented and tested profiles can become operationally selectable.
 
-RSAやSHA-1も、後方互換性・conformanceのための実装を許容する。実装可能な方式、検証で許可する方式、新規発行の既定方式を分離し、実装を追加しただけでは本番の許可範囲を広げない。通常発行の既定は楕円曲線系を候補とし、互換方式は規格・用途・clientを指定した検証済みプロファイルとして有効化する。
+## Migration by boundary
 
-RSAという鍵方式とSHA-1というハッシュ関数は別に扱う。RS256はRSAとSHA-256の組合せであり、SHA-1を必要としない。SHA-1も証明書識別用のthumbprint（JOSEのx5t等）と署名検証を別用途として扱い、識別子対応からSHA-1署名の許可を導かない。OIDC適合のためにSHA-1署名が一律に必要とは扱わない。
+For OIDC: verify a new algorithm in isolation, switch issuance per client, retain old keys while tokens/logout hints need them, then stop old issuance and verification. Derive neither `AccountId` nor `sub` from a signing key, so rotation does not change identity.
 
-互換プロファイルには対象規格・テスト、許可する操作（識別子処理／検証／発行）、適用先、停止方法を記録する。実際に必要な互換範囲を実装し、旧方式すべての先行実装は求めない。暗号処理は保守されるライブラリを使い、独自実装しない。
+WebAuthn additionally depends on browser, authenticator, and standard support. A server cannot transform an old credential into a PQC credential. Register supported new credentials alongside old ones, then retire old ones with an explicit policy. Evaluate transfer of PRF-wrapped data keys separately from signature-algorithm migration.
 
-## 初期から備える境界
+MLS signatures/key agreement, DID keys, and TLS key exchange each have separate standard-suite and library migrations. Do not edit an active MLS state's algorithm field in place. A method such as `did:key` may change identifier when the key changes and needs a reconfirmation path.
 
-- 鍵レコードに用途・kid・世代・方式/パラメーター・公開鍵形式版・秘密鍵参照・状態を持つ。RSAのn/eや固定長のEC座標を全鍵共通のDB構造にしない。方式固有の構造は検証済み型に閉じ込める。
-- 発行プロファイルと検証許可リストを分け、client・用途ごとに切り替える。初期の有効方式は限定し、未対応方式を拒否する。tokenのalgだけで処理を選ばない。
-- 初期は単一方式でも、方式移行時は複数プロファイルと新旧鍵を併存可能にする。JWTを独自の複数署名形式へ変えず、規格とクライアント設定に従う。
-- 公開鍵・署名は方式別上限付きの可変長として扱う。PQCの数KiBの鍵・署名を想定し、HTTP body/header・JWKS・DB・Wasmメモリの制限を新方式追加時に検証する。無制限化はしない。
-- Vault暗号文・鍵包みに形式版、暗号プロファイル、鍵世代を持たせ、選択に関わるヘッダーも認証する。読み取り可能な版と新規書込みの版を分け、再開可能な再暗号化・鍵包み移行をG2で設計する。
-- 廃止方式や失効鍵を配備ロールバックで復活させない。設定で選べるのは実装・試験済みプロファイルだけとし、未使用providerや汎用プラグインを先行実装しない。
+PQC signatures alone do not give stored data long-term confidentiality. Assess harvest-now-decrypt-later risk separately for storage encryption, key transport, and wrapping. Later rotation cannot recall a leaked key or ciphertext already collected; rekey and re-encrypt where necessary instead of assuming rewrapping always suffices.
 
-## 移行の単位と限界
+Acceptance tests reject unsupported or mismatched key types and cover old/new coexistence, per-client switch, retirement, partial failure, and rollback. Adding an algorithm requires known-answer vectors, interoperability, native/Wasm size/performance, input limits, and dependency review. Initial production PQC is not required.
 
-OIDCは新方式の検証配備、client別の発行切替、旧token/ログアウトhintの必要期間の保持、旧方式停止の順に移行する。AccountId・subを署名鍵から導出しないことで、鍵更新とアカウント継続を分離する。
-
-WebAuthnはブラウザ・認証器・規格の対応も必要。既存credentialをサーバー側でPQCへ変換せず、対応credentialの追加登録と旧credentialの段階的失効を用いる。PRF鍵包みの受け渡しと、その鍵保護の保証は別途評価する。
-
-MLSの署名・鍵合意、DID鍵更新、TLSの鍵交換も別の移行対象とする。標準スイートと採用ライブラリの移行手順を使い、稼働中のMLS状態のalgだけを書き換えない。did:key等、鍵変更でIDが変わる方式には再確認・移行の手順を持つ。
-
-長期保存の機密性は署名のPQC化だけでは得られない。収集した通信を将来復号されるリスクと、保存暗号・鍵配送・鍵包みを別に評価する。既に漏れた鍵や収集済み暗号文は後日の更新で回収できない。必要ならデータ鍵更新と再暗号化を行い、鍵包みだけの更新で十分とは仮定しない。
-
-## 受入条件
-
-未対応方式・鍵種別取り違えの拒否、新旧鍵併存、client別切替、旧方式停止、途中失敗とロールバックを確認する。新方式追加時は既知解・相互運用・Wasmサイズ/性能・入力サイズ・依存監査を採用条件とする。初期からPQCを本番有効化することは要求しない。
-
-## 参照
-
-- [OIDC Core §15.1](https://openid.net/specs/openid-connect-core-1_0.html#ServerMTI)：RS256の実装要件。
-- [RFC 7515 §4.1.7](https://www.rfc-editor.org/rfc/rfc7515.html#section-4.1.7)：SHA-1による証明書thumbprint（x5t）。署名方式とは別の用途。
-- [RFC 9864](https://www.rfc-editor.org/rfc/rfc9864.html)：Ed25519等の具体的なアルゴリズム識別子。
-- [RFC 9964（2026年5月）](https://www.rfc-editor.org/rfc/rfc9964.html)：ML-DSAのJOSE/COSE形式。標準化はライブラリ・OIDC clientの対応完了を意味しない。
-- [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final)、[FIPS 204](https://csrc.nist.gov/pubs/fips/204/final)、[FIPS 205](https://csrc.nist.gov/pubs/fips/205/final)：KEMと署名の標準。用途を区別する。
+References: [OIDC Core §15.1](https://openid.net/specs/openid-connect-core-1_0.html#ServerMTI), [RFC 7515 §4.1.7](https://www.rfc-editor.org/rfc/rfc7515.html#section-4.1.7), [RFC 9864](https://www.rfc-editor.org/rfc/rfc9864.html), [RFC 9964](https://www.rfc-editor.org/rfc/rfc9964.html), and [FIPS 203/204/205](https://csrc.nist.gov/publications/fips).
