@@ -114,7 +114,7 @@ python3 scripts/check_design.py
 
 2026-09-23時点で、段階5のうち単一RP向けログアウトoutboxのlease・再試行・期限・scheduled復旧・集計警告を[ローカル実装](../local/README.md#ログアウト通知の配送2026-09-23)で検証した。期限切れ認証取引・再使用防止記録・RPセッションに加え、OPのSSO配下と完了した単一SSO通知履歴のGC、標準入力からの運用者再配送と原子的な監査記録、アカウント全セッション失効と旧epochへの通知展開もローカルD1で検証済み。本番migration、管理操作、アカウント停止・監査の外部保管、外部監視連携と復旧訓練は残り、段階5全体の完了ではない。
 
-conformanceは対象プロファイルを選び、そのスイートに必要な互換機能を明示して実装する。RS256が使えることだけで全面適合とせず、試験用の例外を本番既定へ持ち込まない。署名方式以外のprompt・claim・エラー・Discovery等も確認する。
+conformanceの最初の目標は[OIDC Core conformance target](oidc-core-conformance.md)に定めるBasic OP＋Config OPとする。OIDF試験で必要な互換機能を明示して実装し、RS256が使えることだけで全面適合とせず、試験用の例外を本番既定へ持ち込まない。署名方式以外のprompt・claim・エラー・Discovery等も確認する。
 
 受入試験には、(1)既存UXの画面数、(2)code/state/nonce/PKCE/aud/iss/alg、(3)assertion再使用と鍵停止、(4)親SSO・grant・credential失効、(5)通知/確認/callbackの全順序、(6)新旧設定/鍵の混在とrollback、(7)body/JSON/パラメーターの境界・fuzz、(8)負荷時の容量とrate制御、(9)秘密がログ/ブラウザ保存へ出ないこと、(10)PQC向けの大きな公開鍵/署名を想定した制限変更を含める。
 
