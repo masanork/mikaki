@@ -21,20 +21,33 @@ pub fn self_test() -> bool {
     let mut rng = ChaCha20Rng::from_seed([0x50; 32]);
     let (private_key, public_key) = RecipientKem::gen_keypair_with_rng(&mut rng);
     let origin = b"https://mikaki.example";
+    let account = b"test-account-1";
     let attribute = b"name";
     let recipient = b"userinfo";
     let key_id = b"test-key-1";
+    let purpose = b"oidc.userinfo.name";
+    let generation = 1_u64.to_be_bytes();
     let revision = 9_u64.to_be_bytes();
     let info = match context(&[
         b"mikaki-vault-recipient-hpke-probe",
         b"draft-ietf-hpke-pq-04",
         recipient,
         key_id,
+        &generation,
     ]) {
         Some(value) => value,
         None => return false,
     };
-    let aad = match context(&[origin, attribute, &revision, recipient, key_id]) {
+    let aad = match context(&[
+        origin,
+        account,
+        attribute,
+        &revision,
+        recipient,
+        key_id,
+        &generation,
+        purpose,
+    ]) {
         Some(value) => value,
         None => return false,
     };
@@ -66,13 +79,52 @@ pub fn self_test() -> bool {
         return false;
     }
     let wrong_revision = 10_u64.to_be_bytes();
-    let Some(wrong_revision_aad) =
-        context(&[origin, attribute, &wrong_revision, recipient, key_id])
-    else {
+    let Some(wrong_revision_aad) = context(&[
+        origin,
+        account,
+        attribute,
+        &wrong_revision,
+        recipient,
+        key_id,
+        &generation,
+        purpose,
+    ]) else {
         return false;
     };
-    let Some(wrong_attribute_aad) = context(&[origin, b"email", &revision, recipient, key_id])
-    else {
+    let Some(wrong_account_aad) = context(&[
+        origin,
+        b"test-account-2",
+        attribute,
+        &revision,
+        recipient,
+        key_id,
+        &generation,
+        purpose,
+    ]) else {
+        return false;
+    };
+    let Some(wrong_attribute_aad) = context(&[
+        origin,
+        account,
+        b"email",
+        &revision,
+        recipient,
+        key_id,
+        &generation,
+        purpose,
+    ]) else {
+        return false;
+    };
+    let Some(wrong_purpose_aad) = context(&[
+        origin,
+        account,
+        attribute,
+        &revision,
+        recipient,
+        key_id,
+        &generation,
+        b"oidc.id_token.name",
+    ]) else {
         return false;
     };
     let Some(wrong_key_info) = context(&[
@@ -80,14 +132,28 @@ pub fn self_test() -> bool {
         b"draft-ietf-hpke-pq-04",
         recipient,
         b"test-key-2",
+        &generation,
+    ]) else {
+        return false;
+    };
+    let wrong_generation = 2_u64.to_be_bytes();
+    let Some(wrong_generation_info) = context(&[
+        b"mikaki-vault-recipient-hpke-probe",
+        b"draft-ietf-hpke-pq-04",
+        recipient,
+        key_id,
+        &wrong_generation,
     ]) else {
         return false;
     };
     let mut changed = ciphertext.clone();
     changed[0] ^= 1;
     open(&info, &wrong_revision_aad, &ciphertext).is_none()
+        && open(&info, &wrong_account_aad, &ciphertext).is_none()
         && open(&info, &wrong_attribute_aad, &ciphertext).is_none()
+        && open(&info, &wrong_purpose_aad, &ciphertext).is_none()
         && open(&wrong_key_info, &aad, &ciphertext).is_none()
+        && open(&wrong_generation_info, &aad, &ciphertext).is_none()
         && open(&info, &aad, &changed).is_none()
 }
 
