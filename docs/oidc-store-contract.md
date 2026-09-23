@@ -53,7 +53,7 @@ client設定版の変更は進行中の認可・code交換を停止する。既�
 | --- | --- |
 | CompleteAuthentication | ceremonyの未消費・期限・ブラウザ結び付け、credential有効性と検証時の版、認証取引が保持したaccount epochを確認。ceremony消費、credential更新、認証結果とSSO作成を確定 |
 | IssueAuthorizationCode | 認可取引の未完了・期限、client設定版、SSO有効性、表示に結び付いた許可を確認。PairwiseSubjectの取得/作成、必要な接続許可、ClientSessionとcode、取引完了を確定 |
-| AcceptClientAssertion | 検証済み署名のclient・鍵状態/版・期限を再確認し、jtiを一度だけ記録。これは後続code交換とは別の確定であり、codeが不正でも巻き戻さない |
+| AcceptClientAssertion | 検証済み署名のclient・鍵状態/版・期限を再確認し、jtiを一度だけ記録。これは後続code交換とは別の確定であり、codeが不正でも巻き戻さない。予約行の`accepted_by`をreceiptとして保持し、code交換自身のoperation_idとは別に照合する |
 | ExchangeCode | 認証済みclientと鍵状態/版、codeの結び付け・未使用・期限、認可時のclient設定版、SSO・grant・sid、OP署名鍵の有効世代を再確認。code消費とTokenIssueを同時に確定 |
 | RevokeCodeIssue | 正しく認証・結合確認した消費済みcodeの再使用に対し、そのTokenIssueとsidを失効し、RevocationEventを同時に作成 |
 | RevokeSso | 対象SSOの失効と、そのSSOを対象にしたRevocationEventを同時に確定 |
@@ -67,7 +67,7 @@ client設定版の変更は進行中の認可・code交換を停止する。既�
 
 ## D1への対応方針
 
-D1のbatchはSQLエラー時に全体をロールバックする。一方、条件付きUPDATEが0件でもSQLエラーとは限らないため、batchに並べただけで業務操作の成功を保証したことにしない。
+D1のbatchはSQLエラー時に全体をロールバックする。一方、条件付きUPDATEが0件でもSQLエラーとは限らないため、batchに並べただけで業務操作の成功を保証したことにしない。assertion予約は独立した先行batchなので、そこで発行した`accepted_by`を型付きreceiptに保持し、後続のcode交換operation_idと混同しない。
 
 一回のbatchで、条件付き更新に操作IDを記録し、後続INSERTはその操作IDを条件に実行する。最後に必要な件数・関連レコードの存在を検査し、不足ならDB制約違反を起こして全体をロールバックする方式を第一候補とする。検査行が必ず一件評価されることを必要とし、INSERT SELECTが0行だっただけで成功するガードは使わない。具体的なCHECK制約等のSQLはG1で検証する。
 

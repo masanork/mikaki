@@ -54,6 +54,7 @@ def seed(db):
 def params(operation='exchange', jti='assertion'):
     return dict(client_id='c', client_kid='ck', client_key_revision=1,
                 jti=jti, endpoint='https://login.example/token', operation_id=operation,
+                assertion_operation_id='assertion-'+operation,
                 retain_until=int(time.time())+300, code_hash='codehash',
                 redirect_uri='https://app.example/cb', pkce_challenge='challenge',
                 signing_kid='opk', signing_generation=1, access_hash='access-'+operation,

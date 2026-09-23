@@ -25,7 +25,8 @@ const batch = (name, parameters) => db.batch(prepared(name, parameters));
 const scalar = async (statement) => (await db.prepare(statement).raw())[0][0];
 const parameters = (id = 'one') => ({
   client_id: 'c', client_kid: 'ck', client_key_revision: 1,
-  jti: `jti-${id}`, endpoint: 'https://login.example/token', operation_id: id,
+  jti: `jti-${id}`, endpoint: 'https://login.example/token', operation_id: `exchange-${id}`,
+  assertion_operation_id: `assertion-${id}`,
   retain_until: Math.floor(Date.now()/1000)+300, code_hash: 'codehash',
   redirect_uri: 'https://app.example/cb', pkce_challenge: 'challenge',
   signing_kid: 'opk', signing_generation: 1, access_hash: `access-${id}`,

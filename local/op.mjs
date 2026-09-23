@@ -464,14 +464,14 @@ async function acceptClient(db, env, req, input) {
     client_key_revision: 1,
     jti: claims.jti,
     endpoint,
-    operation_id: uuid(),
+    assertion_operation_id: uuid(),
     retain_until: claims.exp + p('oidc.validation.clock_skew'),
   };
   await db.batch([
     ...statements(db, acceptSQL, params),
     query(db, 'UPDATE assertion_use SET gc_after=? WHERE accepted_by=?', [
       retained(params.retain_until),
-      params.operation_id,
+      params.assertion_operation_id,
     ]),
   ]);
   return params;
@@ -512,6 +512,7 @@ async function token(db, env, req) {
   await db.batch([
     ...statements(db, exchangeSQL, {
       ...auth,
+      operation_id: uuid(),
       code_hash: codeHash,
       redirect_uri: input.redirect_uri,
       pkce_challenge: challenge,

@@ -15,6 +15,26 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 pub struct WorkersCryptoRandom;
 
+/// Token request whose assertion replay reservation is tied to this request.
+/// The reservation ID is persisted by D1 and must be reused by code exchange.
+#[cfg(target_arch = "wasm32")]
+#[must_use = "use the assertion reservation receipt in the final code exchange"]
+pub struct AuthenticatedTokenRequest {
+    request: sakimori_oidc::AuthenticatedTokenEndpointInput,
+    assertion_reservation_id: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl AuthenticatedTokenRequest {
+    pub fn request(&self) -> &sakimori_oidc::AuthenticatedTokenEndpointInput {
+        &self.request
+    }
+
+    pub fn assertion_reservation_id(&self) -> &str {
+        &self.assertion_reservation_id
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
 struct ClientAssertionKeyRow {
@@ -162,12 +182,12 @@ impl sakimori_oidc::CryptographicRandom for WorkersCryptoRandom {
 /// its client/key revisions. A D1 constraint failure rolls back the assertion
 /// insert, so callers must reject the assertion and must not continue the grant.
 #[cfg(target_arch = "wasm32")]
-pub async fn accept_client_assertion(
+async fn accept_client_assertion(
     db: &worker::d1::D1Database,
     assertion: &sakimori_oidc::VerifiedClientAssertion,
     endpoint: &str,
     random: &mut impl sakimori_oidc::CryptographicRandom,
-) -> worker::Result<()> {
+) -> worker::Result<String> {
     use wasm_bindgen::JsValue;
 
     if endpoint.is_empty() || assertion.audience() != endpoint {
@@ -217,13 +237,13 @@ pub async fn accept_client_assertion(
             .bind(&[JsValue::from_str(&operation_id)])?,
     ])
     .await?;
-    Ok(())
+    Ok(operation_id)
 }
 
 /// Load one registered key, verify a private_key_jwt in the Rust core, and
 /// atomically reserve its jti after rechecking the same registration revisions.
 #[cfg(target_arch = "wasm32")]
-pub async fn verify_and_accept_client_assertion(
+async fn verify_and_accept_client_assertion(
     db: &worker::d1::D1Database,
     client_id: &str,
     compact: &str,
@@ -232,7 +252,7 @@ pub async fn verify_and_accept_client_assertion(
     now: u64,
     policy: &WorkerRuntimePolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
-) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
+) -> worker::Result<(sakimori_oidc::VerifiedClientAssertion, String)> {
     use wasm_bindgen::JsValue;
 
     if client_id.is_empty() || client_id.len() > 128 {
@@ -272,8 +292,8 @@ pub async fn verify_and_accept_client_assertion(
     let assertion = key
         .verify_private_key_jwt(compact, audience, now, policy.assertion, policy.jwt_bytes)
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
-    accept_client_assertion(db, &assertion, endpoint, random).await?;
-    Ok(assertion)
+    let reservation_id = accept_client_assertion(db, &assertion, endpoint, random).await?;
+    Ok((assertion, reservation_id))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -284,8 +304,8 @@ pub async fn authenticate_token_request(
     now: u64,
     policy: &WorkerRuntimePolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
-) -> worker::Result<sakimori_oidc::AuthenticatedTokenEndpointInput> {
-    let assertion = verify_and_accept_client_assertion(
+) -> worker::Result<AuthenticatedTokenRequest> {
+    let (assertion, assertion_reservation_id) = verify_and_accept_client_assertion(
         db,
         input.client_id(),
         input.assertion().as_str(),
@@ -296,9 +316,13 @@ pub async fn authenticate_token_request(
         random,
     )
     .await?;
-    input
+    let request = input
         .authenticate(assertion, token_endpoint)
-        .map_err(|_| worker::Error::RustError("invalid_client".into()))
+        .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
+    Ok(AuthenticatedTokenRequest {
+        request,
+        assertion_reservation_id,
+    })
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]

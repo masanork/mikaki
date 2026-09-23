@@ -14,7 +14,7 @@ WHERE code_hash=:code_hash AND consumed_by IS NULL
   AND EXISTS (SELECT 1 FROM client_key k WHERE k.client_id=:client_id
     AND k.kid=:client_kid AND k.revision=:client_key_revision AND k.active=1)
   AND EXISTS (SELECT 1 FROM assertion_use au WHERE au.client_id=:client_id
-    AND au.jti=:jti AND au.endpoint=:endpoint AND au.accepted_by=:operation_id
+    AND au.jti=:jti AND au.endpoint=:endpoint AND au.accepted_by=:assertion_operation_id
     AND au.retain_until > CAST(strftime('%s','now') AS INTEGER))
   AND EXISTS (SELECT 1 FROM signing_key sk WHERE sk.kid=:signing_kid
     AND sk.generation=:signing_generation AND sk.active=1);
