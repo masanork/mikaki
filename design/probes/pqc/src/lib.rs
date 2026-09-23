@@ -2,12 +2,56 @@
 //! never production keys. This crate is deliberately outside the product workspace.
 
 use ml_dsa::{Keypair, MlDsa65, SignatureEncoding, Signer, SigningKey, Verifier};
-use ml_kem::{DecapsulationKey, MlKem768, Seed, kem::Decapsulate};
+use ml_kem::{DecapsulationKey, MlKem768, Seed, kem::Decapsulate, kem::KeyExport};
 use wasm_bindgen::prelude::*;
+
+mod vault_hpke;
 
 #[wasm_bindgen]
 pub fn self_test() -> bool {
-    kem_round_trip() && signature_round_trip()
+    kem_round_trip() && signature_round_trip() && vault_hpke::self_test()
+}
+
+#[wasm_bindgen]
+pub fn fixture_kem_public_key() -> Vec<u8> {
+    DecapsulationKey::<MlKem768>::from_seed(Seed::from([0x41; 64]))
+        .encapsulation_key()
+        .to_bytes()
+        .to_vec()
+}
+
+#[wasm_bindgen]
+pub fn fixture_kem_ciphertext() -> Vec<u8> {
+    let key = DecapsulationKey::<MlKem768>::from_seed(Seed::from([0x41; 64]));
+    key.encapsulation_key()
+        .encapsulate_deterministic(&ml_kem::B32::from([0x42; 32]))
+        .0
+        .to_vec()
+}
+
+#[wasm_bindgen]
+pub fn fixture_kem_shared_secret() -> Vec<u8> {
+    let key = DecapsulationKey::<MlKem768>::from_seed(Seed::from([0x41; 64]));
+    key.encapsulation_key()
+        .encapsulate_deterministic(&ml_kem::B32::from([0x42; 32]))
+        .1
+        .to_vec()
+}
+
+#[wasm_bindgen]
+pub fn fixture_dsa_public_key() -> Vec<u8> {
+    SigningKey::<MlDsa65>::from_seed(&ml_dsa::Seed::from([0x43; 32]))
+        .verifying_key()
+        .encode()
+        .to_vec()
+}
+
+#[wasm_bindgen]
+pub fn fixture_dsa_signature() -> Vec<u8> {
+    SigningKey::<MlDsa65>::from_seed(&ml_dsa::Seed::from([0x43; 32]))
+        .sign(b"mikaki-pqc-probe-v1")
+        .to_bytes()
+        .to_vec()
 }
 
 fn kem_round_trip() -> bool {

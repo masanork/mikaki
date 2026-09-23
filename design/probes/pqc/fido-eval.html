@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local FIDO PQC capability probe</title>
+  <style>
+    body {
+      font: 16px system-ui;
+      max-width: 54rem;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    button {
+      margin: 0.5rem 0.5rem 0.5rem 0;
+      padding: 0.5rem;
+    }
+    pre {
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+  </style>
+  <h1>Local FIDO PQC capability probe</h1>
+  <p>
+    Use a test browser profile. Registration creates a credential on the selected authenticator.
+    This localhost-only page keeps the result in memory until you download it.
+  </p>
+  <button id="pqc">Register ML-DSA-65 only (COSE -49)</button>
+  <button id="control">Register ES256 control (COSE -7)</button>
+  <button id="assert" disabled>Get assertion</button>
+  <button id="download" disabled>Download result JSON</button>
+  <pre id="result" role="status"></pre>
+  <script>
+    const result = document.querySelector('#result');
+    const assertionButton = document.querySelector('#assert');
+    const downloadButton = document.querySelector('#download');
+    let credentialId;
+    let transcript = {
+      probe: 'mikaki-fido-pqc-v1',
+      origin: location.origin,
+      userAgent: navigator.userAgent,
+    };
+    const b64u = (value) =>
+      btoa(String.fromCharCode(...new Uint8Array(value)))
+        .replaceAll('+', '-')
+        .replaceAll('/', '_')
+        .replaceAll('=', '');
+    const random = () => crypto.getRandomValues(new Uint8Array(32));
+    const show = () => {
+      result.textContent = JSON.stringify(transcript, null, 2);
+      downloadButton.disabled = false;
+    };
+
+    async function register(algorithm) {
+      credentialId = undefined;
+      assertionButton.disabled = true;
+      transcript = {
+        probe: 'mikaki-fido-pqc-v1',
+        origin: location.origin,
+        userAgent: navigator.userAgent,
+        requestedAlgorithm: algorithm,
+      };
+      result.textContent = 'Waiting for the authenticator…';
+      try {
+        const challenge = random();
+        transcript.registrationChallenge = b64u(challenge);
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            rp: { name: 'mikaki local PQC probe', id: location.hostname },
+            user: { id: random(), name: 'local-probe', displayName: 'Local probe' },
+            challenge,
+            pubKeyCredParams: [{ type: 'public-key', alg: algorithm }],
+            authenticatorSelection: {
+              authenticatorAttachment: 'cross-platform',
+              residentKey: 'discouraged',
+              userVerification: 'preferred',
+            },
+            attestation: 'none',
+            timeout: 120000,
+          },
+        });
+        if (
+          !(credential instanceof PublicKeyCredential) ||
+          !(credential.response instanceof AuthenticatorAttestationResponse)
+        ) {
+          throw new Error('Unexpected credential response');
+        }
+        credentialId = credential.rawId;
+        transcript.registration = {
+          id: b64u(credential.rawId),
+          publicKeyAlgorithm: credential.response.getPublicKeyAlgorithm(),
+          attestationObject: b64u(credential.response.attestationObject),
+          clientDataJSON: b64u(credential.response.clientDataJSON),
+          transports: credential.response.getTransports(),
+        };
+        assertionButton.disabled = false;
+      } catch (error) {
+        transcript.registrationError = { name: error.name, message: error.message };
+      }
+      show();
+    }
+
+    async function assertCredential() {
+      if (!credentialId) return;
+      result.textContent = 'Waiting for the authenticator…';
+      try {
+        const challenge = random();
+        transcript.assertionChallenge = b64u(challenge);
+        const credential = await navigator.credentials.get({
+          publicKey: {
+            challenge,
+            rpId: location.hostname,
+            allowCredentials: [{ type: 'public-key', id: credentialId }],
+            userVerification: 'preferred',
+            timeout: 120000,
+          },
+        });
+        if (
+          !(credential instanceof PublicKeyCredential) ||
+          !(credential.response instanceof AuthenticatorAssertionResponse)
+        ) {
+          throw new Error('Unexpected assertion response');
+        }
+        transcript.assertion = {
+          id: b64u(credential.rawId),
+          authenticatorData: b64u(credential.response.authenticatorData),
+          clientDataJSON: b64u(credential.response.clientDataJSON),
+          signature: b64u(credential.response.signature),
+          userHandle: credential.response.userHandle && b64u(credential.response.userHandle),
+        };
+      } catch (error) {
+        transcript.assertionError = { name: error.name, message: error.message };
+      }
+      show();
+    }
+
+    document.querySelector('#pqc').onclick = () => register(-49);
+    document.querySelector('#control').onclick = () => register(-7);
+    assertionButton.onclick = assertCredential;
+    downloadButton.onclick = () => {
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(transcript, null, 2)], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'mikaki-fido-pqc-probe.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+  </script>
+</html>
