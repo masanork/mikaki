@@ -1,0 +1,12 @@
+CREATE TABLE login (state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, nonce TEXT NOT NULL, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL, gc_after INTEGER NOT NULL, consumed INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE identity (issuer TEXT NOT NULL, sub TEXT NOT NULL, subject_id TEXT NOT NULL UNIQUE, PRIMARY KEY(issuer,sub));
+CREATE TABLE app_session (hash TEXT PRIMARY KEY, sid TEXT NOT NULL, sub TEXT NOT NULL, auth_time INTEGER NOT NULL, lease_until INTEGER NOT NULL, parent_expires_at INTEGER NOT NULL, idle_expires_at INTEGER NOT NULL, id_token TEXT NOT NULL, gc_after INTEGER NOT NULL);
+CREATE TABLE tombstone (sid TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+CREATE TABLE logout_use (jti TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+CREATE TABLE guard (id TEXT PRIMARY KEY, passed INTEGER NOT NULL CHECK(passed=1));
+CREATE TABLE logout_transaction (state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, gc_after INTEGER NOT NULL);
+CREATE INDEX gc_login ON login(gc_after);
+CREATE INDEX gc_logout_transaction ON logout_transaction(gc_after);
+CREATE INDEX gc_app_session ON app_session(gc_after);
+CREATE INDEX gc_logout_use ON logout_use(expires_at);
+CREATE INDEX gc_tombstone ON tombstone(expires_at);

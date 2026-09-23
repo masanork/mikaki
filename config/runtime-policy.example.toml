@@ -1,0 +1,119 @@
+# 初期OIDCの統合設定見本。設計用。秘密・ドメイン・公開鍵登録は別管理。
+# 既存の三つの断片見本に代わる、配備時の単一入力の形。
+schema_version = 1
+
+[registration]
+invitation_ttl = "24h"
+bootstrap_invitation_ttl = "15m"
+
+[authentication]
+ceremony_ttl = "5m"
+ceremony_max_failures = 5
+
+[session]
+sso_absolute_ttl = "30d"
+app_idle_timeout = "7d"
+[session.validation]
+lease_ttl = "5m"
+[session.management]
+operation_authorization_ttl = "5m"
+
+[oidc]
+authorization_code_ttl = "60s"
+id_token_ttl = "5m"
+[oidc.login]
+transaction_ttl = "10m"
+[oidc.client_authentication]
+assertion_ttl = "60s"
+[oidc.access_token]
+ttl = "5m"
+[oidc.validation]
+clock_skew = "30s"
+[oidc.backchannel]
+request_timeout = "10s"
+
+[oidc_logout]
+token_ttl = "5m"
+
+[signing]
+rotation_interval = "90d"
+prepublish_duration = "24h"
+jwks_cache_max_age = "5m"
+verification_key_min_retention = "32d"
+deployment_margin = "10m"
+
+[jwks_fetch]
+timeout = "5s"
+unknown_kid_cooldown = "30s"
+negative_cache_ttl = "30s"
+max_inflight_per_issuer = 1
+negative_cache_entries_per_issuer = 64
+
+[limits]
+request_target_bytes = 8192
+header_bytes = 32768
+form_body_bytes = 32768
+json_body_bytes = 32768
+webauthn_body_bytes = 65536
+webauthn_depth = 8
+jwt_bytes = 16384
+jwks_bytes = 65536
+jwks_keys = 16
+json_depth = 16
+parameter_count = 32
+state_bytes = 256
+nonce_bytes = 256
+jti_bytes = 128
+kid_bytes = 128
+client_id_bytes = 128
+redirect_uri_bytes = 2048
+scope_bytes = 256
+pending_login_per_browser = 8
+active_sso_per_account = 32
+active_client_sessions_per_sso_client = 64
+registered_clients = 16
+credentials_per_account = 10
+response_bytes = 131072
+
+# 入口の概算制限。回数/window、Cloudflareではlocationごと。
+# client/account単位は認証してから適用。未認証の自己申告をキーにしない。
+[rate_limit]
+window = "60s"
+discovery_per_ip = 120
+authorize_per_browser = 30
+authorize_per_ip = 120
+ceremony_start_per_browser = 10
+ceremony_finish_per_browser = 30
+token_per_ip = 120
+token_per_authenticated_client = 300
+userinfo_per_ip = 300
+session_check_per_authenticated_client = 1200
+management_per_account = 10
+logout_receive_per_authenticated_issuer = 600
+
+[logout_delivery]
+base_delay = "5s"
+max_delay = "1h"
+retry_deadline = "24h"
+max_attempts = 48
+lease_ttl = "30s"
+scheduler_interval = "1m"
+fanout_batch_size = 100
+claim_batch_size = 10
+max_inflight_per_client = 4
+max_response_bytes = 4096
+backlog_alert_count = 10000
+oldest_pending_alert_age = "15m"
+
+[retention]
+gc_interval = "1h"
+gc_batch_size = 500
+gc_grace = "24h"
+audit_ttl = "30d"
+delivery_result_ttl = "7d"
+rate_key_ttl = "10m"
+
+[vault]
+# P1から使用。初期OIDCの起動条件にはしない。
+unlock_idle_timeout = "15m"
+unlock_absolute_ttl = "1h"

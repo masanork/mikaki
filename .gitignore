@@ -1,0 +1,15 @@
+**/target/
+**/node_modules/
+**/pkg/
+**/.wrangler/
+**/.dev.vars*
+**/__pycache__/
+**/dist/
+/local/generated/
+/artifacts/
+/coverage/
+**/.svelte-check/
+
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/

@@ -1,0 +1,30 @@
+# セッション運用設定の見本。現時点では設計成果物であり、読み込み実装はない。
+# 数値の単位を推測しないため、期間は s / m / h / d の文字列で記述する。
+# 秘密鍵・client_secret・cookie・token等の秘密値は記述しない。
+schema_version = 1
+
+[authentication]
+ceremony_ttl = "5m"
+ceremony_max_failures = 5
+
+[session]
+sso_absolute_ttl = "30d"
+app_idle_timeout = "7d"
+# アプリの絶対期限は元のSSO期限を上限とし、独立設定しない。
+
+[session.validation]
+lease_ttl = "5m"
+# 到着時でなく照会開始時から計算する。確認不能時の延長は禁止。
+
+[session.management]
+operation_authorization_ttl = "5m"
+# 操作・対象との結び付けと一回性は設定で無効化できない。
+
+[oidc]
+authorization_code_ttl = "60s"
+id_token_ttl = "5m"
+
+[vault]
+unlock_idle_timeout = "15m"
+unlock_absolute_ttl = "1h"
+# P1導入時から利用する。SSO期限とは独立。

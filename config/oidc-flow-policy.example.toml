@@ -1,0 +1,19 @@
+# ログイン取引の追加設定案。レビュー用であり、読み込み実装はない。
+# 採用時は単一の有効設定へ統合し、ファイルの暗黙mergeはしない。
+schema_version = 1
+
+[oidc.login]
+transaction_ttl = "10m"
+
+[oidc.client_authentication]
+assertion_ttl = "60s"
+
+[oidc.access_token]
+ttl = "5m"
+# 実際の期限は元SSOの絶対期限を超えない。
+
+[oidc.validation]
+clock_skew = "30s"
+
+[oidc.backchannel]
+request_timeout = "10s"

@@ -1,0 +1,13 @@
+{
+  "name": "sakimori-design-probes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:crypto": "node --test crypto.test.mjs",
+    "test:d1": "node --test d1.test.mjs"
+  },
+  "devDependencies": {
+    "jose": "6.2.12",
+    "wrangler": "4.136.2"
+  }
+}

@@ -1,0 +1,69 @@
+name: local-authentication-slice
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: authentication-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Install pinned build tools
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview --target wasm32-unknown-unknown
+          cargo install wasm-pack --version 0.15.0 --locked
+          cargo install cargo-llvm-cov --version 0.9.1 --locked
+      - run: npm ci
+      - name: Design and formatting
+        run: |
+          python3.14 scripts/check_design.py
+          python3.14 scripts/test_oidc_sql.py
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          npm run format:check
+          npm run check:ui
+          npm run check:i18n
+      - name: Native tests and measured coverage
+        run: |
+          cargo test --locked --workspace
+          mkdir -p artifacts
+          cargo llvm-cov --locked --workspace --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+      - name: Shared WebAuthn tests on Wasm
+        run: wasm-pack test --node crates/webauthn --locked
+      - name: Wasm and browser integration
+        run: |
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+          npm run health
+          cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Dependency advisories
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --file Cargo.lock
+          npm audit --audit-level=low
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: authentication-measurements
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,32 @@
+{
+  "name": "sakimori-local-slice",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:policy": "python3.14 scripts/build_policy.py",
+    "build:wasm": "wasm-pack build crates/worker --target web --release --out-dir pkg -- --locked",
+    "build:ui": "vite build --config local/ui/vite.config.ts",
+    "build": "npm run build:policy && npm run build:wasm && npm run build:ui",
+    "test:e2e": "node --test --test-concurrency=1 local/test/*.test.mjs",
+    "check:ui": "svelte-check --tsconfig local/ui/tsconfig.json --tsgo --fail-on-warnings",
+    "check:i18n": "node scripts/check_i18n.mjs",
+    "format:check": "prettier --check 'local/**/*.mjs' 'local/ui/src/**/*.{ts,svelte}' 'local/ui/*.ts' 'scripts/*.mjs' package.json .prettierrc.json",
+    "health": "node scripts/health.mjs",
+    "dev": "node local/dev.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.12",
+    "svelte": "5.57.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "prettier": "3.9.8",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.0",
+    "wrangler": "4.136.2"
+  }
+}
