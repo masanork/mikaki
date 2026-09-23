@@ -1,16 +1,16 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "879d050",
+    "commit": "3dfe2a6",
     "code": {
-      "implementationLines": 7101,
-      "testLines": 2746,
-      "implementationFiles": 29,
+      "implementationLines": 7944,
+      "testLines": 2774,
+      "implementationFiles": 30,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 4904,
-          "testLines": 1252
+          "implementationLines": 5747,
+          "testLines": 1280
         },
         "javascript": {
           "implementationLines": 1941,
@@ -32,7 +32,7 @@
         "dev": 9
       },
       "rust": {
-        "runtime": 20,
+        "runtime": 21,
         "build": 0,
         "dev": 8
       },
@@ -76,6 +76,7 @@
           "serde_urlencoded",
           "sha1",
           "sha2",
+          "subtle",
           "url",
           "wasm-bindgen",
           "wasm-bindgen-futures",
@@ -98,19 +99,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1692,
-        "count": 2296,
-        "percent": 73.69337979094077
+        "covered": 1730,
+        "count": 2351,
+        "percent": 73.58570820927265
       },
       "regions": {
-        "covered": 3032,
-        "count": 4193,
-        "percent": 72.3109945146673
+        "covered": 3084,
+        "count": 4262,
+        "percent": 72.36039418113562
       },
       "functions": {
-        "covered": 176,
-        "count": 246,
-        "percent": 71.54471544715447
+        "covered": 179,
+        "count": 253,
+        "percent": 70.7509881422925
       }
     }
   }
