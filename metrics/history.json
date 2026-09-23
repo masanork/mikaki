@@ -1,23 +1,23 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "6a04447",
+    "commit": "bda7d00",
     "code": {
-      "implementationLines": 10548,
-      "testLines": 2804,
-      "implementationFiles": 48,
+      "implementationLines": 10867,
+      "testLines": 2828,
+      "implementationFiles": 50,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 7442,
-          "testLines": 1310
+          "implementationLines": 7653,
+          "testLines": 1334
         },
         "svelte": {
           "implementationLines": 800,
           "testLines": 0
         },
         "typescript": {
-          "implementationLines": 365,
+          "implementationLines": 473,
           "testLines": 0
         },
         "javascript": {
@@ -32,18 +32,18 @@
         "dev": 11
       },
       "rust": {
-        "runtime": 21,
+        "runtime": 23,
         "build": 0,
         "dev": 8
       },
       "sourceLines": {
         "npmRuntime": 108465,
-        "rustRuntime": 1038239,
-        "total": 1146704
+        "rustRuntime": 1042383,
+        "total": 1150848
       },
       "sourcePackages": {
         "npmRuntime": 19,
-        "rustRuntime": 131
+        "rustRuntime": 136
       },
       "names": {
         "npmRuntime": [
@@ -70,6 +70,7 @@
           "ed25519-dalek",
           "futures-util",
           "js-sys",
+          "ml-kem",
           "p256",
           "p384",
           "rsa",
@@ -84,7 +85,8 @@
           "wasm-bindgen-futures",
           "web-sys",
           "worker",
-          "x509-cert"
+          "x509-cert",
+          "zeroize"
         ],
         "rustBuild": [],
         "rustDev": [
@@ -101,19 +103,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1731,
-        "count": 2371,
-        "percent": 73.0071699704766
+        "covered": 1773,
+        "count": 2417,
+        "percent": 73.35539925527513
       },
       "regions": {
-        "covered": 3084,
-        "count": 4280,
-        "percent": 72.05607476635514
+        "covered": 3171,
+        "count": 4371,
+        "percent": 72.54632807137955
       },
       "functions": {
-        "covered": 179,
-        "count": 259,
-        "percent": 69.1119691119691
+        "covered": 183,
+        "count": 263,
+        "percent": 69.58174904942965
       }
     }
   }
