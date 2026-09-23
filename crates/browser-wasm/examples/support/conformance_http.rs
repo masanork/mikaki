@@ -2,9 +2,9 @@ use base64::{
     Engine as _,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD as B64},
 };
+use mikaki_auth::Ceremony;
+use mikaki_webauthn::{self as webauthn, Metadata};
 use rusqlite::{Connection, OptionalExtension, params};
-use sakimori_auth::Ceremony;
-use sakimori_webauthn::{self as webauthn, Metadata};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -131,7 +131,7 @@ impl State {
             "timeout":120000, "extensions": data.get("extensions").cloned().unwrap_or(json!({}))});
         if registration {
             output.as_object_mut().unwrap().extend(json!({
-                "rp":{"id":"localhost", "name":"sakimori conformance"}, "user":user,
+                "rp":{"id":"localhost", "name":"mikaki conformance"}, "user":user,
                 "pubKeyCredParams": ([-7,-8,-257,-65535].map(|alg|json!({"type":"public-key", "alg":alg}))),
                 "excludeCredentials":list, "attestation":data["attestation"].as_str().unwrap_or("none"),
                 "authenticatorSelection":{"userVerification":uv,"residentKey":resident,"requireResidentKey":resident=="required"}
@@ -450,7 +450,7 @@ pub fn run() -> Result<()> {
         let mut timing = Timing::default();
         let result = state.handle(&mut req, &mut timing);
         let success = result.is_ok();
-        let (output,cookie) = result.unwrap_or_else(|_|(json!({"status":"failed","errorMessage":"Request rejected by sakimori profile or verifier"}),None));
+        let (output,cookie) = result.unwrap_or_else(|_|(json!({"status":"failed","errorMessage":"Request rejected by mikaki profile or verifier"}),None));
         let mut response = Response::from_string(output.to_string())
             .with_status_code(if success { 200 } else { 400 })
             .with_header(Header::from_bytes("Content-Type", "application/json").unwrap());

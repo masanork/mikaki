@@ -32,7 +32,7 @@ const BROWSER = '__Host-rp-browser',
   SESSION = '__Host-rp-session';
 const html = (text, headers = {}) =>
   response(
-    `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sakimori local RP</title><body><h1>Sakimori local RP</h1>${text}</body></html>`,
+    `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Mikaki local RP</title><body><h1>Mikaki local RP</h1>${text}</body></html>`,
     200,
     { 'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'same-origin', ...headers },
   );

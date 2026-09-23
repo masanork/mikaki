@@ -4,9 +4,9 @@
 
 ## 決定
 
-sakimoriをOpenID Provider、tossa・tsudoiをRelying Partyとして、最初の本番接続からAuthorization Code Flow + PKCEを使う。独自のログイン結果伝達方式を先に実装しない。
+mikakiをOpenID Provider、tossa・tsudoiをRelying Partyとして、最初の本番接続からAuthorization Code Flow + PKCEを使う。独自のログイン結果伝達方式を先に実装しない。
 
-利用者向けの入口はPasskeyによるログインとする。初回の接続許可を認証画面へ統合し、許可済みアプリへの再ログインでは有効なsakimoriセッションを使う。Vaultの作成・解錠や利用許可を通常ログインの必須手順にしない。
+利用者向けの入口はPasskeyによるログインとする。初回の接続許可を認証画面へ統合し、許可済みアプリへの再ログインでは有効なmikakiセッションを使う。Vaultの作成・解錠や利用許可を通常ログインの必須手順にしない。
 
 ## 理由と影響
 

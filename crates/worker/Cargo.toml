@@ -1,5 +1,5 @@
 [package]
-name = "sakimori-worker"
+name = "mikaki-worker"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
@@ -16,7 +16,7 @@ worker-entry = []
 base64.workspace = true
 futures-util.workspace = true
 js-sys = "=0.3.105"
-sakimori-oidc = { path = "../oidc" }
+mikaki-oidc = { path = "../oidc" }
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded = "=0.7.1"

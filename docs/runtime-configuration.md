@@ -12,7 +12,7 @@
 
 同一配置につき有効な設定の入力元は一つに限定する。環境変数ごとの上書き、複数ファイルの暗黙merge、ブラウザ要求による上書きを初期には設けない。秘密鍵・client_secretは秘密管理から別途供給する。issuer・RP ID・origin・redirect URI等の配備/識別設定も、この期間・回数の設定とは区別する。
 
-現時点では全runtime policyのloader/CLIは未実装。`sakimori-worker`のOIDC endpointsはauthorization code/assertion/Access Token/ID Token TTL、clock skew、request target/parameter/state/nonce、JWT/form/response byte上限を、schema version 4・全policy由来revision・projection自身のhashを含むstrict JSON projectionとして読む。`npm run build:policy`は単一TOMLを検証した後、ローカル用`local/generated/worker-policy.json`も生成する。Worker環境にはそのprojectionを単一の`SAKIMORI_WORKER_POLICY`値として設定し、他の値と混ぜない。issuerは`SAKIMORI_ISSUER`、ES256またはRS256 private JWKは`OP_PRIVATE_JWK` secretとして別途設定し、D1の有効なsigning key行へ同じ方式の公開JWKを登録する。RSA JWKのimport/signはWorkers WebCryptoを使用する。secret/private keyをvarsやpolicyへ入れない。
+現時点では全runtime policyのloader/CLIは未実装。`mikaki-worker`のOIDC endpointsはauthorization code/assertion/Access Token/ID Token TTL、clock skew、request target/parameter/state/nonce、JWT/form/response byte上限を、schema version 4・全policy由来revision・projection自身のhashを含むstrict JSON projectionとして読む。`npm run build:policy`は単一TOMLを検証した後、ローカル用`local/generated/worker-policy.json`も生成する。Worker環境にはそのprojectionを単一の`MIKAKI_WORKER_POLICY`値として設定し、他の値と混ぜない。issuerは`MIKAKI_ISSUER`、ES256またはRS256 private JWKは`OP_PRIVATE_JWK` secretとして別途設定し、D1の有効なsigning key行へ同じ方式の公開JWKを登録する。RSA JWKのimport/signはWorkers WebCryptoを使用する。secret/private keyをvarsやpolicyへ入れない。
 
 `schema_version`を必須とし、未知の版・キー・重複・型不一致・必須値の欠落は拒否する。見本の有効項目はすべて明示する方式を採り、省略時にコード内の別の既定値へ戻さない。導入済みの段階で必要な設定だけを読み込む。P0はVault処理を実装するためにP1の設定を要求しない。
 
@@ -73,11 +73,11 @@ Access Token TTL、時計ずれ、ログイン取引期限、timeout、再送間
 
 ## アプリ・ブラウザへの設定伝達
 
-sakimoriとtossa・tsudoiで同じ値を別々にハードコードしない。認証されたサーバー間のセッション確認応答に、policy_revision、元SSO期限、有効性確認の最長期間、および新規アプリセッション用の未操作timeoutを含める。既存アプリセッションの未操作timeoutは作成時の値を維持する。
+mikakiとtossa・tsudoiで同じ値を別々にハードコードしない。認証されたサーバー間のセッション確認応答に、policy_revision、元SSO期限、有効性確認の最長期間、および新規アプリセッション用の未操作timeoutを含める。既存アプリセッションの未操作timeoutは作成時の値を維持する。
 
-アプリは照会開始時からの期間と、親/ローカルセッションの残存期限の最小値を利用する。応答到着時から数え直さない。アプリ側の独自制限で短くすることはできるが、sakimoriの指定を超えて延長しない。キャッシュする確認結果とアプリセッションの寿命を同一視しない。
+アプリは照会開始時からの期間と、親/ローカルセッションの残存期限の最小値を利用する。応答到着時から数え直さない。アプリ側の独自制限で短くすることはできるが、mikakiの指定を超えて延長しない。キャッシュする確認結果とアプリセッションの寿命を同一視しない。
 
-Vault解錠UIには必要な公開設定だけをsakimori originから渡す。policy_revisionを含め、解錠中は固定する。ネットワーク断を理由に長い値へ戻さない。ブラウザ内の施錠設定は正常クライアントの動作契約であり、侵害された端末を遠隔消去する保証ではない。
+Vault解錠UIには必要な公開設定だけをmikaki originから渡す。policy_revisionを含め、解錠中は固定する。ネットワーク断を理由に長い値へ戻さない。ブラウザ内の施錠設定は正常クライアントの動作契約であり、侵害された端末を遠隔消去する保証ではない。
 
 ## 失効保証を変更する配備
 

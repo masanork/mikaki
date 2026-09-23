@@ -6,12 +6,12 @@
 
 認証・認可の正しさは、署名検証だけでなく「どの状態から何へ遷移できるか」「一度だけ実行できるか」「失敗時に何が確定したか」で決まる。これらはRustの型と明示的な状態遷移で一元管理する。一方、ブラウザUI、WebAuthn API、IndexedDB、Cloudflare bindingの接続は、プラットフォームのAPIに近い薄い境界として扱う。
 
-現在のローカル縦切りでは、[`local/op.mjs`](../../local/op.mjs)が707行、`local/rp.mjs`が313行で、OIDC取引とD1操作をJavaScriptが実行する。`sakimori-oidc`は認可要求とPKCEのcoreである。従来の`sakimori-worker`はWebAuthn/PKCEのJSON/Wasm境界だったため、これを`sakimori-browser-wasm`へ改名し、Cloudflareのfetch handler/binding adapter用に`sakimori-worker`を分離した。[ローカル実装文書](../../local/README.md)はJS harnessを製品実装と区別している。
+現在のローカル縦切りでは、[`local/op.mjs`](../../local/op.mjs)が707行、`local/rp.mjs`が313行で、OIDC取引とD1操作をJavaScriptが実行する。`mikaki-oidc`は認可要求とPKCEのcoreである。従来の`mikaki-worker`はWebAuthn/PKCEのJSON/Wasm境界だったため、これを`mikaki-browser-wasm`へ改名し、Cloudflareのfetch handler/binding adapter用に`mikaki-worker`を分離した。[ローカル実装文書](../../local/README.md)はJS harnessを製品実装と区別している。
 
 ## 決定
 
-1. **Rustをプロトコル状態遷移の正本にする。** OIDC、client assertion、一回性、認証・認可証拠、session、logout/outboxのユースケースと検証済み型を`sakimori-oidc` / `sakimori-auth`に置く。生のHTTP入力、JWT文字列、UUID文字列から、検証済み状態へ移る箇所を明示する。遷移は網羅的なenum/Resultと私有フィールド付き型で表し、HTTPやDB行をそのままドメイン型にDeserializeしない。
-2. **Cloudflareの本番Worker adapterもRustを第一候補にする。** `worker` crate（workers-rs）を使い、Worker入口、設定・時計・乱数、非同期署名、D1、Service Bindingを`sakimori-worker`に閉じる。`sakimori-browser-wasm`はブラウザ/ローカルharness向けに限る。D1のconditional batchが最終的な一回性・並行性を確定する不変条件は維持し、Rust coreの型だけでDB原子性が保証されるとは扱わない。生成されたWasm/JS glueは境界の実装詳細とし、独自Wasm ABIを業務APIにしない。
+1. **Rustをプロトコル状態遷移の正本にする。** OIDC、client assertion、一回性、認証・認可証拠、session、logout/outboxのユースケースと検証済み型を`mikaki-oidc` / `mikaki-auth`に置く。生のHTTP入力、JWT文字列、UUID文字列から、検証済み状態へ移る箇所を明示する。遷移は網羅的なenum/Resultと私有フィールド付き型で表し、HTTPやDB行をそのままドメイン型にDeserializeしない。
+2. **Cloudflareの本番Worker adapterもRustを第一候補にする。** `worker` crate（workers-rs）を使い、Worker入口、設定・時計・乱数、非同期署名、D1、Service Bindingを`mikaki-worker`に閉じる。`mikaki-browser-wasm`はブラウザ/ローカルharness向けに限る。D1のconditional batchが最終的な一回性・並行性を確定する不変条件は維持し、Rust coreの型だけでDB原子性が保証されるとは扱わない。生成されたWasm/JS glueは境界の実装詳細とし、独自Wasm ABIを業務APIにしない。
 3. **TypeScript 7をブラウザUIとブラウザ専用処理の標準にする。** Svelte UI、WebAuthn/IndexedDB呼出し、画面状態、ローカルdev harnessでRustが不自然な箇所に使う。UIは認証可否を決定せず、サーバー応答を表示・送信する。フロントの暗号処理は規格APIを呼び、独自プロトコルや権限判定を実装しない。
 4. **ローカルJavaScript縦切りは検証fixtureとして保つ。** Rust実装への期待動作を示すための回帰・E2E harnessとして使える間は維持するが、新しい製品機能の正本にはしない。Rustへの移行中は同じ契約ケースを両方へ実行し、二つの実装が並走する期間を限定する。
 5. **初期crate構成を小さく保つ。** `webauthn`、`auth`、`oidc`、`worker`をP0の境界とし、JWT、D1 repository、policy loaderのためだけのcrateや汎用plugin frameworkは追加しない。

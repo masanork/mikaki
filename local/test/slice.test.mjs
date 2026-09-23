@@ -106,7 +106,7 @@ const exchange = (c, assertion, verifier = c.verifier) =>
   );
 before(async () => {
   local = await startLocal();
-  const channel = process.env.SAKIMORI_BROWSER_CHANNEL;
+  const channel = process.env.MIKAKI_BROWSER_CHANNEL;
   browser = await chromium.launch({
     ...(channel ? { channel } : {}),
     headless: true,

@@ -1,4 +1,4 @@
-use sakimori_es256_probe::{fixture_sign, fixture_verify};
+use mikaki_es256_probe::{fixture_sign, fixture_verify};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();

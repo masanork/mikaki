@@ -1,12 +1,12 @@
-# sakimori ファイルストレージ API（設計案）
+# mikaki ファイルストレージ API（設計案）
 
 2026-09-23 / Draft 0
 
-sakimori の共有ストレージ基盤と、その上のファイルAPIの設計案。実装済み・採用済みの決定ではない。VaultとファイルストレージでS3 backendを二重に作ることは想定しない。違いは保存基盤ではなく、APIが保証するデータモデル・暗号化・同期契約にある。
+mikaki の共有ストレージ基盤と、その上のファイルAPIの設計案。実装済み・採用済みの決定ではない。VaultとファイルストレージでS3 backendを二重に作ることは想定しない。違いは保存基盤ではなく、APIが保証するデータモデル・暗号化・同期契約にある。
 
 ## 1. 目的と境界
 
-S3互換オブジェクトストレージを共通blob backendとして利用する。メタデータ・階層・revisionはsakimoriのDBを正本とする。S3は内部backendであり、初期にS3プロトコルを利用者へ直接公開するものではない。FileNode APIは人やアプリが扱う名前付きファイル／ディレクトリを提供する。Vault同期APIは端末暗号化済みデータの保存・条件付き更新を提供する。どちらも共通blob保存・quota・監査・backend運用を利用できるが、Vault暗号文を通常ファイルAPIから平文ファイルとして解釈しない。
+S3互換オブジェクトストレージを共通blob backendとして利用する。メタデータ・階層・revisionはmikakiのDBを正本とする。S3は内部backendであり、初期にS3プロトコルを利用者へ直接公開するものではない。FileNode APIは人やアプリが扱う名前付きファイル／ディレクトリを提供する。Vault同期APIは端末暗号化済みデータの保存・条件付き更新を提供する。どちらも共通blob保存・quota・監査・backend運用を利用できるが、Vault暗号文を通常ファイルAPIから平文ファイルとして解釈しない。
 
 | 層 | 責任 |
 | --- | --- |
@@ -32,7 +32,7 @@ S3互換オブジェクトストレージを共通blob backendとして利用す
 
 ## 2. 参照モデル
 
-JMAP File Storage extension の FileNodeを相互運用の基準にする。初期の互換性目標はデータモデルと基本操作の対応であり、JMAP wire protocol全体への準拠ではない。JMAPを外部APIに採用するか、sakimori APIからJMAPへadapterを置くかは未決とする。
+JMAP File Storage extension の FileNodeを相互運用の基準にする。初期の互換性目標はデータモデルと基本操作の対応であり、JMAP wire protocol全体への準拠ではない。JMAPを外部APIに採用するか、mikaki APIからJMAPへadapterを置くかは未決とする。
 
 ```text
 FileNode {
@@ -73,7 +73,7 @@ pathは`parentId + name`から導出し、identityに使わない。rename/move�
 
 ## 4. AuthZEN 認可
 
-sakimori APIがPEP、AuthZEN endpointがPDPとなる。リソースIDはtenant/account境界を含めて一意にする（例: `filenode:<accountId>:<nodeId>`）。subjectはWorkerが確定した安定IDを使う。初期action vocabulary:
+mikaki APIがPEP、AuthZEN endpointがPDPとなる。リソースIDはtenant/account境界を含めて一意にする（例: `filenode:<accountId>:<nodeId>`）。subjectはWorkerが確定した安定IDを使う。初期action vocabulary:
 
 | Action | 対象 |
 | --- | --- |
@@ -85,7 +85,7 @@ sakimori APIがPEP、AuthZEN endpointがPDPとなる。リソースIDはtenant/a
 | `storage.read-content` | blob取得 |
 | `storage.write-content` | blob新規作成・置換 |
 
-AuthZENの標準モデル（subject/action/resource/contextとboolean decision）を使い、これらのaction名・resource type・context属性をsakimori profileとして固定する。PDPはpolicyを評価する。Storage DBに独自のACL/shareWithを複製しない。
+AuthZENの標準モデル（subject/action/resource/contextとboolean decision）を使い、これらのaction名・resource type・context属性をmikaki profileとして固定する。PDPはpolicyを評価する。Storage DBに独自のACL/shareWithを複製しない。
 
 各API操作はPEPで認可してから副作用を行う。moveはsourceのrenameとold/new parent双方への必要権限、copyはsource readとdestination createを評価する。query/get/changesは対象nodeごとに可視性を強制し、未許可nodeを返却件数・親情報・エラー差で推測できないようにする。directory列挙では`list`と子nodeの`read`の意味を混同しない。初期profileではlist可能な利用者に子metadataも開示するかを明示して決める。
 
@@ -114,7 +114,7 @@ DB確定に失敗すれば旧blob参照を維持し、新blobは孤立objectと�
 
 - S3 bucket/key、認証情報、presigned URLをAPI応答や通常ログへ含めない。
 - blob取得時もAuthZENを評価する。S3直リンクを返す場合はPDP失効後も期限まで有効になる性質を含め、別途期限と漏えい対策を定義する。
-- 外部提供する場合は、利用者がアップロードしたHTML等をsakimori originで実行しない。downloadは安全なContent-Dispositionを既定にする。
+- 外部提供する場合は、利用者がアップロードしたHTML等をmikaki originで実行しない。downloadは安全なContent-Dispositionを既定にする。
 - node名は1〜255 UTF-8 byteを暫定上限とし、`/`、制御文字、`.`、`..`を拒否する。case sensitivityとUnicode normalizationは互換性試験前に確定する。
 - file size、node数、directory深度、request body、同時multipart数にquota/limitを置く。
 - auditにはactor、action、resource ID、decision、operation ID、結果、時刻を記録し、ファイル内容・認証token・S3 secretは記録しない。
@@ -126,7 +126,7 @@ DB確定に失敗すれば旧blob参照を維持し、新blobは孤立objectと�
 2. 共通blob storeの不変key、revision pinning、失敗回復、GC、quota契約を確定する。
 3. FileNode APIのCRUD、完全PUT/GET、revision/changesを実装し、AuthZEN action profileとfail-closed動作を確定する。
 4. Vaultのblob操作を共通backendへ載せる場合、既存P1の競合・暗号文保護・Grant契約を維持できることを確認する。
-5. 実クライアントでJMAP互換範囲を検証し、JMAP wire protocol採用またはsakimori API adapterを決める。
+5. 実クライアントでJMAP互換範囲を検証し、JMAP wire protocol採用またはmikaki API adapterを決める。
 6. 必要性を確認してから共有、PATCH、大容量multipart、trash、symlink、blobextを検討する。
 
 ## 8. 着手前の決定ゲート
@@ -153,7 +153,7 @@ DB確定に失敗すれば旧blob参照を維持し、新blobは孤立objectと�
 | ST1: サイズ | 初期のAPI request上限を100 MiB候補とする。multipartは上限値だけ先に決めず、Worker経由か短命upload URLかを決めてから導入する | 現行Workersのrequest body上限はCloudflare zone planに依存し、Free/Proは100 MB、Businessは200 MB、Enterpriseは最大5 GB。R2自体のmultipart上限とは別。短命URL方式はPDP評価後に直接S3へ書くため、失効・再試行・完成後の検証が必要 |
 | ST1: 履歴・削除 | FileNodeのdestroyはtombstoneでchanges同期に反映する。trash/undeleteは初期wire profileに含めず、復旧はbackup/運用復元として別管理する。未参照blobは猶予期間後GC | 同期用削除記録と利用者向け復旧機能を混同しない。復旧要件があればtrashを独立機能として追加する |
 | ST2: 一般ファイル暗号化 | 初期FileNodeはTLS + backend SSE、metadataと本文をサーバーが処理できるモデルとし、E2EEを約束しない。Vaultは現行どおり端末暗号化を維持 | FileNodeのMIME、preview、一般クライアントとの相互運用を保てる。秘匿要件の異なる利用者には将来client-encrypted namespaceを設けるが、同じFileNode semanticsへ混在させない |
-| ST2: 開示 | FileNodeのname、階層、size、type、時刻、アクセス記録はsakimoriとPDPに見える。本文も一般FileNodeではserver-side処理可能。Vaultは従来どおりアプリ意味情報と本文を暗号文内に置く | サービス運営者・storage providerに対する秘匿境界を明確にする |
+| ST2: 開示 | FileNodeのname、階層、size、type、時刻、アクセス記録はmikakiとPDPに見える。本文も一般FileNodeではserver-side処理可能。Vaultは従来どおりアプリ意味情報と本文を暗号文内に置く | サービス運営者・storage providerに対する秘匿境界を明確にする |
 | ST3: AuthZEN | WorkerをPEP、AuthZEN 1.0互換PDPをdecision pointとする。subjectは認証済みAccountId、resourceはaccountとnode IDを含む不透明ID。policy管理・PDP運用者は別ゲートで確定 | requestごとの主体・対象が安定し、tenant横断のID衝突を避ける。AuthZENはpolicy管理・配布形式までは決めないため、別に決める必要がある |
 | ST3: action | `storage.read-metadata`, `storage.list-children`, `storage.create-child`, `storage.rename`, `storage.delete`, `storage.read-content`, `storage.write-content`をprofile actionにする。共有/grant管理actionは初期対象外 | metadata列挙、content取得、変更操作を分離して最小権限にできる |
 | ST3: Vault Grant | 既存GrantはVaultのowner/app/collection/operation/期限を表す業務データとして残す。Vault操作も同じAuthZEN PEP/PDP経路で評価するprofileを設け、Grant属性をPDPが参照する形を目指す。FileNode ACLへ変換・複製しない | GrantはVaultのドメイン要件を持ち、AuthZENは評価APIであってgrant台帳やpolicy authoring規約ではない。PDPがGrant変更をどう即時参照するかは設計が必要 |
@@ -165,10 +165,10 @@ DB確定に失敗すれば旧blob参照を維持し、新blobは孤立objectと�
 
 ### 鍵管理の初期案
 
-一般FileNodeはサーバー可読とし、sakimori独自のアプリケーション暗号鍵は初期には導入しない。TLSで転送を保護し、R2等のbackendが提供する保存時暗号化を必須とする。R2ではobjectとmetadataが自動で暗号化され、鍵はCloudflareが管理する。この選択は生の保存媒体・storage provider内の暗号化前データを直接得る脅威を下げるが、Worker侵害、S3資格情報侵害、許可されたAPI読み出し、providerの通常read経路から本文を秘匿しない。
+一般FileNodeはサーバー可読とし、mikaki独自のアプリケーション暗号鍵は初期には導入しない。TLSで転送を保護し、R2等のbackendが提供する保存時暗号化を必須とする。R2ではobjectとmetadataが自動で暗号化され、鍵はCloudflareが管理する。この選択は生の保存媒体・storage provider内の暗号化前データを直接得る脅威を下げるが、Worker侵害、S3資格情報侵害、許可されたAPI読み出し、providerの通常read経路から本文を秘匿しない。
 
 ```text
-JMAP client --TLS--> sakimori Worker (本文を平文処理可能)
+JMAP client --TLS--> mikaki Worker (本文を平文処理可能)
                            |
                            +-- S3/R2 credentials --> encrypted-at-rest object store
                                                      provider-managed key
@@ -179,7 +179,7 @@ JMAP client --TLS--> sakimori Worker (本文を平文処理可能)
 | 秘密 | 保管・利用 | 保護するもの / 保護しないもの |
 | --- | --- | --- |
 | R2/S3 access credential | Worker Secret。必要なbucket操作だけを許可し、環境別に分離 | DBだけを持つ攻撃者等からobject API操作を制限する。Worker侵害中の利用は防がない |
-| Provider at-rest key | storage provider管理 | 生のmedia/snapshotに対する保護。sakimoriから独立した復号境界ではない |
+| Provider at-rest key | storage provider管理 | 生のmedia/snapshotに対する保護。mikakiから独立した復号境界ではない |
 | Vault root/data keys | 端末側で導出・使用。サーバーへ送らない | Vault暗号文の機密性。FileNode一般ファイルには使用しない |
 | AuthZEN PDP credential | Worker用の別Secret | PDP API呼出しだけに使う。S3 credentialや暗号鍵と共有しない |
 
@@ -194,7 +194,7 @@ VaultのPRF-derived鍵はこのFileNode暗号化へ流用しない。Passkeyで�
 ### 推奨案から確定する前に必要な確認
 
 - 100 MiBの単一PUT上限、5 GiBの将来multipart上限、quota値が利用予定のprovider・Worker実行制限・料金に合うか。
-- PDPをsakimori運営下に置くか、外部PDPを許容するか。認可不能時の停止を許容できるか。
+- PDPをmikaki運営下に置くか、外部PDPを許容するか。認可不能時の停止を許容できるか。
 - 一般ファイルのserver-readableモデルが用途に合うか。FileNodeでもE2EEを要求するなら、MIMEやpreview等を諦めるclient-encrypted profileが必要。
 - 「サーバーに鍵を永続化しない」の要件が、アプリSecretにmaster keyを置かない意味か、アプリ運用者・storage providerも復号できない意味か。後者はFileNodeのserver-readable方針と両立しない。
 - RFC 9670 SharingをFileNodeのpolicy authoringの基礎に残すか。AuthZENは判断APIを提供するが、誰がどのUIでpolicyを作るかは定義しない。

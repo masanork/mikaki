@@ -6,7 +6,7 @@ process.env.WRANGLER_WRITE_LOGS ??= 'false';
 const { unstable_dev } = await import('wrangler');
 
 const require = createRequire(import.meta.url);
-const wasm = require('./jose-custom/pkg/sakimori_jose_custom_probe.js');
+const wasm = require('./jose-custom/pkg/mikaki_jose_custom_probe.js');
 const workerScript = fileURLToPath(new URL('async-signer-worker.mjs', import.meta.url));
 const worker = await unstable_dev(workerScript, {
   compatibilityDate: '2026-09-22',

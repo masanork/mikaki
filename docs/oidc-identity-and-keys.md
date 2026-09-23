@@ -16,18 +16,18 @@
 
 | 識別子 | 発行・保持 | 用途 |
 | --- | --- | --- |
-| AccountId | sakimori内部で発行 | credentialと共通アカウントの所有関係。OIDCで公開しない |
+| AccountId | mikaki内部で発行 | credentialと共通アカウントの所有関係。OIDCで公開しない |
 | issuer | インスタンスの固定HTTPS URL | 外部IDの名前空間。実ドメインは利用者が選択する |
 | sector | OIDCのSector Identifier規則から確定 | アプリに公開するsubを分ける単位 |
-| sub | sakimoriがAccountIdとsectorの組に発行 | アプリへ渡す不透明で安定したID |
+| sub | mikakiがAccountIdとsectorの組に発行 | アプリへ渡す不透明で安定したID |
 | SubjectId | 各アプリが発行 | アプリ内の業務データ・参加権限の参照先 |
-| sid | sakimoriがセッションの関連に発行 | ログアウト・有効性確認。本人の恒久IDに使わない |
+| sid | mikakiがセッションの関連に発行 | ログアウト・有効性確認。本人の恒久IDに使わない |
 
 初期案はpairwise subとする。tossa・tsudoiのsectorを分けるため、登録redirect URIのホストを各アプリで分ける。sectorはclient_idの別名ではない。同じホスト内のパス違いを別sectorと見なさない。初期は1 clientのredirect URIを単一ホストに限定し、任意のsector_identifier_uri取得を実装しない。実ドメインがこの条件を満たさない場合は、登録構成を再検討してから確定する。
 
 subは初回の接続許可確定時に、sectorごとに独立したUUIDv4を生成して保存する案を推奨する。表記は小文字・ハイフン付き36文字とし、通常はURN接頭辞を付けない。UUIDv4/v7の比較と内部IDの割当ては[識別子方針](identifier-policy.md)に定める。同じAccountId・sectorには常に保存済みの値を返す。共通の識別子導出鍵を新設せず、OIDC署名鍵の更新から独立させる。衝突はDBの一意制約で拒否して再生成する。
 
-アプリにはAccountId・VaultId・利用者DIDを通常ログインのclaimとして渡さない。subを分けることは、アプリ間のあらゆる照合を防ぐ保証ではない。利用者が別途共有した情報やsakimori内部の対応は残る。
+アプリにはAccountId・VaultId・利用者DIDを通常ログインのclaimとして渡さない。subを分けることは、アプリ間のあらゆる照合を防ぐ保証ではない。利用者が別途共有した情報やmikaki内部の対応は残る。
 
 ### 2.1 OIDCの形式制約とDIDの利用
 
@@ -35,7 +35,7 @@ subは初回の接続許可確定時に、sectorごとに独立したUUIDv4を�
 
 DID文字列をsubに入れること自体は、OIDCの長さ・一意性・安定性等を満たせば可能。ただし通常のOIDC検証をDID解決へ置き換えるものではない。全アプリに同じ利用者DIDを渡すと、それを共通の照合キーにできるため、pairwise分離とは両立しない。sectorごとに別DIDを発行する場合も、文書内の同じ鍵・controller等から関連が見えないか評価する。
 
-`did:method:identifier`はDIDメソッドと、その生成・解決・更新等の意味を持つ。記法だけを借りる目的で未定義の`did:sakimori:...`を作らない。URI形式が必要な文脈では既存標準の`urn:uuid:<UUID>`を使えるが、ログイン用subには通常のUUID文字列を推奨する。UUIDは公開鍵や解決先を持つことを意味しない。
+`did:method:identifier`はDIDメソッドと、その生成・解決・更新等の意味を持つ。記法だけを借りる目的で未定義の`did:mikaki:...`を作らない。URI形式が必要な文脈では既存標準の`urn:uuid:<UUID>`を使えるが、ログイン用subには通常のUUID文字列を推奨する。UUIDは公開鍵や解決先を持つことを意味しない。
 
 連合の利用者DIDは、既存の設計どおり公開鍵・端末・連絡先との結び付けに利用する候補とする。`did:key`は鍵から生成され更新できないため、鍵変更から独立したログイン用subの第一候補にはしない。DIDと共通アカウントの対応には本人の認証とDID制御の検証を必要とし、DIDの自己申告や文字列一致だけでアカウントを結び付けない。対応の証明形式・更新手順はG3で定める。
 
@@ -47,9 +47,9 @@ DID文字列をsubに入れること自体は、OIDCの長さ・一意性・安�
 
 | 配置 | レコード | 主要フィールド・制約 |
 | --- | --- | --- |
-| sakimori | OidcClient | client_id、sector、redirect URI、post-logout URI、backchannel URI、設定版、状態。管理者が静的登録 |
-| sakimori | PairwiseSubject | account_id、sector、sub。UNIQUE(account_id, sector)、UNIQUE(sub) |
-| sakimori | AppConnection | account_id、client_id、許可scope、同意表示版、grant_version、状態。UNIQUE(account_id, client_id) |
+| mikaki | OidcClient | client_id、sector、redirect URI、post-logout URI、backchannel URI、設定版、状態。管理者が静的登録 |
+| mikaki | PairwiseSubject | account_id、sector、sub。UNIQUE(account_id, sector)、UNIQUE(sub) |
+| mikaki | AppConnection | account_id、client_id、許可scope、同意表示版、grant_version、状態。UNIQUE(account_id, client_id) |
 | アプリ | ExternalIdentity | issuer、sub、subject_id。UNIQUE(issuer, sub) |
 
 PairwiseSubjectは識別の記録、AppConnectionは利用許可の記録として分離する。AppConnectionを失効させてもPairwiseSubjectを削除しない。再接続はgrant_versionを進め、同じsubと新しいsidを使う。古いセッションやVault grantを復活させない。

@@ -734,6 +734,81 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "mikaki-auth"
+version = "0.1.0"
+dependencies = [
+ "mikaki-webauthn",
+ "serde",
+]
+
+[[package]]
+name = "mikaki-browser-wasm"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ciborium",
+ "mikaki-auth",
+ "mikaki-oidc",
+ "mikaki-webauthn",
+ "p256",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tiny_http",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "mikaki-oidc"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "p256",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "mikaki-webauthn"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ciborium",
+ "der",
+ "ed25519-dalek",
+ "p256",
+ "p384",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "wasm-bindgen-test",
+ "x509-cert",
+]
+
+[[package]]
+name = "mikaki-worker"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "futures-util",
+ "js-sys",
+ "mikaki-oidc",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sha2",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "worker",
+]
+
+[[package]]
 name = "minicov"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,81 +1075,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "sakimori-auth"
-version = "0.1.0"
-dependencies = [
- "sakimori-webauthn",
- "serde",
-]
-
-[[package]]
-name = "sakimori-browser-wasm"
-version = "0.1.0"
-dependencies = [
- "base64",
- "ciborium",
- "p256",
- "rusqlite",
- "sakimori-auth",
- "sakimori-oidc",
- "sakimori-webauthn",
- "serde",
- "serde_json",
- "sha2",
- "tiny_http",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "sakimori-oidc"
-version = "0.1.0"
-dependencies = [
- "base64",
- "p256",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "sakimori-webauthn"
-version = "0.1.0"
-dependencies = [
- "base64",
- "ciborium",
- "der",
- "ed25519-dalek",
- "p256",
- "p384",
- "rsa",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "wasm-bindgen-test",
- "x509-cert",
-]
-
-[[package]]
-name = "sakimori-worker"
-version = "0.1.0"
-dependencies = [
- "base64",
- "futures-util",
- "js-sys",
- "sakimori-oidc",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha2",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "worker",
-]
 
 [[package]]
 name = "same-file"

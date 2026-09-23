@@ -1,7 +1,7 @@
 // Keep UI copy outside components; production catalog/code generation remains a later step.
 export const messages = {
   ja: {
-    title: 'sakimoriにログイン',
+    title: 'mikakiにログイン',
     intro: 'Passkeyで安全にログインします。',
     invite: '招待コード',
     register: '招待で登録する',
@@ -16,7 +16,7 @@ export const messages = {
     app: '接続するアプリ',
   },
   en: {
-    title: 'Sign in to sakimori',
+    title: 'Sign in to mikaki',
     intro: 'Use your passkey to sign in securely.',
     invite: 'Invitation code',
     register: 'Register with invitation',

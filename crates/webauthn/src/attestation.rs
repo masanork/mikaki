@@ -16,13 +16,13 @@ pub enum AttestationPolicy {
 
 /// Produced only after successful registration verification.
 /// ```compile_fail
-/// let forged = sakimori_webauthn::AttestationEvidence {
+/// let forged = mikaki_webauthn::AttestationEvidence {
 ///     format: "packed", kind: "trusted", aaguid: String::new(), trust: None,
 /// };
 /// ```
 /// AAGUID alone is not evidence of authenticator provenance.
 /// ```compile_fail
-/// let forged: sakimori_webauthn::AttestationEvidence = serde_json::from_str("{}").unwrap();
+/// let forged: mikaki_webauthn::AttestationEvidence = serde_json::from_str("{}").unwrap();
 /// ```
 #[derive(Serialize)]
 pub struct AttestationEvidence {

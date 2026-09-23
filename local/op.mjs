@@ -8,8 +8,8 @@ import {
   authorize,
   pkce,
   valid_json,
-} from '../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
-import wasm from '../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm';
+} from '../crates/browser-wasm/pkg/mikaki_browser_wasm.js';
+import wasm from '../crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm';
 import exchangeSQL from '../design/sql/exchange-code.sql';
 import acceptSQL from '../design/sql/accept-assertion.sql';
 import {
@@ -88,7 +88,7 @@ async function sso(db, req) {
 async function context(db, req, id) {
   const l = await login(db, req, id);
   const s = await sso(db, req);
-  return json({ tx: l.id, csrf: l.csrf, client: 'Sakimori local RP', signed_in: !!s });
+  return json({ tx: l.id, csrf: l.csrf, client: 'Mikaki local RP', signed_in: !!s });
 }
 function transactionGuard(db, l) {
   return guard(
@@ -271,11 +271,11 @@ async function start(db, req) {
       input.purpose === 'register'
         ? {
             ...common,
-            rp: { id: 'localhost', name: 'sakimori (local)' },
+            rp: { id: 'localhost', name: 'mikaki (local)' },
             user: {
               id: b64(new TextEncoder().encode(account)),
               name: account,
-              displayName: 'sakimori account',
+              displayName: 'mikaki account',
             },
             pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
             authenticatorSelection: {
@@ -597,7 +597,7 @@ async function logout(db, env, req, url, ctx) {
       retained(now() + p('oidc.login.transaction_ttl')),
     ]).run();
     return response(
-      `<!doctype html><meta charset="utf-8"><title>sakimori logout</title><h1>ログアウト / Sign out</h1><form method="post" action="/logout"><input type="hidden" name="csrf" value="${csrf}"><button>ログアウト / Sign out</button></form>`,
+      `<!doctype html><meta charset="utf-8"><title>mikaki logout</title><h1>ログアウト / Sign out</h1><form method="post" action="/logout"><input type="hidden" name="csrf" value="${csrf}"><button>ログアウト / Sign out</button></form>`,
       200,
       {
         'Content-Type': 'text/html; charset=utf-8',

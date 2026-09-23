@@ -12,7 +12,7 @@ Included:
 - `response_type=code`, `scope=openid`, query response mode, and PKCE S256;
 - pairwise subject identifiers;
 - ES256 as the product default and RS256 support required by the Core OP profile;
-- `private_key_jwt` client authentication, with no client secret stored by sakimori;
+- `private_key_jwt` client authentication, with no client secret stored by mikaki;
 - signed ID Tokens, Discovery, JWKS, token exchange, and GET/POST UserInfo;
 - the supported `openid` scope and `sub` claim only.
 
@@ -22,7 +22,7 @@ Excluded from this milestone: Implicit/Hybrid flows, Dynamic Client Registration
 
 The product profile uses `private_key_jwt`. OIDF's published instructions for manually registered clients in the Basic/Implicit/Hybrid OP plans describe `client_secret_basic` and `client_secret_post` clients. Before claiming compatibility, select an OP test plan/configuration that can exercise `private_key_jwt` while preserving this product policy. Do not add weaker client authentication just to make a test plan configurable. If the available Basic OP certification plan cannot represent this policy, record that incompatibility and test the closest non-certification Core authorization-server plan instead.
 
-OIDC Core §15.1 requires OP support for RS256 ID Token signing. RS256 is a compatibility requirement for conformance, not a change to sakimori's ES256 issuance default. Both algorithms must be advertised only after working issuance and verification paths are tested.
+OIDC Core §15.1 requires OP support for RS256 ID Token signing. RS256 is a compatibility requirement for conformance, not a change to mikaki's ES256 issuance default. Both algorithms must be advertised only after working issuance and verification paths are tested.
 
 ## Implementation gates
 

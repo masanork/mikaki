@@ -17,7 +17,7 @@
     "crates/worker/examples/conformance.rs": "24be4b6b09e6a08c72a04eb26e1782da7d1acba72a3bb2247fdf4b81aac893b7",
     "local/conformance/server.mjs": "5bb87549dd81304513622f664dc4d2dc01e9ee1051c2529c7e1ef705a18aacbc",
     "local/conformance/prepare.mjs": "0711b2f18f7c1df7899b9e93ea087bcdbcc7fbe380523881e46f44678d3c7899",
-    "crates/worker/pkg/sakimori_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
+    "crates/worker/pkg/mikaki_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
     "target/debug/examples/conformance": "3f6d99d5c1dda347f7f809ffb50377fff094f88967d52acf5b5147d2b8ccb9e4",
     "crates/webauthn/testdata/attestations.json": "5cd91f47c1efbb9403239427d4aaa7a46aaeee0961066402e09ac2c8154af991"
   },

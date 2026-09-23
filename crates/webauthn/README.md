@@ -1,4 +1,4 @@
-# sakimori-webauthn
+# mikaki-webauthn
 
 native/Wasmで共有するWebAuthn検証コア。[ADR 0006](../../docs/adr/0006-compact-portable-webauthn.md)のコンパクトな実装方針と、[ADR 0008](../../docs/adr/0008-webauthn-conformance.md)の公式Conformance完成条件に従う。
 
@@ -21,7 +21,7 @@ native/Wasmで共有するWebAuthn検証コア。[ADR 0006](../../docs/adr/0006-
 2026-09-22、公式FIDO2 Server Conformance Tools 1.9.1の**必須155件をnative/Wasm両方で全通過**。before-all失敗による未到達はない。追加OPTIONAL項目14件は未選択。正式認証の申請・提出は行っていない。[実行条件と結果](../../local/conformance/results-2026-09-22.md)。
 
 ```sh
-cargo test --locked -p sakimori-webauthn
+cargo test --locked -p mikaki-webauthn
 wasm-pack test --node crates/webauthn --locked
 ```
 

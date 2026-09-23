@@ -4,7 +4,7 @@
 
 ## 比較条件の確認
 
-以前のsakimori native測定はdebugバイナリーを検証ごとに子プロセス起動していた。製品のnativeサーバー性能を表す構成ではない。試験アダプターは元からメモリー保存であり、今回DBを外す変更はない。Wasmはrelease/サイズ最適化の既存バンドルを使用する。
+以前のmikaki native測定はdebugバイナリーを検証ごとに子プロセス起動していた。製品のnativeサーバー性能を表す構成ではない。試験アダプターは元からメモリー保存であり、今回DBを外す変更はない。Wasmはrelease/サイズ最適化の既存バンドルを使用する。
 
 iwatoの`docs/performance/fido.md`には14.82秒の記録に加え、その後の同じ155件成功で33.02秒・40.03秒の記録がある。後者では320リクエストのサーバー内時間の合計はミリ秒切捨て後23 ms（切捨て誤差を足しても343 ms未満）。過去の15秒と現在の48秒を、そのまま検証器の速度比にできない。今回monban/iwatoは再実行していない。
 
@@ -28,7 +28,7 @@ releaseも既存の`opt-level="s"`、LTOを使用する。速度優先`opt-level
 
 2026-09-23 09:00 JSTに、今回のMDS結果型変更後のWasmと同じbenchmarkを再実行した。release中央値はnone登録2.63 µs、ES256認証138.65 µs、packed 781.03 µs、U2F 635.65 µs、TPM RSA 708.00 µs。Wasm/JSON境界は順に9.43、417.09、2,721.66、2,299.89、2,539.87 µsだった。WasmにはJSON入出力が含まれるのでnativeとの数値を同じ処理境界の速度比較として扱わない。metadata entryはfixture 25件で、metadata検索4方式も結果一致を確認した。生データは[今回の機械可読記録](performance-core-2026-09-23.json)。前回は125件で測っており、metadata件数が違うため検索時間を前回値と直接比較しない。
 
-更新時点の成果物サイズはWebAuthnを含むWorker Wasm全体が644,011 bytes、native conformance serverが2,604,224 bytes。後者はHTTP/SQLiteの試験用example、前者はWebAuthn単体ではなくWorker/OIDCを含むため、どちらもコア単体サイズとは呼ばない。`sakimori-webauthn`の直接依存はbase64, ciborium, der, ed25519-dalek, p256, p384, rsa, serde, serde_json, sha1, sha2, x509-cert。依存tree全体の実行時寄与・ピークメモリーはこの測定で切り分けていない。
+更新時点の成果物サイズはWebAuthnを含むWorker Wasm全体が644,011 bytes、native conformance serverが2,604,224 bytes。後者はHTTP/SQLiteの試験用example、前者はWebAuthn単体ではなくWorker/OIDCを含むため、どちらもコア単体サイズとは呼ばない。`mikaki-webauthn`の直接依存はbase64, ciborium, der, ed25519-dalek, p256, p384, rsa, serde, serde_json, sha1, sha2, x509-cert。依存tree全体の実行時寄与・ピークメモリーはこの測定で切り分けていない。
 
 ### プロセス起動の影響
 

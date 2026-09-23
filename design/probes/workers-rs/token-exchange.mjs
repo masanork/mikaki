@@ -47,14 +47,14 @@ const harness = createTestHarness({
   root,
   workers: [{
     configPath: workerConfig,
-    vars: { SAKIMORI_ISSUER: issuer, SAKIMORI_WORKER_POLICY: JSON.stringify(policy) },
+    vars: { MIKAKI_ISSUER: issuer, MIKAKI_WORKER_POLICY: JSON.stringify(policy) },
     secrets: { OP_PRIVATE_JWK: JSON.stringify(op.privateJwk) },
   }],
 });
 
 try {
   await harness.listen();
-  const worker = harness.getWorker('sakimori-op-worker');
+  const worker = harness.getWorker('mikaki-op-worker');
   await worker.applyD1Migrations('DB');
   const env = await worker.getEnv();
   const now = Math.floor(Date.now() / 1000);
@@ -191,7 +191,7 @@ try {
   });
   assert.equal(Object.hasOwn(concurrentPayload, 'nonce'), false);
 
-  console.log('sakimori-worker: isolated D1 authorization, optional nonce, private_key_jwt code exchange, ES256 ID Token, UserInfo, replay revocation, and concurrent one-time exchange passed');
+  console.log('mikaki-worker: isolated D1 authorization, optional nonce, private_key_jwt code exchange, ES256 ID Token, UserInfo, replay revocation, and concurrent one-time exchange passed');
 } finally {
   await harness.close();
 }

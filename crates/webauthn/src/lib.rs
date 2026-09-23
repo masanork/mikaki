@@ -152,7 +152,7 @@ pub struct StoredCredential {
 }
 /// Only the verifier can construct this evidence; never deserialize it.
 /// ```compile_fail
-/// let forged: sakimori_webauthn::VerifiedRegistration = serde_json::from_str("{}").unwrap();
+/// let forged: mikaki_webauthn::VerifiedRegistration = serde_json::from_str("{}").unwrap();
 /// ```
 #[derive(Serialize)]
 pub struct VerifiedRegistration {
@@ -171,7 +171,7 @@ impl VerifiedRegistration {
 }
 #[derive(Serialize)]
 /// ```compile_fail
-/// let forged = sakimori_webauthn::VerifiedAssertion { counter: 0, backup_state: false };
+/// let forged = mikaki_webauthn::VerifiedAssertion { counter: 0, backup_state: false };
 /// ```
 pub struct VerifiedAssertion {
     counter: u32,

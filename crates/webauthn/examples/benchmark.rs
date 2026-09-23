@@ -1,7 +1,7 @@
 //! Offline microbenchmark: public fixtures, identical checks, no transport or DB.
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+use mikaki_webauthn::{Assertion, Context, Registration, StoredCredential};
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
-use sakimori_webauthn::{Assertion, Context, Registration, StoredCredential};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, time::Instant};
@@ -77,7 +77,7 @@ fn run(case: &Value, iterations: usize) -> Value {
                 attestation: response.attestation.clone(),
             };
             assert_eq!(
-                black_box(sakimori_webauthn::register(&context, response)).is_ok(),
+                black_box(mikaki_webauthn::register(&context, response)).is_ok(),
                 expected
             );
         })
@@ -94,7 +94,7 @@ fn run(case: &Value, iterations: usize) -> Value {
                 user_handle: response.user_handle.clone(),
             };
             assert_eq!(
-                black_box(sakimori_webauthn::authenticate(
+                black_box(mikaki_webauthn::authenticate(
                     &context,
                     &credential,
                     response

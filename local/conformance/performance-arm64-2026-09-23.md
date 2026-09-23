@@ -1,6 +1,6 @@
 # FIDO Conformance Tools 1.9.2 ARM64での追試
 
-2026-09-23、同じApple M3／macOS 27.0、同じsakimori常駐nativeサーバーとファイルSQLiteで再測定。新しいSuiteのRendererがARM64であることをmacOS sampleのCode Typeで確認した。アーキテクチャ確認は試験開始前に終了し、本測定中にはプロファイラー・開発者ツール・ビルドを動かしていない。
+2026-09-23、同じApple M3／macOS 27.0、同じmikaki常駐nativeサーバーとファイルSQLiteで再測定。新しいSuiteのRendererがARM64であることをmacOS sampleのCode Typeで確認した。アーキテクチャ確認は試験開始前に終了し、本測定中にはプロファイラー・開発者ツール・ビルドを動かしていない。
 
 ## 結果
 
@@ -44,7 +44,7 @@
 ```sh
 python3.14 local/conformance/extract-metadata.py
 node local/conformance/prepare.mjs
-cargo build --release --locked -p sakimori-browser-wasm --example conformance_server
+cargo build --release --locked -p mikaki-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-profile.log 2>&1
 # Suiteを実行して停止し、各回のログを別名で保存する
 node local/conformance/summarize-timing.mjs target/performance-native-1.9.2-run1.log target/performance-native-1.9.2-run2.log

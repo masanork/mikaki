@@ -1,4 +1,4 @@
-use sakimori_fuzz::{assertion_seed, decode, fixtures};
+use mikaki_fuzz::{assertion_seed, decode, fixtures};
 use std::{fs, path::Path};
 fn write(target: &str, name: &str, prefix: &[u8], bytes: &[u8], expected: Option<bool>) {
     let directory = Path::new("fuzz/corpus").join(target);
@@ -7,17 +7,17 @@ fn write(target: &str, name: &str, prefix: &[u8], bytes: &[u8], expected: Option
     // Replay deterministic seeds before writing them: seed generation itself is a smoke test.
     match target {
         "registration" => {
-            let actual = sakimori_fuzz::registration(&data);
+            let actual = mikaki_fuzz::registration(&data);
             assert_eq!(Some(actual), expected, "{name}");
         }
-        "assertion" => sakimori_fuzz::assertion(&data),
+        "assertion" => mikaki_fuzz::assertion(&data),
         "metadata" => {
-            let actual = sakimori_fuzz::metadata(&data);
+            let actual = mikaki_fuzz::metadata(&data);
             if let Some(expected) = expected {
                 assert_eq!(actual, expected, "{name}");
             }
         }
-        _ => sakimori_fuzz::assertion(&data),
+        _ => mikaki_fuzz::assertion(&data),
     }
     fs::write(directory.join(name), data).unwrap();
 }

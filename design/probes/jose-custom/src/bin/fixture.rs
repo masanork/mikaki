@@ -1,4 +1,4 @@
-use sakimori_jose_custom_probe::{
+use mikaki_jose_custom_probe::{
     verify_es256, verify_es256_claims, verify_es256_jws_native, verify_rs256, verify_rs256_claims,
 };
 use std::time::Instant;

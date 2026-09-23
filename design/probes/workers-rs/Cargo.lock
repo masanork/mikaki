@@ -638,7 +638,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
-name = "sakimori-oidc"
+name = "mikaki-oidc"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -649,13 +649,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "sakimori-worker"
+name = "mikaki-worker"
 version = "0.1.0"
 dependencies = [
  "base64",
  "futures-util",
  "js-sys",
- "sakimori-oidc",
+ "mikaki-oidc",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -668,13 +668,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "sakimori-workers-rs-probe"
+name = "mikaki-workers-rs-probe"
 version = "0.0.0"
 dependencies = [
  "base64",
  "js-sys",
- "sakimori-oidc",
- "sakimori-worker",
+ "mikaki-oidc",
+ "mikaki-worker",
  "serde",
  "serde_json",
  "wasm-bindgen",

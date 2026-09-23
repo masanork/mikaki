@@ -22,7 +22,7 @@ The size chart tracks only code maintained in this repository. Runtime dependenc
 - Generated output, conformance tooling, examples, design probes, docs, config,
   and vendored/dependency/build directories are excluded.
 - Coverage is native Rust `cargo llvm-cov` line and region coverage for the
-  workspace, excluding `sakimori-worker` and files matching `tests.rs`. Inline
+  workspace, excluding `mikaki-worker` and files matching `tests.rs`. Inline
   unit tests remain part of the instrumented sources. It is not whole-product
   or browser coverage.
 - The stacked growth chart adds JavaScript source lines from npm production

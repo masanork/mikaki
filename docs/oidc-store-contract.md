@@ -4,7 +4,7 @@
 
 初期実装の決定・運用値・検証範囲は[統合実装基準](oidc-implementation-readiness.md)を参照する。原子操作のSQL模型とローカル試験を追加したが、本番migrationではない。
 
-[ログイン取引](oidc-login-flow.md)、[セッション契約](session-lifecycle.md)、[Access Token](oidc-access-token-and-userinfo.md)を永続化するための論理設計。初期はsakimoriの認証・OIDCの確定状態を一つのD1データベースに置く。各アプリのDBとの分散トランザクションは仮定しない。SQL migrationや実装済みのストア契約ではなく、G1でSQLと実環境試験に落とす提案とする。
+[ログイン取引](oidc-login-flow.md)、[セッション契約](session-lifecycle.md)、[Access Token](oidc-access-token-and-userinfo.md)を永続化するための論理設計。初期はmikakiの認証・OIDCの確定状態を一つのD1データベースに置く。各アプリのDBとの分散トランザクションは仮定しない。SQL migrationや実装済みのストア契約ではなく、G1でSQLと実環境試験に落とす提案とする。
 
 ## 確定の単位
 
@@ -12,7 +12,7 @@
 
 ストアAPIはResolveSubject、CompleteAuthentication、ExchangeCode、RevokeSession等の業務操作とする。呼出し側が個別のread/updateを組み合わせて原子性を作る汎用Repositoryは設けない。成功、条件不成立、確定結果不明の一時障害を区別する。
 
-## sakimori側の論理レコード
+## mikaki側の論理レコード
 
 | レコード | 主な情報と制約 |
 | --- | --- |
@@ -93,7 +93,7 @@ D1のbatchはSQLエラー時に全体をロールバックする。一方、条�
 
 ID Token検証と/session/checkの後、取引期限・ブラウザ結び付け・失効記録・参加資格を再確認し、ExternalIdentity取得/作成、AppSession作成、取引完了を同じローカル原子操作で確定する。確認開始時からのlease期限が確定前に過ぎていれば再確認し、期限切れの結果でcookieを発行しない。
 
-Logout受信はRevokedSid作成と既存AppSession無効化を同時に確定する。セッション未作成でも失効記録を残し、並行callbackの確定を拒否する。有効性確認応答の保存もこの記録と競合制御する。アプリDBとsakimori DBをまたぐ即時確定は保証せず、通知と確認期限によって反映を保証する。
+Logout受信はRevokedSid作成と既存AppSession無効化を同時に確定する。セッション未作成でも失効記録を残し、並行callbackの確定を拒否する。有効性確認応答の保存もこの記録と競合制御する。アプリDBとmikaki DBをまたぐ即時確定は保証せず、通知と確認期限によって反映を保証する。
 
 ## 応答喪失・保持・試験
 

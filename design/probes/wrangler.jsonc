@@ -1,13 +1,13 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "sakimori-local-design-probe",
+  "name": "mikaki-local-design-probe",
   "main": "worker.mjs",
   "compatibility_date": "2026-09-22",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "d1_databases": [{
     "binding": "DB",
-    "database_name": "sakimori-local-design-probe",
+    "database_name": "mikaki-local-design-probe",
     "database_id": "00000000-0000-0000-0000-000000000000",
     "remote": false
   }]

@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
-use sakimori_webauthn::{self as webauthn, Assertion, Context, Registration, StoredCredential};
+use mikaki_webauthn::{self as webauthn, Assertion, Context, Registration, StoredCredential};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;

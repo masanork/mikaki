@@ -19,7 +19,7 @@ npm run dev
 ## 境界と実装範囲
 
 - Rust: WebAuthnのnone・packed self/ES256検証、JSON/CBORの境界、ceremonyの目的・ブラウザ・期限・試行数、認可要求の静的プロファイル、PKCE。
-- ローカルOP harnessのJavaScript adapter: HTTP、D1の原子的操作、OIDCフロー、`jose`/WebCryptoによるJWT署名・検証。これは仕様fixtureである。Rust/Wasmのブラウザ境界は`sakimori-browser-wasm`、Cloudflare runtime adapterは`sakimori-worker`として分離し、後者は実装を開始したばかり。
+- ローカルOP harnessのJavaScript adapter: HTTP、D1の原子的操作、OIDCフロー、`jose`/WebCryptoによるJWT署名・検証。これは仕様fixtureである。Rust/Wasmのブラウザ境界は`mikaki-browser-wasm`、Cloudflare runtime adapterは`mikaki-worker`として分離し、後者は実装を開始したばかり。
 - OP画面: Svelte 5、ja/enの小さな型付きカタログ。RP画面は確認用のHTML。
 - SQL: [既存の原子操作模型](../design/sql/oidc-critical-schema.sql)にローカル用テーブルを追加。本番migrationとしては扱わない。
 - 設定: 統合TOMLを検証して秒単位のJSONとpolicy revisionをビルド時に生成する。設定変更後は再ビルドが必要。未実装機能の設定項目はまだ利用しない。
@@ -129,7 +129,7 @@ npm run test:e2e
 
 ```sh
 mkdir -p artifacts
-cargo llvm-cov --locked --workspace --exclude sakimori-browser-wasm --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+cargo llvm-cov --locked --workspace --exclude mikaki-browser-wasm --exclude mikaki-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
 npm run health
 ```
 
@@ -139,4 +139,4 @@ WebAuthnのfit/gapは[改善バックログ](../docs/webauthn-fit-gap-todo.md)�
 
 WebAuthnの[診断契約](../docs/webauthn-errors.md)に基づくWasm/JS境界・ログの正規化・attestation証跡の3試験も含め、`npm run test:e2e`は計49件。ブラウザー試験ではchallenge/origin改変の公開400応答と内部理由コードを併せて確認する。
 
-WebAuthn端末・ブラウザーの組合せと仮想認証器／実機の未試験項目は[互換性マトリクス](../docs/webauthn-device-compatibility.md)で追跡する。CI既定のPlaywright Chromiumに加え、ローカルでは`SAKIMORI_BROWSER_CHANNEL=chrome`または`chrome-canary`でブラウザーを切り替えられる。
+WebAuthn端末・ブラウザーの組合せと仮想認証器／実機の未試験項目は[互換性マトリクス](../docs/webauthn-device-compatibility.md)で追跡する。CI既定のPlaywright Chromiumに加え、ローカルでは`MIKAKI_BROWSER_CHANNEL=chrome`または`chrome-canary`でブラウザーを切り替えられる。

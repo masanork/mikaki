@@ -91,7 +91,7 @@
 
 <main>
   <header>
-    <strong>sakimori</strong><label
+    <strong>mikaki</strong><label
       ><span class="sr">Language</span><select aria-label="Language" bind:value={lang}
         ><option value="ja">日本語</option><option value="en">English</option></select
       ></label

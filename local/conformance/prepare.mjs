@@ -1,10 +1,10 @@
 // Test-only MDS transport. No conformance trust anchor is embedded in the product.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createPublicKey } from 'node:crypto';
-import init, * as wasm from '../../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
+import init, * as wasm from '../../crates/browser-wasm/pkg/mikaki_browser_wasm.js';
 await init({
   module_or_path: readFileSync(
-    new URL('../../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm', import.meta.url),
+    new URL('../../crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm', import.meta.url),
   ),
 });
 const directory = new URL('../../target/fido-mds/', import.meta.url);

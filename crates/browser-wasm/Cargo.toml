@@ -1,5 +1,5 @@
 [package]
-name = "sakimori-browser-wasm"
+name = "mikaki-browser-wasm"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
@@ -10,9 +10,9 @@ crate-type = ["cdylib", "rlib"]
 name = "conformance_server"
 test = true
 [dependencies]
-sakimori-webauthn = { path = "../webauthn" }
-sakimori-auth = { path = "../auth" }
-sakimori-oidc = { path = "../oidc" }
+mikaki-webauthn = { path = "../webauthn" }
+mikaki-auth = { path = "../auth" }
+mikaki-oidc = { path = "../oidc" }
 serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true

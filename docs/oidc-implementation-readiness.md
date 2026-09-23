@@ -8,7 +8,7 @@
 
 | 項目 | 初期基準 |
 | --- | --- |
-| アカウント | sakimori共通アカウント、アプリごとのSubjectId。メール一致の統合なし |
+| アカウント | mikaki共通アカウント、アプリごとのSubjectId。メール一致の統合なし |
 | ID | 通常IDはUUIDv4、小文字36文字。初期D1ではTEXTとして保存。内部v7は必要性を測定するまで導入しない |
 | sub | account/sectorごとの永続UUIDv4。接続解除・鍵更新で維持 |
 | ログイン | 静的登録のサーバー側client、Code＋PKCE S256、state必須・nonce任意 |
@@ -21,19 +21,19 @@
 | セッション | SSO最大30日、アプリ未操作7日かつ親期限内、失効確認lease最大5分 |
 | ログアウト | RP-Initiated＋Back-Channel、失効と永続outboxを同時確定 |
 | 設定 | 単一の[runtime-policy.example.toml](../config/runtime-policy.example.toml)から型付き入力を作る。秘密・配備情報は別 |
-| ストア | D1一つでsakimoriの認証/OIDCを確定。アプリDBとの分散transactionなし |
+| ストア | D1一つでmikakiの認証/OIDCを確定。アプリDBとの分散transactionなし |
 
 詳細は[UX](oidc-login.md)、[ログイン取引](oidc-login-flow.md)、[token/UserInfo](oidc-access-token-and-userinfo.md)、[ストア](oidc-store-contract.md)、[運用制限・復旧](oidc-operations.md)、[暗号移行](crypto-agility.md)に従う。
 
 ## モジュール境界
 
-G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`sakimori-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
+G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`mikaki-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
 
 Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。assertionの独立したreplay予約IDをreceiptとして保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient/key/session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtによるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。本番migrationは未配備であり、issuer変数・秘密鍵・policy projectionの配備設定は必要。authorizeは既存の有効SSO cookieと事前に有効化済みapp_connectionがある場合に限ってcodeを発行する。未ログイン時のPasskey UI、初回consentとapp_connection作成、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
 
 時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
-sakimori-oidcは認可取引、client認証、JOSEの用途別検証、セッション、outboxの業務契約を担当する。authが返す検証済み本人認証の型を受け取り、HTTPから同型をdeserializeできないようにする。認証結果はaccount・credential・ceremony・ブラウザ取引・epoch・期限に結び付け、再利用可能な裸のAccountIdを本人認証の証拠にしない。
+mikaki-oidcは認可取引、client認証、JOSEの用途別検証、セッション、outboxの業務契約を担当する。authが返す検証済み本人認証の型を受け取り、HTTPから同型をdeserializeできないようにする。認証結果はaccount・credential・ceremony・ブラウザ取引・epoch・期限に結び付け、再利用可能な裸のAccountIdを本人認証の証拠にしない。
 
 workerはHTTP制限、cookie、秘密管理、D1、時刻・乱数、外向き通信を担当する。ストアと署名のポートは必要な業務操作に限り、汎用プラグインを作らない。署名ポートは将来KMS/WebCrypto等を利用できる非同期境界とし、公開鍵形式や署名サイズをRSAへ固定しない。
 
@@ -61,14 +61,14 @@ request/request_uri、動的登録、claims parameter、署名/暗号化UserInfo
 
 ## 依存の評価と採用条件
 
-暗号プリミティブとJWT形式は既存ライブラリを利用する。JSON/URL/PKCE等を含むOPの状態遷移はsakimoriの契約として実装するが、独自の暗号方式や署名検証を作らない。
+暗号プリミティブとJWT形式は既存ライブラリを利用する。JSON/URL/PKCE等を含むOPの状態遷移はmikakiの契約として実装するが、独自の暗号方式や署名検証を作らない。
 
 | 対象 | 評価対象と選択条件 |
 | --- | --- |
 | Rust JOSE | jsonwebtoken 11.1.0を検証候補とする。default algを使わず用途別にES256/RS256等を指定。署名発行は同期`Signer` traitで非同期KMS/WebCrypto portに直結できないが、外部で署名した値を公開JWS構造体へ渡す境界はprobe済み。鍵形式、重複JSON、時刻注入、配備先Wasmを確認して採否を確定 |
 | ES256/WebAuthn | RustCrypto p256等の保守された実装。JOSEの固定長R\|SとWebAuthnのDER署名を混同しない。各仕様の形式変換は既存のパーサーを使用 |
 | RSA互換 | 保守されたruntime/KMS等の秘密鍵操作を優先評価。RS256 3072 bitを初期互換発行プロファイルの基準とし、client公開鍵検証は明示登録された2048 bit以上を評価 |
-| RustのRP相互運用 | openidconnect-rs。これはRP用でありsakimori OPの実装を提供するものではない。private_key_jwtを含む対応は実試験で確認 |
+| RustのRP相互運用 | openidconnect-rs。これはRP用でありmikaki OPの実装を提供するものではない。private_key_jwtを含む対応は実試験で確認 |
 | JSON/URL/UUID/秘密型 | serde/serde_json、url、uuid、zeroize等。入力検証と秘密のDebug禁止は呼出し側でも契約化。重複JSONキー拒否は通常のmap deserializeに任せない |
 | Workers/D1 | workers-rsの採用版でbatch・session APIの可用性を確認。不足時はworkerアダプター内だけに小さなJS境界を置き、coreへJS型を漏らさない |
 

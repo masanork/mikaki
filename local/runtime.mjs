@@ -67,8 +67,8 @@ export async function startLocal({ scheduler = true } = {}) {
       ],
     });
     await harness.listen();
-    const op = harness.getWorker('sakimori-local-op'),
-      rp = harness.getWorker('sakimori-local-rp');
+    const op = harness.getWorker('mikaki-local-op'),
+      rp = harness.getWorker('mikaki-local-rp');
     const opEnv = await op.getEnv(),
       rpEnv = await rp.getEnv();
     async function schema(db, name) {

@@ -5,8 +5,8 @@ import { base64url, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { performance } from 'node:perf_hooks';
 
 const require = createRequire(import.meta.url);
-const wasm = require('./jose/pkg/sakimori_jose_probe.js');
-const customWasm = require('./jose-custom/pkg/sakimori_jose_custom_probe.js');
+const wasm = require('./jose/pkg/mikaki_jose_probe.js');
+const customWasm = require('./jose-custom/pkg/mikaki_jose_custom_probe.js');
 const binary = fileURLToPath(new URL('jose/target/release/fixture', import.meta.url));
 const customBinary = fileURLToPath(new URL('jose-custom/target/release/fixture', import.meta.url));
 const iterations = Number(process.env.JOSE_BENCH_ITERATIONS ?? 10_000);

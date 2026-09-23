@@ -43,7 +43,7 @@ pub struct Authorization {
 /// Fields are private and this type deliberately does not implement `Deserialize`.
 ///
 /// ```compile_fail
-/// let _: sakimori_oidc::ValidatedAuthorization = serde_json::from_str("{}").unwrap();
+/// let _: mikaki_oidc::ValidatedAuthorization = serde_json::from_str("{}").unwrap();
 /// ```
 #[must_use = "only a validated request may start an authorization transaction"]
 pub struct ValidatedAuthorization {

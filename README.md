@@ -1,4 +1,4 @@
-# sakimori
+# 御垣 (Mikaki)
 
 Rustで実装する、小さく検証可能なPasskey認証基盤。個人Vaultと、利用者が許可したアプリ・AIからのデータ利用へ段階的に育てる。
 
@@ -29,7 +29,7 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 具体的な実装範囲、crate構成、状態遷移、受入試験、未決事項の着手ゲートは[実装仕様（Draft 5）](docs/implementation-spec.md)を参照する。ADR・分野別仕様・実装案の関係と決定状態は[文書案内](docs/README.md)にまとめる。
 
-開発の最優先事項はコンパクトで洗練された実装の提供とする。sakimoriを継続し、native/Wasm共通のWebAuthnコアを磨いてからVaultの独自価値へ進む。[ADR 0006](docs/adr/0006-compact-portable-webauthn.md)と[コアの検証・実装順](crates/webauthn/README.md)を参照する。
+開発の最優先事項はコンパクトで洗練された実装の提供とする。mikakiを継続し、native/Wasm共通のWebAuthnコアを磨いてからVaultの独自価値へ進む。[ADR 0006](docs/adr/0006-compact-portable-webauthn.md)と[コアの検証・実装順](crates/webauthn/README.md)を参照する。
 
 2026-09-22、公式FIDO2 Server Conformance Tools 1.9.1の必須155件をnative/Wasm双方で全通過した。[試験条件・結果](local/conformance/results-2026-09-22.md)を参照。追加OPTIONAL項目と正式認証は含まない。
 
@@ -44,7 +44,7 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 - 初版はCloudflare Workers上で動作させ、tossa・tsudoiから共通の方法で利用する。
 - 初期からOIDCによる共通ログインを提供し、将来のコンテナ実行に備えて認証の中核を実行環境から独立させる。
 - 認証coreから独立した個人Vaultで、暗号化データの端末間同期と、アプリをまたいだ会話の保管を実現する。
-- 異なるCloudflareアカウントに配備したsakimori同士を連合し、DIDで識別した主体間のE2EEメッセージ配送を実現する。
+- 異なるCloudflareアカウントに配備したmikaki同士を連合し、DIDで識別した主体間のE2EEメッセージ配送を実現する。
 - 将来は、対象・操作・期限を限定した委任により、agentic AIから個人VaultへMCPでアクセスできるようにする。
 
 規格の対応数や機能一覧の長さを完成度の指標にしない。実際に使う経路について、何を保証し、どのように確認したかを説明できることを重視する。
@@ -52,7 +52,7 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 ## 前提と採用方針
 
 - scratchから設計・実装する。monban・iwatoの現有コードや構成を維持する必要はない。
-- tossa・tsudoiは未運用であり、既存データ・credential・APIとの後方互換性を要求しない。両アプリをsakimoriの仕様に合わせる。
+- tossa・tsudoiは未運用であり、既存データ・credential・APIとの後方互換性を要求しない。両アプリをmikakiの仕様に合わせる。
 - monban・iwatoの仕様上の知見や検証資産は参照するが、実装を正解とみなさない。仕様と独立した試験でも照合する。
 - `webauthn-rs`は採用しない。
 - 暗号プリミティブは保守されるライブラリを利用し、独自に設計・実装しない。採用依存の利用条件・対応ターゲット・保守状況を確認する。
@@ -77,24 +77,24 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 ES256・UV・Discoverable credentialの条件を満たさない認証器は初版の対象外とする。互換性のための検証緩和や暗黙のフォールバックは設けない。
 
-認証単体の検証は隔離した配置で行う。本番ではインスタンスごとにsakimoriの共通アカウントを設け、tossa・tsudoiの通常ログインもこのアカウントを利用する。RP IDと認証・解錠originをインスタンスごとに固定し、クライアント入力によって変更しない。汎用的なマルチテナント機構は作らない。
+認証単体の検証は隔離した配置で行う。本番ではインスタンスごとにmikakiの共通アカウントを設け、tossa・tsudoiの通常ログインもこのアカウントを利用する。RP IDと認証・解錠originをインスタンスごとに固定し、クライアント入力によって変更しない。汎用的なマルチテナント機構は作らない。
 
 共通アカウントと各アプリ内のsubjectは、本人の認証とアプリ接続の許可に基づいて結び付ける。個人Vaultは必要になった時点で共通アカウントに作成し、通常ログインにVault作成・解錠を要求しない。ログインの許可とVaultの読み書き許可は別にする。異なるアプリのローカルsubjectを、アプリからの自己申告やメールアドレスだけで共通アカウントに結び付けない。決定理由と残る論点は[ADR 0001](docs/adr/0001-common-account.md)を参照する。
 
 ## アプリとの責任分担
 
-sakimoriはcredentialと共通アカウント（AccountId）の対応、WebAuthnの検証、challengeの期限・一回性を管理する。アプリ内の主体（SubjectId）はAccountIdと区別し、メールアドレスや表示名から自動的に同一人物と判断しない。
+mikakiはcredentialと共通アカウント（AccountId）の対応、WebAuthnの検証、challengeの期限・一回性を管理する。アプリ内の主体（SubjectId）はAccountIdと区別し、メールアドレスや表示名から自動的に同一人物と判断しない。
 
 tossa・tsudoiは次を管理する。
 
-- アプリへの参加を許可する相手と条件。共通アカウントの登録許可・認証器の追加削除はsakimori側で管理する。
+- アプリへの参加を許可する相手と条件。共通アカウントの登録許可・認証器の追加削除はmikaki側で管理する。
 - アプリセッション、組織・役割・チケットなどの業務上の権限。
 - データの意味・業務上の利用と、Vaultへの取り込み処理。暗号文・鍵を包んだデータの共通保管と同期は、個人Vaultの責任とする。
-- アプリ内データや参加権限の復旧。共通アカウントとVaultの復旧方針はsakimori側で定める。
+- アプリ内データや参加権限の復旧。共通アカウントとVaultの復旧方針はmikaki側で定める。
 
-Service Bindingの呼び出し元は信頼境界に含まれる。共通アカウントの認証器追加・削除を一般の連携アプリの権限に含めない。管理操作はsakimoriの入口で本人の認証と許可を確認する。ブラウザから受けたAccountId・subjectや操作をそのまま転送するAPIにしない。
+Service Bindingの呼び出し元は信頼境界に含まれる。共通アカウントの認証器追加・削除を一般の連携アプリの権限に含めない。管理操作はmikakiの入口で本人の認証と許可を確認する。ブラウザから受けたAccountId・subjectや操作をそのまま転送するAPIにしない。
 
-P0の認証core検証では、私的なService Bindingと検証用画面を使う。本番の共通ログインではsakimoriの認証画面を設け、sakimoriの認証手順とブラウザセッションを結び付ける。アプリ側のセッション・CSRF対策と、ログイン結果の受け渡しも統合試験の対象とする。最初の本番接続からOIDC Code＋PKCEを採用する。初回の接続確認は認証画面に統合し、許可済みアプリには有効なsakimoriセッションで戻れるようにする。詳細は[初期OIDCとログインUX](docs/oidc-login.md)に定め、G1で実装契約を確定する。
+P0の認証core検証では、私的なService Bindingと検証用画面を使う。本番の共通ログインではmikakiの認証画面を設け、mikakiの認証手順とブラウザセッションを結び付ける。アプリ側のセッション・CSRF対策と、ログイン結果の受け渡しも統合試験の対象とする。最初の本番接続からOIDC Code＋PKCEを採用する。初回の接続確認は認証画面に統合し、許可済みアプリには有効なmikakiセッションで戻れるようにする。詳細は[初期OIDCとログインUX](docs/oidc-login.md)に定め、G1で実装契約を確定する。
 
 ## PRFと暗号化データ
 
@@ -118,11 +118,11 @@ Rustの認証coreと、その利用先ごとのadapterを分離する。
 
 | crate | 責任 |
 | --- | --- |
-| `sakimori-webauthn` | WebAuthnの解析、COSE鍵・署名・origin・RP ID・UP/UVなどの検証 |
-| `sakimori-auth` | 登録・認証手順、AccountIdとの結び付け、credential管理、永続化の契約 |
-| `sakimori-oidc` | OIDCの純粋core。検証済み認可要求、PKCE、認可codeの型と生成規則 |
-| `sakimori-worker` | Cloudflare Worker入口、Service Binding、D1、時刻・乱数・非同期署名adapter |
-| `sakimori-browser-wasm` | ブラウザ/ローカルharness向けWebAuthn検証のWasm境界 |
+| `mikaki-webauthn` | WebAuthnの解析、COSE鍵・署名・origin・RP ID・UP/UVなどの検証 |
+| `mikaki-auth` | 登録・認証手順、AccountIdとの結び付け、credential管理、永続化の契約 |
+| `mikaki-oidc` | OIDCの純粋core。検証済み認可要求、PKCE、認可codeの型と生成規則 |
+| `mikaki-worker` | Cloudflare Worker入口、Service Binding、D1、時刻・乱数・非同期署名adapter |
+| `mikaki-browser-wasm` | ブラウザ/ローカルharness向けWebAuthn検証のWasm境界 |
 
 依存方向は `worker → oidc → auth → webauthn` とする。`browser-wasm`はブラウザとローカル検証だけの境界で、Cloudflare bindingや認可確定を持たない。ブラウザ側のPRF・鍵保護処理は、別の小さなJS/TSモジュールとして扱う。ブラウザ側の実装言語までRustに統一することは要求しない。
 
@@ -137,7 +137,7 @@ G0の3 crate構成と、G1で追加するOIDC core/Worker adapterを区別する
 
 Vault・会話アーカイブ・連合メッセージング・MCPは認証coreの外に置く。必要になった段階でモジュールまたはcrateを追加し、認証coreからこれらに依存しない。3 crateという数の維持を理由に、異なる責任をcoreへ詰め込まない。
 
-後続段階では`sakimori-vault`、`sakimori-client`、`sakimori-federation`を追加する構成を基本案とする。端末側のOpenMLSと鍵保護は`client`へ置き、サーバーcrateの依存グラフに入れない。詳細な導入時期と依存方向は[実装仕様のcrate構成](docs/implementation-spec.md#4-crate構成)に定める。
+後続段階では`mikaki-vault`、`mikaki-client`、`mikaki-federation`を追加する構成を基本案とする。端末側のOpenMLSと鍵保護は`client`へ置き、サーバーcrateの依存グラフに入れない。詳細な導入時期と依存方向は[実装仕様のcrate構成](docs/implementation-spec.md#4-crate構成)に定める。
 
 ## 永続化の契約
 
@@ -184,7 +184,7 @@ KaniやTLA+などは、明示した不変条件と対象がある場合に導入
 1. **認証とPRF・OIDC**：登録・ログイン・鍵の解錠を検証する。本番アプリ接続にはOIDCを使う。
 2. **個人Vault**：IndexedDBとR2で暗号文と包まれた鍵を保存・同期し、別端末で復元する。競合・通信失敗・削除を扱う。
 3. **会話アーカイブ**：利用者が許可したtossa・tsudoiの会話を取り込み、本人が横断して参照・検索する。
-4. **連合E2EEメッセージング**：独立した二つのCloudflareアカウントに配備したsakimori間で、まず1対1のテキスト配送を検証する。DIDによる識別と、端末間の暗号化を分けて設計する。
+4. **連合E2EEメッセージング**：独立した二つのCloudflareアカウントに配備したmikaki間で、まず1対1のテキスト配送を検証する。DIDによる識別と、端末間の暗号化を分けて設計する。
 5. **MCPによる限定的な参照**：利用者が選択した範囲をAIに提供する。最初は読み取りのみとする。連合メッセージの受信はAIへの開示許可を意味しない。
 
 各段階で必要な仕様と検証を揃える。同期・連合・アーカイブ・AI機能のために、最初の認証実装へ未使用の汎用機構を追加しない。詳細は[個人Vault・会話アーカイブ・MCPの方針](docs/personal-vault.md)と[連合E2EEメッセージングの方針](docs/federated-messaging.md)を参照する。

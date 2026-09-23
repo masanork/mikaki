@@ -9,7 +9,7 @@
 | 情報・API | 初期の役割 |
 | --- | --- |
 | ID Token | 認証結果をアプリが検証し、アプリセッションを作る |
-| Access Token | sakimoriのUserInfoを呼び出す権限 |
+| Access Token | mikakiのUserInfoを呼び出す権限 |
 | UserInfo | 対象利用者のpairwise subを返す |
 | /session/check | client認証とsidにより、既存のアプリセッションの有効性を確認 |
 | アプリのcookie | 各アプリの日常利用。アプリ側でセッション・権限を判定 |
@@ -20,7 +20,7 @@ Access TokenをアプリAPI・Vault・管理操作の権限に使わない。/se
 
 初期はCSPRNGで生成した32 byteの乱数をbase64url（paddingなし）で表す不透明なBearer tokenとする。UUIDや利用者IDから生成しない。JWT署名を伴うID Tokenとは別形式であり、クライアントはAccess Tokenの中身を解析しない。署名JWTである必要のないtokenを不透明形式にすることは、OIDCの採用と矛盾しない。
 
-sakimoriはtokenのSHA-256ハッシュ、発行先client、sub、sid、grant版、scope、用途（UserInfo）、発行時刻、有効期限、失効状態、元codeの記録参照、policy_revisionを保存する。生のtokenは交換応答でのみ渡し、DB・ログ・監査イベントへ残さない。32 byteのランダム値なので、パスワード用の低速ハッシュは使わない。将来ハッシュ方式を変更する場合は記録形式を版管理する。
+mikakiはtokenのSHA-256ハッシュ、発行先client、sub、sid、grant版、scope、用途（UserInfo）、発行時刻、有効期限、失効状態、元codeの記録参照、policy_revisionを保存する。生のtokenは交換応答でのみ渡し、DB・ログ・監査イベントへ残さない。32 byteのランダム値なので、パスワード用の低速ハッシュは使わない。将来ハッシュ方式を変更する場合は記録形式を版管理する。
 
 有効期間は既定5分を提案し、[設定例](../config/oidc-flow-policy.example.toml)のoidc.access_token.ttlへ分離する。実際のexpires_atは発行時刻＋設定TTLと元SSO期限の早い方に固定する。now >= expires_atで拒否し、JWT検証用の時計ずれ許容によって延長しない。既存tokenへの設定変更の適用は[設定契約](runtime-configuration.md)に従う。
 

@@ -1,4 +1,4 @@
-use sakimori_jose_probe::{verify_es256, verify_es256_claims, verify_rs256, verify_rs256_claims};
+use mikaki_jose_probe::{verify_es256, verify_es256_claims, verify_rs256, verify_rs256_claims};
 use std::time::Instant;
 
 fn main() {

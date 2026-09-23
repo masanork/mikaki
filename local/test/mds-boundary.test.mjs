@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { initSync, verify_mds } from '../../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
+import { initSync, verify_mds } from '../../crates/browser-wasm/pkg/mikaki_browser_wasm.js';
 
 initSync({
   module: await readFile(
-    new URL('../../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm', import.meta.url),
+    new URL('../../crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm', import.meta.url),
   ),
 });
 

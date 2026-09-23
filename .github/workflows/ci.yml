@@ -47,7 +47,7 @@ jobs:
         run: |
           cargo test --locked --workspace
           mkdir -p artifacts
-          cargo llvm-cov --locked --workspace --exclude sakimori-browser-wasm --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+          cargo llvm-cov --locked --workspace --exclude mikaki-browser-wasm --exclude mikaki-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
       - name: Shared WebAuthn tests on Wasm
         run: wasm-pack test --node crates/webauthn --locked
       - name: Build Wasm and UI

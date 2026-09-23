@@ -1,4 +1,4 @@
-# sakimori 実装仕様
+# mikaki 実装仕様
 
 2026-09-22 / Draft 5
 
@@ -12,7 +12,7 @@
 
 - tossa・tsudoiのPasskey認証を共通の検証器に集約する。
 - PRFを用いて本人の端末で鍵を解錠し、暗号化データを保存・復元する。
-- 別々のCloudflareアカウント上のsakimori間で、端末を終端とするE2EE通信を行う。
+- 別々のCloudflareアカウント上のmikaki間で、端末を終端とするE2EE通信を行う。
 - 利用者が選んだ会話を個人Vaultへ保管し、後にローカルMCPから限定参照できるようにする。
 - 初期のOIDC連携と将来のコンテナ実行で、認証coreの処理と契約試験を共有する。
 
@@ -60,7 +60,7 @@ UserInfo、アカウント管理、集計などサーバーが常時処理する
 
 | データ区分 | 復号主体 | 鍵の方針 | サーバー侵害時の主な影響 |
 | --- | --- | --- | --- |
-| Server-operational data | sakimoriの認証/OIDC処理 | 保存時暗号化に加え、機微項目を暗号化する場合は用途別KEKをKMS/HSM境界で管理する案。実行中の処理は復号権限を持つ | 当該処理・鍵権限の範囲でclaimや識別対応を読まれる可能性 |
+| Server-operational data | mikakiの認証/OIDC処理 | 保存時暗号化に加え、機微項目を暗号化する場合は用途別KEKをKMS/HSM境界で管理する案。実行中の処理は復号権限を持つ | 当該処理・鍵権限の範囲でclaimや識別対応を読まれる可能性 |
 | Locker content | 利用者が認めたclient/device。個別に許可したデータは指定system principalも含む | client-only root keyを標準とする。個別recipient wrapは目的・対象・鍵IDに結び付ける | DB/object store/通常APIの侵害だけでは本文を復号できない。system recipientに許可した範囲はそのサービス侵害で読まれ得る。可用性・改変・削除・metadata漏えいも残る |
 
 暗号方式・鍵ラベル・AADで用途を分離し、server-operational keyをLocker key derivation/wrapに流用しない。system recipientは専用の鍵pairとサービスIDを持ち、鍵管理サービスの権限をその処理にだけ付与する。鍵包みの取得・unwrapはAuthZEN等の認可、目的制約、監査記録を要求する。鍵包みを除去して以後の取得を止めても、既に復号したrecipientから平文を回収できない。失効後の秘匿が必要なら、新しいデータ鍵で再暗号化し、過去の平文コピーまでは回収不能と明記する。
@@ -81,26 +81,26 @@ PRF出力・解錠鍵・平文秘密鍵を、API本文、URL、ログ、トー�
 
 | crate / package | 導入 | 責任 | 持ち込まないもの |
 | --- | --- | --- | --- |
-| `sakimori-webauthn` | P0 | 入力解析、WebAuthn暗号検証、検証済み事実の型 | DB、HTTP、Workers、業務認可 |
-| `sakimori-auth` | P0 | ceremony、credential管理、AccountId、ストアの原子的契約 | Vault、MLS、DID、Workers型 |
-| `sakimori-oidc` | G1/P0本番接続 | OIDC、client認証、セッション、JOSE用途別検証、outboxとストア契約 | D1/Workers型、Vault、MLS |
-| `sakimori-worker` | P0 | composition root、Service Binding/HTTP、D1、後にR2/DO、設定・時刻・乱数 | 端末秘密鍵、PRF処理、OpenMLS |
-| `sakimori-browser-wasm` | P0検証・ローカル | ブラウザとローカルharness向けJSON/Wasm境界 | Cloudflare binding、認可の確定 |
-| `sakimori-vault` | P1 | grant、暗号文オブジェクトの版管理、同期の状態遷移とストア契約 | 復号、OpenMLS、Cloudflare型 |
-| `sakimori-client` | S1/P1 | 端末側の鍵保護と状態遷移。S1でMLSモジュール、P1でVaultモジュール | サーバー認証core、D1、R2、HTTPサーバー |
-| `sakimori-federation` | P3 | 限定DID検証、配送許可、envelope検証、重複排除・再送契約 | 本文復号、MLS秘密状態、Cloudflare型 |
+| `mikaki-webauthn` | P0 | 入力解析、WebAuthn暗号検証、検証済み事実の型 | DB、HTTP、Workers、業務認可 |
+| `mikaki-auth` | P0 | ceremony、credential管理、AccountId、ストアの原子的契約 | Vault、MLS、DID、Workers型 |
+| `mikaki-oidc` | G1/P0本番接続 | OIDC、client認証、セッション、JOSE用途別検証、outboxとストア契約 | D1/Workers型、Vault、MLS |
+| `mikaki-worker` | P0 | composition root、Service Binding/HTTP、D1、後にR2/DO、設定・時刻・乱数 | 端末秘密鍵、PRF処理、OpenMLS |
+| `mikaki-browser-wasm` | P0検証・ローカル | ブラウザとローカルharness向けJSON/Wasm境界 | Cloudflare binding、認可の確定 |
+| `mikaki-vault` | P1 | grant、暗号文オブジェクトの版管理、同期の状態遷移とストア契約 | 復号、OpenMLS、Cloudflare型 |
+| `mikaki-client` | S1/P1 | 端末側の鍵保護と状態遷移。S1でMLSモジュール、P1でVaultモジュール | サーバー認証core、D1、R2、HTTPサーバー |
+| `mikaki-federation` | P3 | 限定DID検証、配送許可、envelope検証、重複排除・再送契約 | 本文復号、MLS秘密状態、Cloudflare型 |
 | `packages/browser`（TS） | P0 | WebAuthn API、UI、IndexedDB、ブラウザ通信、Wasm呼び出し | 独自暗号プロトコル、サーバー認可の代行 |
 
-認証開始時は3 crate、連合段階でも原則6 crateとする。数は上限目標であり、責任を混ぜるための制約ではない。`sakimori-client`のVault/MLSを独立公開・再利用する必要が生じた場合だけ分割を再検討する。
+認証開始時は3 crate、連合段階でも原則6 crateとする。数は上限目標であり、責任を混ぜるための制約ではない。`mikaki-client`のVault/MLSを独立公開・再利用する必要が生じた場合だけ分割を再検討する。
 
 ```text
-sakimori-worker ──→ sakimori-oidc ──→ sakimori-auth ──→ sakimori-webauthn
-       ├────────→ sakimori-vault
-       └────────→ sakimori-federation
+mikaki-worker ──→ mikaki-oidc ──→ mikaki-auth ──→ mikaki-webauthn
+       ├────────→ mikaki-vault
+       └────────→ mikaki-federation
 
-sakimori-browser-wasm ──→ sakimori-auth / sakimori-webauthn
+mikaki-browser-wasm ──→ mikaki-auth / mikaki-webauthn
 
-packages/browser ──→ sakimori-client (Wasm)
+packages/browser ──→ mikaki-client (Wasm)
                           ├─ vault / keywrap モジュール
                           └─ mls モジュール ──→ OpenMLS
 ```
@@ -113,7 +113,7 @@ packages/browser ──→ sakimori-client (Wasm)
 - パーサー・検証器は同期の純粋処理を基本とし、時刻・乱数・I/Oは外側から供給する。
 - ストアtraitは消費、条件付き公開、重複排除などの業務操作とする。汎用Repository/ORM抽象化を作らない。
 - 検証済み事実の型は非公開フィールドを持ち、無検証コンストラクタとDeserializeを提供しない。
-- `sakimori-client`はNative試験用の`rlib`とWasm用の`cdylib`を提供する。wasm-bindgenの公開口は薄い境界モジュールに閉じ込める。
+- `mikaki-client`はNative試験用の`rlib`とWasm用の`cdylib`を提供する。wasm-bindgenの公開口は薄い境界モジュールに閉じ込める。
 - ブラウザのWebAuthn/IndexedDB/画面処理はTSでよい。P0の小さなPRF試験をRust化するためだけにcrateを追加しない。
 - サーバーの依存グラフにOpenMLS・端末の鍵包み処理が入らないことをCIで確認する。featureの組合せを増やさず、使う構成だけ試験する。
 - 自作Rustは原則`unsafe`禁止。依存のunsafe・Wasm乱数源・ライセンス・利用条件を別に評価する。
@@ -138,14 +138,14 @@ RP IDと許可originは設定で固定し、ワイルドカード、要求のHos
 
 | 操作 | 前提 | 結果 |
 | --- | --- | --- |
-| `BeginRegistration` | sakimoriの新規登録許可、または既存所有者の直近UV | AccountId・caller・目的に固定したchallenge/options |
+| `BeginRegistration` | mikakiの新規登録許可、または既存所有者の直近UV | AccountId・caller・目的に固定したchallenge/options |
 | `FinishRegistration` | 同じブラウザ操作への結び付け、未消費challenge | credential登録とchallenge消費が共に確定 |
 | `BeginAuthentication` | callerとブラウザ操作の固定 | discoverable認証のchallenge/options |
 | `FinishAuthentication` | 有効なassertion、credentialが有効 | credentialから確定したAccountIdと認証時刻（内部結果） |
-| `ListCredentials` | sakimoriの管理入口で所有者を認証・認可 | 秘密を含まない一覧 |
+| `ListCredentials` | mikakiの管理入口で所有者を認証・認可 | 秘密を含まない一覧 |
 | `DeleteCredential` | 所有者の直近UV、残存credentialの確認 | 無効化。物理認証器内の鍵消去とは区別 |
 
-登録の初期許可はsakimoriが管理する招待/承認とし、公開自己登録は追加しない。アプリへの参加承認と共通アカウントの登録許可は別とする。AccountIdはsakimoriが割り当てる不透明ID。認証完了要求のAccountIdやsubjectを結果の根拠にしない。最後の有効credential削除は拒否する。アカウント削除は別機能。
+登録の初期許可はmikakiが管理する招待/承認とし、公開自己登録は追加しない。アプリへの参加承認と共通アカウントの登録許可は別とする。AccountIdはmikakiが割り当てる不透明ID。認証完了要求のAccountIdやsubjectを結果の根拠にしない。最後の有効credential削除は拒否する。アカウント削除は別機能。
 
 招待の発行者・一回性、初回管理者bootstrap、全Passkey紛失時に既存account復旧を提供しない初期契約は[ADR 0005](adr/0005-invitation-bootstrap-and-recovery.md)に従う。通常招待から既存accountのcredentialを再設定しない。
 
@@ -155,11 +155,11 @@ challengeはCSPRNGで32 byte生成し、期限は初期値300秒、`now >= expir
 
 応答喪失後に完了を再実行しても二度目の認証成功を発行しない。初期版では新しいceremonyから再開し、登録済みcredentialは所有者の認証後に確認する。削除と認証の競合では確定時のcredential有効性を再確認する。削除前に発行済みのアプリセッションの失効は、認証core外でセッション・ログアウト仕様に従って行う。
 
-Service Bindingは私的入口とし、callerはデプロイ境界で認証する。caller文字列の自己申告を信頼しない。sakimoriの認証・管理入口と一般の連携アプリを区別し、連携アプリに共通credentialの追加・削除権限を与えない。binding/入口の分離かアプリ別資格情報による識別をG1で固定する。各アプリは自分のセッション・業務認可・CSRFを担当し、sakimoriは認証画面のセッション・CSRF・ceremonyとの結び付けを担当する。
+Service Bindingは私的入口とし、callerはデプロイ境界で認証する。caller文字列の自己申告を信頼しない。mikakiの認証・管理入口と一般の連携アプリを区別し、連携アプリに共通credentialの追加・削除権限を与えない。binding/入口の分離かアプリ別資格情報による識別をG1で固定する。各アプリは自分のセッション・業務認可・CSRFを担当し、mikakiは認証画面のセッション・CSRF・ceremonyとの結び付けを担当する。
 
 ## 6. 共通アカウント・ブラウザ境界（P0から本番アプリ統合）
 
-インスタンスごとにsakimoriの共通アカウントを持ち、tossa・tsudoiの通常ログインもこのアカウントを利用する。認証・解錠originとRP IDはインスタンスごとに一つに固定する。これは採用方針であり、実ドメインはG0/G1で確定する。P0の隔離した検証配置からアプリ別アカウントを本番へ持ち込まない。任意の別originにPRF秘密を渡して共有ログインを成立させない。[ADR 0001](adr/0001-common-account.md)に決定を記録する。
+インスタンスごとにmikakiの共通アカウントを持ち、tossa・tsudoiの通常ログインもこのアカウントを利用する。認証・解錠originとRP IDはインスタンスごとに一つに固定する。これは採用方針であり、実ドメインはG0/G1で確定する。P0の隔離した検証配置からアプリ別アカウントを本番へ持ち込まない。任意の別originにPRF秘密を渡して共有ログインを成立させない。[ADR 0001](adr/0001-common-account.md)に決定を記録する。
 
 `AccountId`、アプリ別`SubjectId`、`VaultId`、利用者DID、端末IDは別の識別子とする。アプリとの対応表は本人の認証・許可から作り、メール一致で統合しない。通常のエンティティIDはUUIDへ寄せる方向とし、v4/v7の用途別比較・形式案を[識別子方針](identifier-policy.md)に整理する。DIDは連合で必要な役割に限定し、秘密値や規格固有の識別子をUUIDへ置き換えない。
 
@@ -167,7 +167,7 @@ credentialはAccountIdに所属する。認証coreはAccountIdを内部結果と
 
 通常ログインにVaultの作成・解錠やPRF成功を要求しない。Vaultは共通アカウントに必要時に作成する。アプリへのログイン許可はVaultの読み書き権限を含まず、会話保存と既存会話の読み取りも別のgrantとする。アプリ接続の解除を共通アカウントや他アプリの削除として扱わない。保持期間と失効・接続解除は[セッション・ログアウト仕様](session-lifecycle.md)に従う。SSOの既定値30日、失効確認期間の既定値5分と確認不能時の処理停止を初期契約として採用する。期間・回数の変更と旧新設定の適用は[運用設定契約](runtime-configuration.md)に従う。
 
-共通ログインは最初の本番アプリ接続からOIDC Authorization Code Flow＋PKCE S256を採用する。登録済みredirect URI、state、nonce、一回限り・短寿命・client固定のcode、バックチャネル交換を必要条件とする。独自のログイン結果伝達方式を先行実装しない。[ADR 0002](adr/0002-oidc-from-first-release.md)と[初期OIDCとログインUX](oidc-login.md)に採用判断と受入条件を定める。初回の接続確認は認証画面に統合し、許可済みアプリへの通常ログインでは有効なsakimoriセッションを利用して不要な確認・Passkey操作を省く。
+共通ログインは最初の本番アプリ接続からOIDC Authorization Code Flow＋PKCE S256を採用する。登録済みredirect URI、state、nonce、一回限り・短寿命・client固定のcode、バックチャネル交換を必要条件とする。独自のログイン結果伝達方式を先行実装しない。[ADR 0002](adr/0002-oidc-from-first-release.md)と[初期OIDCとログインUX](oidc-login.md)に採用判断と受入条件を定める。初回の接続確認は認証画面に統合し、許可済みアプリへの通常ログインでは有効なmikakiセッションを利用して不要な確認・Passkey操作を省く。
 
 解錠UIは独立originのトップレベル画面を基本とする。アプリには鍵ではなく許可された読み書き操作を提供する。popup等を使う場合はexact origin、送信元window、要求ID、期限、ユーザー同意を検証し、`postMessage('*')`を使わない。読み出した平文を受け取るアプリは、そのデータの信頼された受信者となる。
 
@@ -185,7 +185,7 @@ credentialはAccountIdに所属する。認証coreはAccountIdを内部結果と
 
 暗号文は一度だけ作り、復号権限を付与する受信者ごとに対象鍵のwrapを追加する。初期P1の受信者は所有者の登録済みPasskey credentialのみ。将来、共有collectionには共有相手の暗号化公開鍵でCKをwrapし、特定blobのシステム処理には専用system principalの公開鍵でDEKをwrapできる形式にする。複数wrapはOR条件であり、いずれか一つを復号できる受信者は同じ本文を読める。複数者の共同承認を求めるものではない。
 
-共有相手用の公開鍵はWebAuthn認証鍵と別の暗号化鍵として登録する。公開鍵とAccountId/device/service principalの結び付きを検証し、鍵更新・失効を既存の信頼済み端末から承認する。鍵directory侵害による差し替えを防ぐ公開鍵継続性/透明性の方式が決まるまで、共有相手への本番鍵配布を有効化しない。受信者秘密鍵は本人または専用system key serviceが保持し、sakimoriの一般APIやStorage Workerへ渡さない。
+共有相手用の公開鍵はWebAuthn認証鍵と別の暗号化鍵として登録する。公開鍵とAccountId/device/service principalの結び付きを検証し、鍵更新・失効を既存の信頼済み端末から承認する。鍵directory侵害による差し替えを防ぐ公開鍵継続性/透明性の方式が決まるまで、共有相手への本番鍵配布を有効化しない。受信者秘密鍵は本人または専用system key serviceが保持し、mikakiの一般APIやStorage Workerへ渡さない。
 
 AADには形式版、用途、Vault、コレクション/オブジェクト、鍵世代、対象credential（wrapの場合）を含め、曖昧な文字列連結を使わない。秘密鍵と平文にはDebug/Serializeの不用意な公開を避け、可能な範囲でメモリを消去する。JS/Wasm環境で完全消去を保証しない。
 
@@ -307,7 +307,7 @@ MCPへ返す平文は利用者が認めた外部開示である。OAuthトーク
 
 ## 13. 初期制限・エラー・運用
 
-以下はsakimoriの初期案であり、Cloudflareの製品上限ではない。負荷試験で変更する場合は仕様とテストを一緒に更新する。セッション関連の採用済み初期値は[運用設定](runtime-configuration.md)へ分離し、値の変更だけでコード編集を要求しない。設定スキーマ・適用規則や安全性要件を変える場合は仕様と試験を更新する。
+以下はmikakiの初期案であり、Cloudflareの製品上限ではない。負荷試験で変更する場合は仕様とテストを一緒に更新する。セッション関連の採用済み初期値は[運用設定](runtime-configuration.md)へ分離し、値の変更だけでコード編集を要求しない。設定スキーマ・適用規則や安全性要件を変える場合は仕様と試験を更新する。
 
 | 対象 | 初期値/規則 |
 | --- | --- |

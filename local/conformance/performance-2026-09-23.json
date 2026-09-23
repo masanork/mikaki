@@ -492,7 +492,7 @@
     "local/conformance/benchmark.mjs": "b5d60dc94b7e9b51c4f5033bf4cbcb77c72de1d48be8d70580e2b0a66a29ec54",
     "local/conformance/server.mjs": "ddb718a939c0a2a44339d74362f1c640d4a1a8bca5c4d49202bae588f72ea4bd",
     "local/conformance/summarize-timing.mjs": "bf8511afda387cd27895dc453e5e8c84ea6ae5291230f0f166da4ab21692a0a8",
-    "crates/worker/pkg/sakimori_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
+    "crates/worker/pkg/mikaki_worker_bg.wasm": "e2342a44bc5c51b5d7abe6d74f58f602618d9eb6878131fcb913880c04c12004",
     "target/release/examples/conformance": "b18d9d7b5659a4ee015dcac2fd10e812cb6e5bb285b25ae2d2ea8d197675ecf8",
     "target/release/examples/benchmark": "65bdf40ece3b5405d345466a03de9bce96030847168ebbee77ff13924b5b0c12",
     "target/debug/examples/benchmark": "57e20b88d39ffd97dc5eb38e88da999d7c75bc3bd8251ec22bf6881b542961e0",

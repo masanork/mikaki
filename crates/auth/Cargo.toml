@@ -1,11 +1,11 @@
 [package]
-name = "sakimori-auth"
+name = "mikaki-auth"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
 license.workspace = true
 [dependencies]
-sakimori-webauthn = { path = "../webauthn" }
+mikaki-webauthn = { path = "../webauthn" }
 serde.workspace = true
 [lints]
 workspace = true

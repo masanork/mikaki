@@ -1,4 +1,4 @@
-//! Cloudflare Workers platform adapter. Protocol decisions remain in `sakimori-oidc`.
+//! Cloudflare Workers platform adapter. Protocol decisions remain in `mikaki-oidc`.
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use wasm_bindgen::JsCast;
 use std::collections::{HashMap, HashSet};
 
 #[cfg(target_arch = "wasm32")]
-use sakimori_oidc::CryptographicRandom;
+use mikaki_oidc::CryptographicRandom;
 
 #[cfg(target_arch = "wasm32")]
 pub struct WorkersCryptoRandom;
@@ -26,13 +26,13 @@ pub struct WorkersCryptoRandom;
 #[cfg(target_arch = "wasm32")]
 #[must_use = "use the assertion reservation receipt in the final code exchange"]
 pub struct AuthenticatedTokenRequest {
-    request: sakimori_oidc::AuthenticatedTokenEndpointInput,
+    request: mikaki_oidc::AuthenticatedTokenEndpointInput,
     assertion_reservation_id: String,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl AuthenticatedTokenRequest {
-    pub fn request(&self) -> &sakimori_oidc::AuthenticatedTokenEndpointInput {
+    pub fn request(&self) -> &mikaki_oidc::AuthenticatedTokenEndpointInput {
         &self.request
     }
 
@@ -154,9 +154,9 @@ pub struct AuthorizationCodeContext {
 
 #[cfg(target_arch = "wasm32")]
 enum WorkerTokenSigner {
-    Es256(sakimori_oidc::P256TokenSigner),
+    Es256(mikaki_oidc::P256TokenSigner),
     Rs256 {
-        key: sakimori_oidc::RsaPrivateTokenKey,
+        key: mikaki_oidc::RsaPrivateTokenKey,
         crypto_key: web_sys::CryptoKey,
     },
 }
@@ -167,11 +167,11 @@ impl WorkerTokenSigner {
         let value: serde_json::Value = serde_json::from_str(input)
             .map_err(|_| worker::Error::RustError("server_error".into()))?;
         match value.get("kty").and_then(serde_json::Value::as_str) {
-            Some("EC") => sakimori_oidc::P256TokenSigner::from_private_jwk(input)
+            Some("EC") => mikaki_oidc::P256TokenSigner::from_private_jwk(input)
                 .map(Self::Es256)
                 .map_err(|_| worker::Error::RustError("server_error".into())),
             Some("RSA") => {
-                let key = sakimori_oidc::RsaPrivateTokenKey::from_private_jwk(input)
+                let key = mikaki_oidc::RsaPrivateTokenKey::from_private_jwk(input)
                     .map_err(|_| worker::Error::RustError("server_error".into()))?;
                 let global = js_sys::global();
                 let crypto = js_sys::Reflect::get(&global, &"crypto".into())
@@ -249,7 +249,7 @@ impl WorkerTokenSigner {
                 )
                 .map_err(|_| worker::Error::RustError("server_error".into())),
             Self::Rs256 { key, crypto_key } => {
-                let input = sakimori_oidc::IdTokenSigningInput::new(
+                let input = mikaki_oidc::IdTokenSigningInput::new(
                     "RS256",
                     key.kid(),
                     issuer,
@@ -360,7 +360,7 @@ struct CompiledWorkerPolicy {
 
 #[cfg(target_arch = "wasm32")]
 pub struct WorkerRuntimePolicy {
-    assertion: sakimori_oidc::ClientAssertionPolicy,
+    assertion: mikaki_oidc::ClientAssertionPolicy,
     authorization_code_ttl_seconds: u64,
     request_target_bytes: usize,
     parameter_count: usize,
@@ -378,7 +378,7 @@ pub struct WorkerRuntimePolicy {
 impl WorkerRuntimePolicy {
     pub fn from_env(env: &worker::Env) -> worker::Result<Self> {
         let json = env
-            .var("SAKIMORI_WORKER_POLICY")
+            .var("MIKAKI_WORKER_POLICY")
             .map_err(|_| worker::Error::RustError("runtime policy is unavailable".into()))?
             .to_string();
         Self::from_compiled_json(&json)
@@ -469,7 +469,7 @@ impl WorkerRuntimePolicy {
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
         let nonce_bytes = usize::try_from(compiled.nonce_bytes)
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
-        let assertion = sakimori_oidc::ClientAssertionPolicy::from_seconds(
+        let assertion = mikaki_oidc::ClientAssertionPolicy::from_seconds(
             compiled.assertion_ttl_seconds,
             compiled.clock_skew_seconds,
         )
@@ -528,36 +528,34 @@ impl WorkerRuntimePolicy {
 pub fn parse_token_endpoint_form(
     body: &str,
     policy: &WorkerRuntimePolicy,
-) -> worker::Result<sakimori_oidc::ValidatedTokenEndpointInput> {
+) -> worker::Result<mikaki_oidc::ValidatedTokenEndpointInput> {
     if body.len() > policy.form_body_bytes {
         return Err(worker::Error::RustError("invalid_request".into()));
     }
-    let input: sakimori_oidc::TokenEndpointInput = serde_urlencoded::from_str(body)
+    let input: mikaki_oidc::TokenEndpointInput = serde_urlencoded::from_str(body)
         .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
     input.validate(policy.jwt_bytes).map_err(|error| {
         let code = match error {
-            sakimori_oidc::TokenEndpointInputError::UnsupportedGrantType => {
-                "unsupported_grant_type"
-            }
-            sakimori_oidc::TokenEndpointInputError::InvalidClient => "invalid_client",
-            sakimori_oidc::TokenEndpointInputError::InvalidRequest => "invalid_request",
+            mikaki_oidc::TokenEndpointInputError::UnsupportedGrantType => "unsupported_grant_type",
+            mikaki_oidc::TokenEndpointInputError::InvalidClient => "invalid_client",
+            mikaki_oidc::TokenEndpointInputError::InvalidRequest => "invalid_request",
         };
         worker::Error::RustError(code.into())
     })
 }
 
 #[cfg(target_arch = "wasm32")]
-impl sakimori_oidc::CryptographicRandom for WorkersCryptoRandom {
-    fn fill(&mut self, output: &mut [u8]) -> Result<(), sakimori_oidc::CodeEntropyError> {
+impl mikaki_oidc::CryptographicRandom for WorkersCryptoRandom {
+    fn fill(&mut self, output: &mut [u8]) -> Result<(), mikaki_oidc::CodeEntropyError> {
         let global = js_sys::global();
         let crypto = js_sys::Reflect::get(&global, &"crypto".into())
-            .map_err(|_| sakimori_oidc::CodeEntropyError)?
+            .map_err(|_| mikaki_oidc::CodeEntropyError)?
             .dyn_into::<web_sys::Crypto>()
-            .map_err(|_| sakimori_oidc::CodeEntropyError)?;
+            .map_err(|_| mikaki_oidc::CodeEntropyError)?;
         crypto
             .get_random_values_with_u8_array(output)
             .map(|_| ())
-            .map_err(|_| sakimori_oidc::CodeEntropyError)
+            .map_err(|_| mikaki_oidc::CodeEntropyError)
     }
 }
 
@@ -567,9 +565,9 @@ impl sakimori_oidc::CryptographicRandom for WorkersCryptoRandom {
 #[cfg(target_arch = "wasm32")]
 async fn accept_client_assertion(
     db: &worker::d1::D1Database,
-    assertion: &sakimori_oidc::VerifiedClientAssertion,
+    assertion: &mikaki_oidc::VerifiedClientAssertion,
     endpoint: &str,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<String> {
     use wasm_bindgen::JsValue;
 
@@ -639,14 +637,14 @@ async fn verify_and_accept_client_assertion(
     endpoint: &str,
     now: u64,
     policy: &WorkerRuntimePolicy,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
-) -> worker::Result<(sakimori_oidc::VerifiedClientAssertion, String)> {
+    random: &mut impl mikaki_oidc::CryptographicRandom,
+) -> worker::Result<(mikaki_oidc::VerifiedClientAssertion, String)> {
     use wasm_bindgen::JsValue;
 
     if client_id.is_empty() || client_id.len() > 128 {
         return Err(worker::Error::RustError("invalid_client".into()));
     }
-    let kid = sakimori_oidc::client_assertion_key_id(compact, policy.jwt_bytes)
+    let kid = mikaki_oidc::client_assertion_key_id(compact, policy.jwt_bytes)
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     let values = [JsValue::from_str(client_id), JsValue::from_str(&kid)];
     let row = db
@@ -669,7 +667,7 @@ async fn verify_and_accept_client_assertion(
     {
         return Err(worker::Error::RustError("invalid_client".into()));
     }
-    let key = sakimori_oidc::ClientAssertionKey::new(
+    let key = mikaki_oidc::ClientAssertionKey::new(
         row.client_id,
         row.kid,
         row.client_revision,
@@ -687,11 +685,11 @@ async fn verify_and_accept_client_assertion(
 #[cfg(target_arch = "wasm32")]
 pub async fn authenticate_token_request(
     db: &worker::d1::D1Database,
-    input: sakimori_oidc::ValidatedTokenEndpointInput,
+    input: mikaki_oidc::ValidatedTokenEndpointInput,
     token_endpoint: &str,
     now: u64,
     policy: &WorkerRuntimePolicy,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<AuthenticatedTokenRequest> {
     let (assertion, assertion_reservation_id) = verify_and_accept_client_assertion(
         db,
@@ -720,7 +718,7 @@ async fn load_authorization_code_context(
     db: &worker::d1::D1Database,
     input: &AuthenticatedTokenRequest,
     signer: &WorkerTokenSigner,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<AuthorizationCodeContext> {
     use wasm_bindgen::JsValue;
 
@@ -800,7 +798,7 @@ async fn load_authorization_code_context(
 async fn revoke_reused_code(
     db: &worker::d1::D1Database,
     input: &AuthenticatedTokenRequest,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<()> {
     use wasm_bindgen::JsValue;
 
@@ -876,7 +874,7 @@ async fn commit_authorization_code_exchange(
     access_ttl_seconds: u64,
     id_token_ttl_seconds: u64,
     response_bytes: usize,
-    random: &mut impl sakimori_oidc::CryptographicRandom,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<TokenEndpointSuccess> {
     use wasm_bindgen::JsValue;
 
@@ -1096,7 +1094,7 @@ async fn issue_token_response(
 ) -> worker::Result<TokenEndpointSuccess> {
     let policy = WorkerRuntimePolicy::from_env(env)?;
     let issuer = env
-        .var("SAKIMORI_ISSUER")
+        .var("MIKAKI_ISSUER")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
     let issuer = configured_issuer(&issuer)
@@ -1308,7 +1306,7 @@ async fn authorize_route(
 
     let issuer = context
         .env
-        .var("SAKIMORI_ISSUER")
+        .var("MIKAKI_ISSUER")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
     let issuer = configured_issuer(&issuer)
@@ -1384,7 +1382,7 @@ async fn authorize_route(
         return authorization_error_response(redirect_uri, state, &issuer, error);
     }
 
-    let raw = sakimori_oidc::Authorization {
+    let raw = mikaki_oidc::Authorization {
         client_id: client_id.clone(),
         redirect_uri: redirect_uri.clone(),
         response_type: parameters["response_type"].clone(),
@@ -1618,7 +1616,7 @@ async fn jwks_route(
         .results::<SigningPublicKeyRow>()?;
     let mut keys = Vec::with_capacity(rows.len());
     for row in rows {
-        let jwk = sakimori_oidc::P256TokenSigner::canonical_public_jwk(&row.public_jwk)
+        let jwk = mikaki_oidc::P256TokenSigner::canonical_public_jwk(&row.public_jwk)
             .ok_or_else(|| worker::Error::RustError("invalid signing key configuration".into()))?;
         keys.push(
             serde_json::from_str(&jwk).map_err(|_| {
@@ -1638,7 +1636,7 @@ async fn discovery_route(
 ) -> worker::Result<worker::Response> {
     let issuer = context
         .env
-        .var("SAKIMORI_ISSUER")
+        .var("MIKAKI_ISSUER")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
     let issuer = configured_issuer(&issuer)

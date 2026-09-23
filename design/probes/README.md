@@ -86,7 +86,7 @@ cargo audit --file design/probes/jose/Cargo.lock
 cargo audit --file design/probes/jose-custom/Cargo.lock
 ```
 
-Native/Wasm共通で18項目が成功した。ES256・RS256の独立署名検証、非同期WebCrypto署名のJWS構造体経由での受渡し、別alg・署名改変・誤鍵拒否、鍵差替え後の旧token拒否、issuer/audience/expiry確認、必須claim欠落と重複`sub`拒否、壊れたJWK/tokenを含む。claim確認はprobe用型と固定条件であり、sakimoriのOIDC処理ではない。jsonwebtokenの時刻確認はプロセス時計に依存するため、注入時計は未確認。Rust内でのprivate-key署名は引き続き実装していない。
+Native/Wasm共通で18項目が成功した。ES256・RS256の独立署名検証、非同期WebCrypto署名のJWS構造体経由での受渡し、別alg・署名改変・誤鍵拒否、鍵差替え後の旧token拒否、issuer/audience/expiry確認、必須claim欠落と重複`sub`拒否、壊れたJWK/tokenを含む。claim確認はprobe用型と固定条件であり、mikakiのOIDC処理ではない。jsonwebtokenの時刻確認はプロセス時計に依存するため、注入時計は未確認。Rust内でのprivate-key署名は引き続き実装していない。
 
 Wasmのrelease生成物は637,956 byte（gzip 253,443 byte）。2026-09-23のローカル10,000回測定では、組込みbackendのNative/WasmはES256が約214/690 µs、RS256が約109/461 µsだった。probe APIは各呼出しでJWKをJSON parseするため、値は鍵キャッシュなしの上限寄りであり、製品性能の予測には使わない。`rust_crypto` featureはRSA・P-384・Ed25519等をまとめて有効にし、RSA crateも依存グラフへ含む。`cargo audit` に指摘はないが、監査だけでRSA秘密鍵署名を本番採用せず、既知のRSA timing勧告と公開鍵検証/秘密鍵操作の境界を別途評価する。
 

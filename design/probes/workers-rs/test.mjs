@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 process.env.WRANGLER_WRITE_LOGS ??= 'false';
 const { unstable_dev } = await import('wrangler');
 const require = createRequire(import.meta.url);
-const verifier = require('../jose-custom/pkg/sakimori_jose_custom_probe.js');
+const verifier = require('../jose-custom/pkg/mikaki_jose_custom_probe.js');
 const config = fileURLToPath(new URL('wrangler.jsonc', import.meta.url));
 const script = fileURLToPath(new URL('build/worker/shim.mjs', import.meta.url));
 const worker = await unstable_dev(script, {
@@ -96,7 +96,7 @@ try {
   assert.equal(health.status, 200);
   assert.equal(await health.text(), 'ok');
   assert.equal((await adapter.fetch('/not-a-route')).status, 404);
-  console.log('sakimori-worker: Rust Cloudflare adapter health route passed in local workerd');
+  console.log('mikaki-worker: Rust Cloudflare adapter health route passed in local workerd');
 } finally {
   await adapter.stop();
 }

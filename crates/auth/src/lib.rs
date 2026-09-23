@@ -1,5 +1,5 @@
 //! Ceremony evidence is bound to a server-side browser transaction.
-use sakimori_webauthn::{self as webauthn, Invalid};
+use mikaki_webauthn::{self as webauthn, Invalid};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use sakimori_oidc::Authorization;
-use sakimori_worker::WorkersCryptoRandom;
+use mikaki_oidc::Authorization;
+use mikaki_worker::WorkersCryptoRandom;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -44,7 +44,7 @@ struct CodeReport {
 }
 
 async fn issue_code(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
-    let challenge = sakimori_oidc::pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+    let challenge = mikaki_oidc::pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         .ok_or_else(|| worker::Error::RustError("probe PKCE setup failed".into()))?;
     let authorization = Authorization {
         client_id: "probe-client".into(),
@@ -224,9 +224,9 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
     let subtle = crypto.subtle();
     let usages = js_sys::Array::new();
     usages.push(&JsValue::from_str("sign"));
-    let key = sakimori_oidc::RsaPrivateTokenKey::from_private_jwk(&keys.private)
+    let key = mikaki_oidc::RsaPrivateTokenKey::from_private_jwk(&keys.private)
         .map_err(|_| worker::Error::RustError("RSA JWK validation failed".into()))?;
-    let canonical_public_jwk = sakimori_oidc::P256TokenSigner::canonical_public_jwk(&keys.public)
+    let canonical_public_jwk = mikaki_oidc::P256TokenSigner::canonical_public_jwk(&keys.public)
         .ok_or_else(|| worker::Error::RustError("RSA public JWK validation failed".into()))?;
     if !key.matches_public_jwk(&canonical_public_jwk) {
         return Err(worker::Error::RustError("RSA key pair mismatch".into()));
@@ -253,7 +253,7 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
     .dyn_into::<CryptoKey>()
     .map_err(|_| worker::Error::RustError("non-extractable RSA key import failed".into()))?;
 
-    let input = sakimori_oidc::IdTokenSigningInput::new(
+    let input = mikaki_oidc::IdTokenSigningInput::new(
         "RS256",
         key.kid(),
         "https://issuer.example",

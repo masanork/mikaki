@@ -6,7 +6,7 @@
 
 ## クライアント認証
 
-サーバー側処理を持つtossa・tsudoiは、private_key_jwtを採用する案とする。アプリと環境ごとにclientと鍵を分け、秘密鍵は各アプリのバックエンド、公開鍵はsakimoriの静的登録に置く。利用者への設定や操作は増やさない。初期は管理された登録更新で公開鍵を配布し、要求内のjku・x5uから鍵を取得しない。
+サーバー側処理を持つtossa・tsudoiは、private_key_jwtを採用する案とする。アプリと環境ごとにclientと鍵を分け、秘密鍵は各アプリのバックエンド、公開鍵はmikakiの静的登録に置く。利用者への設定や操作は増やさない。初期は管理された登録更新で公開鍵を配布し、要求内のjku・x5uから鍵を取得しない。
 
 client assertionはiss=sub=client_id、audはtoken endpointの完全なURL、jtiは取引ごとに一意とする。expに加えて本プロファイルではiatも必須とし、寿命と未来時刻を検証する。client_assertion_typeはurn:ietf:params:oauth:client-assertion-type:jwt-bearerを使用する。署名方式・kid・鍵種別は登録プロファイルと照合し、OPのID Token署名方式とは独立に管理する。初期候補はES256とし、互換方式は[暗号移行方針](crypto-agility.md)に従う。
 
@@ -17,7 +17,7 @@ client assertionはiss=sub=client_id、audはtoken endpointの完全なURL、jti
 | 段階 | 処理と確定する状態 |
 | --- | --- |
 | 1. アプリで開始 | CSRF対策を持つログイン開始操作から、state・nonce・PKCE verifierを生成。ブラウザに結び付いたサーバー側取引として保存する。戻り先は検証したアプリ内パスに限定 |
-| 2. sakimoriへ移動 | GET /authorizeへcode flow・openid・S256を要求。登録client・redirect URI・要求パラメーターを検証し、変更不能な認可取引として保持 |
+| 2. mikakiへ移動 | GET /authorizeへcode flow・openid・S256を要求。登録client・redirect URI・要求パラメーターを検証し、変更不能な認可取引として保持 |
 | 3. 本人認証・接続許可 | 有効なSSOと接続許可があれば追加操作なく進む。必要な場合だけPasskeyや初回接続確認を行い、認証結果・client設定版・grant版・sub・sidを固定 |
 | 4. code発行 | 高エントロピーの不透明なcodeを発行し、サーバーには照合用ハッシュを保存。登録redirect URIへcodeとstateを返す。寿命は既定60秒、一回限り |
 | 5. アプリcallback | ブラウザへの結び付け、state、取引期限を確認して取引を処理中にする。バックエンドがPOST /tokenへcode・redirect URI・verifier・client assertionを送る |
@@ -25,7 +25,7 @@ client assertionはiss=sub=client_id、audはtoken endpointの完全なURL、jti
 | 7. アプリで検証 | ID Tokenの署名・alg・iss・aud・必要なazp・時刻・nonce・必要なauth_timeを検証。下記のセッション確認でsid・sub・auth_timeの一致も確認 |
 | 8. セッション確立 | アプリ参加資格と失効記録を確認し、外部IDの対応・アプリセッション・ログイン取引の完了をローカルに原子的に保存。その後cookieを発行し、元のアプリ内画面へ戻す |
 
-アプリ間で共通のブラウザcookieを使わない。アプリセッションとsakimori SSOは、それぞれhost限定のSecure・HttpOnly・Path=/のcookieとし、通常のトップレベルGET callbackに合わせSameSite=Laxを初期案とする。Domain属性は付けず、__Host-接頭辞を用いる。ログイン取引もブラウザへ結び付け、stateだけを知る別ブラウザからのcallbackを拒否する。複数タブの取引は個別に保持する。
+アプリ間で共通のブラウザcookieを使わない。アプリセッションとmikaki SSOは、それぞれhost限定のSecure・HttpOnly・Path=/のcookieとし、通常のトップレベルGET callbackに合わせSameSite=Laxを初期案とする。Domain属性は付けず、__Host-接頭辞を用いる。ログイン取引もブラウザへ結び付け、stateだけを知る別ブラウザからのcallbackを拒否する。複数タブの取引は個別に保持する。
 
 callbackではcode等のqueryをアクセスログに残さず、第三者リソースを読み込まない。Cache-Control: no-storeとReferrer-Policy: no-referrerを用い、処理後はqueryのないアプリ内URLへ移動する。tokenや秘密鍵をブラウザのlocalStorageへ保存しない。
 
@@ -39,7 +39,7 @@ code消費、発行するtokenの記録、sidとの結び付けは同じ原子�
 
 ## セッション確認API
 
-POST /session/checkをsakimori固有のバックエンドAPI案とする。OIDC標準endpointやOAuth token introspectionと同一視しない。client署名による認証を共用するが、audはこのendpointの完全なURLとし、token endpoint用assertionの転用を拒否する。jtiの一回性も検証する。
+POST /session/checkをmikaki固有のバックエンドAPI案とする。OIDC標準endpointやOAuth token introspectionと同一視しない。client署名による認証を共用するが、audはこのendpointの完全なURLとし、token endpoint用assertionの転用を拒否する。jtiの一回性も検証する。
 
 入力は当該clientのsid。認証済みclientに属しtoken発行確定済みの有効なsidに対して、active・sub・auth_time・元SSOのexpires_at・lease_ttl・新規アプリセッション用app_idle_timeout・policy_revisionを返す。存在しないsid、未交換codeに対応するsid、別clientのsid、失効済みsidはactive=falseとし、他clientの情報を返さない。失効を反映した読み取りを必要とし、応答をHTTPキャッシュに保存しない。
 

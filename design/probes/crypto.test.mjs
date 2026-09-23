@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { importJWK, jwtVerify, SignJWT, base64url } from 'jose';
 
 const require = createRequire(import.meta.url);
-const wasm = require('./es256/pkg/sakimori_es256_probe.js');
+const wasm = require('./es256/pkg/mikaki_es256_probe.js');
 const binary = fileURLToPath(new URL('es256/target/debug/fixture', import.meta.url));
 const native = (...args) => execFileSync(binary, args, { encoding: 'utf8' }).trim();
 const publicJwk = JSON.parse(wasm.fixture_public_jwk());

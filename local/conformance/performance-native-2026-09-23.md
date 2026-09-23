@@ -33,7 +33,7 @@ ceremonyは上限・期限付きのメモリー取引で、検証前に一回限
 
 monban／iwatoとの比較軸はローカルnativeとする。WasmをNodeで実行した過去の試験もCloudflare上の計測ではなかったが、nativeとは分けて扱う。
 
-iwatoの現行Conformance実装はメモリーのcredential参照と非同期DB書込みを使い、run-conformance.shの既定DBは:memory:。monbanのConformance経路にはStore経由の読込み・登録・counter更新のawaitがある。今回両リポジトリは変更・再計測していない。歴史的な約15秒というSuite総時間と直接順位付けしない。sakimoriはDB書込み完了を待つ条件を明示して測る。
+iwatoの現行Conformance実装はメモリーのcredential参照と非同期DB書込みを使い、run-conformance.shの既定DBは:memory:。monbanのConformance経路にはStore経由の読込み・登録・counter更新のawaitがある。今回両リポジトリは変更・再計測していない。歴史的な約15秒というSuite総時間と直接順位付けしない。mikakiはDB書込み完了を待つ条件を明示して測る。
 
 msはHTTPリクエストを受け取ってから応答構築までのwall timeで、受付待ちとログ出力を含まない。response_msはrespond呼出しの経過時間であり、クライアント側の受信完了時間ではない。verify_msは実際のRust検証呼出し、db_msはSQLite操作とcommitの経過時間、metadata_msは候補選択。すべて成功・失敗の両方を含み、Suiteの多くは異常系なので通常ログインの分位点には使わない。
 
@@ -43,7 +43,7 @@ msはHTTPリクエストを受け取ってから応答構築までのwall time�
 
 ```sh
 cargo test --locked --workspace
-cargo build --release --locked -p sakimori-browser-wasm --example conformance_server
+cargo build --release --locked -p mikaki-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-file.log 2>&1
 # サーバー停止後、新しいプロセスで再実行
 FIDO_DB=memory FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-memory.log 2>&1

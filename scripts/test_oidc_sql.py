@@ -195,7 +195,7 @@ class StoreContract(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT count(*) FROM valid_client_session').fetchone()[0], 0)
 
     def test_parallel_exchange_has_one_winner(self):
-        with tempfile.TemporaryDirectory(prefix='sakimori-sql-') as directory:
+        with tempfile.TemporaryDirectory(prefix='mikaki-sql-') as directory:
             path = str(Path(directory)/'test.sqlite')
             db = sqlite3.connect(path); seed(db); db.close()
             barrier = threading.Barrier(2)

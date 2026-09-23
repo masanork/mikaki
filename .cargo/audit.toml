@@ -1,4 +1,4 @@
 [advisories]
-# Public-key verification only: no RSA private key is held or used by sakimori.
+# Public-key verification only: no RSA private key is held or used by mikaki.
 # See docs/adr/0008-webauthn-conformance.md; review before any RSA private-key use.
 ignore = ["RUSTSEC-2023-0071"]

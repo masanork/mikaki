@@ -4,7 +4,7 @@
 
 ローカル実装はSvelte 5、TypeScript 7のnative検査（`svelte-check --tsgo`）、npm/package-lockを採用した。現行のsvelte-check自身がSvelteソースの解析・検査用TypeScriptへの変換にTypeScript 6のJavaScript APIを使うため、6も開発依存に必要。旧アプリへの後方互換性を目的とせず、型検査器は7に統一する。TypeScript 7は`@typescript/native`へのnpm aliasで配置する。最新の[公式README](https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check#typescript-7-supports)とtayoriの設定を参照。pnpm・Paraglide等の下記推奨案と、現在の実装を区別する。
 
-初期OIDCの小さな認証画面と、Rust/Workersの認証基盤を対象にする。madowiのローカルworkflowとstats実装を参考にし、sakimoriの認証・失効契約に合わせて測定範囲とゲートを定める。既存の[実装基準](oidc-implementation-readiness.md)に追加する提案であり、製品の完成を意味しない。
+初期OIDCの小さな認証画面と、Rust/Workersの認証基盤を対象にする。madowiのローカルworkflowとstats実装を参考にし、mikakiの認証・失効契約に合わせて測定範囲とゲートを定める。既存の[実装基準](oidc-implementation-readiness.md)に追加する提案であり、製品の完成を意味しない。
 
 ## フロントの構成
 
@@ -61,7 +61,7 @@ Rustはcargo-llvm-covでline・region・functionを、フロントはVitestのV8
 
 PlaywrightのWebAuthn仮想認証器はChromium/CDPの経路として扱う。他ブラウザのUI・cookie試験が通ったことをPasskey/PRF実機対応と同一視しない。テスト失敗時のtrace、HAR、スクリーンショットには認証情報が入り得るため、合成account/鍵だけを使い、artifactの権限と保持を制限する。
 
-core coverageは初期から毎PRで測る。重くなった場合は結果を再利用するjob構成や対象の分離を検討し、認証変更のゲートを夜間だけへ退避させない。madowiのように重い全体検証を分ける構成は採用できるが、初期sakimoriにmobile build・Tauri・Docker等の無関係なmatrixは持ち込まない。
+core coverageは初期から毎PRで測る。重くなった場合は結果を再利用するjob構成や対象の分離を検討し、認証変更のゲートを夜間だけへ退避させない。madowiのように重い全体検証を分ける構成は採用できるが、初期mikakiにmobile build・Tauri・Docker等の無関係なmatrixは持ち込まない。
 
 スクリーンショット比較jobで--update-snapshotsを実行しない。基準画像の更新は別操作として差分をレビューする。再試行で通ったテストはflakyとして記録し、再試行成功を安定性の証拠にしない。例外は担当・理由・期限を記録する。
 

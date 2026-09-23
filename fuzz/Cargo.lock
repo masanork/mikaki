@@ -566,19 +566,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "sakimori-fuzz"
+name = "mikaki-fuzz"
 version = "0.0.0"
 dependencies = [
  "base64",
  "libfuzzer-sys",
  "p256",
- "sakimori-webauthn",
+ "mikaki-webauthn",
  "serde_json",
  "sha2",
 ]
 
 [[package]]
-name = "sakimori-webauthn"
+name = "mikaki-webauthn"
 version = "0.1.0"
 dependencies = [
  "base64",

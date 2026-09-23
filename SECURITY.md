@@ -2,7 +2,7 @@
 
 ## Project status
 
-sakimori is an experimental development project. There are no supported releases, and the local implementation is not intended to protect real accounts or user data.
+mikaki is an experimental development project. There are no supported releases, and the local implementation is not intended to protect real accounts or user data.
 
 ## Reporting a vulnerability
 

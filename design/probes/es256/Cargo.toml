@@ -1,5 +1,5 @@
 [package]
-name = "sakimori-es256-probe"
+name = "mikaki-es256-probe"
 version = "0.0.0"
 edition = "2024"
 publish = false

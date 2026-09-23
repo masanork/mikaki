@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { base64url, CompactSign, exportJWK, generateKeyPair, SignJWT } from 'jose';
 
 const require = createRequire(import.meta.url);
-const wasm = require('./jose/pkg/sakimori_jose_probe.js');
+const wasm = require('./jose/pkg/mikaki_jose_probe.js');
 const binary = fileURLToPath(new URL('jose/target/debug/fixture', import.meta.url));
 const issuer = 'https://issuer.invalid';
 const audience = 'probe-client';

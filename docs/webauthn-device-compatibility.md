@@ -15,7 +15,7 @@ SPUSB/SPBluetoothのこの実行環境の一覧から、外付けFIDO認証器�
 
 ## 再現した自動ブラウザー試験
 
-`slice.test.mjs`は既定でPlaywright管理Chromiumを使い、`WebAuthn.addVirtualAuthenticator`でresident-keyとuser-verificationに対応する仮想CTAP2.1 authenticatorを追加する。Chrome stable／Canaryへ切り替える場合は`SAKIMORI_BROWSER_CHANNEL=chrome`または`chrome-canary`を設定して`npm run test:e2e`を実行する。いずれもDB、issuer、RPはテスト用の一時loopback環境を使用する。
+`slice.test.mjs`は既定でPlaywright管理Chromiumを使い、`WebAuthn.addVirtualAuthenticator`でresident-keyとuser-verificationに対応する仮想CTAP2.1 authenticatorを追加する。Chrome stable／Canaryへ切り替える場合は`MIKAKI_BROWSER_CHANNEL=chrome`または`chrome-canary`を設定して`npm run test:e2e`を実行する。いずれもDB、issuer、RPはテスト用の一時loopback環境を使用する。
 
 統合試験は招待による登録、resident credential属性、discoverable Passkeyログイン、再ログイン、UV必須、認証後のcode交換までを確認する。WebAuthn応答の検証、OIDC、session/lifecycle試験も同じ49件に含む。PlaywrightがCDP経由で認証器を制御するため繰り返し実行でき、生体操作やcredential同期を必要としない。一方、実機の生体操作、OS permission UI、credential同期、Bluetooth/NFC/USB transport、hardware firmwareは再現しない。
 

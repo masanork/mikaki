@@ -525,7 +525,7 @@ function writeReports(current, history) {
     join(ROOT, outputDir, 'coverage.svg'),
     lineChart(
       'Native Rust coverage',
-      'cargo llvm-cov: workspace excluding sakimori-browser-wasm and sakimori-worker; tests.rs ignored; inline tests remain instrumented',
+      'cargo llvm-cov: workspace excluding mikaki-browser-wasm and mikaki-worker; tests.rs ignored; inline tests remain instrumented',
       history,
       [
         { label: 'lines', color: '#2563eb', value: (r) => r.coverage?.lines.percent },

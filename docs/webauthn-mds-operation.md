@@ -1,6 +1,6 @@
 # MDS検証結果と更新境界
 
-sakimoriのMDS検証は署名済みBLOBをオフラインで検査するコア機能であり、製品の定期取得・保存・認証ポリシー適用とは分離する。現行の規範文書は[FIDO MDS 3.1.1 Proposed Standard](https://fidoalliance.org/specs/mds/fido-metadata-service-v3.1.1-ps-20260105.html)。MDSは authenticator metadata と状態報告を含む署名付き一覧を配布する。entryはAAGUIDまたはattestation certificate key identifierで識別され、状態報告には有効日やfirmware version、対象証明書が付くことがある。
+mikakiのMDS検証は署名済みBLOBをオフラインで検査するコア機能であり、製品の定期取得・保存・認証ポリシー適用とは分離する。現行の規範文書は[FIDO MDS 3.1.1 Proposed Standard](https://fidoalliance.org/specs/mds/fido-metadata-service-v3.1.1-ps-20260105.html)。MDSは authenticator metadata と状態報告を含む署名付き一覧を配布する。entryはAAGUIDまたはattestation certificate key identifierで識別され、状態報告には有効日やfirmware version、対象証明書が付くことがある。
 
 `verify_mds`は署名、signer証明書チェーン、渡されたCRLを検証し、必須のJWT header `iat`、BLOB番号、任意の`nextUpdate`、関連する認証器entryを返す。U2F entryは小文字hexの40桁 key identifierで保持する。各status reportは`status`とその他の署名対象フィールドをまとめて保持するため、`effectiveDate`, `authenticatorVersion`, `batchCertificate`, `certificate`, `url`や今後追加される項目を失わない。metadata statementのfirmware versionと`timeOfLastStatusChange`も返す。未知のstatus値はFIDO仕様に従いエラーにせず、その文字列を結果へ残す。現行MDSでは`nextUpdate`は廃止予定であり、存在しない場合も受理する。存在していても鮮度の判定には使わない。`x5u`形式のsigner証明書取得はコアの入力契約に含めていないため、現状は拒否し、x5c形式だけを処理する。
 

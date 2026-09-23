@@ -4,11 +4,11 @@ import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import init, * as wasm from '../../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
+import init, * as wasm from '../../crates/browser-wasm/pkg/mikaki_browser_wasm.js';
 
 await init({
   module_or_path: readFileSync(
-    new URL('../../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm', import.meta.url),
+    new URL('../../crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm', import.meta.url),
   ),
 });
 const metadataDir = new URL('../../target/fido-metadata/', import.meta.url);
@@ -155,7 +155,7 @@ const server = createServer(async (req, res) => {
         .map((c) => ({ type: 'public-key', id: c.id }));
       output = registration
         ? ok({
-            rp: { id: 'localhost', name: 'sakimori conformance' },
+            rp: { id: 'localhost', name: 'mikaki conformance' },
             user,
             challenge,
             pubKeyCredParams: [-7, -8, -257, -65535].map((alg) => ({ type: 'public-key', alg })),
@@ -254,7 +254,7 @@ const server = createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         status: 'failed',
-        errorMessage: 'Request rejected by sakimori profile or verifier',
+        errorMessage: 'Request rejected by mikaki profile or verifier',
       }),
     );
   } finally {
