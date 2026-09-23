@@ -16,7 +16,7 @@ node design/probes/workers-rs/test.mjs
 cargo audit --file design/probes/workers-rs/Cargo.lock
 ```
 
-2026-09-23時点で上記のD1・署名・CSPRNG/code準備試験が成功し、Cargo auditは93 crateに脆弱性を報告しなかった。最適化済み`index_bg.wasm`は321,262 bytes（gzip 104,541 bytes）。これはprobe単体の参考値で、Worker全体の上限・cold startを測ったものではない。read replicaを持たないローカル環境の`FirstPrimary`はAPI経路の確認であり、本番のreplica整合性を検証しない。残りのゲート項目と結果は[ADR 0009](../docs/adr/0009-rust-oidc-and-worker-stack.md)に記録する。
+2026-09-23時点で上記のD1・署名・CSPRNG/code準備試験が成功し、Cargo auditは93 crateに脆弱性を報告しなかった。最適化済み`index_bg.wasm`は321,262 bytes（gzip 104,541 bytes）。これはprobe単体の参考値で、Worker全体の上限・cold startを測ったものではない。read replicaを持たないローカル環境の`FirstPrimary`はAPI経路の確認であり、本番のreplica整合性を検証しない。残りのゲート項目と結果は[ADR 0009](../../docs/adr/0009-rust-oidc-and-worker-stack.md)に記録する。
 
 ## 実行環境と固定依存
 

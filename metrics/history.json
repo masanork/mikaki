@@ -1,1 +1,94 @@
-[]
+[
+  {
+    "date": "2026-09-23",
+    "commit": "95165eb",
+    "code": {
+      "implementationLines": 4308,
+      "testLines": 2641,
+      "implementationFiles": 25,
+      "testFiles": 9,
+      "byLanguage": {
+        "rust": {
+          "implementationLines": 2112,
+          "testLines": 1147
+        },
+        "javascript": {
+          "implementationLines": 1940,
+          "testLines": 1494
+        },
+        "svelte": {
+          "implementationLines": 212,
+          "testLines": 0
+        },
+        "typescript": {
+          "implementationLines": 44,
+          "testLines": 0
+        }
+      }
+    },
+    "dependencies": {
+      "npm": {
+        "runtime": 2,
+        "dev": 9
+      },
+      "rust": {
+        "runtime": 13,
+        "build": 0,
+        "dev": 8
+      },
+      "sourceLines": {
+        "npmRuntime": 108465,
+        "rustRuntime": 474866,
+        "total": 583331
+      },
+      "sourcePackages": {
+        "npmRuntime": 19,
+        "rustRuntime": 72
+      },
+      "names": {
+        "npmRuntime": [
+          "jose",
+          "svelte"
+        ],
+        "npmDev": [
+          "@playwright/test",
+          "@sveltejs/vite-plugin-svelte",
+          "@typescript/native",
+          "prettier",
+          "prettier-plugin-svelte",
+          "svelte-check",
+          "typescript",
+          "vite",
+          "wrangler"
+        ],
+        "rustRuntime": [
+          "base64",
+          "ciborium",
+          "der",
+          "ed25519-dalek",
+          "p256",
+          "p384",
+          "rsa",
+          "serde",
+          "serde_json",
+          "sha1",
+          "sha2",
+          "wasm-bindgen",
+          "x509-cert"
+        ],
+        "rustBuild": [],
+        "rustDev": [
+          "base64",
+          "ciborium",
+          "p256",
+          "rusqlite",
+          "serde_json",
+          "sha2",
+          "tiny_http",
+          "wasm-bindgen-test"
+        ]
+      }
+    },
+    "coverage": null
+  }
+]

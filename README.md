@@ -10,14 +10,12 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 ## CIメトリクス
 
-規模は実装とテストを分けて計測し、native Rustのcoverageと直接依存の推移も記録します。
+規模はRust実装・JS/TS実装・テスト・実行時依存を積み上げ、native Rustのcoverageも記録します。
 [計測範囲と方法](metrics/README.md) · [直接依存一覧](metrics/dependency-inventory.md)
 
-![実装・テスト行数の推移](metrics/code-size.svg)
+![実装・テスト・実行時依存ソース行数の推移](metrics/code-size.svg)
 
 ![native Rust coverageの推移](metrics/coverage.svg)
-
-![直接依存数の推移](metrics/dependencies.svg)
 
 脆弱性の報告方法は[SECURITY.md](SECURITY.md)を参照してください。
 

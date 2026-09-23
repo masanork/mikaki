@@ -4,13 +4,11 @@ These charts are refreshed by CI. Pull requests get a current report and charts
 as the `authentication-measurements` artifact; pushes to `main` also append a
 history point and commit the updated SVGs here.
 
-![Implementation and test source size](code-size.svg)
+![Stacked source size: runtime dependencies, Rust implementation, JS/TS implementation, and tests](code-size.svg)
 
 ![Native Rust coverage](coverage.svg)
 
-![Direct runtime and development dependencies](dependencies.svg)
-
-See the [direct dependency inventory](dependency-inventory.md) for package names.
+See the [direct dependency inventory](dependency-inventory.md) for package names and the runtime dependency source-line breakdown.
 
 ## Measurement scope
 
@@ -25,6 +23,14 @@ See the [direct dependency inventory](dependency-inventory.md) for package names
   workspace, excluding `sakimori-worker` and files matching `tests.rs`. Inline
   unit tests remain part of the instrumented sources. It is not whole-product
   or browser coverage.
-- Dependency charts count unique direct dependency names classified by
-  `package.json` and Cargo workspace manifests. Rust build dependencies are
-  reported separately; transitive or resolved bundle dependencies are not counted.
+- The stacked growth chart adds JavaScript source lines from npm production
+  packages and Rust source lines from the resolved `wasm32-unknown-unknown`
+  normal-dependency graph. npm package code is counted from installed `node_modules`;
+  Cargo source is counted under each resolved crate's `src/`. Rust inline test
+  modules are excluded using the same documented heuristic. These are package
+  source lines, not the subset that survives bundling or linking.
+- The dependency inventory lists unique direct names classified from
+  `package.json` and Cargo manifests, plus resolved runtime source lines and
+  package/crate counts. It does not represent final bundled or linked binary size.
+- History is one snapshot per calendar day. A successful `main` CI run replaces
+  that day's row with the latest commit and refreshes the charts.

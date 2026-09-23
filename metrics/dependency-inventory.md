@@ -1,6 +1,8 @@
 # Direct dependency inventory
 
-Snapshot: `2026-09-23` / commit `f9bb08c`
+Snapshot: `2026-09-23` / commit `95165eb`
+
+Runtime dependency source: 583,331 lines total (108,465 npm, 474,866 Rust; 19 npm packages, 72 Rust crates in the resolved runtime graph).
 
 | Scope | Count | Direct dependencies |
 |---|---:|---|
@@ -10,4 +12,4 @@ Snapshot: `2026-09-23` / commit `f9bb08c`
 | npm runtime | 2 | `jose`, `svelte` |
 | npm development | 9 | `@playwright/test`, `@sveltejs/vite-plugin-svelte`, `@typescript/native`, `prettier`, `prettier-plugin-svelte`, `svelte-check`, `typescript`, `vite`, `wrangler` |
 
-Cargo and npm transitive dependencies are not included.
+The inventory lists direct manifest dependencies; the source-line total includes transitive packages resolved for the runtime.
