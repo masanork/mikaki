@@ -1,39 +1,33 @@
-# ADR 0005: 招待制・初回管理者登録・初期の復旧範囲
+# ADR 0005: Invitation enrollment, first administrator, and initial recovery
 
-2026-09-22 / 採用（推奨方針へのユーザー同意に基づく）。実装は未完了。
+**Status:** Accepted, 2026-09-22. This record is a product decision; consult [status](../status.md) for implementation evidence.
 
-## 背景
+## Context
 
-公開自己登録は初期対象外だが、最初の管理者を作る方法と全Passkey紛失時の契約が未記録だった。初期からメール・電話・手動本人確認によるアカウント復旧を導入すると、Passkey以外の本人確認と運用責任が増える。
+Public self-registration is outside the initial scope, but the first administrator and loss of every passkey needed explicit rules. Email, phone, or manual identity recovery would introduce additional identity checks and operational duties.
 
-## 決定
+## Decision
 
-- 通常の新規アカウントは、認証済みのmikaki管理者が発行した一回限りの招待から作る。アプリ参加資格とは別であり、一般のRPには招待・credential管理権限を与えない。
-- 管理者資格はmikaki内部の明示的なroleとして保持し、OIDCの一般claimやアプリのroleへ自動転送しない。招待の作成・取消・管理者権限の変更は、対象に固定した一回限りのUV管理許可を必要とする。
-- 初回管理者は運用者が信頼された配備/CLI境界から作るbootstrap招待で登録する。公開HTTPからbootstrap招待を作成できない。初期DBにある単一bootstrap状態が未使用の場合だけ発行・消費できる。
-- bootstrap招待消費、新規account/credentialの確定、初回管理者role付与、bootstrap閉鎖を一つの原子操作にする。並行登録で管理者を二重作成しない。期限切れ招待の再発行は未閉鎖の場合だけ、以前の招待を失効させて行う。
-- 通常招待は新規account作成だけを許可し、管理者roleや既存accountのcredential再設定を許可しない。既存accountへのcredential追加は既存の本人認証・管理操作契約を使う。
-- 初期は全Passkey紛失時の既存account復旧を提供しない。運用者による鍵の付替え、メール一致の再結合、招待からの旧sub引継ぎも提供しない。新規招待で登録する場合は別account/subとなる。
-- 最後の有効credential削除禁止を維持する。最後の有効管理者の降格/停止も通常操作では拒否し、代替管理者への明示的な引継ぎを先に行う。インシデント時のサービス全体停止は別の運用操作とする。
+- A verified Mikaki administrator issues a one-time invitation for each ordinary new account. Application membership is separate. General RPs cannot issue invitations or manage credentials.
+- Administrator status is an explicit Mikaki role, not automatically an OIDC claim or application role. Creating or revoking invitations and changing administrator status require a one-time, operation-bound management authorization with user verification.
+- An operator issues the first administrator's bootstrap invitation through a trusted deployment or CLI boundary. Public HTTP cannot create it. A single bootstrap state in the initial DB gates issuance and consumption.
+- Consume the bootstrap invitation, create the account and credential, grant the administrator role, and permanently close the gate in one atomic operation. Concurrent registration must not create two first administrators. An unused expired invitation may be replaced only while the gate is open; replacement revokes the earlier invitation.
+- An ordinary invitation creates a new account only. It cannot grant an administrator role or reset an existing account's credentials. Adding a credential to an existing account uses the existing authentication and management contract.
+- The first version has no recovery path after loss of every passkey. Operators cannot rebind keys or merge accounts by matching email, and a new invitation does not inherit the old account or pairwise subject.
+- Do not allow removal of the last active credential or normal demotion/suspension of the last active administrator. Arrange an explicit handover first. Service-wide incident shutdown is a separate operation.
 
-## 招待の扱い
+## Invitation handling
 
-招待秘密は32 byteのCSPRNG値とし、DBにはハッシュ・種類・発行者・期限・一回性・取消状態を保存する。初期値は通常招待24時間、bootstrap招待15分。運用設定へ切り出す。
+An invitation secret is 32 CSPRNG bytes. D1 stores a hash, kind, issuer, expiry, single-use state, and cancellation state. Initial defaults are 24 hours for an ordinary invitation and 15 minutes for bootstrap, subject to operational configuration.
 
-初期UIでは招待コードを入力し、そのブラウザの登録取引へ結び付ける。URL query、ログ、外部分析へ秘密を入れない。招待コードは所持者へ登録を許すものであり、メールアドレスや実在人物の身元を証明しない。転送可能であるため、発行者は意図した相手へ安全な経路で渡す。
+The initial UI accepts a code and binds it to that browser's registration transaction. Do not place the secret in a URL query, log, or external analytics. Possession allows enrollment; it does not prove a person's real-world identity. The issuer must deliver it through an appropriate trusted channel.
 
-招待は登録開始時に消費せず、期限・未使用・未取消をcredential確定時にも確認して同時消費する。先に行われるWebAuthn署名検証だけでは登録成功としない。登録応答喪失時も招待を再使用して別accountを作らず、登録済みPasskeyでログインして結果を確認する。
+Do not consume an invitation when registration begins. Recheck expiry, use, and cancellation and consume it atomically when the credential is committed. A valid WebAuthn response alone is not successful enrollment. After a lost registration response, use the newly registered passkey to check the result; never reuse the invitation to create another account.
 
-bootstrap完了後にDBのaccount数がゼロになったという理由で入口を再開しない。古いDB復元は通常のbootstrapと別であり、既存の復旧世代・履歴照合・サービス停止の契約に従う。失った管理者鍵をbootstrap機能で置換しない。
+Do not reopen bootstrap merely because account count later becomes zero. Restoring an old DB is a separate recovery event, and the bootstrap gate cannot replace a lost administrator credential.
 
-## 利用者への説明と不利益
+## User impact and acceptance
 
-別の認証器の追加を推奨し、全Passkeyを失うと同じaccountへ戻れないことを登録・管理画面に明示する。同期Passkeyもあり得るため、credential数と独立した復旧手段の数が同一とは説明しない。ログイン復旧とVaultの復号可能性は別であり、将来復旧を導入してもVault鍵が自動復元されるとは扱わない。
+Explain that losing every passkey prevents return to the same account, and recommend another authenticator. Synced passkeys mean credential count does not necessarily equal the number of independent recovery routes. Account login recovery would not automatically recover vault keys. Any future recovery design needs a new ADR addressing identity proof, audit, delay and notice, session revocation, and subject continuity.
 
-この方針は簡素だが、紛失時の利便性を下げる。将来復旧を提供する場合は、本人確認、監査、待機/通知、既存session失効、sub維持の条件を新ADRで定める。現在のroleや招待を迂回路にしない。
-
-## 受入条件
-
-bootstrapの並行消費は一成功、通常招待から管理者roleを得られない、期限/取消と登録の競合で登録できない、招待再使用・アプリからの発行が拒否される、最後のcredential/管理者保護、応答喪失後のaccount二重作成防止を確認する。
-
-このADRは設計決定であり、bootstrap CLIや管理画面はまだ存在しない。詳細な原子操作は登録の製品実装時に追加する。
+Acceptance tests cover concurrent bootstrap consumption with one winner; rejection of administrator grants through ordinary invitations; expiry, cancellation, and registration races; reuse and RP issuance rejection; protection of the last credential and administrator; and no duplicate account after a lost response.

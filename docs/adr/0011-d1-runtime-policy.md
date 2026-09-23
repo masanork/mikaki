@@ -1,25 +1,23 @@
-# ADR 0011: 運用設定の有効版をD1で管理する
+# ADR 0011: Manage the active runtime policy in D1
 
-- 状態: 採用
-- 決定日: 2026-09-23
+**Status:** Accepted, 2026-09-23
 
-## 背景
+## Context
 
-[ADR 0004](0004-runtime-policy-configuration.md)は運用値をコードから分離したが、現在のWorkerは生成済みpolicyを環境変数から読む。期間・レート・上限の変更ごとにWorkerを再配備することになる。
+[ADR 0004](0004-runtime-policy-configuration.md) removed operational values from code, but the Worker initially read a generated environment-variable projection. Every change to durations, rates, or limits would require another Worker deployment.
 
-## 決定
+## Decision
 
-- 運用値の実行時の正本は配備ごとのD1に置く。TOMLは初期値と編集用の見本、現在の環境変数projectionは移行中の実装とする。
-- 完全な設定を不変の版として保存し、schema・型・範囲・項目間の関係・revisionを検証した後、単一のactive版参照を原子的に切り替える。変更者、理由、時刻、旧版・新版を監査記録に残す。部分更新や暗黙のmergeはしない。
-- リクエストは開始時に有効版を読み、検証済みの同一snapshotを使う。発行済み状態には発行時の期限とpolicy revisionを保存し、新版の有効化で既存の期限を暗黙に延長・短縮しない。新版切替中のリクエストは旧版または新版の完全な一方を使い、混合しない。
-- D1読取り失敗、設定欠落、不正schema・hashでは認証・発行を停止し、環境変数の旧値や組込み既定値へフォールバックしない。初期実装は毎リクエストD1から読み、キャッシュを追加する場合は反映遅延と失効保証を別途定義する。
-- 秘密鍵、復旧世代などの秘密値、D1 binding、安定したissuer、配備が許可する認証方式の上限は配備・秘密管理に残す。Conformance配備だけがsecret方式のclient登録を許可できる。各clientの認証方式、公開鍵またはsecret verifier、redirect URI、PKCE要件は隔離された配備のD1へ置く。HTTPリクエストで配備profileを変更できない。
+- The runtime authority is deployment-specific D1. TOML is an initial or editing example; the environment-variable projection is transitional.
+- Store complete, immutable policy versions. Validate schema, types, ranges, cross-field constraints, and revision before atomically changing one active-version pointer. Audit the actor, reason, time, and old and new versions. Do not merge partial updates implicitly.
+- At request start, read and use one complete, validated snapshot. Record issuance-time expiry and policy revision with durable state. Activation does not silently change issued deadlines. A request crossing activation uses either the complete old or complete new version.
+- Fail closed for a D1 read error, missing policy, invalid schema, or hash mismatch. Do not fall back to environment variables or built-in defaults. The initial implementation reads D1 on each request; a future cache needs an explicit freshness and revocation contract.
+- Keep signing secrets, recovery-generation secrets, D1 bindings, stable issuer, and deployment-level bounds on authentication methods outside the D1 policy. Only an isolated conformance deployment may register secret-based clients. Per-client authentication method, public key or secret verifier, redirect URI, and PKCE requirement belong to that deployment's D1. An HTTP request cannot switch the deployment profile.
 
-## 影響
+## Consequences
 
-設定変更は再配備なしで可能になるが、D1が新規認証の依存先となる。管理操作には認証・権限、比較更新、変更監査、rollback検証が必要。読取りの整合性と設定反映時刻を測定し、失効確認leaseの保証は旧版で発行済みの結果が期限切れになるまで旧新の長い方で示す。D1 read replicationを有効にする場合も、設定読取りが古いreplicaに流れないようprimary読取りか同等の新鮮さ保証を使う。
+Changing policy no longer requires a Worker redeploy, but new authentication depends on D1. Management needs authorization, compare-and-update behavior, audit, and rollback checks. Measure read consistency and activation time. An already-issued status-check lease still matters when reporting the revocation bound. If D1 read replication is enabled, policy reads must use primary state or equivalent freshness.
 
-## 代替案
+## Alternatives
 
-- 環境変数projectionを正本として継続する: 変更のたびに再配備が必要になるため採用しない。
-- D1に署名秘密鍵や配備profileの許可範囲まで置く: D1の管理権限だけで本番配備の信頼境界を変えられるため採用しない。
+Continuing to treat the environment projection as authoritative would require deployment for every operational change. Putting signing secrets or the set of permitted deployment authentication methods in D1 would let D1 management alone change the production trust boundary. Neither option was adopted.

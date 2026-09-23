@@ -1,5 +1,7 @@
 # WebAuthn拡張の対応範囲
 
+> WG-04 snapshot from 2026-09-23. The PRF row below describes the WebAuthn core and the local product state at the time of writing; later owner-only Vault work must be checked against [project status](status.md) and [deployment](cloudflare-deployment.md). Structural extension acceptance alone never establishes PRF support.
+
 2026-09-23 / WG-04。拡張の構造検査、署名による完全性、個別の意味の検証、ブラウザー出力を区別する。追加の拡張型や永続化項目は、利用する機能を採用した時点で定める。
 
 ## 共通コアの契約

@@ -1,5 +1,7 @@
 # フロントエンド・i18n・品質CI
 
+> Design snapshot. Svelte 5, TypeScript checks, localization, and CI have since acquired implementation evidence. Read [project status](status.md) and the current workflows before treating recommendations below as unimplemented.
+
 2026-09-22 / 推奨案。一部を[ローカル縦切り実装](../local/README.md)へ適用済み。以下の全項目の完了やGitHub上のCI成功を示すものではない。
 
 ローカル画面とWorker配信のログイン・Vault画面はSvelte 5＋Viteを使い、共通のParaglide JS 2カタログから日本語・英語の型付きmessage関数を生成する。TypeScript 7のnative検査（`svelte-check --tsgo`）とnpm/package-lockを採用した。現行のsvelte-check自身がSvelteソースの解析・検査用TypeScriptへの変換にTypeScript 6のJavaScript APIを使うため、6も開発依存に必要。旧アプリへの後方互換性を目的とせず、型検査器は7に統一する。TypeScript 7は`@typescript/native`へのnpm aliasで配置する。最新の[公式README](https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check#typescript-7-supports)とtayoriの設定を参照。

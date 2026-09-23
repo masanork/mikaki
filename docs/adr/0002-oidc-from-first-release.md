@@ -1,17 +1,15 @@
-# ADR 0002: 最初の本番アプリ接続からOIDCを採用する
+# ADR 0002: Use OIDC from the first production RP integration
 
-2026-09-22 / 採用
+**Status:** Accepted, 2026-09-22
 
-## 決定
+## Decision
 
-mikakiをOpenID Provider、tossa・tsudoiをRelying Partyとして、最初の本番接続からAuthorization Code Flow + PKCEを使う。独自のログイン結果伝達方式を先に実装しない。
+Mikaki acts as the OpenID Provider and tossa and tsudoi act as relying parties. Their first production integration uses OIDC Authorization Code with PKCE. Do not first introduce a proprietary login-result transport.
 
-利用者向けの入口はPasskeyによるログインとする。初回の接続許可を認証画面へ統合し、許可済みアプリへの再ログインでは有効なmikakiセッションを使う。Vaultの作成・解錠や利用許可を通常ログインの必須手順にしない。
+The user-facing entry point remains passkey login. Integrate first connection approval into the authentication screen and reuse a valid Mikaki session for previously approved applications. Vault creation, unlock, or access permission is not a required step in normal login.
 
-## 理由と影響
+## Rationale and consequences
 
-共通アカウント化に必要なログイン結果の受け渡しを標準方式に揃える。プロトコルの導入を理由に利用者へIdP設定、追加の認証、毎回の同意画面を要求しない。一方、明示的な再認証要求と、新たな接続・権限の確認は省略しない。
+A standard protocol carries the result of the common-account login. Introducing OIDC does not justify extra IdP setup, authentication, or consent on every visit. Explicit reauthentication requests and new connections or permissions still require the appropriate checks.
 
-P0の認証core検証は先行できるが、本番アプリ統合にはOIDCの実装と検証が必要となる。WebAuthn検証器にOIDC処理を混ぜない。詳細とUX受入条件は[初期OIDCとログインUX](../oidc-login.md)に定める。
-
-G1はOIDC採用判断ではなく、issuer、クライアント設定、署名・token、セッション、ログアウト、依存・実装境界を確定するゲートとする。初期は管理者が登録したアプリに限定し、汎用IdPの全機能や適合性認証の取得をこの決定に含めない。
+P0 core authentication can be verified first, but production RP integration requires an implemented and tested OIDC path. Keep OIDC out of the WebAuthn verifier. The [login UX contract](../oidc-login.md) describes the detailed target. G1 determines issuer, client configuration, signatures and tokens, sessions, logout, dependencies, and implementation boundaries; it does not revisit OIDC adoption. Initially only operator-registered applications are supported. This ADR does not commit to every general-purpose IdP feature or formal certification.

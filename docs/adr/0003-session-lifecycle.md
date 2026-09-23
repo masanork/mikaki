@@ -1,29 +1,21 @@
-# ADR 0003: セッションの保持・失効とログアウト範囲
+# ADR 0003: Session lifetime, revocation, and logout scope
 
-2026-09-22 / 採用
+**Status:** Accepted, 2026-09-22
 
-## 決定
+## Decision
 
-[セッション・ログアウト仕様](../session-lifecycle.md)を初期契約として採用する。
+Adopt the [session and logout contract](../session-lifecycle.md) for the initial integration:
 
-- SSOは本人認証から最大30日。アプリセッションは未操作7日、最長で元のSSO期限までとする。
-- 通常ログアウトはこのブラウザのSSOと派生アプリセッションを対象とする。全ログイン終了とアプリ接続解除は別の管理操作とする。
-- RP-Initiated LogoutとBack-Channel Logoutを初期統合に含める。管理対象のtossa・tsudoiは追加契約として、サーバー間の有効性確認結果を最大5分だけ利用する。
-- 有効性を確認できないまま確認期限を過ぎた場合、保護対象処理を停止する。通信障害時に期限を延長せず、入力を保って再試行できるようにする。
-- credential管理には対象操作に結び付いた本人確認を要求する。管理操作許可は5分以内・一回限りとする。
-- Vaultは未操作15分・最長1時間で施錠する。SSOの保持とは別に扱う。
-- 認可codeは60秒・一回限り、ID Tokenは5分とする。
+- An SSO session lasts at most 30 days after user authentication. An application session has a seven-day idle limit and cannot outlive its parent SSO session.
+- Ordinary logout revokes this browser's SSO session and derived application sessions. “Log out everywhere” and disconnecting an application are separate management actions.
+- Include RP-Initiated Logout and Back-Channel Logout in the initial integration. Managed tossa and tsudoi additionally use a server-to-server status check whose result is usable for at most five minutes.
+- Once a status-check lease expires without confirmation, stop protected operations. Do not extend the deadline during an outage; retain user input so an operation can be retried.
+- Credential management requires user verification bound to the operation. Its authorization lasts at most five minutes and can be used once.
+- Vault unlock has a 15-minute idle limit and a one-hour absolute limit, separate from SSO lifetime.
+- An authorization code is single-use and lasts 60 seconds; an ID Token lasts five minutes.
 
-## 理由と影響
+## Rationale and scope
 
-通常利用での再認証を抑えつつ、通知未達時にも失効反映の上限を持たせる。有効性確認は利用者の追加操作を必要としないが、mikakiへの接続不能が確認期限を超えるとアプリ利用も一時停止する。この可用性との取引を受け入れる。
+The contract reduces repeated authentication while bounding the effect of a missed logout notification. Status checks need no new user action, but a connection outage beyond the lease temporarily prevents protected application operations. The five-minute bound concerns authorization of new protected operations; it cannot recall an in-progress operation or plaintext already disclosed. It does not automatically apply to arbitrary OIDC clients.
 
-最大5分の契約は、新しい保護対象処理の認可に対するものであり、実行中の処理や既に渡した平文の回収を保証しない。任意のOIDCクライアントに同じ契約が自動適用されるわけではない。
-
-## 後続決定
-
-[ADR 0004](0004-runtime-policy-configuration.md)により、本書の数値は変更可能な運用設定の既定値とする。期間変更の既存状態への適用と、新旧配備中の失効上限は同ADRおよび設定契約に従う。
-
-## 残る作業
-
-G1で失効確認API、セッションと通知の永続化、遅延応答・再ログインとの競合制御、cookie属性、通知の再試行・保持期間を具体化する。採用は実装・検証の完了を意味しない。値や保証を変更する場合は仕様と受入試験を更新する。
+[ADR 0004](0004-runtime-policy-configuration.md) makes these numbers configurable defaults. Existing-state behavior and the overlap of old and new leases follow that ADR and the runtime-configuration contract. Implementation still needs durable status and notification state, response-race handling, cookie properties, retry, and retention checks. Acceptance of this ADR did not complete those tasks.

@@ -1,5 +1,7 @@
 # mikaki 実装仕様
 
+> Historical implementation plan. It preserves the original acceptance gates and future design. For implemented and deployed behavior as of 2026-09-23, use [project status](status.md) and the relevant operational guide before treating any “not implemented” statement below as current.
+
 2026-09-22 / Draft 5
 
 開発優先順位は[ADR 0006](adr/0006-compact-portable-webauthn.md)に従う。まず小さなnative/Wasm共通WebAuthnコアを磨き、後続機能のために検証器の責務を広げない。

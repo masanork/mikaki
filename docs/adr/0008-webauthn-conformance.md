@@ -1,46 +1,29 @@
-# ADR 0008: WebAuthnの完成条件を公式Conformance全通過とする
+# ADR 0008: Require full mandatory WebAuthn server conformance
 
-2026-09-22 / 採用。ユーザーの明示的な全通過方針に基づく。
+**Status:** Accepted, 2026-09-22
 
-## 決定
+## Decision
 
-FIDO2 Server Conformanceを一部プロファイルの参考測定に留めず、必要項目を除外しない全通過をWebAuthn実装の完成条件とする。正式認証の申請・結果提出は別途判断する。2026-09-22にTools 1.9.1の必須155件をnative/Wasm双方で全通過した。追加OPTIONAL 14件は対象外。結果・条件は[測定記録](../../local/conformance/results-2026-09-22.md)に残す。
+Passing all mandatory FIDO2 Server Conformance cases, without excluding an inconvenient required case, is the completion condition for the WebAuthn implementation. Formal certification submission is a separate decision. On 2026-09-22, the native and Wasm adapters each passed all 155 required cases in Tools 1.9.1. The 14 additional optional cases were outside that run. The [test record](../../local/conformance/results-2026-09-22.md) states the conditions.
 
-製品の既定値と検証器の能力を分ける。製品はES256・UV required・discoverable・attestation要求noneを維持する。検証器は保存済みceremonyの信頼された設定としてUVのrequired/preferred/discouraged、許可方式、アカウント指定とdiscoverableの区別を受け取る。credential応答の自己申告で設定を変えない。
+Separate product defaults from verifier capability. The product still requests ES256, required user verification, discoverable credentials, and `none` attestation. The verifier accepts trusted, stored ceremony settings for UV required/preferred/discouraged, allowed algorithms, and account-bound versus discoverable assertions. It never changes policy based on a credential response.
 
-アカウント指定の場合、取引に保存されたuser handleとallow-listの両方にcredentialを結び付ける。userHandle省略を許すのはこの場合のみで、存在すれば一致必須。discoverableでは引き続き省略を拒否する。UPは全ポリシーで必須とし、結果には実際のUVフラグを返す。
+For an account-bound assertion, bind the credential to both the stored user handle and allow list. Only there may a missing response `userHandle` be accepted; if present it must match. Discoverable assertions still require it. User presence is always required, and the result reports the actual UV flag.
 
-ES256に加えEd25519、RS256、互換用途のRS1検証をnative/Wasm共通で追加する。署名・公開鍵の形式と方式を対応付け、サーバー設定のallow-listから外れた方式を拒否する。RSAを既定にしない。RS1の許可を一般のトークン署名や鍵生成へ波及させない。
+In addition to ES256, support Ed25519, RS256, and compatibility-only RS1 verification in native and Wasm. Bind key format to algorithm and reject algorithms outside the server allow list. RSA is not a product default, and RS1 permission does not extend to token signing or key generation. Store public keys as algorithm-bearing COSE values. The unpublished local DB could be recreated, so no compatibility parser for its old SEC1 form was added.
 
-格納公開鍵は方式を含むCOSEへ統一する。未運用のローカルDBは再作成し、以前のSEC1保存形式の互換パーサーを追加しない。
+## Implementation and validation
 
-## 実装順
+The implementation sequence was: shared policy/key handling; packed certificate, U2F, TPM, and required platform attestation; MDS signature, chain, revocation and validity checks; then full native/Wasm suite runs with independent regression tests. Certificate and TPM fields must be parsed structurally rather than found by byte search. HTTP retrieval and caching belong to adapters, with time and validation input passed into the core. Test roots must not become product trust anchors.
 
-1. ポリシーと鍵形式、追加署名方式を共通コアで実装する。
-2. 証明書付きpacked/U2F、TPM、必要なplatform attestationを追加する。証明書・TPMの構造を正しく解析し、単なるバイト列検索を検証の代わりにしない。
-3. MDSの署名・信頼パス・失効情報・有効期限を検証する。HTTP取得とキャッシュはアダプターに置き、コアには時刻と検証に必要なデータを明示的に渡す。テスト用ルートを製品の信頼アンカーに混ぜない。
-4. 全Suiteの成功をnative/Wasmで確認し、不具合を独立した回帰試験へ戻す。前処理失敗による未到達や任意項目を結果に残す。
+The core now supports `none`, packed self/full, U2F, and TPM 2.0 in the common verification path. It checks certificate chains, time, Basic Constraints, key usage, critical extensions, AAGUID, TPM public key, extraData, certified name, and DER-form TPM BMPString notices. Explicitly trusted X.509 v1 roots are supported and distinguished from intermediates. It rejects unsupported name and policy constraints rather than claiming a general Web PKI implementation.
 
-iwatoの検証と試験資産を参考にするが、native限定RSAやコア内部の時計・ネットワーク依存は引き継がない。既存実装を移植しただけで正しいと判断しない。
+MDS 3.1.1 processing verifies an ES256 BLOB against configured root SPKI, signed CRLs, required `iat`, BLOB number, optional `nextUpdate`, and status reports. The core has no network or durable state and contains no test root. Production scheduling, durable snapshot cache, and rollback protection for BLOB numbers remain operational work. Independent public fixtures produced with Python cryptography/OpenSSL exercise success and failure in native and Wasm CI. Optional formats and formal certification are not claimed.
 
-## 依存と検証
+## Dependency and audit boundary
 
-2026-09-22にregistryで確認したed25519-dalek 3.0.0、sha1 0.11.0、rsa 0.10.0-rc.18を固定する。RSAは正式版ではなくRCであり、現在のRustCrypto digest/signature/crypto-bigint世代と組み合わせて評価する。公開前の安定版・保守状況確認は残る。乱数・秘密鍵演算をWebAuthnの検証経路へ導入しない。
+The 2026-09-22 selected versions were `ed25519-dalek 3.0.0`, `sha1 0.11.0`, and `rsa 0.10.0-rc.18`. The RSA release candidate and target maintenance status require review before public release. The verifier uses RSA public-key verification only; it does not generate, load, store, or operate on RSA private keys.
 
-OpenSSL（Node crypto）で独立生成した公開鍵・署名ベクトルを保存し、正常署名と改変拒否をnative/Wasmで確認する。秘密鍵はfixtureに保存しない。
+`cargo audit` reported [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html), a private-key timing advisory with no fixed version recorded at the time. The narrow verification-only exception is documented in `.cargo/audit.toml`; it is not a clean audit. Introducing RSA signing, decryption, or key generation requires re-evaluating that exception, generally deferring private-key operations until the advisory is resolved. Other advisories are not excluded.
 
-### RSA監査指摘の適用範囲
-
-`cargo audit`はRUSTSEC-2023-0071（Marvin、秘密鍵演算からのタイミング漏洩）を報告する。2026-09-23に確認したRustSecの記録では、現行の`rsa 0.10.0-rc.18`を含め修正版なし。今回のコードは`RsaPublicKey`と`pkcs1v15::VerifyingKey`だけを使い、RSA秘密鍵を生成・読込・保存・使用しないため、漏洩対象の秘密鍵操作はない。この用途限定の判断を`.cargo/audit.toml`に記録する。監査が無指摘だったとは扱わない。RustSecの記録とRustCryptoの対応状況を定期的に再確認する。
-
-RSAの署名・復号・鍵生成を導入する場合は、この除外判断を必ず再評価し、原則としてadvisory解消まで秘密鍵操作を採用しない。他のadvisoryは除外しない。参照: [RustSec RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html)、[RustCrypto RSA issue #626](https://github.com/RustCrypto/RSA/issues/626)
-
-## 完了した実装と範囲
-
-none、packed self/full、U2F、TPM 2.0を同じRust検証経路に実装した。証明書チェーン、時刻、Basic Constraints、key usage、critical extension、AAGUID、TPMの公開鍵・extraData・certified nameを検証する。TPMのBMPString通知文もDERとして解析する。信頼アンカーは中間CAと区別し、明示的に信頼したX.509 v1 rootにも対応する。
-
-MDS 3.1.1はES256 BLOBと設定されたroot SPKI、署名付きCRL、必須`iat`、BLOB番号、任意`nextUpdate`、statusReportsを検証・保持する。HTTPと試験データの保存はlocal/conformanceに置く。コアはネットワークや永続状態を持たず、test rootも含まない。製品向けの定期更新・永続キャッシュ・BLOB番号のロールバック防止は今後の運用統合で実装する。
-
-証明書処理はx509-cert 0.3.0、der 0.8.2、P-384署名検証はp384 0.14.0を用いる。フルWeb PKIの汎用化はせず、未対応の名前・ポリシー制約を拒否する。Python cryptography/OpenSSLによる独立した公開fixtureで、登録とMDSの正常・異常系をnative/Wasm共通CIへ追加した。追加OPTIONAL方式や正式認証を達成済みとはしない。
-
-仕様の基準は[WebAuthn Level 3 Recommendation (2026-08-25)](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/)と[FIDO MDS 3.1.1 Proposed Standard](https://fidoalliance.org/specs/mds/fido-metadata-service-v3.1.1-ps-20260105.html)。
+The design follows the [WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/) and [FIDO MDS 3.1.1 Proposed Standard](https://fidoalliance.org/specs/mds/fido-metadata-service-v3.1.1-ps-20260105.html).

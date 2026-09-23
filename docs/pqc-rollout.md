@@ -1,33 +1,36 @@
-# ML-KEM・ML-DSAの段階導入
+# Phased adoption of ML-KEM and ML-DSA
 
-2026-09-23時点。PQCの製品機能はまだ有効化していません。[独立probe](../design/probes/pqc/README.md)でML-KEM-768とML-DSA-65のNative/Node Wasm/Chromium往復、NIST ACVP sample既知解、nobleとの相互運用、Vault data keyのHPKE鍵包みと版取り違え拒否を確認しました。実機到着時のFIDO登録・assertion採取画面と署名検証CLIも用意しました。現在のVault形式・Passkey登録・OIDC署名は変更していません。
+**Status, 2026-09-23:** No post-quantum algorithm is enabled as a product feature. The [isolated probes](../design/probes/pqc/README.md) exercised ML-KEM-768 and ML-DSA-65 across native, Node Wasm, and Chromium; NIST ACVP sample vectors; interoperability with noble; and an HPKE-wrapped Vault data key with rejection of version mismatches. A FIDO registration/assertion capture page and verification CLI are ready for testing when hardware is available. Current Vault format, passkey enrollment, and OIDC signing have not changed.
 
-| 対象 | 現在 | 次の実装単位 | 有効化の条件 |
+| Boundary | Current product | Next unit of work | Activation gate |
 | --- | --- | --- | --- |
-| Vault | 本人専用のPRF→HKDF→AES-GCM鍵包み。system recipientなし | 鍵directory・秘密鍵保管・Grantを設計し、現行HPKE草案との互換性とブラウザー/Workerでの実行を確認する | 公開鍵の真正性・継続性、標準の鍵配送/AEAD構成、復旧・再包み、独立ベクトル、ブラウザーWasm性能、失敗時の旧版維持 |
-| FIDOドングル | 製品登録/検証はES256（COSE `-7`） | 対象ドングルとブラウザーの対応を実測し、ML-DSA-65（COSE `-49`）のCOSE鍵・登録・assertion検証を隔離試験へ追加 | 対応機器で登録と再認証が成功し、改変/取り違えを拒否。既存ES256 credentialとの併存と新旧の登録方針を確認 |
-| OIDC/JOSE | 本番client認証はES256。ID TokenはES256/RS256 | RFC 9964のML-DSA JWK/JWS相互運用を独立probeで検討 | RPライブラリ、JWKS/key rotation、HTTP上限、conformance profile、署名鍵保管を確認後にclient単位で明示有効化 |
+| Vault | Owner-only PRF → HKDF → AES-GCM key wrapping, no active system recipient | Complete recipient directory, secret storage, grants, and browser/Worker envelope interoperability | Public-key authenticity and continuity, standard KEM/AEAD composition, rewrapping and recovery, independent vectors, browser performance, and old-version behavior on failure |
+| FIDO authenticator | Product registration/verification uses ES256 (COSE `-7`) | Measure support in actual authenticator, browser, and OS; add isolated ML-DSA-65 (COSE `-49`) registration/assertion verification | Successful enrollment and reauthentication on supported hardware, tamper and mix-up rejection, coexistence with ES256 credentials, and a defined enrollment policy |
+| OIDC/JOSE | Production client authentication uses ES256; ID Tokens use ES256/RS256 | Probe RFC 9964 ML-DSA JWK/JWS interoperability | Check RP libraries, JWKS and rotation, HTTP limits, conformance profile, and signing-key custody before explicit per-client enablement |
 
-ML-KEMは共有秘密を成立させる鍵配送であり、Passkey署名方式ではありません。ML-DSAは署名方式であり、Vaultの長期機密性を単独では改善しません。現在のVault本文は既にAES-256-GCMで暗号化され、本人用data keyはPasskey PRF由来の鍵で包まれています。ML-KEMが直接役立つのは、将来の別端末またはsystem recipientへdata keyを配送する境界です。[Vault共有設計](vault-claim-sharing.md)のGrantと公開鍵真正性が先に必要です。独自の「ML-KEM共有秘密をそのままAES鍵にする」形式は採用しません。
+ML-KEM establishes a shared secret for key delivery; it is not a passkey signature algorithm. ML-DSA signs but does not by itself improve the Vault's long-term confidentiality. Vault bodies already use AES-256-GCM, and owner data keys are wrapped under passkey PRF-derived keys. ML-KEM is relevant to delivery of a data key to another device or system recipient. The [grant and disclosure design](vault-claim-sharing.md) and authentic recipient public keys must come first. Do not invent a format that directly treats an ML-KEM shared secret as an AES key.
 
-## VaultをFIDO実機より先に進める順序
+## Sequence before product use
 
-1. UserInfo専用recipientの[鍵管理契約](vault-recipient-key-lifecycle.md)を実装する。公開鍵・鍵ID・発行/停止状態はD1のdirectory、秘密鍵は専用claim WorkerのSecrets Store bindingに分ける。D1のschemaと状態制約は実装済み。binding照合と管理操作は未実装。
-2. 本人が属性を解錠したときだけ、そのrevisionのdata keyに追加のrecipient envelopeを作る。origin・属性・revision・service・鍵IDをHPKEのinfo/AADに結び付け、現行owner envelopeは残す。envelopeとGrantを同じ版で公開し、鍵配送に失敗した更新ではsystem共有を停止する。
-3. 失効、鍵切替、属性更新、誤った鍵ID・revision・属性への差し替え、鍵管理障害を含むWorker/ブラウザー試験を通してからUserInfoに接続する。本人専用Vaultを利用するだけならPQC鍵やFIDOのML-DSA対応を要求しない。
+1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds private seeds. The local D1 schema and constraints, claim-Worker verification route, staging/emergency-disable CLI, and audit records exist. OP service binding, activation, and rotation remain.
+2. Only when the owner unlocks an attribute, create an additional recipient envelope for that revision's data key. Bind origin, attribute, revision, service, and key ID in HPKE info/AAD. Keep the owner envelope. Publish the envelope and grant in the same version; disable system sharing for an update whose key delivery fails.
+3. Test revocation, rotation, attribute updates, wrong key/revision/attribute substitution, and key-service failures across Worker and browser before connecting UserInfo. Owner-only Vault use must not require a PQC key or ML-DSA-capable FIDO device.
 
-隔離HPKE probeはこの2番の暗号境界を確かめるものです。鍵directory、秘密鍵保管、Grant、ブラウザー実行はまだ製品に実装していません。
+The isolated HPKE probe validates part of step 2's cryptographic boundary. Local key-directory staging and verification components exist, but Secrets Store provisioning, activation, grants, and browser sharing are not connected to the product.
 
-FIDOではML-DSAのCOSE番号が割り当てられていても、手元のドングル・ブラウザー・OSで利用できるとは限りません。現在の認証器をサーバー側でPQC credentialへ変換することもできません。対象機器で新規credentialを作り、既存credentialと並行運用してから移行します。ML-DSAで検証できるようになるまで`pubKeyCredParams`へ`-49`を出さず、未対応時の暗黙のダウングレードを「PQC対応」と表示しません。
+An assigned COSE number does not establish support in an available FIDO device, browser, or OS. An existing credential cannot be converted to PQC on the server. Enroll a new credential on verified hardware and run it alongside ES256 before migration. Do not advertise `-49` in `pubKeyCredParams` until verification works, or label an implicit fallback as PQC support.
 
-Cloudflare WorkersのWebCrypto対応表には、確認時点でML-KEM/ML-DSAの行がありません。このためWorkersの組込みWebCryptoで使えると仮定せず、Rust/Wasmの隔離検証から始めます。採用候補のRustCrypto `ml-kem` 0.3.2と`ml-dsa` 0.1.1、比較に使うnobleは独立監査未実施と明記されています。NIST sampleと独立実装の照合は通ったものの、製品への組込み前に全パラメータの既知解、鍵・署名のサイズ境界、依存監査、実際のWorker/ブラウザーでの資源計測を追加します。VaultのHPKE probeはdraft-04実装で、[現行draft-05の公式ベクトル](../design/probes/pqc/hpke-pq-draft05-vector.json)の一構成（ML-KEM-768/HKDF-SHA256/AES-128-GCM）の復号に成功しました。AES-256-GCMの製品envelope形式、ブラウザー/Worker相互運用は未確認です。key directory、秘密鍵保管、Grant、再包み、旧版との併存が完成するまで製品に接続しません。導入後も実装済み・受理可能・新規発行を用途ごとに分け、D1の運用ポリシーで切替可能にします。
+At the time of the probe, Cloudflare Workers' WebCrypto compatibility table did not list ML-KEM or ML-DSA. Begin with isolated Rust/Wasm validation rather than assuming built-in support. The candidate RustCrypto `ml-kem 0.3.2` and `ml-dsa 0.1.1`, and the noble comparison implementation, state that they lack independent audit. Before product integration, extend known-answer coverage across parameters, review key/signature size bounds and dependencies, and measure resources in the actual Worker and browser.
 
-## 根拠
+The Vault HPKE probe implements draft-04 and decrypted one official [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) for ML-KEM-768/HKDF-SHA256/AES-128-GCM. The product AES-256-GCM envelope format and browser/Worker interoperability remain unverified. Keep product issuance separate from “implemented” and “accepted for reading,” and make each explicit in operational policy if adopted.
 
-- [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) と [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final)：ML-KEMとML-DSAの規格。
-- [RFC 9964](https://www.rfc-editor.org/info/rfc9964/)：ML-DSAのJOSE/COSE識別子と鍵形式。
-- [FIDO Server Requirements 2.3 Review Draft](https://fidoalliance.org/specs/fidoserver/fido-server-v2.3-rd-20260226.html)：COSE `-49`をML-DSA-65として記載。ただしReview Draftであり、実機対応の証拠ではない。
-- [WebAuthn Level 3](https://www.w3.org/TR/webauthn/)：RPが候補アルゴリズムを提示し、client/認証器が作成可能な方式を選ぶ。
-- [Cloudflare Workers WebCrypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/) と [RustCrypto ML-KEM](https://docs.rs/ml-kem/0.3.2/ml_kem/)・[ML-DSA](https://docs.rs/ml-dsa/0.1.1/ml_dsa/)：実行環境と候補実装の制約。
-- [NIST ACVP sample](https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files) と [noble-post-quantum](https://github.com/paulmillr/noble-post-quantum)：既知解と独立実装との照合。
-- [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05)：ML-KEMをHPKEに使う現行の作業草案。製品形式は未確定。
+## References
+
+- [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) and [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final)
+- [RFC 9964: ML-DSA in JOSE and COSE](https://www.rfc-editor.org/info/rfc9964/)
+- [FIDO Server Requirements 2.3 Review Draft](https://fidoalliance.org/specs/fidoserver/fido-server-v2.3-rd-20260226.html) (review draft, not hardware evidence)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn/)
+- [Cloudflare Workers WebCrypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)
+- [RustCrypto ML-KEM](https://docs.rs/ml-kem/0.3.2/ml_kem/) and [ML-DSA](https://docs.rs/ml-dsa/0.1.1/ml_dsa/)
+- [NIST ACVP samples](https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files) and [noble-post-quantum](https://github.com/paulmillr/noble-post-quantum)
+- [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05) (working draft; product format undecided)

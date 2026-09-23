@@ -1,15 +1,13 @@
-# ADR 0004: 運用パラメーターを設定へ分離する
+# ADR 0004: Separate operational values into configuration
 
-2026-09-22 / 採用
+**Status:** Accepted, 2026-09-22
 
-セッション関連の期間・回数を型付き設定へ集約する。設計書の採用済み値を既定値として保持し、TOML設定の変更と配備で調整できるようにする。値ごとのコード変更や、アプリ間での同じ定数の複製を避ける。
+Collect session-related durations and counts in typed configuration. Retain the accepted design values as defaults and allow deployment-specific TOML changes without editing code or duplicating constants between applications.
 
-有効な入力元は配置ごとに一つとし、秘密値は別管理とする。不正値・未知キー・値同士の不整合は有効化前に拒否する。一回性、UV、失効後の拒否などの安全性要件は設定で無効化できない。
+Each deployment has one active input source; secrets are managed separately. Reject invalid values, unknown keys, and inconsistent combinations before activation. Configuration cannot disable safety properties such as single use, user verification, or denial after revocation.
 
-通常変更は新規発行から適用し、既存セッションの期限を暗黙に延長・短縮しない。失効確認の新規応答には新しい設定を使い、旧応答の期限が過ぎるまで旧新の長い方を失効反映の上限とする。設定版と変更履歴を保持し、ロールバックで失効済み状態を復活させない。
+Apply ordinary changes to newly issued state. Do not silently lengthen or shorten existing sessions. New status-check responses use the new configuration; while old leases remain valid, the larger of the old and new limits bounds revocation propagation. Retain policy versions and change history, and never let a rollback restore revoked state.
 
-[ADR 0003](0003-session-lifecycle.md)の数値は初期設定値と読み替える。失効反映の上限はlease_ttlの既定値5分に対応し、設定変更時の適用契約は[運用パラメーターの設定契約](../runtime-configuration.md)に従う。ID・署名方式等の未採用案は、この決定では確定しない。
+The values in [ADR 0003](0003-session-lifecycle.md) are initial configuration defaults, including a five-minute default status-check lease. The [runtime contract](../runtime-configuration.md) describes changes to issued state. This decision does not resolve unrelated proposals about IDs or signature algorithms.
 
-現時点の成果物は設定見本と仕様であり、読み込み・検証・配備機構の実装は後続作業である。
-
-有効版の保管先と反映方法は[ADR 0011](0011-d1-runtime-policy.md)でD1管理へ更新した。本ADRの型付き設定、版管理、既存状態への適用契約は維持する。
+At the time of this ADR, the deliverables were the configuration example and contract, with loading and activation left for later implementation. [ADR 0011](0011-d1-runtime-policy.md) subsequently chose D1 for the active version. The typed validation, versioning, and existing-state rules remain in force.

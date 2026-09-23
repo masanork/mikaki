@@ -1,31 +1,29 @@
-# ADR 0001: mikakiの共通アカウントを通常ログインの主体にする
+# ADR 0001: Use a common Mikaki account for normal login
 
-2026-09-22 / 採用
+**Status:** Accepted, 2026-09-22
 
-## 背景
+## Context
 
-従来案はP0でアプリ別認証を検証し、P1のVault段階で共通アカウントへ接続する構成だった。通常ログインとVaultのアカウント構成を先に揃え、アプリ別認証からの移行を本番の前提にしない。
+An earlier plan would have verified authentication separately for each application in P0 and introduced the common account with the vault in P1. Normal login and the later vault should instead share an account model from the outset, without making migration from app-specific production credentials a prerequisite.
 
-## 決定
+## Decision
 
-- インスタンスごとにmikakiの共通アカウントを持ち、tossa・tsudoiの通常ログインに使う。全インスタンスを単一運営者に集約する意味ではない。
-- credentialは共通AccountIdに所属し、認証・解錠originとRP IDをインスタンスごとに一つに固定する。
-- アプリ内SubjectIdとAccountIdを区別する。対応付けには本人の認証とアプリ接続の許可を必要とする。
-- mikakiが共通アカウントの登録許可とcredential管理を担当する。一般の連携アプリにcredential管理権限を与えない。
-- 各アプリはアプリセッション、参加権限、組織・役割を管理する。
-- Vaultは必要時に作成する。通常ログインとPRF解錠、アプリへのログイン許可とVaultの読み書き許可を分離する。
+- Each Mikaki instance has common accounts used for normal login to tossa and tsudoi. This does not mean all instances must have one operator.
+- Credentials belong to a common `AccountId`. Each instance fixes one RP ID and authentication/unlock origin.
+- An application's `SubjectId` is distinct from `AccountId`. Linking them requires the person's authentication and permission to connect the application.
+- Mikaki controls common-account enrollment and credential management. A general connected application cannot manage credentials.
+- Each application controls its sessions, participation rules, organizations, and roles.
+- Create a vault when it is needed. Keep normal login separate from PRF unlock, and application-login consent separate from vault read/write permission.
 
-## 影響と未決事項
+## Consequences
 
-P0からAccountIdを認証主体とする。共通ログインの本番アプリ統合はG0/G1を満たしてから行い、P1まで連携方式の判断を先送りしない。
+`AccountId` is the authentication subject from P0. Production common login is integrated after the G0/G1 gates; the connection protocol is not deferred until P1. OIDC was undecided at the time of this ADR and was later selected by [ADR 0002](0002-oidc-from-first-release.md). The production domain, application registration, subject mapping, Mikaki sessions, logout/disconnection, management entry point, and OIDC contract still require implementation and verification. This decision alone is not a deployment claim.
 
-この決定時点ではOIDC採用を保留した。その後[ADR 0002](0002-oidc-from-first-release.md)で初期採用を確定した。実ドメイン、アプリ登録、subjectの発行・対応表、mikakiのセッション、ログアウト・接続解除、管理入口の分離とOIDCの実装契約をG1で詰める。実装やデプロイの完了を意味しない。
+## Acceptance criteria
 
-## 受入条件
-
-- 同じ共通アカウントで両アプリにログインでき、各アプリの参加権限は独立して判定される。
-- Vault未作成・未解錠・PRF非対応でも、通常ログインを利用できる。
-- アプリへのログインだけではVaultを読み書きできない。
-- アプリAのログイン結果をアプリB向けとして受け入れない。
-- 連携アプリから共通credentialの追加・削除を実行できない。
-- アプリ接続を解除しても、共通アカウント・他アプリ・Vaultを連動削除しない。
+- The same common account can log into both applications while each evaluates its own participation rules.
+- Normal login works without a vault, an unlocked vault, or PRF support.
+- Application login alone grants no vault read/write access.
+- A login result for application A is rejected by application B.
+- A connected application cannot add or remove common credentials.
+- Disconnecting an application does not delete the common account, another application's state, or the vault.

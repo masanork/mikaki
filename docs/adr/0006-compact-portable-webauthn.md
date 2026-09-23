@@ -1,28 +1,24 @@
-# ADR 0006: コンパクトなWebAuthnコアを軸にmikakiを発展させる
+# ADR 0006: Build Mikaki around a compact, portable WebAuthn core
 
-2026-09-22 / 採用。ユーザーによる開発継続・優先順位の決定を記録する。
+**Status:** Accepted, 2026-09-22
 
-## 背景と代替案
+## Context and alternatives
 
-monbanまたはiwatoの発展形に統合する案と、mikakiを継続する案を再検討した。既存実装の対応範囲・検証資産には価値がある。一方、mikakiでは小さい検証境界、原子的な状態遷移、失効、ブラウザー内の秘密管理を中心に設計してきた。この土台を磨くことを優先する。
+The project considered extending monban or iwato instead of continuing Mikaki. Their coverage and test assets are useful, while Mikaki has been designed around a small verification boundary, atomic state transitions, revocation, and browser-side secret handling. The decision is to develop that foundation.
 
-## 決定
+## Decision
 
-- コンパクトで洗練された実装の提供を最優先とし、mikakiの開発を継続する。Vaultなどの独自機能は、その土台の上で段階的に提供する。
-- WebAuthnは同じRust検証コアをnativeとWasmで使用する。DB・HTTP・OIDC・アカウント・Vaultはコアへ入れない。製品に必要な範囲から磨き、汎用フレームワークや追加crateを先行して作らない。
-- `none`・ES256・UV必須の初期プロファイルを維持する。暗号プリミティブは既存ライブラリを使い、方式の追加を品質向上の代用にしない。将来の方式追加は既存のcrypto agility方針に従う。
-- 検証済みの型を外部から偽造できない境界を維持する。チャレンジの消費とcredential更新の原子性はauth/store層の責務であり、署名検証成功だけでログインを確定しない。
-- monban・iwatoの知見や試験は選択的に取り込む。既存構造への移行や互換性維持を前提にしない。
-- webauthn-rsに対し、小ささ、APIの明瞭さ、Wasm/nativeの一貫性で選ぶ理由のある実装を目指す。優位性は未実証であり、機能と安全要件を揃えた比較を行うまで実績として宣伝しない。
+- Continue Mikaki and prioritize a compact, understandable implementation. Add the vault and other distinct capabilities in stages.
+- Use the same Rust WebAuthn verifier in native and Wasm adapters. Keep DB, HTTP, OIDC, accounts, and vault logic outside it. Avoid a general framework or new crates before a concrete need.
+- Keep the initial `none` attestation request, ES256 product default, and required user verification. Use maintained cryptographic libraries. Additional algorithms must follow the crypto-agility policy and are not a substitute for quality.
+- Preserve an API boundary that prevents external code from fabricating verified states. Challenge consumption and credential updates belong to auth/store; successful signature verification alone is not a completed login.
+- Reuse selected lessons and test assets from monban and iwato without inheriting their structure or compatibility obligations.
+- Aim to make the small API, native/Wasm consistency, and size meaningful reasons to select Mikaki over a broader library. Do not advertise superiority before comparing equivalent features and security conditions.
 
-## 品質と不利益
+## Trade-offs and verification
 
-小ささはソース行数だけで判断しない。公開API、製品依存、Wasmサイズ、検証性能とともに、入力制限・検証漏れ・状態遷移の理解しやすさを見る。テスト専用依存と製品依存、検証器単体とOIDCを含むバンドルは区別して測る。
+Assess size using public API, production dependencies, Wasm artifact, performance, input limits, verification coverage, and state-transition clarity, not source-line count alone. Separate test dependencies from production dependencies and the verifier from an OIDC bundle.
 
-独立実装には仕様追随、相互運用、脆弱性対応の保守責任がある。共通の正常系・異常系をnative/Wasmで実行し、独立ベクトル、ファジング、実認証器・ブラウザー試験を積み上げる。同じ自作fixtureが両環境で通るだけでは仕様適合の証明にならない。
+An independent verifier carries ongoing specification, interoperability, and vulnerability-maintenance costs. Run common success and failure cases in native and Wasm, plus independent vectors, fuzzing, and real-device/browser checks. One home-grown fixture passing in both environments is not proof of compliance. Limited coverage makes Mikaki unsuitable as a replacement for broader libraries in some uses.
 
-対応範囲を限定するため、既存ライブラリの代替にならない用途がある。その制約を明示する。ライブラリの機能競争を理由に、実アプリ連携やVaultの検証を無期限に遅らせない。
-
-実装順と検証状況は[WebAuthnコア](../../crates/webauthn/README.md)に記録する。既存ADRのOIDC・セッション・招待契約は変更しない。
-
-後続の[ADR 0007](0007-packed-self-attestation.md)で、要求のnone既定を維持しつつ、受入検証をES256 packed selfまで拡張した。
+The [WebAuthn crate guide](../../crates/webauthn/README.md) tracks implementation and verification. This ADR does not change prior OIDC, session, or invitation decisions. [ADR 0007](0007-packed-self-attestation.md) later extends acceptance to ES256 packed self-attestation while retaining the `none` request default.

@@ -1,5 +1,7 @@
 # 初期OIDCの実装基準と受入計画
 
+> Historical readiness plan. Several stages below have since been implemented or locally tested. Use [project status](status.md), [OIDC conformance results](oidc-core-conformance.md), and [deployment status](cloudflare-deployment.md) for the current evidence. Unresolved gates remain useful planning input.
+
 2026-09-22 / 設計統合版。本文には当時の実装経過を含む。現在の配備状態は[Cloudflare deployment](cloudflare-deployment.md)、RP実装手順は[RP向け接続手順](rp-integration.md)を参照。
 
 これまでの初期OIDC設計を実装へ進めるための基準としてまとめる。過去文書の旧候補のうち以下で絞り込んだ事項を示すが、採用済みADRの契約を上書きしない。担当範囲・決定状態・ADR未記録の項目は[文書案内](README.md)を参照する。この文書の段階表は公開条件を示し、個々の段階が完了したという記録ではない。Vault・連合・MCPの後続ゲートは本書の対象外。
