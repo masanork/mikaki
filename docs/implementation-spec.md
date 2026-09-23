@@ -349,12 +349,12 @@ endpoint/caller/account/peerごとのrate limitと総容量、最大再送回数
 | --- | --- | --- |
 | G0 | 実RP/origin、対象ブラウザ/認証器、パーサー/暗号依存、D1の条件付き確定SQLと契約試験 | P0の本番接続。Native検証器と試験は先行可 |
 | G1 | 共通origin/RPの実値、アプリ登録・許可、subject対応、ログイン結果伝達、セッション/接続解除のAPI・永続化・競合制御、cookie属性、運用設定の読み込み・検証・配備、管理入口の分離、OIDCのissuer・署名/鍵更新・token/client認証・依存/実装境界 | P0の本番アプリ接続。Vault実装まで先送りしない |
-| G2 | VRK→CK→DEKの鍵階層、PRF/AEAD/HPKE suite、AADとenvelope encoding、鍵世代更新、新端末引渡し、対象容量と保持。P1で実装する受信者はowner credentialのみ | Vault形式の確定と永続データ作成 |
+| G2 | VRK→CK→DEKの鍵階層、PRF/AEAD suite、AADとowner envelope encoding、鍵世代更新、新端末引渡し、対象容量と保持。P1で実装する受信者はowner credentialのみ | Vault形式の確定と永続データ作成 |
 | G3 | OpenMLS採用判定、DID組合せ、binding/輸送認証形式、MLS tree/Commit順序・復帰、制限値 | 製品用連合。S1技術検証は先行可 |
 | G4 | MCP接続認証、対象の選択UI、解錠期限、監査保持、モデルへの開示表示 | MCP公開 |
-| G5 | 共有相手/system principalの暗号化公開鍵登録・継続性検証、recipient単位の鍵包み・失効/rotation、purpose別system key service、署名付きrevision | Lockerの共有とシステム復号 |
+| G5 | 共有単位（collection/blob）、共有相手/system principalの暗号化公開鍵登録・差し替え防止/継続性検証、Grant/AuthZENとKeyEnvelopeの原子的な公開・失効、recipient単位の鍵epoch更新、purpose別system key serviceと監査、必須ウイルス検査の隔離/判定/再検査フロー、署名付きrevisionとrollback保証範囲、共有用HPKE suite | Lockerの共有とシステム復号 |
 
-未決の項目を「実装時に適当に決める」状態で残さず、各ゲートでADRと試験を揃える。利用者の配備ドメイン・接続先・AI提供先などの選択は実装者が推測で固定しない。
+未決の項目を「実装時に適当に決める」状態で残さず、各ゲートでADRと試験を揃える。G2を通過する前に永続Vaultデータを書き始めない。G5を通過する前に共有相手やsystem principalへの鍵包み配布を有効にしない。利用者の配備ドメイン・接続先・AI提供先などの選択は実装者が推測で固定しない。
 
 G1の設計上の選択、HTTP・ストア・運用制限・依存候補・実装順は[初期OIDC実装基準](oidc-implementation-readiness.md)に集約済み。表のG1を通過するには、残る配備実値、ライブラリのNative/Wasm検証、本番SQLの実D1試験、両アプリ相互運用と公開前試験を完了する。設計模型のローカル試験合格を本番接続許可とみなさない。
 
