@@ -61,6 +61,18 @@ struct AuthorizationCodeContextRow {
     public_jwk: String,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct SigningPublicKeyRow {
+    public_jwk: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct JwksResponse {
+    keys: Vec<serde_json::Value>,
+}
+
 /// Current authorization and session facts needed to create the signed token
 /// response. The final D1 exchange must recheck every fact before consuming the
 /// code because this read is only a preflight for signing.
@@ -891,6 +903,35 @@ async fn token_route(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn jwks_route(
+    _request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let db = context.env.d1("DB")?;
+    let rows = db
+        .prepare(
+            "SELECT public_jwk FROM signing_key \
+             WHERE active=1 AND algorithm='ES256' ORDER BY kid",
+        )
+        .all()
+        .await?
+        .results::<SigningPublicKeyRow>()?;
+    let mut keys = Vec::with_capacity(rows.len());
+    for row in rows {
+        let jwk = sakimori_oidc::P256TokenSigner::canonical_public_jwk(&row.public_jwk)
+            .ok_or_else(|| worker::Error::RustError("invalid signing key configuration".into()))?;
+        keys.push(
+            serde_json::from_str(&jwk).map_err(|_| {
+                worker::Error::RustError("invalid signing key configuration".into())
+            })?,
+        );
+    }
+    worker::Response::builder()
+        .with_header("Cache-Control", "public, max-age=60")?
+        .from_json(&JwksResponse { keys })
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 #[worker::event(fetch)]
 pub async fn main(
@@ -900,6 +941,7 @@ pub async fn main(
 ) -> worker::Result<worker::Response> {
     worker::Router::with_data(())
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
+        .get_async("/jwks", jwks_route)
         .post_async("/token", token_route)
         .run(req, env)
         .await

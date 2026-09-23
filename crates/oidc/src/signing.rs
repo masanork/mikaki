@@ -28,7 +28,7 @@ struct PrivateJwk {
     ext: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PublicJwk {
     kty: String,
@@ -72,6 +72,46 @@ pub struct InvalidSigningKey;
 pub struct InvalidIdTokenClaims;
 
 impl P256TokenSigner {
+    /// Validate and return a minimal public ES256 JWK suitable for a JWKS.
+    /// Unknown/private parameters are rejected rather than reflected.
+    pub fn canonical_public_jwk(input: &str) -> Option<String> {
+        if input.len() > 4096 {
+            return None;
+        }
+        let jwk: PublicJwk = serde_json::from_str(input).ok()?;
+        if jwk.kty != "EC"
+            || jwk.crv != "P-256"
+            || jwk.kid.is_empty()
+            || jwk.kid.len() > 128
+            || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
+            || jwk.alg.as_deref().is_some_and(|alg| alg != "ES256")
+            || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
+            || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["verify"])
+            || jwk.ext == Some(false)
+        {
+            return None;
+        }
+        let x = decode_fixed::<32>(&jwk.x).ok()?;
+        let y = decode_fixed::<32>(&jwk.y).ok()?;
+        let mut point = [0u8; 65];
+        point[0] = 4;
+        point[1..33].copy_from_slice(&x);
+        point[33..].copy_from_slice(&y);
+        p256::ecdsa::VerifyingKey::from_sec1_bytes(&point).ok()?;
+        serde_json::to_string(&PublicJwk {
+            kty: jwk.kty,
+            crv: jwk.crv,
+            kid: jwk.kid,
+            x: jwk.x,
+            y: jwk.y,
+            alg: Some("ES256".into()),
+            use_: Some("sig".into()),
+            key_ops: None,
+            ext: None,
+        })
+        .ok()
+    }
+
     pub fn from_private_jwk(input: &str) -> Result<Self, InvalidSigningKey> {
         if input.len() > 8192 {
             return Err(InvalidSigningKey);
