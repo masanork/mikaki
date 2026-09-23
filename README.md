@@ -10,10 +10,10 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 ## CIメトリクス
 
-規模はRust実装・JS/TS実装・テスト・実行時依存を積み上げ、native Rustのcoverageも記録します。
+規模グラフはRust実装・JS/TS実装・テストを積み上げ、native Rustのcoverageも記録します。実行時依存のソース行数はグラフから外し、一覧に分けています。
 [計測範囲と方法](metrics/README.md) · [直接依存一覧](metrics/dependency-inventory.md)
 
-![実装・テスト・実行時依存ソース行数の推移](metrics/code-size.svg)
+![実装・テストのソース行数の推移](metrics/code-size.svg)
 
 ![native Rust coverageの推移](metrics/coverage.svg)
 
@@ -114,17 +114,19 @@ PRFは付加的な将来機能ではなく、初版の検証範囲に含める�
 
 ## crateと依存の境界
 
-認証基盤は次の3 crateを基本とする。
+Rustの認証coreと、その利用先ごとのadapterを分離する。
 
 | crate | 責任 |
 | --- | --- |
 | `sakimori-webauthn` | WebAuthnの解析、COSE鍵・署名・origin・RP ID・UP/UVなどの検証 |
 | `sakimori-auth` | 登録・認証手順、AccountIdとの結び付け、credential管理、永続化の契約 |
-| `sakimori-worker` | Service Binding受付、設定検証、D1実装、時刻・乱数の供給 |
+| `sakimori-oidc` | OIDCの純粋core。検証済み認可要求、PKCE、認可codeの型と生成規則 |
+| `sakimori-worker` | Cloudflare Worker入口、Service Binding、D1、時刻・乱数・非同期署名adapter |
+| `sakimori-browser-wasm` | ブラウザ/ローカルharness向けWebAuthn検証のWasm境界 |
 
-依存方向は `worker → auth → webauthn` とする。ブラウザ側のPRF・鍵保護処理は、別の小さなJS/TSモジュールとして扱う。ブラウザ側の実装言語までRustに統一することは要求しない。
+依存方向は `worker → oidc → auth → webauthn` とする。`browser-wasm`はブラウザとローカル検証だけの境界で、Cloudflare bindingや認可確定を持たない。ブラウザ側のPRF・鍵保護処理は、別の小さなJS/TSモジュールとして扱う。ブラウザ側の実装言語までRustに統一することは要求しない。
 
-G1でOIDC実装に着手した時点で`sakimori-oidc`を追加し、`worker → oidc → auth → webauthn`とする。G0の3 crate構成と区別し、空crateは先行作成しない。責任と依存候補は[実装基準](docs/oidc-implementation-readiness.md)に定める。
+G0の3 crate構成と、G1で追加するOIDC core/Worker adapterを区別する。責任と依存候補は[実装基準](docs/oidc-implementation-readiness.md)に定める。
 
 - WebAuthn検証器はDB・HTTP・Workersを知らない。検証した事実を返し、ユーザーの業務権限を判断しない。
 - 認証coreにWorkers・D1・Axumの型を持ち込まない。時刻・乱数・永続化は境界から供給する。

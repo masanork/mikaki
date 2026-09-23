@@ -4,11 +4,13 @@ These charts are refreshed by CI. Pull requests get a current report and charts
 as the `authentication-measurements` artifact; pushes to `main` also append a
 history point and commit the updated SVGs here.
 
-![Stacked source size: runtime dependencies, Rust implementation, JS/TS implementation, and tests](code-size.svg)
+![Stacked source size: Rust implementation, JS/TS implementation, and tests](code-size.svg)
 
 ![Native Rust coverage](coverage.svg)
 
 See the [direct dependency inventory](dependency-inventory.md) for package names and the runtime dependency source-line breakdown.
+
+The size chart tracks only code maintained in this repository. Runtime dependency source is measured in the inventory but omitted from the chart because transitive package source trees overwhelm the project-code trends.
 
 ## Measurement scope
 

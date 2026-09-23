@@ -303,8 +303,8 @@ function snapshot() {
 
 const esc = (s) =>
   String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-const COLORS = { npm: '#3377c7', rust: '#e57038', frontend: '#8657a6', tests: '#28a176' };
-const FILLS = { npm: '#3377c733', rust: '#e5703833', frontend: '#8657a633', tests: '#28a17633' };
+const COLORS = { rust: '#e57038', frontend: '#8657a6', tests: '#28a176' };
+const FILLS = { rust: '#e5703833', frontend: '#8657a633', tests: '#28a17633' };
 function fmtK(value) {
   return value >= 1000 ? `${Math.floor(value / 1000)}k` : String(value);
 }
@@ -324,7 +324,6 @@ function yTicks(max) {
 function stackValues(row) {
   const language = row.code.byLanguage;
   return [
-    row.dependencies.sourceLines.total,
     language.rust?.implementationLines ?? 0,
     (language.javascript?.implementationLines ?? 0) +
       (language.typescript?.implementationLines ?? 0) +
@@ -357,10 +356,10 @@ function stackedGrowthChart(history) {
     const y = yp(tick);
     body += `<path d="M${left} ${y}H${W - right}" stroke="#e5e7eb"/><text x="${left - 10}" y="${y + 4}" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#667085">${fmtK(tick)}</text>`;
   }
-  const colors = [COLORS.npm, COLORS.rust, COLORS.frontend, COLORS.tests];
-  const fills = [FILLS.npm, FILLS.rust, FILLS.frontend, FILLS.tests];
-  // External dependencies share one layer, while implementation is split by language family.
-  for (let layer = 0; layer < 4; layer++) {
+  const colors = [COLORS.rust, COLORS.frontend, COLORS.tests];
+  const fills = [FILLS.rust, FILLS.frontend, FILLS.tests];
+  // Keep the chart focused on code maintained in this repository.
+  for (let layer = 0; layer < 3; layer++) {
     const lower = rows.map((_, i) => stacks[i].slice(0, layer).reduce((sum, v) => sum + v, 0));
     const upper = rows.map((_, i) => lower[i] + stacks[i][layer]);
     if (!rows.length) continue;
@@ -402,11 +401,6 @@ function stackedGrowthChart(history) {
   }
   body += `<text x="${left}" y="42" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#172033">Codebase growth</text><text x="${left}" y="64" font-family="system-ui,sans-serif" font-size="12" fill="#667085">Physical source lines · daily snapshots · latest 90 days</text>`;
   const legend = [
-    {
-      name: 'runtime dependencies',
-      color: COLORS.npm,
-      value: rows.at(-1)?.dependencies.sourceLines.total ?? 0,
-    },
     {
       name: 'Rust impl',
       color: COLORS.rust,
@@ -531,7 +525,7 @@ function writeReports(current, history) {
     join(ROOT, outputDir, 'coverage.svg'),
     lineChart(
       'Native Rust coverage',
-      'cargo llvm-cov: workspace excluding sakimori-worker; tests.rs ignored; inline tests remain instrumented',
+      'cargo llvm-cov: workspace excluding sakimori-browser-wasm and sakimori-worker; tests.rs ignored; inline tests remain instrumented',
       history,
       [
         { label: 'lines', color: '#2563eb', value: (r) => r.coverage?.lines.percent },
@@ -568,7 +562,7 @@ function writeReports(current, history) {
       `Declared Rust runtime dependencies: ${current.dependencies.names.rustRuntime.map((x) => `\`${x}\``).join(', ') || '—'}`,
       `Declared npm runtime dependencies: ${current.dependencies.names.npmRuntime.map((x) => `\`${x}\``).join(', ') || '—'}`,
       '',
-      'Stacked code growth, coverage trend, and dependency inventory are in the `authentication-measurements` artifact.',
+      'Stacked project code growth, coverage trend, and dependency inventory are in the `authentication-measurements` artifact.',
       '',
     ].join('\n');
     appendFileSync(summaryPath, markdown);
