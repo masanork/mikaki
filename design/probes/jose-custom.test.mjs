@@ -20,6 +20,11 @@ const nativeClaims = (algorithm, token, jwk, expectedIssuer = issuer, expectedAu
   [`verify-${algorithm.toLowerCase()}-claims`, token, JSON.stringify(jwk), expectedIssuer, expectedAudience],
   { encoding: 'utf8' },
 ).trim() === 'true';
+const nativeJws = (jws, jwk) => execFileSync(
+  binary,
+  ['verify-es256-jws', JSON.stringify(jws), JSON.stringify(jwk)],
+  { encoding: 'utf8' },
+).trim() === 'true';
 
 async function esPair(kid) {
   const { publicKey, privateKey } = await generateKeyPair('ES256');
@@ -49,6 +54,23 @@ test('ES256 custom CryptoProvider verifies the same independent signature in Nat
   const tampered = `${header}.${base64url.encode(JSON.stringify({ sub: 'tampered' }))}.${signature}`;
   assert.equal(wasm.verify_es256(tampered, JSON.stringify(pair.jwk)), false);
   assert.equal(native('ES256', tampered, pair.jwk), false);
+});
+
+test('async WebCrypto signature can be supplied as jsonwebtoken Jws in Native and Wasm', async () => {
+  const pair = await esPair('async-signer');
+  const protectedPart = base64url.encode(JSON.stringify({ alg: 'ES256', kid: pair.jwk.kid, typ: 'JWT' }));
+  const payloadPart = base64url.encode(JSON.stringify({ sub: 'async-kms-boundary' }));
+  const signingInput = new TextEncoder().encode(`${protectedPart}.${payloadPart}`);
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    pair.privateKey,
+    signingInput,
+  ));
+  const jws = { protected: protectedPart, payload: payloadPart, signature: base64url.encode(signature) };
+
+  assert.equal(wasm.verify_es256_jws(JSON.stringify(jws), JSON.stringify(pair.jwk)), true);
+  assert.equal(nativeJws(jws, pair.jwk), true);
+  assert.equal(nativeJws({ ...jws, payload: base64url.encode('{"sub":"tampered"}') }, pair.jwk), false);
 });
 
 test('custom ES256 verifier rejects a token signed by a retired key', async () => {

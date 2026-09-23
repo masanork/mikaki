@@ -2,6 +2,7 @@
 //! This is not production code; private-key signing is deliberately disabled.
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use jsonwebtoken::jws::Jws;
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation,
     crypto::{CryptoProvider, JwtSigner, JwtVerifier, KeyUtils},
@@ -166,6 +167,34 @@ fn verify_with_algorithm(token: &str, public_jwk_json: &str, algorithm: Algorith
     validation.validate_nbf = false;
     validation.validate_aud = false;
     decode::<Value>(token, &key, &validation).is_ok()
+}
+
+fn verify_es256_jws_json(jws_json: &str, public_jwk_json: &str) -> bool {
+    install_provider();
+    let Ok(jws) = serde_json::from_str::<Jws<Value>>(jws_json) else {
+        return false;
+    };
+    let Some(key) = decoding_key(Algorithm::ES256, public_jwk_json) else {
+        return false;
+    };
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.required_spec_claims.clear();
+    validation.validate_exp = false;
+    validation.validate_nbf = false;
+    validation.validate_aud = false;
+    jsonwebtoken::jws::decode(&jws, &key, &validation).is_ok()
+}
+
+/// Verify a JWS structure supplied as JSON, allowing the signature to come
+/// from an async signer outside this crate.
+#[wasm_bindgen]
+pub fn verify_es256_jws(jws_json: &str, public_jwk_json: &str) -> bool {
+    verify_es256_jws_json(jws_json, public_jwk_json)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn verify_es256_jws_native(jws_json: &str, public_jwk_json: &str) -> bool {
+    verify_es256_jws_json(jws_json, public_jwk_json)
 }
 
 fn verify_claims_with_algorithm(

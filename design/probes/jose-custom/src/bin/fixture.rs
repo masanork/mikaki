@@ -1,5 +1,5 @@
 use sakimori_jose_custom_probe::{
-    verify_es256, verify_es256_claims, verify_rs256, verify_rs256_claims,
+    verify_es256, verify_es256_claims, verify_es256_jws_native, verify_rs256, verify_rs256_claims,
 };
 use std::time::Instant;
 
@@ -9,6 +9,7 @@ fn main() {
         [_, operation, token, jwk] => match operation.as_str() {
             "verify-es256" => verify_es256(token, jwk),
             "verify-rs256" => verify_rs256(token, jwk),
+            "verify-es256-jws" => verify_es256_jws_native(token, jwk),
             _ => {
                 eprintln!("unsupported operation: {operation}");
                 std::process::exit(2);
