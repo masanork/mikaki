@@ -123,7 +123,11 @@ test('activation and rotation require verified bindings and update both keys ato
       (await db.prepare('SELECT count(*) AS count FROM vault_recipient_key_audit').first()).count,
       5,
     );
-    assert.equal((await db.prepare('SELECT count(*) AS count FROM vault_recipient_atomic_guard').first()).count, 0);
+    assert.equal(
+      (await db.prepare('SELECT count(*) AS count FROM vault_recipient_atomic_guard').first())
+        .count,
+      0,
+    );
     const thirdPublic = Buffer.alloc(1184, 11);
     const third = {
       ...record,
