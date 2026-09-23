@@ -1065,6 +1065,7 @@ dependencies = [
  "js-sys",
  "sakimori-oidc",
  "serde",
+ "serde_urlencoded",
  "wasm-bindgen",
  "web-sys",
  "worker",

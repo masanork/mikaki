@@ -10,7 +10,11 @@ pub use client_assertion::{
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
-pub use exchange::{AuthorizationCodeExchange, CodeExchangeInput, InvalidCodeExchange};
+pub use exchange::{
+    AuthorizationCodeExchange, CodeExchangeInput, InvalidCodeExchange, InvalidTokenEndpointInput,
+    PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, TokenEndpointInput,
+    ValidatedTokenEndpointInput,
+};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};

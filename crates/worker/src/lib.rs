@@ -26,6 +26,21 @@ struct ClientAssertionKeyRow {
 }
 
 #[cfg(target_arch = "wasm32")]
+pub fn parse_token_endpoint_form(
+    body: &str,
+    max_body_bytes: usize,
+) -> worker::Result<sakimori_oidc::ValidatedTokenEndpointInput> {
+    if body.len() > max_body_bytes {
+        return Err(worker::Error::RustError("invalid_request".into()));
+    }
+    let input: sakimori_oidc::TokenEndpointInput = serde_urlencoded::from_str(body)
+        .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
+    input
+        .validate()
+        .map_err(|_| worker::Error::RustError("invalid_request".into()))
+}
+
+#[cfg(target_arch = "wasm32")]
 impl sakimori_oidc::CryptographicRandom for WorkersCryptoRandom {
     fn fill(&mut self, output: &mut [u8]) -> Result<(), sakimori_oidc::CodeEntropyError> {
         let global = js_sys::global();
@@ -156,6 +171,28 @@ pub async fn verify_and_accept_client_assertion(
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     accept_client_assertion(db, &assertion, endpoint, random).await?;
     Ok(assertion)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn authenticate_token_request(
+    db: &worker::d1::D1Database,
+    input: &sakimori_oidc::ValidatedTokenEndpointInput,
+    token_endpoint: &str,
+    now: u64,
+    policy: sakimori_oidc::ClientAssertionPolicy,
+    random: &mut impl sakimori_oidc::CryptographicRandom,
+) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
+    verify_and_accept_client_assertion(
+        db,
+        input.client_id(),
+        input.assertion().as_str(),
+        token_endpoint,
+        token_endpoint,
+        now,
+        policy,
+        random,
+    )
+    .await
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
