@@ -6,6 +6,8 @@ mod admin_invitations;
 mod enrollment;
 #[cfg(target_arch = "wasm32")]
 mod passkey_login;
+#[cfg(target_arch = "wasm32")]
+mod session_check;
 
 #[cfg(target_arch = "wasm32")]
 mod i18n;
@@ -2350,6 +2352,7 @@ pub async fn main(
         .get_async("/enroll/complete.js", enrollment::complete_script)
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
+        .post_async("/session/check", session_check::check)
         .get_async("/admin", admin_invitations::page)
         .get_async("/admin/admin.js", admin_invitations::script)
         .get_async("/jwks", jwks_route)
