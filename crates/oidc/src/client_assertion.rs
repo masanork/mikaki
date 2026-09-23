@@ -16,6 +16,13 @@ pub struct ClientAssertionKey {
     sec1_public_key: Vec<u8>,
 }
 
+/// Validated timing policy for private_key_jwt assertions.
+#[derive(Clone, Copy)]
+pub struct ClientAssertionPolicy {
+    maximum_lifetime_seconds: u64,
+    clock_skew_seconds: u64,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProtectedHeader {
@@ -64,11 +71,30 @@ pub struct VerifiedClientAssertion {
     audience: String,
     jti: String,
     issued_at: u64,
-    expires_at: u64,
+    retain_until: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidClientAssertion;
+
+impl ClientAssertionPolicy {
+    pub fn from_seconds(
+        maximum_lifetime_seconds: u64,
+        clock_skew_seconds: u64,
+    ) -> Result<Self, InvalidClientAssertion> {
+        if maximum_lifetime_seconds == 0
+            || clock_skew_seconds == 0
+            || maximum_lifetime_seconds > i64::MAX as u64
+            || clock_skew_seconds > i64::MAX as u64 - maximum_lifetime_seconds
+        {
+            return Err(InvalidClientAssertion);
+        }
+        Ok(Self {
+            maximum_lifetime_seconds,
+            clock_skew_seconds,
+        })
+    }
+}
 
 impl ClientAssertionKey {
     #[allow(clippy::too_many_arguments)]
@@ -95,8 +121,7 @@ impl ClientAssertionKey {
         compact: &str,
         expected_audience: &str,
         now: u64,
-        clock_skew_seconds: u64,
-        max_lifetime_seconds: u64,
+        policy: ClientAssertionPolicy,
     ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
         if !self.active
             || self.client_id.is_empty()
@@ -135,9 +160,9 @@ impl ClientAssertionKey {
             || claims.jti.len() > 256
             || claims.jti.bytes().any(|byte| byte.is_ascii_control())
             || claims.exp <= claims.iat
-            || claims.exp.saturating_sub(claims.iat) > max_lifetime_seconds
-            || claims.iat > now.saturating_add(clock_skew_seconds)
-            || claims.exp <= now.saturating_sub(clock_skew_seconds)
+            || claims.exp.saturating_sub(claims.iat) > policy.maximum_lifetime_seconds
+            || claims.iat > now.saturating_add(policy.clock_skew_seconds)
+            || claims.exp <= now.saturating_sub(policy.clock_skew_seconds)
         {
             return Err(InvalidClientAssertion);
         }
@@ -159,7 +184,10 @@ impl ClientAssertionKey {
             audience: expected_audience.to_owned(),
             jti: claims.jti,
             issued_at: claims.iat,
-            expires_at: claims.exp,
+            retain_until: claims
+                .exp
+                .checked_add(policy.clock_skew_seconds)
+                .ok_or(InvalidClientAssertion)?,
         })
     }
 }
@@ -230,11 +258,7 @@ impl VerifiedClientAssertion {
         self.issued_at
     }
 
-    pub fn expires_at(&self) -> u64 {
-        self.expires_at
-    }
-
-    pub fn retain_until(&self, clock_skew_seconds: u64) -> Option<u64> {
-        self.expires_at.checked_add(clock_skew_seconds)
+    pub fn retain_until(&self) -> u64 {
+        self.retain_until
     }
 }

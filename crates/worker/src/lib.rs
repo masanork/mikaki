@@ -48,7 +48,6 @@ pub async fn accept_client_assertion(
     db: &worker::d1::D1Database,
     assertion: &sakimori_oidc::VerifiedClientAssertion,
     endpoint: &str,
-    clock_skew_seconds: u64,
     random: &mut impl sakimori_oidc::CryptographicRandom,
 ) -> worker::Result<()> {
     use wasm_bindgen::JsValue;
@@ -58,9 +57,7 @@ pub async fn accept_client_assertion(
             "client assertion endpoint mismatch".into(),
         ));
     }
-    let retain_until = assertion
-        .retain_until(clock_skew_seconds)
-        .ok_or_else(|| worker::Error::RustError("client assertion expiry overflow".into()))?;
+    let retain_until = assertion.retain_until();
     if retain_until > i64::MAX as u64
         || assertion.client_revision() > i64::MAX as u64
         || assertion.key_revision() > i64::MAX as u64
@@ -115,8 +112,7 @@ pub async fn verify_and_accept_client_assertion(
     audience: &str,
     endpoint: &str,
     now: u64,
-    clock_skew_seconds: u64,
-    max_lifetime_seconds: u64,
+    policy: sakimori_oidc::ClientAssertionPolicy,
     random: &mut impl sakimori_oidc::CryptographicRandom,
 ) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
     use wasm_bindgen::JsValue;
@@ -156,15 +152,9 @@ pub async fn verify_and_accept_client_assertion(
         row.public_key_sec1,
     );
     let assertion = key
-        .verify_private_key_jwt(
-            compact,
-            audience,
-            now,
-            clock_skew_seconds,
-            max_lifetime_seconds,
-        )
+        .verify_private_key_jwt(compact, audience, now, policy)
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
-    accept_client_assertion(db, &assertion, endpoint, clock_skew_seconds, random).await?;
+    accept_client_assertion(db, &assertion, endpoint, random).await?;
     Ok(assertion)
 }
 
