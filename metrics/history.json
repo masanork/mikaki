@@ -1,23 +1,23 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "64a1207",
+    "commit": "c42b38f",
     "code": {
-      "implementationLines": 9475,
+      "implementationLines": 10548,
       "testLines": 2804,
-      "implementationFiles": 41,
+      "implementationFiles": 48,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 6630,
+          "implementationLines": 7442,
           "testLines": 1310
         },
         "svelte": {
-          "implementationLines": 566,
+          "implementationLines": 800,
           "testLines": 0
         },
         "typescript": {
-          "implementationLines": 338,
+          "implementationLines": 365,
           "testLines": 0
         },
         "javascript": {
@@ -102,18 +102,18 @@
     "coverage": {
       "lines": {
         "covered": 1731,
-        "count": 2353,
-        "percent": 73.56566085847854
+        "count": 2371,
+        "percent": 73.0071699704766
       },
       "regions": {
         "covered": 3084,
-        "count": 4262,
-        "percent": 72.36039418113562
+        "count": 4280,
+        "percent": 72.05607476635514
       },
       "functions": {
         "covered": 179,
-        "count": 253,
-        "percent": 70.7509881422925
+        "count": 259,
+        "percent": 69.1119691119691
       }
     }
   }
