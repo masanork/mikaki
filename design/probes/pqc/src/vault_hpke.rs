@@ -90,3 +90,50 @@ pub fn self_test() -> bool {
         && open(&wrong_key_info, &aad, &ciphertext).is_none()
         && open(&info, &aad, &changed).is_none()
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod draft05_tests {
+    use super::*;
+    use hpke::{Deserializable, Serializable, aead::AesGcm128};
+    use serde_json::Value;
+
+    fn decode(value: &str) -> Vec<u8> {
+        value
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn official_draft05_mlkem768_base_vector_opens() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../hpke-pq-draft05-vector.json")).unwrap();
+        assert_eq!(vector["kem_id"], 65);
+        assert_eq!(vector["kdf_id"], 1);
+        assert_eq!(vector["aead_id"], 1);
+        assert_eq!(vector["mode"], 0);
+        let bytes = |field: &str| decode(vector[field].as_str().unwrap());
+        let sk = <RecipientKem as hpke::Kem>::PrivateKey::from_bytes(&bytes("skRm")).unwrap();
+        assert_eq!(
+            RecipientKem::sk_to_pk(&sk).to_bytes().as_slice(),
+            bytes("pkRm")
+        );
+        let enc = <RecipientKem as hpke::Kem>::EncappedKey::from_bytes(&bytes("enc")).unwrap();
+        let mut receiver = hpke::setup_receiver::<AesGcm128, HkdfSha256, RecipientKem>(
+            &OpModeR::Base,
+            &sk,
+            &enc,
+            &bytes("info"),
+        )
+        .unwrap();
+        let encryption = &vector["encryptions"][0];
+        let field = |name: &str| decode(encryption[name].as_str().unwrap());
+        assert_eq!(
+            receiver.open(&field("ct"), &field("aad")).unwrap(),
+            field("pt")
+        );
+    }
+}

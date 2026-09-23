@@ -165,7 +165,7 @@ def main():
     require(revision(equivalent) == revision(policy), 'duration normalization changed revision')
     for directory, subdirs, files in os.walk(ROOT):
         subdirs[:] = [name for name in subdirs if name not in {
-            '.git', 'node_modules', 'target', 'pkg', '.wrangler', '__pycache__',
+            '.git', 'node_modules', 'target', 'pkg', 'pkg-web', '.wrangler', '__pycache__',
         }]
         for name in files:
             if not name.endswith('.md'):

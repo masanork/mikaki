@@ -38,6 +38,7 @@ jobs:
         run: |
           python3.14 scripts/check_design.py
           python3.14 scripts/test_oidc_sql.py
+          python3.14 scripts/test_vault_recipient_keys_sql.py
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown
@@ -57,12 +58,13 @@ jobs:
         run: |
           npm ci --prefix design/probes
           cargo fmt --manifest-path design/probes/pqc/Cargo.toml -- --check
-          npx prettier --check design/probes/pqc/check.mjs design/probes/pqc/fido-eval.mjs design/probes/pqc/fido-eval.html design/probes/pqc/analyze-fido.mjs design/probes/pqc/analyze-fido.test.mjs design/probes/pqc/nist-acvp-fixtures.json
+          npx prettier --check design/probes/pqc/check.mjs design/probes/pqc/browser.mjs design/probes/pqc/fido-eval.mjs design/probes/pqc/fido-eval.html design/probes/pqc/analyze-fido.mjs design/probes/pqc/analyze-fido.test.mjs design/probes/pqc/nist-acvp-fixtures.json design/probes/pqc/hpke-pq-draft05-vector.json
           node --test design/probes/pqc/analyze-fido.test.mjs
           cargo test --locked --manifest-path design/probes/pqc/Cargo.toml
           cargo clippy --locked --manifest-path design/probes/pqc/Cargo.toml --all-targets -- -D warnings
           wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked
           node design/probes/pqc/check.mjs
+          wasm-pack build design/probes/pqc --target web --release --out-dir pkg-web -- --locked
       - name: Build Wasm and UI
         run: npm run build
       - name: Project size, coverage, and dependency trends
@@ -70,6 +72,7 @@ jobs:
       - name: Wasm and browser integration
         run: |
           npx playwright install --with-deps chromium
+          node design/probes/pqc/browser.mjs
           npm run test:e2e
           npm run health
           cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"

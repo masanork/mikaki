@@ -1,6 +1,6 @@
 # ML-KEM・ML-DSAの段階導入
 
-2026-09-23時点。PQCの製品機能はまだ有効化していません。[独立probe](../design/probes/pqc/README.md)でML-KEM-768とML-DSA-65のNative/Node Wasm往復、NIST ACVP sample既知解、nobleとの相互運用、Vault data keyのHPKE鍵包みと版取り違え拒否を確認しました。実機到着時のFIDO登録・assertion採取画面と署名検証CLIも用意しました。現在のVault形式・Passkey登録・OIDC署名は変更していません。
+2026-09-23時点。PQCの製品機能はまだ有効化していません。[独立probe](../design/probes/pqc/README.md)でML-KEM-768とML-DSA-65のNative/Node Wasm/Chromium往復、NIST ACVP sample既知解、nobleとの相互運用、Vault data keyのHPKE鍵包みと版取り違え拒否を確認しました。実機到着時のFIDO登録・assertion採取画面と署名検証CLIも用意しました。現在のVault形式・Passkey登録・OIDC署名は変更していません。
 
 | 対象 | 現在 | 次の実装単位 | 有効化の条件 |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ ML-KEMは共有秘密を成立させる鍵配送であり、Passkey署名方式�
 
 ## VaultをFIDO実機より先に進める順序
 
-1. UserInfo専用recipientの鍵管理を確定する。公開鍵・鍵ID・suite・発行/停止状態をD1のdirectoryで管理し、秘密鍵はD1/R2の平文にも一般のOIDC署名鍵にも置かない。登録時に秘密鍵と公開鍵の対応を証明し、鍵切替時は旧鍵で包まれた属性の扱いを定める。
+1. UserInfo専用recipientの[鍵管理契約](vault-recipient-key-lifecycle.md)を実装する。公開鍵・鍵ID・発行/停止状態はD1のdirectory、秘密鍵は専用claim WorkerのSecrets Store bindingに分ける。D1のschemaと状態制約は実装済み。binding照合と管理操作は未実装。
 2. 本人が属性を解錠したときだけ、そのrevisionのdata keyに追加のrecipient envelopeを作る。origin・属性・revision・service・鍵IDをHPKEのinfo/AADに結び付け、現行owner envelopeは残す。envelopeとGrantを同じ版で公開し、鍵配送に失敗した更新ではsystem共有を停止する。
 3. 失効、鍵切替、属性更新、誤った鍵ID・revision・属性への差し替え、鍵管理障害を含むWorker/ブラウザー試験を通してからUserInfoに接続する。本人専用Vaultを利用するだけならPQC鍵やFIDOのML-DSA対応を要求しない。
 
@@ -20,7 +20,7 @@ ML-KEMは共有秘密を成立させる鍵配送であり、Passkey署名方式�
 
 FIDOではML-DSAのCOSE番号が割り当てられていても、手元のドングル・ブラウザー・OSで利用できるとは限りません。現在の認証器をサーバー側でPQC credentialへ変換することもできません。対象機器で新規credentialを作り、既存credentialと並行運用してから移行します。ML-DSAで検証できるようになるまで`pubKeyCredParams`へ`-49`を出さず、未対応時の暗黙のダウングレードを「PQC対応」と表示しません。
 
-Cloudflare WorkersのWebCrypto対応表には、確認時点でML-KEM/ML-DSAの行がありません。このためWorkersの組込みWebCryptoで使えると仮定せず、Rust/Wasmの隔離検証から始めます。採用候補のRustCrypto `ml-kem` 0.3.2と`ml-dsa` 0.1.1、比較に使うnobleは独立監査未実施と明記されています。NIST sampleと独立実装の照合は通ったものの、製品への組込み前に全パラメータの既知解、鍵・署名のサイズ境界、依存監査、実際のWorker/ブラウザーでの資源計測を追加します。VaultのHPKE probeはdraft-04実装で、現行のHPKE PQ draft-05に対する互換性を確認していません。key directory、秘密鍵保管、Grant、再包み、旧版との併存が完成するまで製品に接続しません。導入後も実装済み・受理可能・新規発行を用途ごとに分け、D1の運用ポリシーで切替可能にします。
+Cloudflare WorkersのWebCrypto対応表には、確認時点でML-KEM/ML-DSAの行がありません。このためWorkersの組込みWebCryptoで使えると仮定せず、Rust/Wasmの隔離検証から始めます。採用候補のRustCrypto `ml-kem` 0.3.2と`ml-dsa` 0.1.1、比較に使うnobleは独立監査未実施と明記されています。NIST sampleと独立実装の照合は通ったものの、製品への組込み前に全パラメータの既知解、鍵・署名のサイズ境界、依存監査、実際のWorker/ブラウザーでの資源計測を追加します。VaultのHPKE probeはdraft-04実装で、[現行draft-05の公式ベクトル](../design/probes/pqc/hpke-pq-draft05-vector.json)の一構成（ML-KEM-768/HKDF-SHA256/AES-128-GCM）の復号に成功しました。AES-256-GCMの製品envelope形式、ブラウザー/Worker相互運用は未確認です。key directory、秘密鍵保管、Grant、再包み、旧版との併存が完成するまで製品に接続しません。導入後も実装済み・受理可能・新規発行を用途ごとに分け、D1の運用ポリシーで切替可能にします。
 
 ## 根拠
 

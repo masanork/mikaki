@@ -36,6 +36,7 @@ ADRは仕様書ごとに一つ作る必要はない。次に追加すべき対�
 RP実装者が最初に読む文書は[RP向け接続手順](rp-integration.md)です。RPの登録操作は[RP client operations](rp-client-operations.md)、セッション照会の詳細は[RP session check](rp-session-check.md)に分けています。
 
 ML-KEM・ML-DSAの試験結果とVault/FIDOへの導入条件は[PQC段階導入](pqc-rollout.md)に記録します。
+VaultのUserInfo専用recipientの鍵管理は[鍵管理契約](vault-recipient-key-lifecycle.md)に記録します。
 
 | 文書                                                                               | 役割・現在の状態                                                                                |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
