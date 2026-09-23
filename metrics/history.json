@@ -1,19 +1,19 @@
 [
   {
     "date": "2026-09-23",
-    "commit": "023e820",
+    "commit": "879d050",
     "code": {
-      "implementationLines": 4308,
-      "testLines": 2641,
-      "implementationFiles": 25,
+      "implementationLines": 7101,
+      "testLines": 2746,
+      "implementationFiles": 29,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 2112,
-          "testLines": 1147
+          "implementationLines": 4904,
+          "testLines": 1252
         },
         "javascript": {
-          "implementationLines": 1940,
+          "implementationLines": 1941,
           "testLines": 1494
         },
         "svelte": {
@@ -32,18 +32,18 @@
         "dev": 9
       },
       "rust": {
-        "runtime": 13,
+        "runtime": 20,
         "build": 0,
         "dev": 8
       },
       "sourceLines": {
         "npmRuntime": 108465,
-        "rustRuntime": 474866,
-        "total": 583331
+        "rustRuntime": 1038239,
+        "total": 1146704
       },
       "sourcePackages": {
         "npmRuntime": 19,
-        "rustRuntime": 72
+        "rustRuntime": 131
       },
       "names": {
         "npmRuntime": [
@@ -66,14 +66,21 @@
           "ciborium",
           "der",
           "ed25519-dalek",
+          "futures-util",
+          "js-sys",
           "p256",
           "p384",
           "rsa",
           "serde",
           "serde_json",
+          "serde_urlencoded",
           "sha1",
           "sha2",
+          "url",
           "wasm-bindgen",
+          "wasm-bindgen-futures",
+          "web-sys",
+          "worker",
           "x509-cert"
         ],
         "rustBuild": [],
@@ -91,19 +98,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1419,
-        "count": 1589,
-        "percent": 89.30144745122719
+        "covered": 1692,
+        "count": 2296,
+        "percent": 73.69337979094077
       },
       "regions": {
-        "covered": 2548,
-        "count": 3084,
-        "percent": 82.61997405966277
+        "covered": 3032,
+        "count": 4193,
+        "percent": 72.3109945146673
       },
       "functions": {
-        "covered": 144,
-        "count": 161,
-        "percent": 89.44099378881988
+        "covered": 176,
+        "count": 246,
+        "percent": 71.54471544715447
       }
     }
   }
