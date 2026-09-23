@@ -56,17 +56,17 @@ function parseOptions(args) {
     Object.keys(options).some((key) => !allowed.has(key)) ||
     !options['--config'] ||
     !['yes', 'no'].includes(options['--remote']) ||
-    !['stage', 'disable'].includes(options['--action']) ||
+    !['stage', 'activate', 'rotate', 'disable'].includes(options['--action']) ||
     !['yes', 'no'].includes(options['--apply']) ||
     !options['--actor'] ||
     options['--actor'].length > 128 ||
     !options['--reason'] ||
     options['--reason'].length > 512 ||
     (options['--action'] === 'stage' && !options['--input']) ||
-    (options['--action'] === 'disable' && !options['--key-id'])
+    (options['--action'] !== 'stage' && !options['--key-id'])
   ) {
     throw new Error(
-      'usage: node scripts/recipient-key-admin.mjs --config CONFIG --remote yes|no --action stage|disable --input PUBLIC_JSON --key-id KEY_ID --actor NAME --reason TEXT --apply yes|no',
+      'usage: node scripts/recipient-key-admin.mjs --config CONFIG --remote yes|no --action stage|activate|rotate|disable --input PUBLIC_JSON --key-id KEY_ID --actor NAME --reason TEXT --apply yes|no',
     );
   }
   return options;
@@ -122,6 +122,123 @@ export async function disableKey(db, keyId, actor, reason, now) {
   }
 }
 
+async function verifyBinding(claims, keyId) {
+  const response = await claims.fetch(
+    `https://userinfo.internal/internal/recipient-keys/${keyId}/verify`,
+    { method: 'GET' },
+  );
+  if (response.status !== 204)
+    throw new Error(`recipient key binding verification failed for ${keyId}`);
+}
+
+function requiredService(config) {
+  const binding = config.services?.find((item) => item.binding === 'USERINFO_CLAIMS');
+  if (binding?.service !== 'mikaki-userinfo-claim-worker') {
+    throw new Error('USERINFO_CLAIMS must bind the dedicated claim Worker');
+  }
+}
+
+export async function activateKey(db, claims, keyId, actor, reason, now) {
+  const row = await db
+    .prepare('SELECT state,revision FROM vault_recipient_key WHERE key_id=?')
+    .bind(keyId)
+    .first();
+  if (!row || row.state !== 'staged' || !Number.isSafeInteger(row.revision)) {
+    throw new Error('target key is not staged');
+  }
+  const active = await db
+    .prepare("SELECT key_id FROM vault_recipient_key WHERE state='active'")
+    .first();
+  if (active) throw new Error('an active recipient key already exists; use rotate');
+  await verifyBinding(claims, keyId);
+  const guard = randomUUID();
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE vault_recipient_key SET state='active',revision=revision+1,activated_at=?
+      WHERE key_id=? AND state='staged' AND revision=? AND NOT EXISTS
+      (SELECT 1 FROM vault_recipient_key WHERE state='active')`,
+      )
+      .bind(now, keyId, row.revision),
+    db
+      .prepare(
+        'INSERT INTO vault_recipient_atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(guard),
+    db
+      .prepare(
+        `INSERT INTO vault_recipient_key_audit
+      (operation_id,key_id,action,actor,reason,revision,occurred_at)
+      VALUES(?,?,'activate',?,?,?,?)`,
+      )
+      .bind(randomUUID(), keyId, actor, reason, row.revision + 1, now),
+    db.prepare('DELETE FROM vault_recipient_atomic_guard WHERE operation_id=?').bind(guard),
+  ]);
+}
+
+export async function rotateKey(db, claims, newKeyId, actor, reason, now) {
+  const old = await db
+    .prepare("SELECT key_id,revision FROM vault_recipient_key WHERE state='active'")
+    .first();
+  const next = await db
+    .prepare('SELECT state,revision FROM vault_recipient_key WHERE key_id=?')
+    .bind(newKeyId)
+    .first();
+  if (
+    !old ||
+    !Number.isSafeInteger(old.revision) ||
+    !next ||
+    next.state !== 'staged' ||
+    !Number.isSafeInteger(next.revision)
+  ) {
+    throw new Error('rotation requires one active and one staged key');
+  }
+  await verifyBinding(claims, old.key_id);
+  await verifyBinding(claims, newKeyId);
+  const oldGuard = randomUUID();
+  const newGuard = randomUUID();
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE vault_recipient_key SET state='decrypt_only',revision=revision+1,retired_at=?
+      WHERE key_id=? AND state='active' AND revision=?`,
+      )
+      .bind(now, old.key_id, old.revision),
+    db
+      .prepare(
+        'INSERT INTO vault_recipient_atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(oldGuard),
+    db
+      .prepare(
+        `UPDATE vault_recipient_key SET state='active',revision=revision+1,activated_at=?
+      WHERE key_id=? AND state='staged' AND revision=?`,
+      )
+      .bind(now, newKeyId, next.revision),
+    db
+      .prepare(
+        'INSERT INTO vault_recipient_atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(newGuard),
+    db
+      .prepare(
+        `INSERT INTO vault_recipient_key_audit
+      (operation_id,key_id,action,actor,reason,revision,occurred_at)
+      VALUES(?,?,'rotate',?,?,?,?)`,
+      )
+      .bind(randomUUID(), old.key_id, actor, reason, old.revision + 1, now),
+    db
+      .prepare(
+        `INSERT INTO vault_recipient_key_audit
+      (operation_id,key_id,action,actor,reason,revision,occurred_at)
+      VALUES(?,?,'rotate',?,?,?,?)`,
+      )
+      .bind(randomUUID(), newKeyId, actor, reason, next.revision + 1, now),
+    db.prepare('DELETE FROM vault_recipient_atomic_guard WHERE operation_id=?').bind(oldGuard),
+    db.prepare('DELETE FROM vault_recipient_atomic_guard WHERE operation_id=?').bind(newGuard),
+  ]);
+}
+
 async function main() {
   const options = parseOptions(process.argv.slice(2));
   const configPath = resolve(options['--config']);
@@ -132,6 +249,7 @@ async function main() {
     throw new Error('DB binding and --remote do not identify the same database');
   }
   const action = options['--action'];
+  if (action === 'activate' || action === 'rotate') requiredService(config);
   const record =
     action === 'stage' ? JSON.parse(await readFile(resolve(options['--input']), 'utf8')) : null;
   if (record) validatePublicRecord(record);
@@ -146,6 +264,14 @@ async function main() {
     const now = Math.floor(Date.now() / 1000);
     if (action === 'stage') {
       await stageKey(db, record, options['--actor'], options['--reason'], now);
+    } else if (action === 'activate' || action === 'rotate') {
+      const claims = platform.env.USERINFO_CLAIMS;
+      if (!claims?.fetch) throw new Error('USERINFO_CLAIMS binding is unavailable');
+      if (action === 'activate') {
+        await activateKey(db, claims, keyId, options['--actor'], options['--reason'], now);
+      } else {
+        await rotateKey(db, claims, keyId, options['--actor'], options['--reason'], now);
+      }
     } else {
       await disableKey(db, keyId, options['--actor'], options['--reason'], now);
     }

@@ -2361,6 +2361,10 @@ pub async fn main(
         .post_async("/token", token_route)
         .get_async("/vault", vault_attributes::page)
         .get_async("/vault/session", vault_attributes::session)
+        .get_async(
+            "/vault/recipient-keys/userinfo",
+            vault_attributes::recipient_key,
+        )
         .get_async("/vault/vault.js", vault_attributes::script)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .put_async("/vault/attributes/:attribute", vault_attributes::put)

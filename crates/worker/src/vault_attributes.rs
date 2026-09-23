@@ -112,6 +112,91 @@ struct SessionResponse<'a> {
     credential_id: &'a str,
 }
 
+#[derive(Deserialize)]
+struct RecipientKey {
+    key_id: String,
+    public_key: Vec<u8>,
+    generation: i64,
+    revision: i64,
+}
+
+#[derive(Serialize)]
+struct RecipientKeyResponse<'a> {
+    service_id: &'static str,
+    algorithm: &'static str,
+    key_id: &'a str,
+    public_key: String,
+    generation: i64,
+    revision: i64,
+}
+
+pub async fn recipient_key(
+    request: Request,
+    context: RouteContext<()>,
+) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let db = context.env.d1("DB")?;
+    if owner(&request, &db).await?.is_none() {
+        return error(401, "authentication_required");
+    }
+    let key = db
+        .prepare(
+            "SELECT key_id,public_key,generation,revision FROM vault_recipient_key \
+             WHERE service_id='userinfo' AND state='active'",
+        )
+        .first::<RecipientKey>(None)
+        .await?;
+    let Some(key) = key else {
+        return error(404, "recipient_unavailable");
+    };
+    if key.public_key.len() != 1184
+        || key.key_id != URL_SAFE_NO_PAD.encode(Sha256::digest(&key.public_key))
+    {
+        return error(503, "recipient_unavailable");
+    }
+    let Ok(claims) = context.env.service("USERINFO_CLAIMS") else {
+        return error(503, "recipient_unavailable");
+    };
+    let verification = claims
+        .fetch(
+            format!(
+                "https://userinfo.internal/internal/recipient-keys/{}/verify",
+                key.key_id
+            ),
+            None,
+        )
+        .await;
+    if !matches!(verification, Ok(response) if response.status_code() == 204) {
+        return error(503, "recipient_unavailable");
+    }
+    let still_active = db
+        .prepare(
+            "SELECT 1 AS present FROM vault_recipient_key \
+             WHERE key_id=? AND state='active' AND revision=?",
+        )
+        .bind(&[
+            wasm_bindgen::JsValue::from_str(&key.key_id),
+            wasm_bindgen::JsValue::from_f64(key.revision as f64),
+        ])?
+        .first::<serde_json::Value>(None)
+        .await?;
+    if still_active.is_none() {
+        return error(503, "recipient_unavailable");
+    }
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&RecipientKeyResponse {
+            service_id: "userinfo",
+            algorithm: "ML-KEM-768",
+            key_id: &key.key_id,
+            public_key: URL_SAFE_NO_PAD.encode(&key.public_key),
+            generation: key.generation,
+            revision: key.revision,
+        })
+}
+
 pub async fn session(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
     if context.env.bucket("VAULT_BLOBS").is_err() {
         return error(404, "not_found");

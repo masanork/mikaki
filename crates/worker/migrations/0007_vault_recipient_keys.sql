@@ -59,3 +59,9 @@ CREATE TABLE vault_recipient_key_audit (
   revision INTEGER NOT NULL CHECK(revision > 0),
   occurred_at INTEGER NOT NULL CHECK(occurred_at > 0)
 ) STRICT;
+
+-- A failed compare-and-swap aborts the whole D1 batch, including its audit rows.
+CREATE TABLE vault_recipient_atomic_guard (
+  operation_id TEXT PRIMARY KEY,
+  passed INTEGER NOT NULL CHECK(passed = 1)
+) STRICT;

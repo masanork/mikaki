@@ -1,18 +1,10 @@
 {
-  "name": "mikaki-op",
+  "name": "mikaki-recipient-admin-cli",
   "main": "build/worker/shim.mjs",
   "account_id": "4b749427a0c80c547e726a42aff4b6fc",
   "compatibility_date": "2026-09-23",
   "workers_dev": false,
-  "routes": [
-    {
-      "pattern": "mikaki.tossa.app",
-      "custom_domain": true
-    }
-  ],
-  "vars": {
-    "MIKAKI_ISSUER": "https://mikaki.tossa.app"
-  },
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "DB",
@@ -22,23 +14,10 @@
       "remote": true
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "VAULT_BLOBS",
-      "bucket_name": "mikaki-vault"
-    }
-  ],
   "services": [
     {
       "binding": "USERINFO_CLAIMS",
       "service": "mikaki-userinfo-claim-worker"
     }
-  ],
-  "triggers": {
-    "crons": ["0 3 * * *"]
-  },
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1
-  }
+  ]
 }
