@@ -8,6 +8,17 @@ tossa・tsudoiが必要とする認証と、WebAuthn PRF拡張を利用したク
 
 **開発中の試作です。本番サービスとして公開・運用しておらず、アカウントや利用者データを保護する目的では使わないでください。**
 
+## CIメトリクス
+
+規模は実装とテストを分けて計測し、native Rustのcoverageと直接依存の推移も記録します。
+[計測範囲と方法](metrics/README.md) · [直接依存一覧](metrics/dependency-inventory.md)
+
+<p>
+  <img src="metrics/code-size.svg" alt="実装・テスト行数の推移" width="32%" />
+  <img src="metrics/coverage.svg" alt="native Rust coverageの推移" width="32%" />
+  <img src="metrics/dependencies.svg" alt="直接依存数の推移" width="32%" />
+</p>
+
 脆弱性の報告方法は[SECURITY.md](SECURITY.md)を参照してください。
 
 セッション期限等の運用パラメーターは設定へ分離する。[統合設定見本](config/runtime-policy.example.toml)と[設定変更の適用契約](docs/runtime-configuration.md)を参照する。ローカル実装では検証済み設定をビルド時に読み込む。本番用の設定適用・履歴管理は未実装。

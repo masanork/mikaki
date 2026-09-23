@@ -48,6 +48,8 @@ jobs:
           cargo test --locked --workspace
           mkdir -p artifacts
           cargo llvm-cov --locked --workspace --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+      - name: Project size, coverage, and dependency trends
+        run: node scripts/metrics.mjs --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
       - name: Shared WebAuthn tests on Wasm
         run: wasm-pack test --node crates/webauthn --locked
       - name: Wasm and browser integration
@@ -69,3 +71,35 @@ jobs:
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
+
+  record-metrics:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: Install pinned Rust toolchain for dependency inventory
+        run: rustup toolchain install 1.98.1 --profile minimal
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: authentication-measurements
+          path: artifacts/
+      - name: Record project metrics and refresh charts
+        run: node scripts/metrics.mjs --record --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
+      - name: Commit updated history and charts
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add metrics/history.json metrics/code-size.svg metrics/coverage.svg metrics/dependencies.svg metrics/dependency-inventory.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update project metrics"
+            git push origin HEAD:main
+          fi

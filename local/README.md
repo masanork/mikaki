@@ -133,7 +133,7 @@ cargo llvm-cov --locked --workspace --exclude sakimori-worker --ignore-filename-
 npm run health
 ```
 
-規模計測は非空物理行数で、inline testを含む参考値。OPアダプターは現段階で約700行あり、原子操作の前提条件を同じ場所で確認するためにまとめている。機能拡張時には登録・token・logoutの単位で責任を分ける。
+規模・coverage・直接依存の履歴とグラフは[metrics](../metrics/README.md)を参照。コード規模は実装とテストを分け、mainへのpushごとに更新する。coverageはnative Rustの一部に限り、JS/SvelteやWorker Wasmアダプターのcoverageを示さない。OPアダプターは現段階で約700行あり、原子操作の前提条件を同じ場所で確認するためにまとめている。機能拡張時には登録・token・logoutの単位で責任を分ける。
 
 WebAuthnのfit/gapは[改善バックログ](../docs/webauthn-fit-gap-todo.md)で追跡する。WG-04の対応として、登録画面は`credProps.rk===true`をクライアント互換性条件として確認する。個別拡張の保証は[対応表](../docs/webauthn-extensions.md)を参照。次の実機・ブラウザー互換性記録はWG-06を参照。
 
