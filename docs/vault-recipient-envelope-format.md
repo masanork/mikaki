@@ -1,6 +1,6 @@
 # Vault recipient key and envelope format
 
-**Candidate, 2026-09-24. No product envelope may be written in this format yet.** The active generation-1 UserInfo key is a raw ML-KEM-768 encapsulation key, not an OIDC signing key or a JWK. The independent claim Worker holds its 64-byte decapsulation seed. This document fixes the byte-level questions that the isolated probe must answer before a storage migration and sharing endpoint are added.
+**Candidate, 2026-09-24. No product envelope may be written in this format yet.** The active generation-1 UserInfo key is a raw ML-KEM-768 encapsulation key, not an OIDC signing key or a JWK. The independent claim Worker holds its 64-byte decapsulation seed. This document fixes the byte-level questions that the isolated probe must answer before a storage migration and sharing endpoint are added. The [independent Node harness](../design/probes/pqc/hpke-interop.ts) now opens a RustCrypto HPKE AES-256-GCM fixture with noble ML-KEM and Node crypto, and RustCrypto opens one produced by noble and Node. These use a public fixture seed and the probe's draft-04 domain label.
 
 ## Existing key record
 
@@ -34,7 +34,7 @@ Binding the ciphertext digest prevents a valid wrapped data key from being attac
 
 ## Gate before product storage
 
-1. Produce fixed v1 fixtures with the chosen `info`, `aad`, `enc`, and `ct` bytes, including the ciphertext digest. Open them with the actual claim Worker seed-loading path and a separate browser implementation. The existing probe's [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) covers AES-128-GCM only and does not establish this AES-256-GCM format.
+1. CI runs the bidirectional RustCrypto↔noble/Node AES-256-GCM fixture check. Open the same fixture with the actual claim Worker seed-loading path and a separate browser implementation. The existing [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) covers AES-128-GCM only; it and the bidirectional draft-04 probe do not establish full draft-05 AES-256-GCM compatibility.
 2. Reject changed version/suite/key ID/generation, account, attribute, revision, purpose, ciphertext digest, encapsulation, tag, truncated values, noncanonical base64url, and trailing bytes. Check that a directory key rotation never silently rewrites the envelope's key identity.
 3. Verify the claim Worker accepts only its internal authenticated caller, current D1 key state, and a live matching Grant. Test revocation racing an unwrap and loss of the Secrets Store seed. No UserInfo claim is released on any failure.
 4. Freeze the format with a suite identifier that names the exact HPKE PQ specification revision used for interoperability. A later RFC or library change needs a new format/suite ID and a migration plan. Keep all current probe outputs outside product storage until this gate passes.

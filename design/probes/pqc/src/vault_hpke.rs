@@ -133,6 +133,17 @@ pub fn fixture_opens(frame: &[u8]) -> bool {
     matches!(receiver.open(ciphertext, &aad), Ok(data_key) if data_key == FIXTURE_DATA_KEY)
 }
 
+#[cfg(test)]
+#[test]
+fn public_seed_fixture_round_trips() {
+    let frame = fixture_frame().expect("public fixture must seal");
+    assert_eq!(frame.len(), FRAME_LEN);
+    assert!(fixture_opens(&frame));
+    let mut changed = frame;
+    changed[51 + ENC_LEN] ^= 1;
+    assert!(!fixture_opens(&changed));
+}
+
 pub fn self_test() -> bool {
     let mut rng = ChaCha20Rng::from_seed([0x50; 32]);
     let (private_key, public_key) = RecipientKem::gen_keypair_with_rng(&mut rng);

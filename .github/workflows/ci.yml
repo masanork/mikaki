@@ -69,6 +69,7 @@ jobs:
           cargo clippy --locked --manifest-path design/probes/pqc/Cargo.toml --all-targets -- -D warnings
           wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked
           node design/probes/pqc/check.ts
+          node design/probes/pqc/hpke-interop.ts
           wasm-pack build design/probes/pqc --target web --release --out-dir pkg-web -- --locked
       - name: Build Wasm and UI
         run: npm run build
