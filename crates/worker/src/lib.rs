@@ -68,9 +68,21 @@ struct SigningPublicKeyRow {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct UserInfoRow {
+    sub: String,
+}
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct JwksResponse {
     keys: Vec<serde_json::Value>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct UserInfoResponse {
+    sub: String,
 }
 
 /// Current authorization and session facts needed to create the signed token
@@ -932,6 +944,64 @@ async fn jwks_route(
         .from_json(&JwksResponse { keys })
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn userinfo_route(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let unauthorized = || {
+        worker::Response::builder()
+            .with_status(401)
+            .with_header("Cache-Control", "no-store")?
+            .with_header("Pragma", "no-cache")?
+            .with_header("WWW-Authenticate", "Bearer error=\"invalid_token\"")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_token".into(),
+            })
+    };
+    let Some(header) = request.headers().get("authorization")? else {
+        return unauthorized();
+    };
+    let Some((scheme, token)) = header.split_once(' ') else {
+        return unauthorized();
+    };
+    if !scheme.eq_ignore_ascii_case("Bearer")
+        || token.len() != 43
+        || !token
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    {
+        return unauthorized();
+    }
+    let token_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(token.as_bytes()));
+    let now_ms = js_sys::Date::now();
+    if !now_ms.is_finite() || now_ms < 0.0 {
+        return Err(worker::Error::RustError("server_error".into()));
+    }
+    let now = (now_ms / 1000.0).floor() as i64;
+    let db = context.env.d1("DB")?;
+    let subject = db
+        .prepare(
+            "SELECT v.sub FROM token_issue ti \
+             JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
+             JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
+             WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>?2",
+        )
+        .bind(&[
+            wasm_bindgen::JsValue::from_str(&token_hash),
+            wasm_bindgen::JsValue::from_f64(now as f64),
+        ])?
+        .first::<UserInfoRow>(None)
+        .await?;
+    let Some(subject) = subject else {
+        return unauthorized();
+    };
+    worker::Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Pragma", "no-cache")?
+        .from_json(&UserInfoResponse { sub: subject.sub })
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 #[worker::event(fetch)]
 pub async fn main(
@@ -942,6 +1012,7 @@ pub async fn main(
     worker::Router::with_data(())
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
         .get_async("/jwks", jwks_route)
+        .get_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
         .run(req, env)
         .await
