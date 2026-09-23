@@ -1,5 +1,7 @@
 # Managed OIDC client operations
 
+This is the mikaki operator runbook. RP implementers should start with [RP integration](rp-integration.md).
+
 The normal production profile accepts `private_key_jwt` with ES256 and PKCE S256. Client registration is an operator action through D1; there is no public dynamic registration endpoint. Run the commands from the repository root with the correct Wrangler config and `--remote yes` for production. Each change requires an actor and reason, is written with an audit row, and defaults to validation only (`--apply no`).
 
 Apply D1 migrations before using the CLI. The registration input is a local JSON file containing only the RP's **public** JWK:

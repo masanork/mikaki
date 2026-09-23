@@ -1,8 +1,8 @@
 # 初期OIDCの実装基準と受入計画
 
-2026-09-22 / 設計統合版。製品実装・認証取得・本番配備は未実施。
+2026-09-22 / 設計統合版。本文には当時の実装経過を含む。現在の配備状態は[Cloudflare deployment](cloudflare-deployment.md)、RP実装手順は[RP向け接続手順](rp-integration.md)を参照。
 
-これまでの初期OIDC設計を実装へ進めるための基準としてまとめる。過去文書の旧候補のうち以下で絞り込んだ事項を示すが、採用済みADRの契約を上書きしない。担当範囲・決定状態・ADR未記録の項目は[文書案内](README.md)を参照する。実ドメイン、依存の実測、実環境での成立は確認済みとせず、末尾の公開条件に残す。Vault・連合・MCPの後続ゲートは本書の対象外。
+これまでの初期OIDC設計を実装へ進めるための基準としてまとめる。過去文書の旧候補のうち以下で絞り込んだ事項を示すが、採用済みADRの契約を上書きしない。担当範囲・決定状態・ADR未記録の項目は[文書案内](README.md)を参照する。この文書の段階表は公開条件を示し、個々の段階が完了したという記録ではない。Vault・連合・MCPの後続ゲートは本書の対象外。
 
 ## 実装へ渡す決定
 
@@ -29,7 +29,7 @@
 
 G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`mikaki-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、token formの厳格なdecode/validate型、不透明code生成・digest・期限計算、ES256 `private_key_jwt`検証とES256 ID Token署名を実装済み。token formは未知・重複項目を拒否し、authorization_code、private_key_jwt種別、client ID、code、redirect URI、verifier、assertionを一つの要求へ束ねる。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。assertionは登録済みP-256公開鍵・固定ES256・完全一致audience・iss/sub/jti/exp/iat・期限上限を検証し、成功型はD1再確認用のclient/key revision、jti、設定由来のretain_untilを保持する。
 
-Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。通常配備はprivate_key_jwtのみ、隔離conformance配備は登録済みclientごとに固定したclient_secret_basic/postも受け付ける。secretはD1にSHA-256 verifierだけを保存し、一定時間の試行回数を制限する。認証後は共通の短期receiptを保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient認証・session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtとsecret方式によるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。本番migrationは未配備であり、issuer変数・秘密鍵・D1 policy版の投入が必要。authorizeはpasskeyによる本人確認と明示的な初回consentからSSO cookieとapp_connectionを作成でき、ローカルOIDF Basic OPの認可を完了した。passkey登録、アカウント復旧、logout/session/check、全操作の統合試験は未実装で、公開可能を意味しない。
+Workerには`POST /token`、`GET /jwks`、Bearer認証の`GET`/`POST /userinfo`を接続した。HTTP bodyはstreamを設定上限まで読み、token formの未知・重複項目を拒否する。通常配備はprivate_key_jwtのみ、隔離conformance配備は登録済みclientごとに固定したclient_secret_basic/postも受け付ける。secretはD1にSHA-256 verifierだけを保存し、一定時間の試行回数を制限する。認証後は共通の短期receiptを保持し、code/PKCE/session/nonce/signing-keyの状態を署名前に読む。ES256はRust signer、RS256はRustのJWK/JWS処理とCloudflare WebCryptoのRSA署名でID Tokenを発行する。どちらもprivate JWKとD1登録公開JWKを照合し、D1最終batchでclient認証・session/nonce/signing-keyの現在値を再確認してcode消費とAccess Token hash保存を一括確定する。再使用されたcodeでは既存issueを失効する。JWKSはD1のactive ES256/RS256公開鍵だけを掲載する。workerd 1.20260921.1上で2048-bit合成RSA鍵の検査・非抽出import・ID Token署名を通し、独立Rust/WASM検証器で署名受理と改ざん拒否を確認した。さらに隔離D1/workerdでmigration適用後、`/authorize`、private_key_jwtとsecret方式によるPKCE code交換、ES256 ID Token検証、UserInfo、replay後のAccess Token失効まで縦切りで確認した。Worker policy projectionはD1有効版から読み、未投入では発行を停止する。隔離試験で版切替後の認可code期限変更も確認した。authorizeはpasskeyによる本人確認と明示的な初回consentからSSO cookieとapp_connectionを作成でき、ローカルOIDF Basic OPの認可を完了した。現在は本番migration、Passkey招待登録、`/session/check`も配備済みです。アカウント復旧、logout、RP側callbackを含む全操作の統合試験は未完了で、公開可能を意味しません。
 
 時間設定はauthorization code/assertion/access token/ID Token TTLとclock skewを型付きpolicyで渡す。workerは統合TOMLから生成された独立したschema version 4・policy revision・projection hash付きstrict JSONを読み込む。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
@@ -46,7 +46,7 @@ workerはHTTP制限、cookie、秘密管理、D1、時刻・乱数、外向き�
 | POST /token | form body、authorization_codeと通常配備のprivate_key_jwt、隔離conformance配備のclient_secret_basic/post。隔離D1/workerdで正常交換、code replay拒否、並行交換が一回だけ成立することを確認。invalid_client、invalid_grant、invalid_request、unsupported_grant_typeを区別 |
 | GET・POST /userinfo | Bearer、subのJSON。隔離D1/workerdで有効tokenの受入とreplay後失効を確認。詳細はUserInfo仕様 |
 | POST /session/check | client署名＋sid。200 active=falseと通信障害503を区別。存在照会は認証後に限定 |
-| GET・POST /logout | 標準のhint/登録済み戻り先/stateを検証し、必要な確認を表示。SSO失効とevent確定後に完了へ |
+| GET・POST /logout（未実装） | 標準のhint/登録済み戻り先/stateを検証し、必要な確認を表示。SSO失効とevent確定後に完了へ |
 | 各アプリのbackchannel URI | POST、logout_tokenを検証し、失効記録を保存して200。不正通知は400、一時ストア障害は503 |
 
 OAuthのエラーコードとHTTP statusは対象規格の規則に従う。サイズ超過・過負荷・一時障害をすべてinvalid_grantへ丸めない。内部結果はInvalidInput / Unauthenticated / Forbidden / Expired / Replayed / Conflict / Limited / Unavailable / OutcomeUnknownに分け、外部へはendpointごとに写像する。

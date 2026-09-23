@@ -2,13 +2,13 @@
 
 2026-09-22 / Draft 1（レビュー用）
 
-[ログインUX](oidc-login.md)と[セッション契約](session-lifecycle.md)を満たす初期案。Rust Workerは既存SSOと既存app connectionを使った`GET /authorize` code発行を実装したが、Passkey login UI・初回同意・connection作成は未実装。Discovery/token/UserInfo等の実装範囲は[実装基準](oidc-implementation-readiness.md)に記録する。以下のフロー全体への適合やconformance通過を意味しない。
+[ログインUX](oidc-login.md)と[セッション契約](session-lifecycle.md)に基づくRP側取引・競合条件の設計です。現在のRP実装入口は[RP向け接続手順](rp-integration.md)、本番に配備した機能は[Cloudflare deployment](cloudflare-deployment.md)を参照してください。WorkerにはPasskeyログイン、初回接続確認、code交換、UserInfo、`/session/check`があります。ログアウト通知とRP側callbackの統合試験は未完了です。
 
 ## クライアント認証
 
-サーバー側処理を持つtossa・tsudoiは、private_key_jwtを採用する案とする。アプリと環境ごとにclientと鍵を分け、秘密鍵は各アプリのバックエンド、公開鍵はmikakiの静的登録に置く。利用者への設定や操作は増やさない。初期は管理された登録更新で公開鍵を配布し、要求内のjku・x5uから鍵を取得しない。
+サーバー側処理を持つtossa・tsudoiは、private_key_jwtを使用する。アプリと環境ごとにclientと鍵を分け、秘密鍵は各アプリのバックエンド、公開鍵はmikakiの静的登録に置く。利用者への設定や操作は増やさない。初期は管理された登録更新で公開鍵を配布し、要求内のjku・x5uから鍵を取得しない。
 
-client assertionはiss=sub=client_id、audはtoken endpointの完全なURL、jtiは取引ごとに一意とする。expに加えて本プロファイルではiatも必須とし、寿命と未来時刻を検証する。client_assertion_typeはurn:ietf:params:oauth:client-assertion-type:jwt-bearerを使用する。署名方式・kid・鍵種別は登録プロファイルと照合し、OPのID Token署名方式とは独立に管理する。初期候補はES256とし、互換方式は[暗号移行方針](crypto-agility.md)に従う。
+client assertionはiss=sub=client_id、audはtoken endpointの完全なURL、jtiは取引ごとに一意とする。expに加えて本プロファイルではiatも必須とし、寿命と未来時刻を検証する。client_assertion_typeはurn:ietf:params:oauth:client-assertion-type:jwt-bearerを使用する。署名方式・kid・鍵種別は登録プロファイルと照合し、OPのID Token署名方式とは独立に管理する。本番client認証はES256とし、互換方式は[暗号移行方針](crypto-agility.md)に従う。
 
 検証成功したassertionの(client_id, jti)を原子的に一回だけ受理し、許容時計ずれを含む最終受理可能時刻まで再使用記録を保持する。後続のcode検証に失敗しても同じassertionは再使用しない。無効な署名によって他clientのjtiを消費させない。鍵更新は新公開鍵の登録、新秘密鍵への切替、旧assertionの受理可能期間経過、旧鍵の停止の順とする。漏えい鍵は即時停止する。
 
@@ -39,7 +39,7 @@ code消費、発行するtokenの記録、sidとの結び付けは同じ原子�
 
 ## セッション確認API
 
-POST /session/checkをmikaki固有のバックエンドAPI案とする。OIDC標準endpointやOAuth token introspectionと同一視しない。client署名による認証を共用するが、audはこのendpointの完全なURLとし、token endpoint用assertionの転用を拒否する。jtiの一回性も検証する。
+POST /session/checkはmikaki固有のバックエンドAPIとして実装済みです。OIDC標準endpointやOAuth token introspectionと同一視しない。client署名による認証を共用するが、audはこのendpointの完全なURLとし、token endpoint用assertionの転用を拒否する。jtiの一回性も検証する。
 
 入力は当該clientのsid。認証済みclientに属しtoken発行確定済みの有効なsidに対して、active・sub・auth_time・元SSOのexpires_at・lease_ttl・新規アプリセッション用app_idle_timeout・policy_revisionを返す。存在しないsid、未交換codeに対応するsid、別clientのsid、失効済みsidはactive=falseとし、他clientの情報を返さない。失効を反映した読み取りを必要とし、応答をHTTPキャッシュに保存しない。
 
