@@ -31,9 +31,27 @@ AuthZENはアクセス判断のインターフェースであり、復号鍵や�
 
 共有解除は以後のAPI読取、envelope取得、claim発行を止める。既にRPへ渡した値やシステムが得た平文は回収できない。以後の暗号学的な分離が必要な場合は新しいdata keyで属性を再暗号化し、残るrecipientにだけwrapを作る。属性更新も新しい版とenvelopeを一緒に確定し、古い値を新しいclaimとして返さない。
 
+## System recipient共有の状態契約案
+
+現在の`owner_envelope`は本人にだけ返す。system recipientの実装では、次の情報を別レコードで管理する。暗号suiteとバイト表現は鍵形式のテストベクトルを作ってから固定する。
+
+| レコード | 必要な値 | 正本の責任 |
+| --- | --- | --- |
+| `AttributeRecipientEnvelope` | AccountId、属性ID、ciphertext revision、recipient service ID、recipient key ID、用途、suite/version、包まれたdata key | どの暗号文をどの鍵で復号できるか。owner envelopeと共用しない |
+| `AttributeGrant` | AccountId、属性ID、recipient service ID、操作、用途、期限、active、単調増加のgrant version | system principalの取得・unwrap権限。鍵包みの存在だけで許可しない |
+| `ClaimRelease` | AccountId、client ID、claim名、同意画面版、期限、active、単調増加のconsent version | 復号した値をどのRPへ開示できるか。Vault Grantから推定しない |
+
+初回共有では、本人が解錠した端末で**対象属性のdata keyだけ**を公開済みUserInfo service keyに包む。鍵directoryの真正性と継続性を端末で検証できない間は共有操作を有効化しない。既存ciphertext revisionに対応するenvelope、Grant、監査記録をD1の一回の確定操作として公開し、一部だけが見える状態を作らない。R2に新しいciphertextが必要なら先に不変keyへ書き、D1確定失敗時は旧headを正本に保つ。
+
+属性更新時は新しいrevisionに対する本人用とsystem用のenvelopeを同じ操作に含める。system envelopeを作れない場合、旧revisionのsystem envelopeを新しい暗号文へ流用せず、UserInfoへの属性提供を止める。共有解除では先にGrantとClaimReleaseのactiveを落とし、以後の新規取得・unwrap・発行を拒否する。必要なら本人端末が新しいdata keyで再暗号化し、残るrecipientだけにwrapする。過去に配布済みの平文・鍵を回収したとは主張しない。
+
+PEPが作るAuthZEN評価では、subjectを検証済みの`mikaki-service`とservice ID、resourceを対象属性、actionを`vault.attribute.read-ciphertext`または`vault.attribute.read-system-envelope`とし、contextに用途と要求clientを含める。PDPは有効なGrantを参照し、未知service・用途・action・失効済みGrantをdenyする。別途、UserInfo発行前に`oidc.claim.release`をclientとclaimに対して評価し、ClaimReleaseも再確認する。PDPのallowだけで鍵をunwrapせず、保存層が同じ属性版・鍵ID・Grant版を再確認してから対象envelopeを渡す。HTTP PDPの配置と認証方式、同期したGrant読取方法は着手前に決める。
+
+この段階の受入試験では、別属性のenvelope差し替え、旧revisionの再利用、別service keyへの差し替え、Grant取消しと同時の取得、RP同意なしのUserInfo要求、PDP停止時のfail closed、同じ操作IDで異なる共有内容の再試行を拒否する。監査にはprincipal、属性ID、目的、client、版、判断と結果を残し、属性平文・data key・envelope暗号文を残さない。
+
 ## Storage APIの最初の縦切り
 
-1. 本人だけが読める小さな暗号化属性snapshotを一つ保存・取得する。D1をhead、revision、operation ID、Grantの正本とし、R2には不変ciphertextを置く。期待revisionによる競合検出、同じ操作の再試行、削除tombstone、D1確定失敗時の孤立blob回収を試験する。
+1. 本人だけが読める小さな暗号化属性snapshotを一つ保存・取得する。D1をhead、revision、operation IDの正本とし、R2には不変ciphertextを置く。期待revisionによる競合検出、同じ操作の再試行、削除tombstoneを試験する。孤立blob回収は公開前に追加する。
 2. WorkerをPEPとし、[AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)のsubject/action/resource/contextとdecisionに対応する評価境界を設ける。actorは認証済みの内部AccountIdから確定し、HTTP本文の自己申告を使わない。deny・timeout・不正応答は失敗として閉じ、失効後のallow cacheを作らない。PDPの配置・認証・Grantの即時参照方法は別途決める。
 3. 属性単位のsystem recipient envelopeと共有Grantを追加し、公開版の一致・鍵用途分離・解除と再鍵化を確認する。その後でRP別のclaim開示同意とUserInfo投影を実装する。
 
