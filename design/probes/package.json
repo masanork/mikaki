@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:crypto": "node --test crypto.test.mjs",
+    "test:crypto": "node --test crypto.test.mjs jose.test.mjs",
+    "bench:crypto": "node jose.bench.mjs",
     "test:d1": "node --test d1.test.mjs"
   },
   "devDependencies": {

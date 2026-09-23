@@ -1,25 +1,91 @@
-//! Isolated compile-time evaluation of jsonwebtoken for native and Wasm.
+//! Isolated jsonwebtoken evaluation for native and Wasm.
 //!
-//! This is not product code. It intentionally accepts a fixed algorithm per
-//! entry point so callers cannot choose an algorithm from an untrusted header.
+//! This is not product code. It verifies signatures only and intentionally
+//! accepts a fixed algorithm per entry point.
 
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, jwk::Jwk};
+use serde::Deserialize;
 use serde_json::Value;
+use wasm_bindgen::prelude::wasm_bindgen;
 
-fn validate_with(token: &str, key: &DecodingKey, algorithm: Algorithm) -> bool {
+#[derive(Deserialize)]
+struct ProbeClaims {
+    #[serde(rename = "sub")]
+    _sub: String,
+    #[serde(rename = "iss")]
+    _iss: String,
+    #[serde(rename = "aud")]
+    _aud: Value,
+    #[serde(rename = "exp")]
+    _exp: u64,
+}
+
+fn verify_with(token: &str, jwk_json: &str, algorithm: Algorithm) -> bool {
+    let Ok(jwk) = serde_json::from_str::<Jwk>(jwk_json) else {
+        return false;
+    };
+    let Ok(key) = DecodingKey::from_jwk(&jwk) else {
+        return false;
+    };
     let mut validation = Validation::new(algorithm);
+    validation.required_spec_claims.clear();
     validation.validate_exp = false;
-    decode::<Value>(token, key, &validation).is_ok()
+    validation.validate_nbf = false;
+    validation.validate_aud = false;
+    decode::<ProbeClaims>(token, &key, &validation).is_ok()
 }
 
-/// Verify a compact JWS with an ES256 public key in SEC1 DER form.
-pub fn verify_es256(token: &str, public_key_sec1_der: &[u8]) -> bool {
-    let key = DecodingKey::from_ec_der(public_key_sec1_der);
-    validate_with(token, &key, Algorithm::ES256)
+fn verify_claims_with(
+    token: &str,
+    jwk_json: &str,
+    algorithm: Algorithm,
+    issuer: &str,
+    audience: &str,
+) -> bool {
+    let Ok(jwk) = serde_json::from_str::<Jwk>(jwk_json) else {
+        return false;
+    };
+    let Ok(key) = DecodingKey::from_jwk(&jwk) else {
+        return false;
+    };
+    let mut validation = Validation::new(algorithm);
+    validation.set_issuer(&[issuer]);
+    validation.set_audience(&[audience]);
+    validation.set_required_spec_claims(&["exp", "iss", "aud"]);
+    validation.leeway = 0;
+    decode::<ProbeClaims>(token, &key, &validation).is_ok()
 }
 
-/// Verify a compact JWS with an RS256 public key in SubjectPublicKeyInfo DER.
-pub fn verify_rs256(token: &str, public_key_spki_der: &[u8]) -> bool {
-    let key = DecodingKey::from_rsa_der(public_key_spki_der);
-    validate_with(token, &key, Algorithm::RS256)
+/// Verify an ES256 compact JWS using a public JWK JSON value.
+#[wasm_bindgen]
+pub fn verify_es256(token: &str, public_jwk_json: &str) -> bool {
+    verify_with(token, public_jwk_json, Algorithm::ES256)
+}
+
+/// Verify an RS256 compact JWS using a public JWK JSON value.
+#[wasm_bindgen]
+pub fn verify_rs256(token: &str, public_jwk_json: &str) -> bool {
+    verify_with(token, public_jwk_json, Algorithm::RS256)
+}
+
+/// Verify an ES256 JWS and its exp, iss, and aud claims.
+#[wasm_bindgen]
+pub fn verify_es256_claims(
+    token: &str,
+    public_jwk_json: &str,
+    issuer: &str,
+    audience: &str,
+) -> bool {
+    verify_claims_with(token, public_jwk_json, Algorithm::ES256, issuer, audience)
+}
+
+/// Verify an RS256 JWS and its exp, iss, and aud claims.
+#[wasm_bindgen]
+pub fn verify_rs256_claims(
+    token: &str,
+    public_jwk_json: &str,
+    issuer: &str,
+    audience: &str,
+) -> bool {
+    verify_claims_with(token, public_jwk_json, Algorithm::RS256, issuer, audience)
 }

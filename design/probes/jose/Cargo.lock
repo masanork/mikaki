@@ -580,7 +580,9 @@ version = "0.0.0"
 dependencies = [
  "getrandom",
  "jsonwebtoken",
+ "serde",
  "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

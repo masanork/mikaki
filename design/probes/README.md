@@ -51,15 +51,20 @@ D1 batchによるロールバックとchanges()はローカル互換環境で成
 
 ### Rust JOSE 依存スパイク（初期評価）
 
-隔離crate [`jose`](jose/) で jsonwebtoken 11.1.0 の API と target build を確認する。Native と `wasm32-unknown-unknown` の `cargo check --all-targets` は成功した。Wasmでは `getrandom 0.2` の `js` feature をtarget限定で明示する必要があった。独立した `Cargo.lock` は87 crateを固定し、2026-09-23時点の `cargo audit` は指摘なし。
+隔離crate [`jose`](jose/) で jsonwebtoken 11.1.0 の API と target build を確認する。Wasmでは `getrandom 0.2` の `js` feature をtarget限定で明示する必要があった。独立した `Cargo.lock` は87 crateを固定し、2026-09-23時点の `cargo audit` は指摘なし。Nodeのjose/WebCryptoがテストごとに合成鍵をメモリー上で作り、同じcompact JWSをRust Native・Wasmで検証する。秘密鍵ファイルは作らない。
 
 ```sh
-cargo check --locked --manifest-path design/probes/jose/Cargo.toml --all-targets
-cargo check --locked --manifest-path design/probes/jose/Cargo.toml --target wasm32-unknown-unknown --all-targets
+cargo build --locked --manifest-path design/probes/jose/Cargo.toml --bin fixture
+wasm-pack build design/probes/jose --target nodejs --release --out-dir pkg -- --locked
+npm run test:crypto --prefix design/probes
+cargo build --locked --release --manifest-path design/probes/jose/Cargo.toml --bin fixture
+npm run bench:crypto --prefix design/probes
 cargo audit --file design/probes/jose/Cargo.lock
 ```
 
-この初期評価はcompileと依存監査だけで、署名ベクトルの実行・相互署名、鍵更新、改変/claim/alg拒否、Wasm runtime、サイズ・遅延の受入条件は未達。`rust_crypto` featureはRSA crateも依存グラフへ含む。監査結果だけでRSA秘密鍵署名を本番採用せず、既知のRSA timing勧告と公開鍵検証/秘密鍵操作の境界を別途評価する。spike内の検証関数は固定algを使うAPI形状の試作であり、OIDC claim・issuer・audience・時刻検証を実装していない。
+Native/Wasm共通で13項目が成功した。ES256・RS256の独立署名検証、別alg・署名改変・誤鍵拒否、鍵差替え後の旧token拒否、issuer/audience/expiry確認、必須claim欠落と重複`sub`拒否、壊れたJWK/tokenを含む。claim確認はprobe用型と固定条件であり、sakimoriのOIDC処理ではない。jsonwebtokenの時刻確認はプロセス時計に依存するため、注入時計は未確認。
+
+Wasmのrelease生成物は637,956 byte（gzip 253,443 byte）。2026-09-23のローカル10,000回測定では、Native/Wasmの1検証あたり ES256 が約216/693 µs、RS256 が約109/459 µsだった。probe APIは各呼出しでJWKをJSON parseするため、値は鍵キャッシュなしの上限寄りであり、製品性能の予測には使わない。`rust_crypto` featureはRSA・P-384・Ed25519等をまとめて有効にし、RSA crateも依存グラフへ含む。`cargo audit` に指摘はないが、監査だけでRSA秘密鍵署名を本番採用せず、既知のRSA timing勧告と公開鍵検証/秘密鍵操作の境界を別途評価する。crateのalgorithm/crypto backend粒度と、独自providerでサイズ・依存を絞れるかを次に調べる。
 
 ## 次の実装
 
