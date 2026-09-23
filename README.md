@@ -15,3 +15,11 @@ Mikaki is an experimental passkey identity service built primarily in Rust. It c
 | Browse current and proposed work | [Documentation](docs/README.md) and [roadmap](docs/roadmap.md) |
 
 Changes are recorded in the [changelog](CHANGELOG.md). Report vulnerabilities through the [security policy](SECURITY.md). The project is available under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+
+## Project metrics
+
+The charts track implementation and test code size and native Rust coverage. See the [measurement scope](metrics/README.md) and [dependency inventory](metrics/dependency-inventory.md) for what they include.
+
+![Codebase growth: implementation and test source lines](metrics/code-size.svg)
+
+![Native Rust coverage over time](metrics/coverage.svg)
