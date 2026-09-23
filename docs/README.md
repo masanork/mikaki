@@ -22,6 +22,7 @@ ADRは「何を、なぜ選んだか」という長期的な決定を記録す�
 | [0006](adr/0006-compact-portable-webauthn.md)         | sakimori継続、コンパクトさ最優先、native/Wasm共通WebAuthnコア | crates/webauthn/README                                    |
 | [0007](adr/0007-packed-self-attestation.md)           | none既定を維持しES256 packed selfの検証を追加                 | crates/webauthn、local/conformance                        |
 | [0008](adr/0008-webauthn-conformance.md)              | Conformance全通過を完成条件とし、製品既定と検証能力を分離     | crates/webauthn、local/conformance                        |
+| [0009](adr/0009-rust-oidc-and-worker-stack.md)        | OIDC状態機械・Worker adapterはRust、ブラウザ境界はTypeScript 7 | implementation-spec、oidc-implementation-readiness       |
 
 0004は0003の数値を変更可能な既定値として補足する。0002は0001当時に保留していたOIDC採用を確定する。旧ADRの理由は残し、後続決定への参照で関係を示す。
 

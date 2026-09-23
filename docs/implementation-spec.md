@@ -117,6 +117,8 @@ packages/browser ──→ sakimori-client (Wasm)
 
 将来の`server`（Nativeアダプター）とMCPは必要時に追加する。SQLx/TursoはNativeストア実装の選択であり、現時点のcore依存にはしない。認証3 crateから検証を始め、G1の実装着手時にOIDCを独立crateとして追加する。worker → oidc → auth → webauthnの依存とし、詳細は[初期OIDC実装基準](oidc-implementation-readiness.md)に従う。署名/ストアポートをcoreに置き、WorkersやD1の型はworkerアダプターに閉じ込める。
 
+言語・runtimeの適用範囲とローカルJS実装からの移行条件は[ADR 0009](adr/0009-rust-oidc-and-worker-stack.md)に従う。workers-rsの採用は、D1原子操作・primary read・非同期cryptoをlocal workerdで実証してから確定する。
+
 ## 5. 認証仕様（P0）
 
 ### 5.1 固定プロファイル
