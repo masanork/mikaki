@@ -2,7 +2,7 @@
 
 2026-09-22 / Draft 1（レビュー用、token endpoint実装の実測前）
 
-[ログイン取引](oidc-login-flow.md)のtoken応答とUserInfoを具体化する。初期は通常ログインに必要な情報だけを扱い、アプリのログイン保持は[セッション契約](session-lifecycle.md)に従う。Rust ES256 ID Token signerとWorker `POST /token`、不透明Access Token発行、D1のcode/token原子確定、activeなES256公開鍵を返す`GET /jwks`、発行済み・未失効tokenの`GET /userinfo`を実装した。UserInfoはBearer headerからtokenを受け取り、subだけを返す。Discovery、POST UserInfo、隔離D1と相互運用の確認は未実施であり、以下の仕様全体への適合を意味しない。
+[ログイン取引](oidc-login-flow.md)のtoken応答とUserInfoを具体化する。初期は通常ログインに必要な情報だけを扱い、アプリのログイン保持は[セッション契約](session-lifecycle.md)に従う。Rust ES256 ID Token signerとWorker `POST /token`、不透明Access Token発行、D1のcode/token原子確定、activeなES256公開鍵を返す`GET /jwks`、発行済み・未失効tokenの`GET`/`POST /userinfo`を実装した。UserInfoはBearer headerからtokenを受け取り、subだけを返す。Discovery、隔離D1と相互運用の確認は未実施であり、以下の仕様全体への適合を意味しない。
 
 ## 用途の分離
 
@@ -46,7 +46,7 @@ Cache-Control: no-storeとPragma: no-cacheを付ける。初期はrefresh_token�
 
 ## UserInfoの契約
 
-実装済みの`GET /userinfo`はAuthorization: Bearerヘッダーだけを受け付ける。queryやform bodyによるtoken送信、POST UserInfo、Discoveryでのendpoint公開はまだ提供しない。標準OIDCクライアントとの相互運用を確認する。
+実装済みの`GET`/`POST /userinfo`はAuthorization: Bearerヘッダーだけを受け付ける。queryによるtoken送信を拒否する。Discoveryでのendpoint公開と標準OIDCクライアントとの相互運用は未確認。
 
 有効なtokenに対して、Content-Type: application/jsonで次の形を返す。
 

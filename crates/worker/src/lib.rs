@@ -959,6 +959,14 @@ async fn userinfo_route(
                 error: "invalid_token".into(),
             })
     };
+    if request.url()?.query_pairs().next().is_some() {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    }
     let Some(header) = request.headers().get("authorization")? else {
         return unauthorized();
     };
@@ -1013,6 +1021,7 @@ pub async fn main(
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
         .get_async("/jwks", jwks_route)
         .get_async("/userinfo", userinfo_route)
+        .post_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
         .run(req, env)
         .await
