@@ -27,7 +27,7 @@
 
 ## モジュール境界
 
-G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`sakimori-oidc`へ実装する。現在、静的client向け認可要求の検証済み型、PKCE、CSPRNG portを受け取る不透明code生成・digest・期限計算を実装済み。D1確定操作、認証・session証拠との結合、client assertion、token発行/outboxは未実装であり、これらのcore/APIが完成したことを意味しない。`sakimori-worker`はworkers-rsのCloudflare entryと乱数adapterの骨組みを持ち、認可/D1操作は未接続。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
+G0のWebAuthn検証は従来の3 crateで進め、G1のOIDC coreは`sakimori-oidc`へ実装する。現在、静的client向け認可要求とtoken endpointのcode/PKCE入力の検証済み型、CSPRNG portを受け取る不透明code生成・digest・期限計算を実装済み。交換入力は正規形の32-byte code、RFC 7636 verifier、限定長のredirect URIを検証し、bearer codeとverifierを保持せずD1照合用digest/challengeへ変換する。D1確定操作、認証・session証拠との結合、client assertion、token発行/outboxは未実装であり、これらのcore/APIが完成したことを意味しない。`sakimori-worker`はworkers-rsのCloudflare entryと乱数adapterの骨組みを持ち、認可/D1操作は未接続。依存はworker → oidc → auth → webauthnとし、workerはauthの管理APIも直接呼べる。oidcはWorkers/D1/HTTPクライアントの型に依存しない。空crateを先行作成することは求めない。
 
 sakimori-oidcは認可取引、client認証、JOSEの用途別検証、セッション、outboxの業務契約を担当する。authが返す検証済み本人認証の型を受け取り、HTTPから同型をdeserializeできないようにする。認証結果はaccount・credential・ceremony・ブラウザ取引・epoch・期限に結び付け、再利用可能な裸のAccountIdを本人認証の証拠にしない。
 

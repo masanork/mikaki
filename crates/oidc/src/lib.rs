@@ -1,9 +1,11 @@
 //! Policy for the static, confidential ES256 client profile. JOSE uses jose/WebCrypto.
 mod code;
+mod exchange;
 
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
+pub use exchange::{AuthorizationCodeExchange, CodeExchangeInput, InvalidCodeExchange};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};
