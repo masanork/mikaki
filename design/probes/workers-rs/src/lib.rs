@@ -30,6 +30,12 @@ struct SignedJws {
     jwk: String,
 }
 
+#[derive(Deserialize)]
+struct RsaProbeKeys {
+    private: String,
+    public: String,
+}
+
 #[derive(Serialize)]
 struct CodeReport {
     code: String,
@@ -208,6 +214,77 @@ async fn sign(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     })
 }
 
+async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    let body = req.text().await?;
+    let keys: RsaProbeKeys = serde_json::from_str(&body)
+        .map_err(|_| worker::Error::RustError("RSA probe keys are invalid".into()))?;
+    let crypto = js_sys::Reflect::get(&js_sys::global(), &"crypto".into())?
+        .dyn_into::<Crypto>()
+        .map_err(|_| worker::Error::RustError("crypto is unavailable".into()))?;
+    let subtle = crypto.subtle();
+    let usages = js_sys::Array::new();
+    usages.push(&JsValue::from_str("sign"));
+    let key = sakimori_oidc::RsaPrivateTokenKey::from_private_jwk(&keys.private)
+        .map_err(|_| worker::Error::RustError("RSA JWK validation failed".into()))?;
+    let canonical_public_jwk = sakimori_oidc::P256TokenSigner::canonical_public_jwk(&keys.public)
+        .ok_or_else(|| worker::Error::RustError("RSA public JWK validation failed".into()))?;
+    if !key.matches_public_jwk(&canonical_public_jwk) {
+        return Err(worker::Error::RustError("RSA key pair mismatch".into()));
+    }
+    let private_jwk = js_sys::JSON::parse(
+        &key.webcrypto_private_jwk_json()
+            .map_err(|_| worker::Error::RustError("RSA JWK serialization failed".into()))?,
+    )?
+    .dyn_into::<js_sys::Object>()
+    .map_err(|_| worker::Error::RustError("RSA private JWK import failed".into()))?;
+    let import_algorithm = js_sys::JSON::parse(
+        r#"{"name":"RSASSA-PKCS1-v1_5","hash":{"name":"SHA-256"}}"#,
+    )?
+    .dyn_into::<js_sys::Object>()
+    .map_err(|_| worker::Error::RustError("RSA import algorithm setup failed".into()))?;
+    let imported = JsFuture::from(subtle.import_key_with_object(
+        "jwk",
+        &private_jwk,
+        &import_algorithm,
+        false,
+        usages.as_ref(),
+    )?)
+    .await?
+    .dyn_into::<CryptoKey>()
+    .map_err(|_| worker::Error::RustError("non-extractable RSA key import failed".into()))?;
+
+    let input = sakimori_oidc::IdTokenSigningInput::new(
+        "RS256",
+        key.kid(),
+        "https://issuer.example",
+        "probe-subject",
+        "probe-client",
+        "probe-session",
+        "probe-nonce",
+        1_000,
+        1_001,
+        1_061,
+    )
+    .map_err(|_| worker::Error::RustError("RSA JWS input validation failed".into()))?;
+    let signature = JsFuture::from(subtle.sign_with_str_and_u8_array(
+        "RSASSA-PKCS1-v1_5",
+        &imported,
+        input.as_bytes(),
+    )?)
+    .await?;
+    let signature = js_sys::Uint8Array::new(&signature).to_vec();
+    if signature.len() != key.modulus_bytes() {
+        return Err(worker::Error::RustError("RSA signature length mismatch".into()));
+    }
+    let token = input
+        .finish(&signature)
+        .map_err(|_| worker::Error::RustError("RSA JWS finalization failed".into()))?;
+    Response::from_json(&SignedJws {
+        token,
+        jwk: canonical_public_jwk,
+    })
+}
+
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     Router::with_data(())
@@ -216,6 +293,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         .post_async("/exchange/:operation", exchange)
         .get_async("/code", issue_code)
         .get_async("/sign", sign)
+        .post_async("/sign-rs256", sign_rs256)
         .run(req, env)
         .await
 }

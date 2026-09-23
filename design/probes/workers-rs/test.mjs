@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -58,7 +58,24 @@ try {
   const changed = `${header}.${payload.slice(0, -1)}${payload.endsWith('A') ? 'B' : 'A'}.${signature}`;
   assert.equal(verifier.verify_es256(changed, publicJwk), false);
 
-  console.log('workers-rs: D1 atomicity, WebCrypto code entropy/signing, and Rust OIDC code preparation passed');
+  const rsaKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  console.log('workers-rs: generated synthetic RSA test key');
+  const rsaPrivateJwk = { ...rsaKeys.privateKey.export({ format: 'jwk' }), kid: 'workerd-rs256-probe' };
+  const rsaPublicJwk = { ...rsaKeys.publicKey.export({ format: 'jwk' }), kid: 'workerd-rs256-probe' };
+  const rsaResponse = await worker.fetch('/sign-rs256', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ private: JSON.stringify(rsaPrivateJwk), public: JSON.stringify(rsaPublicJwk) }),
+  });
+  console.log('workers-rs: RS256 worker response received');
+  assert.equal(rsaResponse.status, 200);
+  const { token: rsaToken, jwk: rsaJwk } = await rsaResponse.json();
+  assert.equal(verifier.verify_rs256(rsaToken, rsaJwk), true);
+  const [rsaHeader, rsaPayload, rsaSignature] = rsaToken.split('.');
+  const changedRsa = `${rsaHeader}.${rsaPayload}.${rsaSignature.slice(0, -1)}${rsaSignature.endsWith('A') ? 'B' : 'A'}`;
+  assert.equal(verifier.verify_rs256(changedRsa, rsaJwk), false);
+
+  console.log('workers-rs: D1 atomicity, ES256/RS256 WebCrypto signing, Rust JWK/JWS validation, and OIDC code preparation passed');
 } finally {
   await worker.stop();
 }

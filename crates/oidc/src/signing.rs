@@ -19,12 +19,16 @@ struct PrivateJwk {
     x: String,
     y: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     alg: Option<String>,
     #[serde(default, rename = "use")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     use_: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     key_ops: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     ext: Option<bool>,
 }
 
@@ -37,12 +41,16 @@ struct PublicJwk {
     x: String,
     y: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     alg: Option<String>,
     #[serde(default, rename = "use")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     use_: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     key_ops: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     ext: Option<bool>,
 }
 
@@ -60,12 +68,16 @@ struct RsaPrivateJwk {
     dq: String,
     qi: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     alg: Option<String>,
     #[serde(default, rename = "use")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     use_: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     key_ops: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     ext: Option<bool>,
 }
 
@@ -76,13 +88,13 @@ struct RsaPublicJwk {
     kid: String,
     n: String,
     e: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     alg: Option<String>,
-    #[serde(default, rename = "use")]
+    #[serde(default, rename = "use", skip_serializing_if = "Option::is_none")]
     use_: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     key_ops: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     ext: Option<bool>,
 }
 
@@ -452,7 +464,10 @@ fn validate_rsa_public_metadata(jwk: &RsaPublicJwk) -> bool {
         || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
         || jwk.alg.as_deref().is_some_and(|alg| alg != "RS256")
         || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
-        || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["verify"])
+        || jwk
+            .key_ops
+            .as_ref()
+            .is_some_and(|ops| !ops.is_empty() && ops != &["verify"])
         || jwk.ext == Some(false)
     {
         return false;
@@ -532,6 +547,17 @@ mod tests {
         let modulus = B64.encode(modulus_bytes);
         let jwk = format!(r#"{{"kty":"RSA","kid":"op-1","n":"{modulus}","e":"Ag"}}"#);
         assert!(P256TokenSigner::canonical_public_jwk(&jwk).is_none());
+    }
+
+    #[test]
+    fn rsa_public_jwk_accepts_empty_webcrypto_key_ops() {
+        let mut modulus_bytes = [0x80u8; 256];
+        modulus_bytes[255] = 0x81;
+        let modulus = B64.encode(modulus_bytes);
+        let jwk =
+            format!(r#"{{"kty":"RSA","kid":"op-1","n":"{modulus}","e":"AQAB","key_ops":[]}}"#);
+        let canonical = P256TokenSigner::canonical_public_jwk(&jwk).unwrap();
+        assert!(!canonical.contains("key_ops"));
     }
 
     #[test]

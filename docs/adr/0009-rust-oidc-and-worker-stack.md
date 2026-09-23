@@ -27,6 +27,8 @@ Rust Workerへの全面移行前に、隔離したprobeで固定Cloudflare runti
 
 **2026-09-23のローカル結果:** `worker` 0.8.6、Wrangler 4.136.2 / workerd 1.20260921.1で、async Rust fetch handler、D1 batch rollback、`FirstPrimary` read、並行する一回限りのexchange（勝者一つ）、Rust OIDC code preparationへのWorkers WebCrypto CSPRNG接続、Rustからの非同期WebCrypto ES256署名と既存Rust/Wasm verifierによる検証を確認した。製品adapter crateも作成し、health routeと404 fallbackをlocal workerdで起動した。隔離probe lockfileの93 crateは`cargo audit`で指摘なし、workspace lockfileの180 crateも2026-09-23時点で指摘なし。最適化probe Wasmは321,262 bytes（gzip 104,541 bytes）。実行手順は[probe README](../../design/probes/README.md)に記録した。これはローカルruntimeの部分実証であり、ゲート全体の完了ではない。
 
+**2026-09-23 RS256 follow-up:** 同じlocal workerd上で、Node test processが生成した一時2048-bit RSA JWKをWorkerへ渡し、Rustによる秘密・公開JWKの検査と対応確認、WebCryptoへの非抽出秘密鍵import、RS256 ID Token signing inputの作成、RSASSA-PKCS1-v1_5/SHA-256署名を行った。返されたtokenを独立したRust/Wasm verifierが受理し、署名改ざんを拒否した。公開JWKのWebCrypto `key_ops: []` も有効なexport形態だったため、空または`verify`の用途を受け付けた上で、公開JWKSから`key_ops`は省略する。これは秘密鍵の永続secret設定やD1対応鍵行、実token exchangeを含まないローカル暗号境界の確認である。probe実行手順は[probe README](../../design/probes/README.md)を参照。
+
 **未確認:** 本番Cloudflare上のD1 failure/session semantics、実プロジェクトのSQLとの一致、scheduled/`waitUntil`、失効とlogoutの競合、Native/Wasm共通試験、最適化済みWasmのサイズ予算とcold start、実際の設定・cookie/HTTP境界。Worker全体のcold start・配布サイズ予算とは照合していない。残りの項目を実装着手前に評価し、ゲートを満たさない場合は**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
 
 ## TypeScript 7の適用範囲と静的検査
