@@ -4,12 +4,12 @@
 
 ```sh
 npm run build:wasm
-cargo build --release --locked -p sakimori-worker --example conformance
+cargo build --release --locked -p sakimori-browser-wasm --example conformance
 python3 local/conformance/extract-metadata.py
 node local/conformance/prepare.mjs
 node local/conformance/server.mjs
 # native側で再測定する場合（先に前のサーバーを停止する）
-cargo build --release --locked -p sakimori-worker --example conformance_server
+cargo build --release --locked -p sakimori-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-file.log 2>&1
 # メモリーSQLiteとの比較では FIDO_DB=memory を追加する
 ```

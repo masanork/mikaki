@@ -4,24 +4,20 @@ version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
 license.workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
-[[example]]
-name = "conformance_server"
-test = true
-[dependencies]
-sakimori-webauthn = { path = "../webauthn" }
-sakimori-auth = { path = "../auth" }
+
+[features]
+default = ["worker-entry"]
+worker-entry = []
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "=0.3.105"
 sakimori-oidc = { path = "../oidc" }
-serde.workspace = true
-serde_json.workspace = true
-wasm-bindgen.workspace = true
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-base64.workspace = true
-ciborium.workspace = true
-p256.workspace = true
-sha2.workspace = true
-tiny_http = "=0.12.0"
-rusqlite = { version = "=0.40.2", features = ["bundled"] }
+wasm-bindgen = "=0.2.128"
+web-sys = { version = "=0.3.105", features = ["Crypto"] }
+worker = { version = "=0.8.6", features = ["d1"] }
+
 [lints]
 workspace = true

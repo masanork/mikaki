@@ -29,7 +29,7 @@ async function size(path) {
   const data = await readFile(new URL(path, root));
   return { path, raw: data.length, gzip: gzipSync(data).length };
 }
-const bundles = [await size('crates/worker/pkg/sakimori_worker_bg.wasm')];
+const bundles = [await size('crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm')];
 for (const name of await readdir(new URL('local/ui/dist/assets', root)))
   bundles.push(await size(`local/ui/dist/assets/${name}`));
 const coverage = JSON.parse(await readFile(new URL('artifacts/native-coverage.json', root), 'utf8'))

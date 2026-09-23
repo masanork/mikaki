@@ -1,0 +1,27 @@
+[package]
+name = "sakimori-browser-wasm"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+[lib]
+crate-type = ["cdylib", "rlib"]
+[[example]]
+name = "conformance_server"
+test = true
+[dependencies]
+sakimori-webauthn = { path = "../webauthn" }
+sakimori-auth = { path = "../auth" }
+sakimori-oidc = { path = "../oidc" }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+base64.workspace = true
+ciborium.workspace = true
+p256.workspace = true
+sha2.workspace = true
+tiny_http = "=0.12.0"
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
+[lints]
+workspace = true

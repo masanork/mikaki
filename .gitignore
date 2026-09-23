@@ -9,6 +9,7 @@
 /artifacts/
 /coverage/
 **/.svelte-check/
+/crates/worker/build/
 
 /fuzz/corpus/
 /fuzz/artifacts/

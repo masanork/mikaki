@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build:policy": "python3.14 scripts/build_policy.py",
-    "build:wasm": "wasm-pack build crates/worker --target web --release --out-dir pkg -- --locked",
+    "build:wasm": "wasm-pack build crates/browser-wasm --target web --release --out-dir pkg -- --locked",
     "build:ui": "vite build --config local/ui/vite.config.ts",
     "build": "npm run build:policy && npm run build:wasm && npm run build:ui",
     "test:e2e": "node --test --test-concurrency=1 local/test/*.test.mjs",

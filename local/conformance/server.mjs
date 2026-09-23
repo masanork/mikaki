@@ -4,11 +4,11 @@ import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import init, * as wasm from '../../crates/worker/pkg/sakimori_worker.js';
+import init, * as wasm from '../../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
 
 await init({
   module_or_path: readFileSync(
-    new URL('../../crates/worker/pkg/sakimori_worker_bg.wasm', import.meta.url),
+    new URL('../../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm', import.meta.url),
   ),
 });
 const metadataDir = new URL('../../target/fido-metadata/', import.meta.url);

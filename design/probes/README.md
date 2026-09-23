@@ -11,6 +11,7 @@
 ```sh
 cargo build --locked --manifest-path design/probes/workers-rs/Cargo.toml --target wasm32-unknown-unknown
 worker-build --release design/probes/workers-rs
+worker-build --release crates/worker
 wasm-pack build design/probes/jose-custom --target nodejs --release --out-dir pkg -- --locked
 node design/probes/workers-rs/test.mjs
 cargo audit --file design/probes/workers-rs/Cargo.lock

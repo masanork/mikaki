@@ -62,3 +62,24 @@ try {
 } finally {
   await worker.stop();
 }
+
+const adapterConfig = fileURLToPath(new URL('../../../crates/worker/wrangler.jsonc', import.meta.url));
+const adapterScript = fileURLToPath(new URL('../../../crates/worker/build/worker/shim.mjs', import.meta.url));
+const adapter = await unstable_dev(adapterScript, {
+  config: adapterConfig,
+  envFiles: [],
+  experimental: { disableDevRegistry: true },
+  ip: '127.0.0.1',
+  local: true,
+  logLevel: 'error',
+  persist: false,
+});
+try {
+  const health = await adapter.fetch('/health');
+  assert.equal(health.status, 200);
+  assert.equal(await health.text(), 'ok');
+  assert.equal((await adapter.fetch('/not-a-route')).status, 404);
+  console.log('sakimori-worker: Rust Cloudflare adapter health route passed in local workerd');
+} finally {
+  await adapter.stop();
+}

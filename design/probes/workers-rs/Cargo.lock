@@ -454,12 +454,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sakimori-worker"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "sakimori-oidc",
+ "wasm-bindgen",
+ "web-sys",
+ "worker",
+]
+
+[[package]]
 name = "sakimori-workers-rs-probe"
 version = "0.0.0"
 dependencies = [
  "base64",
  "js-sys",
  "sakimori-oidc",
+ "sakimori-worker",
  "serde",
  "serde_json",
  "wasm-bindgen",

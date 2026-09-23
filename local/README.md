@@ -19,7 +19,7 @@ npm run dev
 ## 境界と実装範囲
 
 - Rust: WebAuthnのnone・packed self/ES256検証、JSON/CBORの境界、ceremonyの目的・ブラウザ・期限・試行数、認可要求の静的プロファイル、PKCE。
-- WorkerのJavaScriptアダプター: HTTP、D1の原子的操作、OIDCフロー、`jose`/WebCryptoによるJWT署名・検証。`sakimori-worker`はRust/Wasmへの境界で、worker-rsによる製品アダプターは未実装。
+- ローカルOP harnessのJavaScript adapter: HTTP、D1の原子的操作、OIDCフロー、`jose`/WebCryptoによるJWT署名・検証。これは仕様fixtureである。Rust/Wasmのブラウザ境界は`sakimori-browser-wasm`、Cloudflare runtime adapterは`sakimori-worker`として分離し、後者は実装を開始したばかり。
 - OP画面: Svelte 5、ja/enの小さな型付きカタログ。RP画面は確認用のHTML。
 - SQL: [既存の原子操作模型](../design/sql/oidc-critical-schema.sql)にローカル用テーブルを追加。本番migrationとしては扱わない。
 - 設定: 統合TOMLを検証して秒単位のJSONとpolicy revisionをビルド時に生成する。設定変更後は再ビルドが必要。未実装機能の設定項目はまだ利用しない。
@@ -123,13 +123,13 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-業務E2Eの46件（Chromium仮想認証器16、配送8、GC 10、運用者再配送7、全アカウントログアウト5）にWebAuthnの境界試験3件を加えた、計49件の統合試験で、登録完了・code交換の並行実行、assertionの一回性とendpoint拘束、PKCE不一致、code期限、署名鍵停止、UserInfoの用途と期限、SSO再利用、ログアウト通知、遅延callbackの復活防止、lease切れ後のfail-closed、bootstrap再使用拒否を確認する。nativeの単体試験とcompile-fail試験も別に実行する。
+統合試験50件で、登録完了・code交換の並行実行、assertionの一回性とendpoint拘束、PKCE不一致、code期限、署名鍵停止、UserInfoの用途と期限、SSO再利用、ログアウト通知、遅延callbackの復活防止、lease切れ後のfail-closed、bootstrap再使用拒否を確認する。nativeの単体試験とcompile-fail試験も別に実行する。
 
 [CI](../.github/workflows/ci.yml)はこれらと依存監査・native coverage・Wasm/UIサイズの計測を実行し、artifactへ保存する。GitHub上の実行は未確認。coverageはauth/oidc/webauthnのnative既定featureが対象で、別ファイルのtests.rs・Wasmアダプター・JS/Svelteを含まない。inline testコードは含まれるため、製品全体のcoverageとして表示しない。GitHub上での実行は要確認。ESLintやフロントcoverageなど、設計で挙げた品質ゲートに未実装項目がある。
 
 ```sh
 mkdir -p artifacts
-cargo llvm-cov --locked --workspace --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+cargo llvm-cov --locked --workspace --exclude sakimori-browser-wasm --exclude sakimori-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
 npm run health
 ```
 

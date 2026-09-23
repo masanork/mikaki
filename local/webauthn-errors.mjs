@@ -1,4 +1,4 @@
-import { diagnostic_stage } from '../crates/worker/pkg/sakimori_worker.js';
+import { diagnostic_stage } from '../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
 // Only accept payload-free diagnostics. Never log an exception or request body.
 export function webauthnDiagnostic(error) {
   if (typeof error === 'string' && error.length <= 128) {

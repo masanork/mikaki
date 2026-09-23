@@ -85,6 +85,7 @@ PRF出力・解錠鍵・平文秘密鍵を、API本文、URL、ログ、トー�
 | `sakimori-auth` | P0 | ceremony、credential管理、AccountId、ストアの原子的契約 | Vault、MLS、DID、Workers型 |
 | `sakimori-oidc` | G1/P0本番接続 | OIDC、client認証、セッション、JOSE用途別検証、outboxとストア契約 | D1/Workers型、Vault、MLS |
 | `sakimori-worker` | P0 | composition root、Service Binding/HTTP、D1、後にR2/DO、設定・時刻・乱数 | 端末秘密鍵、PRF処理、OpenMLS |
+| `sakimori-browser-wasm` | P0検証・ローカル | ブラウザとローカルharness向けJSON/Wasm境界 | Cloudflare binding、認可の確定 |
 | `sakimori-vault` | P1 | grant、暗号文オブジェクトの版管理、同期の状態遷移とストア契約 | 復号、OpenMLS、Cloudflare型 |
 | `sakimori-client` | S1/P1 | 端末側の鍵保護と状態遷移。S1でMLSモジュール、P1でVaultモジュール | サーバー認証core、D1、R2、HTTPサーバー |
 | `sakimori-federation` | P3 | 限定DID検証、配送許可、envelope検証、重複排除・再送契約 | 本文復号、MLS秘密状態、Cloudflare型 |
@@ -93,9 +94,11 @@ PRF出力・解錠鍵・平文秘密鍵を、API本文、URL、ログ、トー�
 認証開始時は3 crate、連合段階でも原則6 crateとする。数は上限目標であり、責任を混ぜるための制約ではない。`sakimori-client`のVault/MLSを独立公開・再利用する必要が生じた場合だけ分割を再検討する。
 
 ```text
-sakimori-worker ──→ sakimori-auth ──→ sakimori-webauthn
+sakimori-worker ──→ sakimori-oidc ──→ sakimori-auth ──→ sakimori-webauthn
        ├────────→ sakimori-vault
        └────────→ sakimori-federation
+
+sakimori-browser-wasm ──→ sakimori-auth / sakimori-webauthn
 
 packages/browser ──→ sakimori-client (Wasm)
                           ├─ vault / keywrap モジュール

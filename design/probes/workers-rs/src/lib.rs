@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use sakimori_oidc::{Authorization, CodeEntropyError, CryptographicRandom};
+use sakimori_oidc::Authorization;
+use sakimori_worker::WorkersCryptoRandom;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -36,22 +37,6 @@ struct CodeReport {
     expires_at: u64,
 }
 
-struct WorkerdRandom;
-
-impl CryptographicRandom for WorkerdRandom {
-    fn fill(&mut self, output: &mut [u8]) -> Result<(), CodeEntropyError> {
-        let global = js_sys::global();
-        let crypto = js_sys::Reflect::get(&global, &"crypto".into())
-            .map_err(|_| CodeEntropyError)?
-            .dyn_into::<Crypto>()
-            .map_err(|_| CodeEntropyError)?;
-        crypto
-            .get_random_values_with_u8_array(output)
-            .map(|_| ())
-            .map_err(|_| CodeEntropyError)
-    }
-}
-
 async fn issue_code(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     let challenge = sakimori_oidc::pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         .ok_or_else(|| worker::Error::RustError("probe PKCE setup failed".into()))?;
@@ -68,7 +53,7 @@ async fn issue_code(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     .validate("probe-client", "https://rp.example/callback", 256, 256)
     .map_err(|_| worker::Error::RustError("probe authorization invalid".into()))?;
     let prepared = authorization
-        .prepare_code(&mut WorkerdRandom, 1_000, 60, 1_050)
+        .prepare_code(&mut WorkersCryptoRandom, 1_000, 60, 1_050)
         .map_err(|_| worker::Error::RustError("probe code generation failed".into()))?;
     let (_, code, digest, expires_at) = prepared.into_parts();
     Response::from_json(&CodeReport {

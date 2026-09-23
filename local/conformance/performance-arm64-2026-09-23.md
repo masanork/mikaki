@@ -44,7 +44,7 @@
 ```sh
 python3.14 local/conformance/extract-metadata.py
 node local/conformance/prepare.mjs
-cargo build --release --locked -p sakimori-worker --example conformance_server
+cargo build --release --locked -p sakimori-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-profile.log 2>&1
 # Suiteを実行して停止し、各回のログを別名で保存する
 node local/conformance/summarize-timing.mjs target/performance-native-1.9.2-run1.log target/performance-native-1.9.2-run2.log

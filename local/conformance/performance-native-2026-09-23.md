@@ -43,7 +43,7 @@ msはHTTPリクエストを受け取ってから応答構築までのwall time�
 
 ```sh
 cargo test --locked --workspace
-cargo build --release --locked -p sakimori-worker --example conformance_server
+cargo build --release --locked -p sakimori-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-file.log 2>&1
 # サーバー停止後、新しいプロセスで再実行
 FIDO_DB=memory FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-memory.log 2>&1

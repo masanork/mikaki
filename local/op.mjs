@@ -8,8 +8,8 @@ import {
   authorize,
   pkce,
   valid_json,
-} from '../crates/worker/pkg/sakimori_worker.js';
-import wasm from '../crates/worker/pkg/sakimori_worker_bg.wasm';
+} from '../crates/browser-wasm/pkg/sakimori_browser_wasm.js';
+import wasm from '../crates/browser-wasm/pkg/sakimori_browser_wasm_bg.wasm';
 import exchangeSQL from '../design/sql/exchange-code.sql';
 import acceptSQL from '../design/sql/accept-assertion.sql';
 import {

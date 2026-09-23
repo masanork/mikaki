@@ -6,12 +6,12 @@
 
 認証・認可の正しさは、署名検証だけでなく「どの状態から何へ遷移できるか」「一度だけ実行できるか」「失敗時に何が確定したか」で決まる。これらはRustの型と明示的な状態遷移で一元管理する。一方、ブラウザUI、WebAuthn API、IndexedDB、Cloudflare bindingの接続は、プラットフォームのAPIに近い薄い境界として扱う。
 
-現在のローカル縦切りでは、[`local/op.mjs`](../../local/op.mjs)が707行、`local/rp.mjs`が313行で、OIDC取引とD1操作をJavaScriptが実行する。`sakimori-oidc`は認可要求とPKCEの小さなcoreであり、`sakimori-worker`はWebAuthn/PKCEのJSON/Wasm境界で、Cloudflareのfetch handlerやbinding adapterではない。[ローカル実装文書](../../local/README.md)も製品のWorkers adapterは未実装と区別している。これは実行可能な仕様模型としては有用だが、型安全な製品構成としては目標形ではない。
+現在のローカル縦切りでは、[`local/op.mjs`](../../local/op.mjs)が707行、`local/rp.mjs`が313行で、OIDC取引とD1操作をJavaScriptが実行する。`sakimori-oidc`は認可要求とPKCEのcoreである。従来の`sakimori-worker`はWebAuthn/PKCEのJSON/Wasm境界だったため、これを`sakimori-browser-wasm`へ改名し、Cloudflareのfetch handler/binding adapter用に`sakimori-worker`を分離した。[ローカル実装文書](../../local/README.md)はJS harnessを製品実装と区別している。
 
 ## 決定
 
 1. **Rustをプロトコル状態遷移の正本にする。** OIDC、client assertion、一回性、認証・認可証拠、session、logout/outboxのユースケースと検証済み型を`sakimori-oidc` / `sakimori-auth`に置く。生のHTTP入力、JWT文字列、UUID文字列から、検証済み状態へ移る箇所を明示する。遷移は網羅的なenum/Resultと私有フィールド付き型で表し、HTTPやDB行をそのままドメイン型にDeserializeしない。
-2. **Cloudflareの本番Worker adapterもRustを第一候補にする。** `worker` crate（workers-rs）を使い、Worker入口、設定・時計・乱数、非同期署名、D1、Service Bindingを`sakimori-worker`に閉じる。D1のconditional batchが最終的な一回性・並行性を確定する不変条件は維持し、Rust coreの型だけでDB原子性が保証されるとは扱わない。生成されたWasm/JS glueは境界の実装詳細とし、独自Wasm ABIを業務APIにしない。
+2. **Cloudflareの本番Worker adapterもRustを第一候補にする。** `worker` crate（workers-rs）を使い、Worker入口、設定・時計・乱数、非同期署名、D1、Service Bindingを`sakimori-worker`に閉じる。`sakimori-browser-wasm`はブラウザ/ローカルharness向けに限る。D1のconditional batchが最終的な一回性・並行性を確定する不変条件は維持し、Rust coreの型だけでDB原子性が保証されるとは扱わない。生成されたWasm/JS glueは境界の実装詳細とし、独自Wasm ABIを業務APIにしない。
 3. **TypeScript 7をブラウザUIとブラウザ専用処理の標準にする。** Svelte UI、WebAuthn/IndexedDB呼出し、画面状態、ローカルdev harnessでRustが不自然な箇所に使う。UIは認証可否を決定せず、サーバー応答を表示・送信する。フロントの暗号処理は規格APIを呼び、独自プロトコルや権限判定を実装しない。
 4. **ローカルJavaScript縦切りは検証fixtureとして保つ。** Rust実装への期待動作を示すための回帰・E2E harnessとして使える間は維持するが、新しい製品機能の正本にはしない。Rustへの移行中は同じ契約ケースを両方へ実行し、二つの実装が並走する期間を限定する。
 5. **初期crate構成を小さく保つ。** `webauthn`、`auth`、`oidc`、`worker`をP0の境界とし、JWT、D1 repository、policy loaderのためだけのcrateや汎用plugin frameworkは追加しない。
@@ -25,7 +25,7 @@ Rust Workerへの全面移行前に、隔離したprobeで固定Cloudflare runti
 - Workers WebCrypto署名と公開鍵検証、D1、scheduled/`waitUntil`がRust adapterの非同期境界から利用できる。
 - Native/Wasm試験を共通化でき、Wasm size、cold start、依存監査が許容範囲にある。
 
-**2026-09-23のローカル結果:** `worker` 0.8.6、Wrangler 4.136.2 / workerd 1.20260921.1で、async Rust fetch handler、D1 batch rollback、`FirstPrimary` read、並行する一回限りのexchange（勝者一つ）、Rust OIDC code preparationへのWorkers WebCrypto CSPRNG接続、Rustからの非同期WebCrypto ES256署名と既存Rust/Wasm verifierによる検証を確認した。隔離probe lockfileの93 crateは`cargo audit`で指摘なし、最適化probe Wasmは321,262 bytes（gzip 104,541 bytes）。実行手順は[probe README](../../design/probes/README.md)に記録した。これはD1/cryptoのローカル実証であり、ゲート全体の完了ではない。
+**2026-09-23のローカル結果:** `worker` 0.8.6、Wrangler 4.136.2 / workerd 1.20260921.1で、async Rust fetch handler、D1 batch rollback、`FirstPrimary` read、並行する一回限りのexchange（勝者一つ）、Rust OIDC code preparationへのWorkers WebCrypto CSPRNG接続、Rustからの非同期WebCrypto ES256署名と既存Rust/Wasm verifierによる検証を確認した。製品adapter crateも作成し、health routeと404 fallbackをlocal workerdで起動した。隔離probe lockfileの93 crateは`cargo audit`で指摘なし、workspace lockfileの180 crateも2026-09-23時点で指摘なし。最適化probe Wasmは321,262 bytes（gzip 104,541 bytes）。実行手順は[probe README](../../design/probes/README.md)に記録した。これはローカルruntimeの部分実証であり、ゲート全体の完了ではない。
 
 **未確認:** 本番Cloudflare上のD1 failure/session semantics、実プロジェクトのSQLとの一致、scheduled/`waitUntil`、失効とlogoutの競合、Native/Wasm共通試験、最適化済みWasmのサイズ予算とcold start、実際の設定・cookie/HTTP境界。Worker全体のcold start・配布サイズ予算とは照合していない。残りの項目を実装着手前に評価し、ゲートを満たさない場合は**TypeScript 7 Workerを薄いplatform adapterとして残し、状態遷移はRust coreが決める**方式へ切り替える。TypeScript Workerに業務状態機械を戻さない。
 
