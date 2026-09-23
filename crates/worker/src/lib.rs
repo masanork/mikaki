@@ -50,6 +50,69 @@ struct ClientAssertionKeyRow {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
+struct AuthorizationCodeContextRow {
+    client_id: String,
+    sid: String,
+    sub: String,
+    nonce: String,
+    auth_time: i64,
+    parent_expires_at: i64,
+    signing_generation: i64,
+}
+
+/// Current authorization and session facts needed to create the signed token
+/// response. The final D1 exchange must recheck every fact before consuming the
+/// code because this read is only a preflight for signing.
+#[cfg(target_arch = "wasm32")]
+#[must_use = "use this snapshot only to prepare tokens for a conditional D1 exchange"]
+pub struct AuthorizationCodeContext {
+    client_id: String,
+    sid: String,
+    sub: String,
+    nonce: String,
+    auth_time: u64,
+    parent_expires_at: u64,
+    signing_kid: String,
+    signing_generation: u64,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl AuthorizationCodeContext {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub fn sid(&self) -> &str {
+        &self.sid
+    }
+
+    pub fn subject(&self) -> &str {
+        &self.sub
+    }
+
+    pub fn nonce(&self) -> &str {
+        &self.nonce
+    }
+
+    pub fn auth_time(&self) -> u64 {
+        self.auth_time
+    }
+
+    pub fn parent_expires_at(&self) -> u64 {
+        self.parent_expires_at
+    }
+
+    pub fn signing_kid(&self) -> &str {
+        &self.signing_kid
+    }
+
+    pub fn signing_generation(&self) -> u64 {
+        self.signing_generation
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CompiledWorkerPolicy {
     schema_version: u32,
@@ -322,6 +385,77 @@ pub async fn authenticate_token_request(
     Ok(AuthenticatedTokenRequest {
         request,
         assertion_reservation_id,
+    })
+}
+
+/// Read the one-use code's immutable claims and current eligibility facts
+/// before signing. The commit step must repeat the conditional predicates.
+#[cfg(target_arch = "wasm32")]
+pub async fn load_authorization_code_context(
+    db: &worker::d1::D1Database,
+    input: &AuthenticatedTokenRequest,
+    signing_kid: &str,
+) -> worker::Result<AuthorizationCodeContext> {
+    use wasm_bindgen::JsValue;
+
+    let request = input.request();
+    let assertion = request.assertion();
+    let exchange = request.exchange();
+    let values = [
+        JsValue::from_str(request.client_id()),
+        JsValue::from_str(exchange.code_digest()),
+        JsValue::from_str(exchange.redirect_uri()),
+        JsValue::from_str(exchange.pkce_challenge()),
+        JsValue::from_str(&assertion.client_revision().to_string()),
+        JsValue::from_str(assertion.key_id()),
+        JsValue::from_str(&assertion.key_revision().to_string()),
+        JsValue::from_str(assertion.jti()),
+        JsValue::from_str(assertion.audience()),
+        JsValue::from_str(input.assertion_reservation_id()),
+        JsValue::from_str(&assertion.retain_until().to_string()),
+        JsValue::from_str(signing_kid),
+    ];
+    let row = db
+        .prepare(
+            "SELECT ac.client_id, cs.sid, v.sub, cc.nonce, sx.auth_time, \
+             v.expires_at AS parent_expires_at, sk.generation AS signing_generation \
+             FROM authorization_code ac \
+             JOIN eligible_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
+             JOIN client_session cs ON cs.client_id=ac.client_id AND cs.sid=ac.sid \
+             JOIN sso_context sx ON sx.sso_id=cs.sso_id \
+             JOIN code_context cc ON cc.code_hash=ac.code_hash \
+             JOIN client c ON c.client_id=ac.client_id \
+             JOIN client_key ck ON ck.client_id=c.client_id \
+             JOIN assertion_use au ON au.client_id=c.client_id \
+             JOIN signing_key sk ON sk.kid=?12 \
+             WHERE c.client_id=?1 AND c.active=1 AND c.revision=?5 \
+             AND ac.code_hash=?2 AND ac.client_id=?1 AND ac.consumed_by IS NULL \
+             AND ac.redirect_uri=?3 AND ac.pkce_challenge=?4 \
+             AND ac.expires_at > CAST(strftime('%s','now') AS INTEGER) \
+             AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1 \
+             AND au.jti=?8 AND au.endpoint=?9 AND au.accepted_by=?10 \
+             AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER) \
+             AND sk.active=1 LIMIT 1",
+        )
+        .bind(&values)?
+        .first::<AuthorizationCodeContextRow>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?;
+    let auth_time = u64::try_from(row.auth_time)
+        .map_err(|_| worker::Error::RustError("invalid_grant".into()))?;
+    let parent_expires_at = u64::try_from(row.parent_expires_at)
+        .map_err(|_| worker::Error::RustError("invalid_grant".into()))?;
+    let signing_generation = u64::try_from(row.signing_generation)
+        .map_err(|_| worker::Error::RustError("invalid_grant".into()))?;
+    Ok(AuthorizationCodeContext {
+        client_id: row.client_id,
+        sid: row.sid,
+        sub: row.sub,
+        nonce: row.nonce,
+        auth_time,
+        parent_expires_at,
+        signing_kid: signing_kid.to_owned(),
+        signing_generation,
     })
 }
 
