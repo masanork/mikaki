@@ -17,7 +17,24 @@ CREATE TABLE credential (
 CREATE TABLE client (
   client_id TEXT PRIMARY KEY NOT NULL CHECK(length(client_id) BETWEEN 1 AND 128),
   revision INTEGER NOT NULL CHECK(revision >= 0),
-  active INTEGER NOT NULL CHECK(active IN (0, 1))
+  active INTEGER NOT NULL CHECK(active IN (0, 1)),
+  sector_identifier TEXT NOT NULL CHECK(length(sector_identifier) BETWEEN 1 AND 2048)
+) STRICT;
+
+-- Redirect URIs are exact static registrations. Authorization codes reference
+-- this table so a code cannot be issued for a request-supplied callback.
+CREATE TABLE client_redirect_uri (
+  client_id TEXT NOT NULL REFERENCES client(client_id),
+  redirect_uri TEXT NOT NULL CHECK(length(redirect_uri) BETWEEN 1 AND 2048),
+  PRIMARY KEY(client_id, redirect_uri)
+) STRICT;
+
+-- Pairwise subjects remain stable for an account within a registered sector.
+CREATE TABLE pairwise_subject (
+  account_id TEXT NOT NULL REFERENCES account_security(account_id),
+  sector_identifier TEXT NOT NULL CHECK(length(sector_identifier) BETWEEN 1 AND 2048),
+  sub TEXT NOT NULL UNIQUE CHECK(length(sub) BETWEEN 1 AND 255),
+  PRIMARY KEY(account_id, sector_identifier)
 ) STRICT;
 
 CREATE TABLE client_key (
@@ -88,6 +105,8 @@ CREATE TABLE authorization_code (
   consumed_by TEXT UNIQUE,
   consumed_at INTEGER,
   FOREIGN KEY(client_id, sid) REFERENCES client_session(client_id, sid),
+  FOREIGN KEY(client_id, redirect_uri)
+    REFERENCES client_redirect_uri(client_id, redirect_uri),
   CHECK((consumed_by IS NULL) = (consumed_at IS NULL))
 ) STRICT;
 
