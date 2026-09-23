@@ -6,7 +6,7 @@ The initial D1 migration, generation 1 runtime policy, and ES256 public signing 
 
 The owner-only Vault uses the `mikaki-vault` R2 bucket, D1 migration `0002_vault_attribute_storage.sql`, and a daily UTC 03:00 cleanup trigger. Apply the migration before deploying a Worker with the R2 binding. The `/vault` page needs an existing SSO session and a PRF-capable passkey; it is not an account enrollment or recovery flow. Keep R2 public access disabled.
 
-The bucket, migration, and Worker version `886b6008-33ea-4a6e-a1df-5aced50536ef` were deployed on 2026-09-23. Smoke checks returned 200 for health, discovery, JWKS, and the Vault script, while unauthenticated `/vault` returned 401. An authenticated production Vault write and PRF unlock have not yet been exercised.
+The bucket, migration, and Worker version `2c8eb289-ae2b-46ab-98db-96d50a4287fe` were deployed on 2026-09-23. Smoke checks returned 200 for health, discovery, JWKS, and the Vault script, while unauthenticated `/vault` returned 401. An authenticated production Vault write and PRF unlock have not yet been exercised.
 
 After modifying the Worker, build and deploy with the secret included in the **same** version:
 

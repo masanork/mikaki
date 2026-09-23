@@ -106,12 +106,14 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
       (await worker.fetch(url, { headers: { Cookie: `__Host-op-sso=${otherSecret}` } })).status,
       404,
     );
+    const keysBeforeStale = (await env.VAULT_BLOBS.list()).objects.length;
     const stale = await worker.fetch(url, {
       method: 'PUT',
       headers: headers(operation(), { 'If-None-Match': '*' }),
       body: content('stale'),
     });
     assert.equal(stale.status, 409);
+    assert.equal((await env.VAULT_BLOBS.list()).objects.length, keysBeforeStale);
     const badOrigin = await worker.fetch(url, {
       method: 'PUT',
       headers: { ...headers(operation(), { 'If-Match': '"1"' }), Origin: 'https://evil.test' },

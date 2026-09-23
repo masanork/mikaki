@@ -41,6 +41,13 @@ struct Mutation {
 }
 
 #[derive(Deserialize)]
+struct WriteLimits {
+    revision: Option<i64>,
+    recent: i64,
+    slots: i64,
+}
+
+#[derive(Deserialize)]
 struct Owner {
     account_id: String,
     secret_hash: String,
@@ -187,7 +194,7 @@ fn expected_revision(request: &Request) -> worker::Result<Option<i64>> {
     let Ok(revision) = digits.parse::<i64>() else {
         return Ok(None);
     };
-    Ok((revision > 0).then_some(revision))
+    Ok((revision > 0 && revision < 9_007_199_254_740_991).then_some(revision))
 }
 
 fn operation_id(request: &Request) -> worker::Result<Option<String>> {
@@ -388,6 +395,32 @@ async fn write(
         return mutation_response(previous, attribute, &hash, deleted);
     }
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))? as i64;
+    let limits = db
+        .prepare(
+            "SELECT \
+             (SELECT revision FROM vault_attribute_head WHERE account_id=?1 AND attribute_id=?2) AS revision, \
+             (SELECT COUNT(*) FROM vault_attribute_mutation WHERE account_id=?1 AND created_at>?3-60) AS recent, \
+             (SELECT COUNT(*) FROM vault_attribute_head WHERE account_id=?1) AS slots",
+        )
+        .bind(&[
+            JsValue::from_str(&owner.account_id),
+            JsValue::from_str(attribute),
+            JsValue::from_f64(now as f64),
+        ])?
+        .first::<WriteLimits>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("write_limits_unavailable".into()))?;
+    if (expected == -1 && limits.revision.is_some())
+        || (expected > 0 && limits.revision != Some(expected))
+    {
+        return error(409, "revision_conflict");
+    }
+    if limits.recent >= 20 {
+        return error(429, "write_rate_exceeded");
+    }
+    if expected == -1 && limits.slots >= 32 {
+        return error(409, "attribute_limit_exceeded");
+    }
     let (object_key, digest, envelope) = if deleted {
         (None, None, None)
     } else {

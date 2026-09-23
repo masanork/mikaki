@@ -12,7 +12,7 @@ Rust Workerに本人専用の`GET`/`PUT`/`DELETE /vault/attributes/{attribute}`�
 
 ブラウザのversion 1形式では、属性ごと・revisionごとにランダムな32 byte data keyを生成し、AES-256-GCMで本文を暗号化する。`ciphertext`のバイト列は`0x01 | nonce(12) | ciphertext+tag`。本人用鍵包みはPasskeyのWebAuthn PRF出力からHKDF-SHA-256で導いたAES-256-GCM鍵でdata keyを包む。`owner_envelope`は`0x01 | credential ID長(u16 BE) | credential ID | PRF入力(32) | HKDF salt(32) | wrap nonce(12) | wrapped data key(48)`。HKDF infoはorigin・attribute・credential IDに、両方のGCM AADはorigin・attribute・revisionに結び付ける。PRF出力とdata keyはサーバーに送らない。PRF非対応Passkey、紛失したPasskey、移転前のoriginで作った値はそのまま復号できない。別Passkeyへの再包み・復旧機能はまだない。
 
-PUTの新規作成には`If-None-Match: *`、更新・DELETEには`If-Match: "<revision>"`を要求する。書込みには同一originの`Origin`と43文字の`X-Operation-ID`が必要であり、SSO cookieから本人を確定する。同じoperation IDと同じ要求は既存結果を返し、異なる要求は409とする。D1の条件付き確定時にもSSO・credential・accountの有効性を再確認する。削除はrevision付きtombstoneで、古い端末の上書きを防ぐ。1アカウントの属性IDは最大32個、直近60秒の書込みは20回まで。日次Cronが24時間以上前のR2 blobを走査し、D1 headに参照がないものだけを削除する。操作再試行記録は90日後に少しずつ削除する。R2とD1をまたぐtransactionはないため、回収が成功するまで孤立blobは残る。
+PUTの新規作成には`If-None-Match: *`、更新・DELETEには`If-Match: "<revision>"`を要求する。書込みには同一originの`Origin`と43文字の`X-Operation-ID`が必要であり、SSO cookieから本人を確定する。同じoperation IDと同じ要求は既存結果を返し、異なる要求は409とする。R2書込みの前に版・quotaを確認し、D1の条件付き確定時にも版・quota・SSO・credential・accountの有効性を再確認する。削除はrevision付きtombstoneで、古い端末の上書きを防ぐ。1アカウントの属性IDは最大32個、直近60秒の書込みは20回まで。日次Cronが24時間以上前のR2 blobを走査し、D1 headに参照がないものだけを削除する。操作再試行記録は90日後に少しずつ削除する。R2とD1をまたぐtransactionはないため、同時書込みの競合などでできた孤立blobは回収が成功するまで残る。
 
 ## 目的と信頼境界
 
