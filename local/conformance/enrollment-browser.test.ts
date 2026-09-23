@@ -7,7 +7,7 @@ import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
 
-test('bootstrap invitation registers a passkey and the new account can sign in', async () => {
+test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Chromium', async () => {
   const issuer = 'https://mikaki.test';
   const redirectUri = 'https://rp.example/callback';
   const harness = createTestHarness({
@@ -50,9 +50,11 @@ test('bootstrap invitation registers a passkey and the new account can sign in',
     await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
         protocol: 'ctap2',
+        ctap2Version: 'ctap2_1',
         transport: 'internal',
         hasResidentKey: true,
         hasUserVerification: true,
+        hasPrf: true,
         automaticPresenceSimulation: true,
         isUserVerified: true,
       },
@@ -123,6 +125,29 @@ test('bootstrap invitation registers a passkey and the new account can sign in',
       (cookie) => cookie.name === '__Host-op-sso',
     );
     assert.ok(firstSso);
+    await page.goto(`${issuer}/vault`);
+    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
+    await page.getByLabel('表示名').fill('Vault browser test');
+    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('status').getByText('保存しました').waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
+    await page.waitForFunction(
+      () =>
+        (document.querySelector('#name') as HTMLInputElement | null)?.value ===
+        'Vault browser test',
+    );
+    assert.equal(await page.getByLabel('表示名').inputValue(), 'Vault browser test');
+    await page.getByLabel('表示名').fill('Updated vault name');
+    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('status').getByText('保存しました').waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
+    await page.waitForFunction(
+      () =>
+        (document.querySelector('#name') as HTMLInputElement | null)?.value ===
+        'Updated vault name',
+    );
     assert.equal(
       (await DB.prepare('SELECT closed FROM bootstrap_state WHERE id=1').first()).closed,
       1,

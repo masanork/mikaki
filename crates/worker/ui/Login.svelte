@@ -115,7 +115,7 @@
           authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
           attestation: 'none',
           timeout: 120000,
-          extensions: { credProps: true },
+          extensions: { credProps: true, prf: {} },
         },
       });
       if (

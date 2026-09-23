@@ -46,6 +46,7 @@
       const options = start.publicKey;
       options.challenge = decode(options.challenge);
       if (options.user) options.user.id = decode(options.user.id);
+      if (purpose === 'register') options.extensions = { ...options.extensions, prf: {} };
       const credential = (await (purpose === 'register'
         ? navigator.credentials.create({ publicKey: options })
         : navigator.credentials.get({ publicKey: options }))) as PublicKeyCredential | null;

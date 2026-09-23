@@ -31,6 +31,7 @@
   let currentRevision = $state(0);
   let sessionCredential: Uint8Array<ArrayBuffer> | null = $state(null);
   let opened = $state(false);
+  let loading = $state(true);
   let pending: Pending | null = null;
   let name = $state('');
   let status = $state(m.vaultLoading());
@@ -81,6 +82,7 @@
   }
 
   async function load(): Promise<void> {
+    loading = true;
     opened = false;
     current = null;
     currentRevision = 0;
@@ -108,6 +110,7 @@
         if (!Number.isSafeInteger(currentRevision)) throw new Error(m.vaultRevisionInvalid());
       }
       message(m.vaultNotFound());
+      loading = false;
       return;
     }
     if (!response.ok) throw new Error(m.vaultReadFailed());
@@ -116,9 +119,11 @@
     current = body;
     currentRevision = body.revision;
     message(m.vaultLoaded());
+    loading = false;
   }
 
   async function unlock(): Promise<void> {
+    if (loading) return;
     try {
       if (current) {
         const envelope = parseOwnerEnvelope(current.owner_envelope);
@@ -235,7 +240,9 @@
     disabled={!opened}
     bind:value={name}
   />
-  <button id="unlock" type="button" disabled={opened} onclick={unlock}>{m.vaultUnlock()}</button>
+  <button id="unlock" type="button" disabled={opened || loading} onclick={unlock}
+    >{m.vaultUnlock()}</button
+  >
   <button id="save" type="button" disabled={!opened} onclick={() => mutate('PUT')}
     >{m.vaultSave()}</button
   >
