@@ -12,7 +12,7 @@
 
 同一配置につき有効な設定の入力元は一つに限定する。環境変数ごとの上書き、複数ファイルの暗黙merge、ブラウザ要求による上書きを初期には設けない。秘密鍵・client_secretは秘密管理から別途供給する。issuer・RP ID・origin・redirect URI等の配備/識別設定も、この期間・回数の設定とは区別する。
 
-現時点では全runtime policyのloader/CLIは未実装。`sakimori-worker`はOIDC token endpointに必要なassertion TTL、clock skew、JWT/form byte上限だけを、schema versionと全policy由来revision・projection自身のhashを含むstrict JSON projectionとして読む型を持つ。`npm run build:policy`は単一TOMLを検証した後、ローカル用`local/generated/worker-policy.json`も生成する。Worker環境にはそのprojectionを単一の`SAKIMORI_WORKER_POLICY`値として設定し、他の値と混ぜない。HTTP endpointはまだこの値を読み込んでいない。
+現時点では全runtime policyのloader/CLIは未実装。`sakimori-worker`のOIDC token endpointはassertion TTL、clock skew、Access Token/ID Token TTL、JWT/form/response byte上限を、schema version 2・全policy由来revision・projection自身のhashを含むstrict JSON projectionとして読む。`npm run build:policy`は単一TOMLを検証した後、ローカル用`local/generated/worker-policy.json`も生成する。Worker環境にはそのprojectionを単一の`SAKIMORI_WORKER_POLICY`値として設定し、他の値と混ぜない。issuerは`SAKIMORI_ISSUER`、ES256 private JWKは`OP_PRIVATE_JWK` secretとして別途設定し、D1の有効なsigning key行へ対応する公開JWKを登録する。secret/private keyをvarsやpolicyへ入れない。
 
 `schema_version`を必須とし、未知の版・キー・重複・型不一致・必須値の欠落は拒否する。見本の有効項目はすべて明示する方式を採り、省略時にコード内の別の既定値へ戻さない。導入済みの段階で必要な設定だけを読み込む。P0はVault処理を実装するためにP1の設定を要求しない。
 

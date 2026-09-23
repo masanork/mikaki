@@ -1,8 +1,8 @@
 # Access TokenとUserInfo
 
-2026-09-22 / Draft 1（レビュー用）
+2026-09-22 / Draft 1（レビュー用、token endpoint実装の実測前）
 
-[ログイン取引](oidc-login-flow.md)のtoken応答とUserInfoを具体化する。初期は通常ログインに必要な情報だけを扱い、アプリのログイン保持は[セッション契約](session-lifecycle.md)に従う。本書の方式・追加設定値は提案であり、実装・適合試験済みではない。
+[ログイン取引](oidc-login-flow.md)のtoken応答とUserInfoを具体化する。初期は通常ログインに必要な情報だけを扱い、アプリのログイン保持は[セッション契約](session-lifecycle.md)に従う。Rust ES256 ID Token signerとWorker `POST /token`、不透明Access Token発行およびD1のcode/token原子確定を実装した。隔離D1、相互運用、UserInfoは未確認・未実装であり、以下の仕様全体への適合を意味しない。
 
 ## 用途の分離
 

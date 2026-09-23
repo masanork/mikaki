@@ -1,7 +1,8 @@
-//! Policy for the static, confidential ES256 client profile. JOSE uses jose/WebCrypto.
+//! Static confidential ES256 OIDC profile and typed protocol state.
 mod client_assertion;
 mod code;
 mod exchange;
+mod signing;
 
 pub use client_assertion::{
     ClientAssertionKey, ClientAssertionPolicy, InvalidClientAssertion, VerifiedClientAssertion,
@@ -14,8 +15,9 @@ pub use exchange::{
     AuthenticatedTokenEndpointInput, AuthorizationCodeExchange, CodeExchangeInput,
     InvalidAuthenticatedTokenEndpointInput, InvalidCodeExchange, InvalidTokenEndpointInput,
     PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, TokenEndpointInput,
-    ValidatedTokenEndpointInput,
+    TokenEndpointInputError, ValidatedTokenEndpointInput,
 };
+pub use signing::{InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};

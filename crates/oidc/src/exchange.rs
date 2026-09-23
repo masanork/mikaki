@@ -54,6 +54,13 @@ pub struct AuthenticatedTokenEndpointInput {
 pub struct InvalidTokenEndpointInput;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TokenEndpointInputError {
+    UnsupportedGrantType,
+    InvalidClient,
+    InvalidRequest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAuthenticatedTokenEndpointInput;
 
 /// A canonical code digest and PKCE challenge ready for a conditional store operation.
@@ -114,9 +121,11 @@ impl TokenEndpointInput {
     pub fn validate(
         self,
         max_assertion_bytes: usize,
-    ) -> Result<ValidatedTokenEndpointInput, InvalidTokenEndpointInput> {
-        if self.grant_type != "authorization_code"
-            || self.client_assertion_type != PRIVATE_KEY_JWT_ASSERTION_TYPE
+    ) -> Result<ValidatedTokenEndpointInput, TokenEndpointInputError> {
+        if self.grant_type != "authorization_code" {
+            return Err(TokenEndpointInputError::UnsupportedGrantType);
+        }
+        if self.client_assertion_type != PRIVATE_KEY_JWT_ASSERTION_TYPE
             || self.client_id.is_empty()
             || self.client_id.len() > 128
             || self.client_id.bytes().any(|byte| byte.is_ascii_control())
@@ -124,7 +133,7 @@ impl TokenEndpointInput {
             || max_assertion_bytes == 0
             || self.client_assertion.len() > max_assertion_bytes
         {
-            return Err(InvalidTokenEndpointInput);
+            return Err(TokenEndpointInputError::InvalidClient);
         }
         let exchange = CodeExchangeInput {
             grant_type: self.grant_type,
@@ -133,7 +142,7 @@ impl TokenEndpointInput {
             code_verifier: self.code_verifier,
         }
         .validate()
-        .map_err(|_| InvalidTokenEndpointInput)?;
+        .map_err(|_| TokenEndpointInputError::InvalidRequest)?;
         Ok(ValidatedTokenEndpointInput {
             client_id: self.client_id,
             exchange,

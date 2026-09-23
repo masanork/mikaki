@@ -1062,6 +1062,7 @@ name = "sakimori-worker"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "futures-util",
  "js-sys",
  "sakimori-oidc",
  "serde",

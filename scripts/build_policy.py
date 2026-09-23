@@ -14,10 +14,13 @@ normalized = validate(policy)
 policy_revision = revision(policy)
 output.write_text(json.dumps({**normalized, 'policy_revision': policy_revision}, indent=2) + '\n')
 worker_policy = {
-    'schema_version': normalized['schema_version'],
+    'schema_version': 2,
     'policy_revision': policy_revision,
     'assertion_ttl_seconds': normalized['oidc.client_authentication.assertion_ttl'],
     'clock_skew_seconds': normalized['oidc.validation.clock_skew'],
+    'access_token_ttl_seconds': normalized['oidc.access_token.ttl'],
+    'id_token_ttl_seconds': normalized['oidc.id_token_ttl'],
+    'response_bytes': normalized['limits.response_bytes'],
     'jwt_bytes': normalized['limits.jwt_bytes'],
     'form_body_bytes': normalized['limits.form_body_bytes'],
 }
