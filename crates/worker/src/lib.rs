@@ -1,6 +1,9 @@
 //! Cloudflare Workers platform adapter. Protocol decisions remain in `sakimori-oidc`.
 
 #[cfg(target_arch = "wasm32")]
+use serde::Deserialize;
+
+#[cfg(target_arch = "wasm32")]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 #[cfg(target_arch = "wasm32")]
@@ -8,6 +11,19 @@ use wasm_bindgen::JsCast;
 
 #[cfg(target_arch = "wasm32")]
 pub struct WorkersCryptoRandom;
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct ClientAssertionKeyRow {
+    client_id: String,
+    kid: String,
+    client_revision: u64,
+    key_revision: u64,
+    client_active: i64,
+    key_active: i64,
+    algorithm: String,
+    public_key_sec1: Vec<u8>,
+}
 
 #[cfg(target_arch = "wasm32")]
 impl sakimori_oidc::CryptographicRandom for WorkersCryptoRandom {
@@ -87,6 +103,69 @@ pub async fn accept_client_assertion(
     ])
     .await?;
     Ok(())
+}
+
+/// Load one registered key, verify a private_key_jwt in the Rust core, and
+/// atomically reserve its jti after rechecking the same registration revisions.
+#[cfg(target_arch = "wasm32")]
+pub async fn verify_and_accept_client_assertion(
+    db: &worker::d1::D1Database,
+    client_id: &str,
+    compact: &str,
+    audience: &str,
+    endpoint: &str,
+    now: u64,
+    clock_skew_seconds: u64,
+    max_lifetime_seconds: u64,
+    random: &mut impl sakimori_oidc::CryptographicRandom,
+) -> worker::Result<sakimori_oidc::VerifiedClientAssertion> {
+    use wasm_bindgen::JsValue;
+
+    if client_id.is_empty() || client_id.len() > 128 {
+        return Err(worker::Error::RustError("invalid_client".into()));
+    }
+    let kid = sakimori_oidc::client_assertion_key_id(compact)
+        .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
+    let values = [JsValue::from_str(client_id), JsValue::from_str(&kid)];
+    let row = db
+        .prepare(
+            "SELECT c.client_id, k.kid, c.revision AS client_revision, \
+             k.revision AS key_revision, c.active AS client_active, \
+             k.active AS key_active, k.algorithm, k.public_key_sec1 \
+             FROM client c JOIN client_key k ON k.client_id=c.client_id \
+             WHERE c.client_id=?1 AND k.kid=?2 LIMIT 1",
+        )
+        .bind(&values)?
+        .first::<ClientAssertionKeyRow>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("invalid_client".into()))?;
+    if row.client_id != client_id
+        || row.kid != kid
+        || row.client_active != 1
+        || row.key_active != 1
+        || row.algorithm != "ES256"
+    {
+        return Err(worker::Error::RustError("invalid_client".into()));
+    }
+    let key = sakimori_oidc::ClientAssertionKey::new(
+        row.client_id,
+        row.kid,
+        row.client_revision,
+        row.key_revision,
+        true,
+        row.public_key_sec1,
+    );
+    let assertion = key
+        .verify_private_key_jwt(
+            compact,
+            audience,
+            now,
+            clock_skew_seconds,
+            max_lifetime_seconds,
+        )
+        .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
+    accept_client_assertion(db, &assertion, endpoint, clock_skew_seconds, random).await?;
+    Ok(assertion)
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]

@@ -16,6 +16,7 @@ worker-entry = []
 base64.workspace = true
 js-sys = "=0.3.105"
 sakimori-oidc = { path = "../oidc" }
+serde.workspace = true
 wasm-bindgen = "=0.2.128"
 web-sys = { version = "=0.3.105", features = ["Crypto"] }
 worker = { version = "=0.8.6", features = ["d1"] }

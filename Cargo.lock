@@ -1064,6 +1064,7 @@ dependencies = [
  "base64",
  "js-sys",
  "sakimori-oidc",
+ "serde",
  "wasm-bindgen",
  "web-sys",
  "worker",

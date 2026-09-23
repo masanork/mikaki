@@ -164,6 +164,35 @@ impl ClientAssertionKey {
     }
 }
 
+/// Read `kid` only for a bounded registration lookup. This does not establish
+/// client identity or validate the assertion; callers must still verify the
+/// complete JWS with the matching registered key.
+pub fn client_assertion_key_id(compact: &str) -> Result<String, InvalidClientAssertion> {
+    if compact.len() > MAX_ASSERTION_BYTES {
+        return Err(InvalidClientAssertion);
+    }
+    let mut parts = compact.split('.');
+    let (Some(header_part), Some(claims_part), Some(signature_part), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(InvalidClientAssertion);
+    };
+    if header_part.is_empty() || claims_part.is_empty() || signature_part.is_empty() {
+        return Err(InvalidClientAssertion);
+    }
+    let header_bytes = decode_segment(header_part)?;
+    let header: ProtectedHeader =
+        serde_json::from_slice(&header_bytes).map_err(|_| InvalidClientAssertion)?;
+    if header.alg != "ES256"
+        || header.kid.is_empty()
+        || header.kid.len() > 128
+        || header.typ.as_deref().is_some_and(|typ| typ != "JWT")
+    {
+        return Err(InvalidClientAssertion);
+    }
+    Ok(header.kid)
+}
+
 fn decode_segment(segment: &str) -> Result<Vec<u8>, InvalidClientAssertion> {
     let bytes = B64.decode(segment).map_err(|_| InvalidClientAssertion)?;
     if B64.encode(&bytes) != segment {

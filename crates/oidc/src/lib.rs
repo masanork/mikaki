@@ -3,7 +3,9 @@ mod client_assertion;
 mod code;
 mod exchange;
 
-pub use client_assertion::{ClientAssertionKey, InvalidClientAssertion, VerifiedClientAssertion};
+pub use client_assertion::{
+    ClientAssertionKey, InvalidClientAssertion, VerifiedClientAssertion, client_assertion_key_id,
+};
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
