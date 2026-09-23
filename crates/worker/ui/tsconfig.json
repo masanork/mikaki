@@ -15,8 +15,9 @@
     "noUncheckedSideEffectImports": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
     "rootDir": ".",
     "outDir": "../../../target/login-js"
   },
-  "include": ["login.ts", "vault.ts", "vault-crypto.ts"]
+  "include": ["login.ts", "vault.ts", "locale.ts", "vault-crypto.ts", "*.svelte"]
 }

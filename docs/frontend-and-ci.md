@@ -2,7 +2,7 @@
 
 2026-09-22 / 推奨案。一部を[ローカル縦切り実装](../local/README.md)へ適用済み。以下の全項目の完了やGitHub上のCI成功を示すものではない。
 
-ローカル実装はSvelte 5、TypeScript 7のnative検査（`svelte-check --tsgo`）、npm/package-lockを採用した。現行のsvelte-check自身がSvelteソースの解析・検査用TypeScriptへの変換にTypeScript 6のJavaScript APIを使うため、6も開発依存に必要。旧アプリへの後方互換性を目的とせず、型検査器は7に統一する。TypeScript 7は`@typescript/native`へのnpm aliasで配置する。最新の[公式README](https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check#typescript-7-supports)とtayoriの設定を参照。pnpm・Paraglide等の下記推奨案と、現在の実装を区別する。
+ローカル画面とWorker配信のログイン・Vault画面はSvelte 5＋Viteを使い、共通のParaglide JS 2カタログから日本語・英語の型付きmessage関数を生成する。TypeScript 7のnative検査（`svelte-check --tsgo`）とnpm/package-lockを採用した。現行のsvelte-check自身がSvelteソースの解析・検査用TypeScriptへの変換にTypeScript 6のJavaScript APIを使うため、6も開発依存に必要。旧アプリへの後方互換性を目的とせず、型検査器は7に統一する。TypeScript 7は`@typescript/native`へのnpm aliasで配置する。最新の[公式README](https://github.com/sveltejs/language-tools/tree/master/packages/svelte-check#typescript-7-supports)とtayoriの設定を参照。
 
 初期OIDCの小さな認証画面と、Rust/Workersの認証基盤を対象にする。madowiのローカルworkflowとstats実装を参考にし、mikakiの認証・失効契約に合わせて測定範囲とゲートを定める。既存の[実装基準](oidc-implementation-readiness.md)に追加する提案であり、製品の完成を意味しない。
 
@@ -20,7 +20,7 @@ Svelteによる文字列エスケープを維持し、利用者入力・アプ�
 
 ## 初期からのi18n
 
-日本語と英語の2言語で始める。画面文言をmessage keyへ切り出し、プレースホルダーの型・名前を揃える。第一評価候補はParaglide JSとし、Viteとの統合、生成される型、バンドル、テスト、ライセンスを確認して採用する。初期から翻訳SaaSや多数言語の運用は追加しない。
+日本語と英語の2言語で始める。画面文言をmessage keyへ切り出し、プレースホルダーの型・名前を揃える。Paraglide JS 2を採用し、Viteで型付きmessage関数を生成する。初期から翻訳SaaSや多数言語の運用は追加しない。
 
 localeの優先順位は、認可取引で明示した対応ui_locales、利用者が保存した選択、Accept-Language、既定jaとする。ui_localesは対応言語のallowlistから最初の一致を選び、未知localeは安全にfallbackする。画面上の明示的な切替は当該取引の表示言語を更新する。localeをorigin、redirect URI、issuer、subの変更へ結び付けない。サポートするBCP 47タグと照合規則をテストする。
 

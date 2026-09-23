@@ -135,11 +135,20 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     if owner(&request, &db).await?.is_none() {
         return error(401, "authentication_required");
     }
+    let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
+    let mut html = include_str!("../ui/vault.html").to_owned();
+    let replacements = [
+        ("{{locale}}", strings.locale),
+        ("{{title}}", strings.message("vaultTitle")),
+    ];
+    for (key, value) in replacements {
+        html = html.replace(key, &crate::i18n::html_escape(value));
+    }
     Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
-        .from_html(include_str!("../ui/vault.html"))
+        .from_html(html)
 }
 
 pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Result<Response> {
@@ -147,21 +156,6 @@ pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Res
         return error(404, "not_found");
     }
     let script = include_str!(concat!(env!("OUT_DIR"), "/vault.js"));
-    Ok(Response::builder()
-        .with_header("Content-Type", "text/javascript; charset=utf-8")?
-        .with_header("Cache-Control", "no-store")?
-        .with_header("X-Content-Type-Options", "nosniff")?
-        .fixed(script.as_bytes().to_vec()))
-}
-
-pub async fn crypto_script(
-    _request: Request,
-    context: RouteContext<()>,
-) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    let script = include_str!(concat!(env!("OUT_DIR"), "/vault-crypto.js"));
     Ok(Response::builder()
         .with_header("Content-Type", "text/javascript; charset=utf-8")?
         .with_header("Cache-Control", "no-store")?

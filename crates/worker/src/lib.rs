@@ -3,6 +3,8 @@
 #[cfg(target_arch = "wasm32")]
 mod passkey_login;
 
+#[cfg(target_arch = "wasm32")]
+mod i18n;
 #[cfg(any(target_arch = "wasm32", test))]
 mod vault_authzen;
 
@@ -456,6 +458,7 @@ struct CompiledWorkerPolicy {
     form_body_bytes: u64,
     token_rate_window_seconds: u64,
     token_attempts_per_client: u64,
+    sso_absolute_ttl_seconds: u64,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -478,6 +481,7 @@ pub struct WorkerRuntimePolicy {
     form_body_bytes: usize,
     token_rate_window_seconds: u64,
     token_attempts_per_client: u64,
+    sso_absolute_ttl_seconds: u64,
     access_token_ttl_seconds: u64,
     id_token_ttl_seconds: u64,
     response_bytes: usize,
@@ -509,7 +513,7 @@ impl WorkerRuntimePolicy {
     pub fn from_compiled_json(json: &str) -> worker::Result<Self> {
         let compiled: CompiledWorkerPolicy = serde_json::from_str(json)
             .map_err(|_| worker::Error::RustError("invalid runtime policy".into()))?;
-        if compiled.schema_version != 4
+        if compiled.schema_version != 5
             || compiled.policy_revision.len() != 64
             || compiled.projection_revision.len() != 64
             || !compiled
@@ -540,6 +544,8 @@ impl WorkerRuntimePolicy {
             || ![10, 60].contains(&compiled.token_rate_window_seconds)
             || compiled.token_attempts_per_client == 0
             || compiled.token_attempts_per_client > 1000
+            || compiled.sso_absolute_ttl_seconds == 0
+            || compiled.sso_absolute_ttl_seconds > 365 * 86400
         {
             return Err(worker::Error::RustError("invalid runtime policy".into()));
         }
@@ -558,6 +564,7 @@ impl WorkerRuntimePolicy {
             "jwt_bytes": compiled.jwt_bytes,
             "token_rate_window_seconds": compiled.token_rate_window_seconds,
             "token_attempts_per_client": compiled.token_attempts_per_client,
+            "sso_absolute_ttl_seconds": compiled.sso_absolute_ttl_seconds,
             "policy_revision": compiled.policy_revision,
             "schema_version": compiled.schema_version,
         });
@@ -612,6 +619,7 @@ impl WorkerRuntimePolicy {
             form_body_bytes,
             token_rate_window_seconds: compiled.token_rate_window_seconds,
             token_attempts_per_client: compiled.token_attempts_per_client,
+            sso_absolute_ttl_seconds: compiled.sso_absolute_ttl_seconds,
             access_token_ttl_seconds: compiled.access_token_ttl_seconds,
             id_token_ttl_seconds: compiled.id_token_ttl_seconds,
             response_bytes,
@@ -626,6 +634,10 @@ impl WorkerRuntimePolicy {
 
     pub fn authorization_code_ttl_seconds(&self) -> u64 {
         self.authorization_code_ttl_seconds
+    }
+
+    pub fn sso_absolute_ttl_seconds(&self) -> u64 {
+        self.sso_absolute_ttl_seconds
     }
 
     pub fn request_target_bytes(&self) -> usize {
@@ -1782,11 +1794,25 @@ async fn authorize_route(
         .first::<ClientRegistrationRow>(None)
         .await?;
     let Some(registration) = registration else {
+        let strings = i18n::catalog(i18n::select(
+            &request,
+            parameters.get("ui_locales").map(String::as_str),
+        )?);
+        let html = format!(
+            "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{}</title></head><body><main><h1>{}</h1><p>{}</p></main></body></html>",
+            strings.locale,
+            i18n::html_escape(strings.message("invalidRedirectTitle")),
+            i18n::html_escape(strings.message("invalidRedirectTitle")),
+            i18n::html_escape(strings.message("invalidRedirectBody")),
+        );
         return worker::Response::builder()
             .with_status(400)
             .with_header("Cache-Control", "no-store")?
-            .with_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")?
-            .from_html("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Invalid redirect URI</title></head><body><main><h1>Invalid redirect URI</h1><p>The redirect URI is not registered for this client.</p></main></body></html>");
+            .with_header(
+                "Content-Security-Policy",
+                "default-src 'none'; frame-ancestors 'none'",
+            )?
+            .from_html(html);
     };
 
     let state = if parsed.duplicates.contains("state") {
@@ -2311,6 +2337,7 @@ pub async fn main(
         .get_async("/.well-known/openid-configuration", discovery_route)
         .get_async("/authorize", authorize_route)
         .get_async("/login", passkey_login::get)
+        .get_async("/login/login.js", passkey_login::script)
         .post_async("/login/finish", passkey_login::finish)
         .get_async("/jwks", jwks_route)
         .get_async("/userinfo", userinfo_route)
@@ -2319,7 +2346,6 @@ pub async fn main(
         .get_async("/vault", vault_attributes::page)
         .get_async("/vault/session", vault_attributes::session)
         .get_async("/vault/vault.js", vault_attributes::script)
-        .get_async("/vault/vault-crypto.js", vault_attributes::crypto_script)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .put_async("/vault/attributes/:attribute", vault_attributes::put)
         .delete_async("/vault/attributes/:attribute", vault_attributes::delete)

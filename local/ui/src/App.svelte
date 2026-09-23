@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { messages } from './messages';
-  let lang = $state<'ja' | 'en'>(navigator.language.startsWith('ja') ? 'ja' : 'en');
-  const m = $derived(messages[lang]);
+  import * as m from './paraglide/messages.js';
+  import { getLocale, setLocale, type Locale } from './paraglide/runtime.js';
   let invitation = $state(''),
     consent = $state(false),
     busy = $state(false),
@@ -85,48 +84,51 @@
     }
   }
   $effect(() => {
-    document.documentElement.lang = lang;
+    document.documentElement.lang = getLocale();
   });
 </script>
 
 <main>
   <header>
     <strong>mikaki</strong><label
-      ><span class="sr">Language</span><select aria-label="Language" bind:value={lang}
+      ><span class="sr">{m.language()}</span><select
+        aria-label={m.language()}
+        value={getLocale()}
+        onchange={(event) => setLocale(event.currentTarget.value as Locale)}
         ><option value="ja">日本語</option><option value="en">English</option></select
       ></label
     >
   </header>
-  <p class="tag">{m.local}</p>
-  <h1>{m.title}</h1>
-  <p>{m.intro}</p>
-  {#if expired}<p role="alert">{m.expired}</p>{:else if context}
-    <p>{m.app}: <strong>{context.client}</strong></p>
-    <label class="consent"><input type="checkbox" bind:checked={consent} />{m.consent}</label>
+  <p class="tag">{m.local()}</p>
+  <h1>{m.title()}</h1>
+  <p>{m.intro()}</p>
+  {#if expired}<p role="alert">{m.expired()}</p>{:else if context}
+    <p>{m.app()}: <strong>{context.client}</strong></p>
+    <label class="consent"><input type="checkbox" bind:checked={consent} />{m.consent()}</label>
     {#if context.signed_in}
       <button disabled={!consent || busy} onclick={() => run('consent')}
-        >{busy ? m.busy : m.continue}</button
+        >{busy ? m.busy() : m.continue()}</button
       >
     {:else}
       <button disabled={!consent || busy} onclick={() => run('authenticate')}
-        >{busy ? m.busy : m.login}</button
+        >{busy ? m.busy() : m.login()}</button
       >
       <hr />
-      <label for="invitation">{m.invite}</label><input
+      <label for="invitation">{m.invite()}</label><input
         id="invitation"
         bind:value={invitation}
         autocomplete="off"
         spellcheck="false"
       />
-      <p class="notice">{m.recovery}</p>
+      <p class="notice">{m.recovery()}</p>
       <button
         class="secondary"
         disabled={!consent || !invitation || busy}
-        onclick={() => run('register')}>{busy ? m.busy : m.register}</button
+        onclick={() => run('register')}>{busy ? m.busy() : m.register()}</button
       >
     {/if}
   {/if}
-  {#if error}<p role="alert">{m.error}</p>{/if}
+  {#if error}<p role="alert">{m.error()}</p>{/if}
 </main>
 
 <style>

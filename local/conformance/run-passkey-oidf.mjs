@@ -97,7 +97,6 @@ try {
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
           lastReviewScreenshot = await page.screenshot({ fullPage: true });
           if (new URL(page.url()).pathname === '/login') {
-            await page.locator('#consent').check();
             await page.locator('#passkey').click();
             await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
           }

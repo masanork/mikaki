@@ -96,6 +96,9 @@ pub(super) async fn get(
     let query = request_url.query_pairs().collect::<Vec<_>>();
     let tx = match query.as_slice() {
         [(key, value)] if key == "tx" && valid_tx(value) => value.as_ref(),
+        [(key, value), (language, _)] if key == "tx" && language == "lang" && valid_tx(value) => {
+            value.as_ref()
+        }
         _ => return Ok(worker::Response::builder().with_status(400).empty()),
     };
     let Some(browser) = browser_cookie(&request, "__Host-op-browser")? else {
@@ -109,11 +112,19 @@ pub(super) async fn get(
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
         .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
-    let mut random = WorkersCryptoRandom;
-    let nonce = random_secret(&mut random)?;
-    let script = include_str!(concat!(env!("OUT_DIR"), "/login.js"));
+    let ui_locales = url::Url::parse(&login.authorization_url)
+        .ok()
+        .and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "ui_locales")
+                .map(|(_, value)| value.into_owned())
+        });
+    let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Sign in to mikaki</title></head><body><main id="login" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}"><h1>Sign in with a passkey</h1><label><input id="consent" type="checkbox">Allow this client to receive my account identifier</label><button id="passkey" type="button">Sign in with passkey</button><p id="error" role="alert" hidden>Authentication failed. Please try again.</p></main><script nonce="{nonce}">{script}</script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        locale = strings.locale,
+        title = crate::i18n::html_escape(strings.message("title")),
+        client = crate::i18n::html_escape(&login.client_id),
         challenge = login.challenge,
     );
     worker::Response::builder()
@@ -121,9 +132,24 @@ pub(super) async fn get(
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header(
             "Content-Security-Policy",
-            &format!("default-src 'none'; script-src 'nonce-{nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"),
+            "default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .from_html(html)
+}
+
+pub(super) async fn script(
+    _request: worker::Request,
+    _context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/javascript; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(
+            include_str!(concat!(env!("OUT_DIR"), "/login.js"))
+                .as_bytes()
+                .to_vec(),
+        ))
 }
 
 pub(super) async fn finish(
@@ -228,7 +254,7 @@ pub(super) async fn finish(
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
             .bind(&[JsValue::from_str(&format!("{sso_id}-passkey"))])?,
         db.prepare("INSERT INTO sso_session(sso_id,account_id,credential_id,epoch,expires_at,revoked) SELECT ?1,a.account_id,?3,a.epoch,?4,0 FROM account_security a JOIN credential cr ON cr.account_id=a.account_id AND cr.credential_id=?3 AND cr.active=1 WHERE a.account_id=?2 AND a.active=1 AND a.epoch=?5")
-            .bind(&[JsValue::from_str(&sso_id),JsValue::from_str(&credential.account_id),JsValue::from_str(&credential.credential_id),JsValue::from_f64((now+900) as f64),JsValue::from_f64(credential.epoch as f64)])?,
+            .bind(&[JsValue::from_str(&sso_id),JsValue::from_str(&credential.account_id),JsValue::from_str(&credential.credential_id),JsValue::from_f64((now+policy.sso_absolute_ttl_seconds()) as f64),JsValue::from_f64(credential.epoch as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
             .bind(&[JsValue::from_str(&format!("{sso_id}-sso"))])?,
         db.prepare("INSERT INTO sso_context(sso_id,secret_hash,auth_time) VALUES(?1,?2,?3)")
@@ -246,7 +272,8 @@ pub(super) async fn finish(
         .with_header(
             "Set-Cookie",
             &format!(
-                "__Host-op-sso={sso_secret}; Max-Age=900; Path=/; Secure; HttpOnly; SameSite=Lax"
+                "__Host-op-sso={sso_secret}; Max-Age={}; Path=/; Secure; HttpOnly; SameSite=Lax",
+                policy.sso_absolute_ttl_seconds()
             ),
         )?
         .with_header("Cache-Control", "no-store")?

@@ -9,6 +9,8 @@
 /artifacts/
 /coverage/
 **/.svelte-check/
+/local/ui/src/paraglide/
+/crates/worker/ui/paraglide/
 /crates/worker/build/
 **/*.cdx.json
 

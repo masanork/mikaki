@@ -14,7 +14,7 @@ normalized = validate(policy)
 policy_revision = revision(policy)
 output.write_text(json.dumps({**normalized, 'policy_revision': policy_revision}, indent=2) + '\n')
 worker_policy = {
-    'schema_version': 4,
+    'schema_version': 5,
     'policy_revision': policy_revision,
     'assertion_ttl_seconds': normalized['oidc.client_authentication.assertion_ttl'],
     'clock_skew_seconds': normalized['oidc.validation.clock_skew'],
@@ -30,6 +30,7 @@ worker_policy = {
     'form_body_bytes': normalized['limits.form_body_bytes'],
     'token_rate_window_seconds': normalized['rate_limit.window'],
     'token_attempts_per_client': normalized['rate_limit.token_per_authenticated_client'],
+    'sso_absolute_ttl_seconds': normalized['session.sso_absolute_ttl'],
 }
 worker_policy['policy_revision'] = policy_revision
 worker_policy['projection_revision'] = hashlib.sha256(

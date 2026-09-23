@@ -128,9 +128,18 @@ try {
   const browserCookie = pending.headers.get('set-cookie').split(';')[0];
   const loginUrl = new URL(pending.headers.get('location'));
   assert.equal(loginUrl.pathname, '/login');
-  const loginPage = await worker.fetch(loginUrl, { headers: { cookie: browserCookie } });
+  const loginPage = await worker.fetch(loginUrl, {
+    headers: { cookie: browserCookie, 'Accept-Language': 'en-US,en;q=0.9' },
+  });
   assert.equal(loginPage.status, 200);
-  assert.match(await loginPage.text(), /Sign in with a passkey/);
+  const loginHtml = await loginPage.text();
+  assert.match(loginHtml, /<html lang="en">/);
+  assert.match(loginHtml, /id="app" data-tx="[A-Za-z0-9_-]{43}"/);
+  assert.match(loginHtml, /data-client="mikaki-basic-one"/);
+  assert.match(loginHtml, /src="\/login\/login\.js"/);
+  const loginScript = await worker.fetch(new URL('/login/login.js', issuer));
+  assert.equal(loginScript.status, 200);
+  assert.match(await loginScript.text(), /Allow and sign in with passkey/);
   const tx = loginUrl.searchParams.get('tx');
   const row = await env.DB.prepare('SELECT challenge FROM login_transaction WHERE tx_id=?')
     .bind(tx)
@@ -164,6 +173,10 @@ try {
     body: JSON.stringify({ tx, consent: true, response: assertion }),
   });
   assert.equal(completed.status, 200, await completed.text());
+  assert.match(
+    completed.headers.get('set-cookie'),
+    new RegExp(`Max-Age=${policy.sso_absolute_ttl_seconds}(?:;|$)`),
+  );
   const replay = await worker.fetch(`${issuer}/login/finish`, {
     method: 'POST',
     headers: { cookie: browserCookie, origin: issuer, 'content-type': 'application/json' },

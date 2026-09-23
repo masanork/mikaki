@@ -16,6 +16,7 @@ const NUMERIC_FIELDS = [
   'form_body_bytes',
   'token_rate_window_seconds',
   'token_attempts_per_client',
+  'sso_absolute_ttl_seconds',
 ];
 const FIELDS = new Set([
   ...NUMERIC_FIELDS,
@@ -28,10 +29,8 @@ export function validateWorkerPolicyProjection(policy) {
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
     throw new Error('worker policy must be an object');
   }
-  if (
-    Object.keys(policy).length !== FIELDS.size ||
-    Object.keys(policy).some((key) => !FIELDS.has(key))
-  ) {
+  const keys = Object.keys(policy);
+  if (keys.length !== FIELDS.size || keys.some((key) => !FIELDS.has(key))) {
     throw new Error('worker policy fields do not match schema');
   }
   const { projection_revision: projectionRevision, ...contents } = policy;
@@ -39,7 +38,7 @@ export function validateWorkerPolicyProjection(policy) {
     throw new Error('invalid worker policy revision');
   }
   if (
-    policy.schema_version !== 4 ||
+    policy.schema_version !== 5 ||
     NUMERIC_FIELDS.some((field) => !Number.isSafeInteger(policy[field]) || policy[field] <= 0) ||
     policy.jwt_bytes > 1_048_576 ||
     policy.form_body_bytes > 1_048_576 ||
@@ -51,6 +50,7 @@ export function validateWorkerPolicyProjection(policy) {
     policy.response_bytes > 1_048_576 ||
     ![10, 60].includes(policy.token_rate_window_seconds) ||
     policy.token_attempts_per_client > 1000 ||
+    policy.sso_absolute_ttl_seconds > 365 * 86400 ||
     [
       'assertion_ttl_seconds',
       'clock_skew_seconds',

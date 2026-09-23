@@ -38,8 +38,11 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
     });
     assert.equal(page.status, 200);
     assert.match(await page.text(), /vault\/vault\.js/);
+    const englishPage = await worker.fetch('https://mikaki.test/vault?lang=en', {
+      headers: { Cookie: `__Host-op-sso=${secret}`, 'Accept-Language': 'ja' },
+    });
+    assert.match(await englishPage.text(), /<html lang="en">/);
     assert.equal((await worker.fetch('https://mikaki.test/vault/vault.js')).status, 200);
-    assert.equal((await worker.fetch('https://mikaki.test/vault/vault-crypto.js')).status, 200);
     const session = await worker.fetch('https://mikaki.test/vault/session', {
       headers: { Cookie: `__Host-op-sso=${secret}` },
     });
