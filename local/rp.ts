@@ -30,15 +30,21 @@ import {
 
 const BROWSER = '__Host-rp-browser',
   SESSION = '__Host-rp-session';
-const html = (text, headers = {}) =>
+type RpEnv = {
+  DB: { withSession(name: string): any };
+  LOCAL_ONLY: string;
+  RP_PRIVATE_JWK: string;
+  OP_PUBLIC_JWK: string;
+};
+const html = (text: string, headers: Record<string, string> = {}) =>
   response(
     `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Mikaki local RP</title><body><h1>Mikaki local RP</h1>${text}</body></html>`,
     200,
     { 'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'same-origin', ...headers },
   );
-const escape = (s) =>
+const escape = (s: unknown) =>
   String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
-async function opCall(env, path, data) {
+async function opCall(env: RpEnv, path: string, data: Record<string, string>) {
   const endpoint = `${OP}${path}`;
   const r = await fetch(endpoint, {
     method: 'POST',
@@ -55,7 +61,7 @@ async function opCall(env, path, data) {
   check(r.ok, 'login_restart_required', 401);
   return r.json();
 }
-async function checkedSession(env, sid, sub, authTime) {
+async function checkedSession(env: RpEnv, sid: string, sub: string, authTime: number) {
   const started = now();
   const s = await opCall(env, '/session/check', { sid });
   check(
@@ -73,7 +79,7 @@ async function checkedSession(env, sid, sub, authTime) {
   check(lease > now(), 'session_check_expired', 401);
   return { lease, parent: s.expires_at, idle: Math.min(now() + s.app_idle_timeout, s.expires_at) };
 }
-async function current(db, env, req) {
+async function current(db: any, env: RpEnv, req: Request) {
   const key = await hash(cookie(req, SESSION));
   const t = now();
   let s = await row(
@@ -103,7 +109,7 @@ async function current(db, env, req) {
     [now() + p('session.app_idle_timeout'), key],
   );
 }
-async function start(db, req) {
+async function start(db: any, req: Request) {
   sameOrigin(req, RP);
   const input = await body(req, 'form'),
     browser = cookie(req, BROWSER);
@@ -136,7 +142,7 @@ async function start(db, req) {
   }).toString();
   return redirect(target.href);
 }
-async function callback(db, env, req, url) {
+async function callback(db: any, env: RpEnv, req: Request, url: URL) {
   const input = uniqueParams(url.searchParams);
   check(input.iss === OP && typeof input.state === 'string' && typeof input.code === 'string');
   const l = await row(
@@ -157,6 +163,7 @@ async function callback(db, env, req, url) {
     id.nonce === l.nonce &&
       typeof id.sub === 'string' &&
       typeof id.sid === 'string' &&
+      typeof id.auth_time === 'number' &&
       Number.isSafeInteger(id.auth_time) &&
       typeof id.iat === 'number' &&
       typeof id.exp === 'number' &&
@@ -198,7 +205,7 @@ async function callback(db, env, req, url) {
     'Set-Cookie': setCookie(SESSION, secret, p('session.sso_absolute_ttl')),
   });
 }
-async function backchannel(db, env, req) {
+async function backchannel(db: any, env: RpEnv, req: Request) {
   const input = await body(req, 'form'),
     claims = await verified(env, 'op', input.logout_token, CLIENT, 'logout+jwt');
   check(
@@ -249,7 +256,7 @@ async function backchannel(db, env, req) {
   return response(null, 200);
 }
 export default {
-  async fetch(req, env) {
+  async fetch(req: Request, env: RpEnv) {
     try {
       localOnly(req, env, RP);
       const url = new URL(req.url),
@@ -315,7 +322,7 @@ export default {
       return errors(error);
     }
   },
-  async scheduled(_controller, env) {
+  async scheduled(_controller: unknown, env: RpEnv) {
     await collect(env.DB.withSession('first-primary'), 'rp');
   },
 };

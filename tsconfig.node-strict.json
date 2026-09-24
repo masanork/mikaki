@@ -4,7 +4,10 @@
     "noImplicitAny": true
   },
   "include": [
+    "local/assets.d.ts",
     "local/shared.ts",
+    "local/op.ts",
+    "local/rp.ts",
     "local/runtime.ts",
     "local/test/slice.test.ts",
     "local/test/gc.test.ts",

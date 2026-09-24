@@ -45,12 +45,21 @@ import {
 } from './shared.ts';
 
 initSync({ module: wasm });
-const body = (req, kind = 'json') => readBody(req, kind, valid_json);
+type OpEnv = {
+  DB: { withSession(name: string): any };
+  LOCAL_ONLY: string;
+  OP_PRIVATE_JWK: string;
+  OP_PUBLIC_JWK: string;
+  RP_PUBLIC_JWK: string;
+  ASSETS: { fetch(request: Request): Promise<Response> };
+};
+type WaitUntil = { waitUntil(promise: Promise<unknown>): void };
+const body = (req: Request, kind = 'json') => readBody(req, kind, valid_json);
 const BROWSER = '__Host-op-browser',
   SSO = '__Host-op-sso';
 const epochSQL = "CAST(strftime('%s','now') AS INTEGER)";
 
-async function rate(db, bucket, limit) {
+async function rate(db: any, bucket: string, limit: number) {
   const key = `${Math.floor(now() / p('rate_limit.window'))}:${bucket}`;
   const r = await row(
     db,
@@ -63,7 +72,12 @@ async function rate(db, bucket, limit) {
   );
   check(r.count <= limit, 'rate_limited', 429);
 }
-async function login(db, req, id, csrf = undefined) {
+async function login(
+  db: any,
+  req: Request,
+  id: string | null,
+  csrf: string | undefined = undefined,
+) {
   check(typeof id === 'string');
   const r = await row(
     db,
@@ -76,7 +90,7 @@ async function login(db, req, id, csrf = undefined) {
   );
   return r;
 }
-async function sso(db, req) {
+async function sso(db: any, req: Request) {
   return row(
     db,
     `SELECT s.*, x.auth_time FROM sso_context x JOIN sso_session s USING(sso_id)
@@ -85,12 +99,12 @@ async function sso(db, req) {
     [await hash(cookie(req, SSO))],
   );
 }
-async function context(db, req, id) {
+async function context(db: any, req: Request, id: string | null) {
   const l = await login(db, req, id);
   const s = await sso(db, req);
   return json({ tx: l.id, csrf: l.csrf, client: 'Mikaki local RP', signed_in: !!s });
 }
-function transactionGuard(db, l) {
+function transactionGuard(db: any, l: { id: string; browser_hash: string }) {
   return guard(
     db,
     `EXISTS(SELECT 1 FROM op_login WHERE id=? AND browser_hash=? AND consumed=0 AND expires_at>${epochSQL})`,
@@ -100,9 +114,9 @@ function transactionGuard(db, l) {
 
 // Caller supplies authentication writes. This batch also rechecks live state at commit.
 async function issueCode(
-  db,
-  l,
-  session,
+  db: any,
+  l: { id: string; browser_hash: string; request: string },
+  session: { account_id: string; sso_id: string },
   prefix: unknown[] = [],
   newSecret: string | undefined = undefined,
 ) {
@@ -174,7 +188,7 @@ async function issueCode(
     cookie: newSecret ? setCookie(SSO, newSecret, p('session.sso_absolute_ttl')) : null,
   };
 }
-async function beginAuthorization(db, req, url) {
+async function beginAuthorization(db: any, req: Request, url: URL) {
   const params = uniqueParams(url.searchParams);
   check(
     authorize(
@@ -228,7 +242,7 @@ async function beginAuthorization(db, req, url) {
     'Set-Cookie': setCookie(BROWSER, browser, p('session.sso_absolute_ttl')),
   });
 }
-async function start(db, req) {
+async function start(db: any, req: Request) {
   sameOrigin(req, OP);
   const input = await body(req);
   const l = await login(db, req, input.tx, input.csrf);
@@ -295,7 +309,7 @@ async function start(db, req) {
         : { ...common, rpId: 'localhost', userVerification: 'required' },
   });
 }
-async function finish(db, req) {
+async function finish(db: any, req: Request) {
   sameOrigin(req, OP);
   const input = await body(req);
   const l = await login(db, req, input.tx, input.csrf);
@@ -448,7 +462,7 @@ async function finish(db, req) {
   check(result.cookie);
   return json({ location: result.location }, 200, { 'Set-Cookie': result.cookie });
 }
-async function acceptClient(db, env, req, input) {
+async function acceptClient(db: any, env: OpEnv, req: Request, input: Record<string, string>) {
   check(
     input.client_id === CLIENT && input.client_assertion_type === ASSERTION_TYPE,
     'invalid_client',
@@ -485,7 +499,7 @@ async function acceptClient(db, env, req, input) {
   ]);
   return params;
 }
-async function token(db, env, req) {
+async function token(db: any, env: OpEnv, req: Request) {
   const input = await body(req, 'form'),
     auth = await acceptClient(db, env, req, input);
   await rate(db, `token:${CLIENT}`, p('rate_limit.token_per_authenticated_client'));
@@ -543,7 +557,7 @@ async function token(db, env, req) {
     id_token: idToken,
   });
 }
-async function sessionCheck(db, env, req) {
+async function sessionCheck(db: any, env: OpEnv, req: Request) {
   const input = await body(req, 'form');
   await acceptClient(db, env, req, input);
   await rate(db, `check:${CLIENT}`, p('rate_limit.session_check_per_authenticated_client'));
@@ -566,9 +580,9 @@ async function sessionCheck(db, env, req) {
       : { active: false },
   );
 }
-async function userInfo(db, req) {
+async function userInfo(db: any, req: Request) {
   const bearer = req.headers.get('authorization');
-  check(bearer?.startsWith('Bearer '), 'invalid_token', 401);
+  check(bearer && bearer.startsWith('Bearer '), 'invalid_token', 401);
   const result = await row(
     db,
     `SELECT v.sub FROM token_issue ti JOIN authorization_code ac USING(code_hash) JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid WHERE ti.access_hash=? AND ti.revoked=0 AND ti.access_expires_at>${epochSQL}`,
@@ -577,7 +591,7 @@ async function userInfo(db, req) {
   check(result, 'invalid_token', 401);
   return json(result);
 }
-async function logout(db, env, req, url, ctx) {
+async function logout(db: any, env: OpEnv, req: Request, url: URL, ctx: WaitUntil) {
   if (req.method === 'GET') {
     const input = uniqueParams(url.searchParams);
     check(
@@ -642,7 +656,7 @@ async function logout(db, env, req, url, ctx) {
 }
 
 export default {
-  async fetch(req, env, ctx) {
+  async fetch(req: Request, env: OpEnv, ctx: WaitUntil) {
     try {
       localOnly(req, env, OP);
       const url = new URL(req.url);
@@ -709,7 +723,7 @@ export default {
       return errors(error);
     }
   },
-  async scheduled(controller, env) {
+  async scheduled(controller: { cron: string }, env: OpEnv) {
     const db = env.DB.withSession('first-primary');
     if (controller.cron === '0 * * * *') await collect(db, 'op');
     else await deliver(db, env);
