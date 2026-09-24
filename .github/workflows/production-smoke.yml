@@ -1,0 +1,29 @@
+name: production-smoke
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  public-endpoints:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check public issuer endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          issuer=https://mikaki.tossa.app
+          curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/health" -o health.txt
+          curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/.well-known/openid-configuration" -o discovery.json
+          curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/jwks" -o jwks.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          assert Path('health.txt').read_text() == 'ok'
+          discovery = json.loads(Path('discovery.json').read_text())
+          assert discovery['issuer'] == 'https://mikaki.tossa.app'
+          assert discovery['jwks_uri'] == 'https://mikaki.tossa.app/jwks'
+          jwks = json.loads(Path('jwks.json').read_text())
+          assert isinstance(jwks['keys'], list) and jwks['keys']
+          print('health, Discovery, and JWKS are publicly reachable')
+          PY
