@@ -10,14 +10,14 @@ const wasm = require('./jose-custom/pkg/mikaki_jose_custom_probe.js');
 const binary = fileURLToPath(new URL('jose-custom/target/debug/fixture', import.meta.url));
 const issuer = 'https://issuer.invalid';
 const audience = 'probe-client';
-const native = (algorithm, token, jwk) =>
+const native = (algorithm: string, token: string, jwk: unknown) =>
   execFileSync(binary, [`verify-${algorithm.toLowerCase()}`, token, JSON.stringify(jwk)], {
     encoding: 'utf8',
   }).trim() === 'true';
 const nativeClaims = (
-  algorithm,
-  token,
-  jwk,
+  algorithm: string,
+  token: string,
+  jwk: unknown,
   expectedIssuer = issuer,
   expectedAudience = audience,
 ) =>
@@ -32,21 +32,21 @@ const nativeClaims = (
     ],
     { encoding: 'utf8' },
   ).trim() === 'true';
-const nativeJws = (jws, jwk) =>
+const nativeJws = (jws: unknown, jwk: unknown) =>
   execFileSync(binary, ['verify-es256-jws', JSON.stringify(jws), JSON.stringify(jwk)], {
     encoding: 'utf8',
   }).trim() === 'true';
 
-async function esPair(kid) {
+async function esPair(kid: string) {
   const { publicKey, privateKey } = await generateKeyPair('ES256');
   const jwk = { ...(await exportJWK(publicKey)), alg: 'ES256', kid };
   return { privateKey, jwk };
 }
 
 async function tokenFor(
-  algorithm,
-  privateKey,
-  kid,
+  algorithm: string,
+  privateKey: Parameters<SignJWT['sign']>[0],
+  kid: string | undefined,
   sub = 'custom-provider',
   {
     tokenIssuer = issuer,

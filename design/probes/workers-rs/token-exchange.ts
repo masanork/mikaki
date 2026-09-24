@@ -19,7 +19,7 @@ const redirectUri = 'https://rp.example/callback';
 const clientKid = 'oidc-local-client-key';
 const opKid = 'oidc-local-op-key';
 
-async function signingKey(kid) {
+async function signingKey(kid: string) {
   const pair = await generateKeyPair('ES256', { extractable: true });
   const privateJwk = { ...(await exportJWK(pair.privateKey)), kid, alg: 'ES256', use: 'sig' };
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid, alg: 'ES256', use: 'sig' };
@@ -32,7 +32,7 @@ async function signingKey(kid) {
   return { pair, privateJwk, publicJwk, publicBytes };
 }
 
-async function makeClientAssertion(now) {
+async function makeClientAssertion(now: number) {
   return new SignJWT({})
     .setProtectedHeader({ alg: 'ES256', kid: clientKid, typ: 'JWT' })
     .setIssuer(clientId)

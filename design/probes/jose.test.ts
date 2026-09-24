@@ -10,14 +10,14 @@ const wasm = require('./jose/pkg/mikaki_jose_probe.js');
 const binary = fileURLToPath(new URL('jose/target/debug/fixture', import.meta.url));
 const issuer = 'https://issuer.invalid';
 const audience = 'probe-client';
-const native = (algorithm, token, jwk) =>
+const native = (algorithm: string, token: string, jwk: unknown) =>
   execFileSync(binary, [`verify-${algorithm.toLowerCase()}`, token, JSON.stringify(jwk)], {
     encoding: 'utf8',
   }).trim() === 'true';
 const nativeClaims = (
-  algorithm,
-  token,
-  jwk,
+  algorithm: string,
+  token: string,
+  jwk: unknown,
   expectedIssuer = issuer,
   expectedAudience = audience,
 ) =>
@@ -33,7 +33,7 @@ const nativeClaims = (
     { encoding: 'utf8' },
   ).trim() === 'true';
 
-async function makePair(algorithm) {
+async function makePair(algorithm: string) {
   const options = algorithm === 'RS256' ? { modulusLength: 2048 } : undefined;
   const { publicKey, privateKey } = await generateKeyPair(algorithm, options);
   const jwk = { ...(await exportJWK(publicKey)), alg: algorithm, kid: `key-${algorithm}` };
@@ -41,9 +41,9 @@ async function makePair(algorithm) {
 }
 
 async function makeToken(
-  algorithm,
-  privateKey,
-  kid,
+  algorithm: string,
+  privateKey: Parameters<SignJWT['sign']>[0],
+  kid: string,
   {
     sub = 'probe-subject',
     tokenIssuer = issuer,

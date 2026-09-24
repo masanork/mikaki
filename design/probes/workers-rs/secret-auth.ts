@@ -51,10 +51,11 @@ const harness = createTestHarness({
     },
   ],
 });
+type ProbeWorker = Pick<ReturnType<typeof harness.getWorker>, 'fetch'>;
 
 async function authorize(
-  worker,
-  clientId,
+  worker: ProbeWorker,
+  clientId: string,
   options: { noPkce?: boolean; expectError?: boolean } = {},
 ) {
   const target = new URL('/authorize', issuer);
@@ -71,16 +72,20 @@ async function authorize(
     redirect: 'manual',
   });
   assert.equal(response.status, 302, await response.text());
-  const callback = new URL(response.headers.get('location'));
-  return options.expectError
+  const location = response.headers.get('location');
+  assert.ok(location);
+  const callback = new URL(location);
+  const result = options.expectError
     ? callback.searchParams.get('error')
     : callback.searchParams.get('code');
+  assert.ok(result);
+  return result;
 }
 
 async function exchange(
-  worker,
-  client,
-  code,
+  worker: ProbeWorker,
+  client: (typeof clients)[number],
+  code: string,
   options: { noVerifier?: boolean; secret?: string; mixed?: boolean } = {},
 ) {
   const form = new URLSearchParams({
@@ -109,7 +114,7 @@ async function exchange(
   return {
     status: response.status,
     challenge: response.headers.get('www-authenticate'),
-    body: await response.json(),
+    body: (await response.json()) as { id_token?: string; error?: string },
   };
 }
 
@@ -205,6 +210,7 @@ try {
     }
     const valid = await exchange(conformant, client, code);
     assert.equal(valid.status, 200, JSON.stringify(valid.body));
+    assert.ok(valid.body.id_token);
     const verified = await jwtVerify(valid.body.id_token, pair.publicKey, {
       issuer,
       audience: client.id,

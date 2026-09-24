@@ -31,6 +31,12 @@
     "scripts/health.ts",
     "design/probes/async-signer-worker.ts",
     "design/probes/crypto.test.ts",
-    "design/probes/pqc/check.ts"
+    "design/probes/jose.test.ts",
+    "design/probes/jose-custom.test.ts",
+    "design/probes/pqc/check.ts",
+    "design/probes/pqc/analyze-fido.ts",
+    "design/probes/pqc/analyze-fido.test.ts",
+    "design/probes/workers-rs/secret-auth.ts",
+    "design/probes/workers-rs/token-exchange.ts"
   ]
 }

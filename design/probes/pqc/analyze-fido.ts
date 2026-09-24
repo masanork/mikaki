@@ -7,10 +7,10 @@ import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 
 const ORIGIN = 'http://localhost:8789';
 const RP_ID = 'localhost';
-const sha256 = (bytes) => createHash('sha256').update(bytes).digest();
-const encode = (bytes) => Buffer.from(bytes).toString('base64url');
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest();
+const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64url');
 
-function base64url(value) {
+function base64url(value: unknown) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new Error('invalid base64url');
   }
@@ -19,7 +19,7 @@ function base64url(value) {
   return bytes;
 }
 
-function clientData(encoded, type, challenge) {
+function clientData(encoded: string, type: string, challenge: string) {
   const bytes = base64url(encoded);
   const value = JSON.parse(bytes.toString('utf8'));
   if (
@@ -33,7 +33,7 @@ function clientData(encoded, type, challenge) {
   return bytes;
 }
 
-function authenticatorData(bytes, attested) {
+function authenticatorData(bytes: Buffer, attested: boolean) {
   if (bytes.length < 37 || !bytes.subarray(0, 32).equals(sha256(Buffer.from(RP_ID)))) {
     throw new Error('RP ID hash mismatch');
   }
@@ -44,7 +44,7 @@ function authenticatorData(bytes, attested) {
   return { flags, signCount: bytes.readUInt32BE(33) };
 }
 
-function coseKey(attestation, credentialId) {
+function coseKey(attestation: string, credentialId: Buffer) {
   const decoded = decode(base64url(attestation), { useMaps: true });
   const authData = Buffer.from(decoded.get('authData') ?? []);
   const { flags } = authenticatorData(authData, true);
@@ -70,7 +70,7 @@ function coseKey(attestation, credentialId) {
   return { key, aaguid: authData.subarray(37, 53).toString('hex') };
 }
 
-function publicKey(key, algorithm) {
+function publicKey(key: Map<number, unknown>, algorithm: number) {
   if (key.get(3) !== algorithm) throw new Error('COSE algorithm mismatch');
   if (algorithm === -49) {
     const bytes = key.get(-1);
@@ -100,7 +100,28 @@ function publicKey(key, algorithm) {
   throw new Error('unexpected algorithm');
 }
 
-export function analyze(transcript) {
+type Transcript = {
+  probe: string;
+  origin: string;
+  requestedAlgorithm: number;
+  registrationChallenge: string;
+  assertionChallenge: string;
+  registrationError?: Record<string, unknown>;
+  registration?: {
+    id: string;
+    publicKeyAlgorithm: number;
+    attestationObject: string;
+    clientDataJSON: string;
+  };
+  assertion?: {
+    id: string;
+    authenticatorData: string;
+    clientDataJSON: string;
+    signature: string;
+  };
+};
+
+export function analyze(transcript: Transcript) {
   if (transcript?.probe !== 'mikaki-fido-pqc-v1' || transcript.origin !== ORIGIN) {
     throw new Error('probe origin mismatch');
   }

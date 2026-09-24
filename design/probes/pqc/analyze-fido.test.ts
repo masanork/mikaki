@@ -6,11 +6,11 @@ import { encode } from 'cborg';
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { analyze } from './analyze-fido.ts';
 
-const b64 = (value) => Buffer.from(value).toString('base64url');
-const hash = (value) => createHash('sha256').update(value).digest();
+const b64 = (value: Uint8Array) => Buffer.from(value).toString('base64url');
+const hash = (value: Uint8Array) => createHash('sha256').update(value).digest();
 const origin = 'http://localhost:8789';
 
-function transcript(algorithm) {
+function transcript(algorithm: number) {
   const credentialId = Buffer.alloc(32, 0x60);
   const challenge = Buffer.alloc(32, 0x61);
   const rpHash = hash(Buffer.from('localhost'));
@@ -45,7 +45,7 @@ function transcript(algorithm) {
     Buffer.from(encode(key)),
   ]);
   const assertionData = Buffer.concat([rpHash, Buffer.from([0x01, 0, 0, 0, 1])]);
-  const client = (type) =>
+  const client = (type: string) =>
     Buffer.from(JSON.stringify({ type, challenge: b64(challenge), origin, crossOrigin: false }));
   const signed = Buffer.concat([assertionData, hash(client('webauthn.get'))]);
   const signature =
