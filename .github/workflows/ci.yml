@@ -70,6 +70,7 @@ jobs:
           wasm-pack build design/probes/pqc --target nodejs --release --out-dir pkg -- --locked
           node design/probes/pqc/check.ts
           node design/probes/pqc/hpke-interop.ts
+          node --test design/probes/pqc/product-envelope.test.ts
           wasm-pack build design/probes/pqc --target web --release --out-dir pkg-web -- --locked
       - name: Build Wasm and UI
         run: npm run build

@@ -1,13 +1,29 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { build } from 'esbuild';
 
 const wasmModule = fileURLToPath(new URL('./pkg-web/mikaki_pqc_probe.js', import.meta.url));
 const wasmBinary = fileURLToPath(new URL('./pkg-web/mikaki_pqc_probe_bg.wasm', import.meta.url));
 const fixtureFile = fileURLToPath(new URL('./hpke-envelope-fixture.json', import.meta.url));
+const productDirectory = await mkdtemp(join(tmpdir(), 'mikaki-product-envelope-'));
+const productBundle = join(productDirectory, 'product-envelope.js');
+await build({
+  entryPoints: [
+    fileURLToPath(
+      new URL('../../../crates/worker/ui/vault-recipient-envelope.ts', import.meta.url),
+    ),
+  ],
+  outfile: productBundle,
+  bundle: true,
+  platform: 'browser',
+  format: 'esm',
+  target: 'es2022',
+});
 const nobleRoot = resolve(fileURLToPath(new URL('../node_modules/@noble/', import.meta.url)));
 const server = createServer(async (request, response) => {
   if (request.url === '/') {
@@ -22,6 +38,7 @@ const server = createServer(async (request, response) => {
     ['/pkg-web/mikaki_pqc_probe.js', [wasmModule, 'text/javascript']],
     ['/pkg-web/mikaki_pqc_probe_bg.wasm', [wasmBinary, 'application/wasm']],
     ['/hpke-envelope-fixture.json', [fixtureFile, 'application/json']],
+    ['/product-envelope.js', [productBundle, 'text/javascript']],
   ]);
   let requested = files.get(request.url ?? '');
   if (request.url?.startsWith('/node_modules/@noble/') && request.url.endsWith('.js')) {
@@ -217,6 +234,32 @@ try {
     if (!equal(browserFrame, checkedIn) || !probe.fixture_vault_envelope_opens(browserFrame)) {
       throw Error('browser envelope differs from fixture or fails Rust receiver');
     }
+    const product = await import(/* @vite-ignore */ '/product-envelope.js' as string);
+    const encode = (value: Uint8Array) =>
+      btoa(String.fromCharCode(...value))
+        .replaceAll('+', '-')
+        .replaceAll('/', '_')
+        .replaceAll('=', '');
+    const productFrame = await product.sealUserInfoDataKey(
+      dataKey,
+      {
+        service_id: 'userinfo',
+        algorithm: 'ML-KEM-768',
+        key_id: encode(keyId),
+        public_key: encode(keys.publicKey),
+        generation: 1,
+        revision: 1,
+      },
+      {
+        origin: 'https://mikaki.example',
+        accountId: 'test-account-1',
+        revision: 9,
+        ciphertext: utf8('test-vault-ciphertext'),
+      },
+    );
+    if (!probe.fixture_vault_envelope_opens(productFrame)) {
+      throw Error('product browser envelope fails Rust receiver');
+    }
     return true;
   });
   assert.equal(envelopePassed, true);
@@ -224,4 +267,5 @@ try {
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
+  await rm(productDirectory, { recursive: true, force: true });
 }

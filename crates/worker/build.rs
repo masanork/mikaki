@@ -11,6 +11,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/Vault.svelte");
     println!("cargo:rerun-if-changed=ui/locale.ts");
     println!("cargo:rerun-if-changed=ui/vault-crypto.ts");
+    println!("cargo:rerun-if-changed=ui/vault-recipient-envelope.ts");
     println!("cargo:rerun-if-changed=ui/tsconfig.json");
     println!("cargo:rerun-if-changed=ui/vite.config.ts");
     println!("cargo:rerun-if-changed=../../project.inlang/settings.json");

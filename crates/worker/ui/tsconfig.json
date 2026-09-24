@@ -27,6 +27,7 @@
     "locale.ts",
     "vault-crypto.ts",
     "recipient-directory.ts",
+    "vault-recipient-envelope.ts",
     "*.svelte"
   ]
 }

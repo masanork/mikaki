@@ -1,5 +1,7 @@
 //! Dedicated recipient key boundary. No secret is returned to the OP Worker.
 
+pub mod envelope;
+
 #[cfg(any(test, target_arch = "wasm32"))]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 #[cfg(any(test, target_arch = "wasm32"))]

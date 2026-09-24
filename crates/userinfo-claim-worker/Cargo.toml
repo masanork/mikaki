@@ -14,6 +14,7 @@ worker-entry = []
 
 [dependencies]
 base64.workspace = true
+hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 ml-kem = { version = "=0.3.2", default-features = false, features = ["zeroize"] }
 serde.workspace = true
 sha2.workspace = true
@@ -24,7 +25,6 @@ wasm-bindgen.workspace = true
 worker = { version = "=0.8.6", features = ["d1"] }
 
 [dev-dependencies]
-hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 serde_json.workspace = true
 
 [lints]
