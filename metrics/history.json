@@ -119,24 +119,24 @@
   },
   {
     "date": "2026-09-24",
-    "commit": "81ce5df",
+    "commit": "ef76c2b",
     "code": {
-      "implementationLines": 11280,
-      "testLines": 2970,
+      "implementationLines": 12123,
+      "testLines": 3064,
       "implementationFiles": 53,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 7780,
-          "testLines": 1474
+          "implementationLines": 8390,
+          "testLines": 1529
         },
         "svelte": {
-          "implementationLines": 808,
+          "implementationLines": 968,
           "testLines": 0
         },
         "typescript": {
-          "implementationLines": 2692,
-          "testLines": 1496
+          "implementationLines": 2765,
+          "testLines": 1535
         }
       }
     },
@@ -146,7 +146,7 @@
         "dev": 13
       },
       "rust": {
-        "runtime": 24,
+        "runtime": 25,
         "build": 0,
         "dev": 8
       },
@@ -181,6 +181,7 @@
           "wrangler"
         ],
         "rustRuntime": [
+          "aes-gcm",
           "base64",
           "ciborium",
           "der",
@@ -221,19 +222,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1961,
-        "count": 2605,
-        "percent": 75.27831094049904
+        "covered": 2037,
+        "count": 2685,
+        "percent": 75.86592178770951
       },
       "regions": {
-        "covered": 3499,
-        "count": 4707,
-        "percent": 74.33609517739536
+        "covered": 3582,
+        "count": 4794,
+        "percent": 74.71839799749687
       },
       "functions": {
-        "covered": 190,
-        "count": 270,
-        "percent": 70.37037037037037
+        "covered": 192,
+        "count": 272,
+        "percent": 70.58823529411765
       }
     }
   }
