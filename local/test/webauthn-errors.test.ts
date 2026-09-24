@@ -17,7 +17,9 @@ test('Wasm rejection carries only a reason code and stage across the JS boundary
       'utf8',
     ),
   );
-  const fixture = fixtures.registrations.find((v) => v.name === 'expired certificate');
+  const fixture = fixtures.registrations.find(
+    (v: { name: string }) => v.name === 'expired certificate',
+  );
   const input = {
     ceremony: {
       purpose: 'register',
@@ -32,7 +34,7 @@ test('Wasm rejection carries only a reason code and stage across the JS boundary
     max_failures: 5,
     response: fixture.response,
   };
-  const rejects = (value, code, stage) =>
+  const rejects = (value: string, code: string, stage: string) =>
     assert.throws(
       () => register(value),
       (error) => {
@@ -78,7 +80,7 @@ test('Wasm registration exposes trusted attestation evidence only after verifica
       'utf8',
     ),
   );
-  const fixture = fixtures.registrations.find((v) => v.name === 'packed chain');
+  const fixture = fixtures.registrations.find((v: { name: string }) => v.name === 'packed chain');
   const input = {
     ceremony: {
       purpose: 'register',

@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Extended the strict Node TypeScript gate to recipient key and secret administration and their local D1 tests, plus WebAuthn boundary tests.
 - Extended the strict Node TypeScript gate to JOSE, FIDO analysis, and Worker token exchange design probes.
 - Extended the strict Node TypeScript gate to the local OP and RP handlers, including typed request and environment boundaries.
 - Extended the strict Node TypeScript gate to the local Wrangler runtime and core end-to-end test harnesses, including typed browser and D1 fixture state.

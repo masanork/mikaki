@@ -9,8 +9,8 @@ const wrangler = fileURLToPath(
   new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url),
 );
 
-function options(args) {
-  const parsed = {};
+function options(args: string[]) {
+  const parsed: Record<string, string> = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index];
     if (!key?.startsWith('--') || !args[index + 1] || Object.hasOwn(parsed, key)) {
@@ -32,12 +32,12 @@ function options(args) {
   return parsed;
 }
 
-function outsideRepository(path) {
+function outsideRepository(path: string) {
   const fromRepository = relative(repository, path);
   return fromRepository === '..' || fromRepository.startsWith(`..${sep}`);
 }
 
-async function run(program, args, input: Buffer | undefined = undefined) {
+async function run(program: string, args: string[], input: Buffer | undefined = undefined) {
   await new Promise<void>((resolveRun, rejectRun) => {
     const child = spawn(program, args, {
       cwd: repository,
@@ -86,7 +86,9 @@ async function main() {
     config.name !== 'mikaki-userinfo-claim-worker' ||
     config.workers_dev !== false ||
     config.preview_urls !== false ||
-    config.secrets_store_secrets?.some((binding) => binding.binding === record.secret_ref)
+    config.secrets_store_secrets?.some(
+      (binding: { binding: string }) => binding.binding === record.secret_ref,
+    )
   ) {
     throw new Error('claim Worker config is incompatible or binding already exists');
   }

@@ -4,7 +4,19 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 
-export function validatePublicRecord(record) {
+type RecipientPublicRecord = {
+  algorithm: string;
+  generation: number;
+  key_id: string;
+  public_key: string;
+  secret_ref: string;
+  service_id: string;
+};
+type ClaimBinding = {
+  fetch: (url: string, init: { method: string }) => Promise<{ status: number }>;
+};
+
+export function validatePublicRecord(record: RecipientPublicRecord) {
   const expected = ['algorithm', 'generation', 'key_id', 'public_key', 'secret_ref', 'service_id'];
   if (
     !record ||
@@ -33,8 +45,8 @@ export function validatePublicRecord(record) {
   return publicKey;
 }
 
-function parseOptions(args) {
-  const options = {};
+function parseOptions(args: string[]) {
+  const options: Record<string, string> = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index];
     if (!key?.startsWith('--') || index + 1 >= args.length || Object.hasOwn(options, key)) {
@@ -72,7 +84,13 @@ function parseOptions(args) {
   return options;
 }
 
-export async function stageKey(db, record, actor, reason, now) {
+export async function stageKey(
+  db: any,
+  record: RecipientPublicRecord,
+  actor: string,
+  reason: string,
+  now: number,
+) {
   const publicKey = validatePublicRecord(record);
   await db.batch([
     db
@@ -92,7 +110,13 @@ export async function stageKey(db, record, actor, reason, now) {
   ]);
 }
 
-export async function disableKey(db, keyId, actor, reason, now) {
+export async function disableKey(
+  db: any,
+  keyId: string,
+  actor: string,
+  reason: string,
+  now: number,
+) {
   const row = await db
     .prepare('SELECT revision,state FROM vault_recipient_key WHERE key_id=?')
     .bind(keyId)
@@ -122,7 +146,7 @@ export async function disableKey(db, keyId, actor, reason, now) {
   }
 }
 
-async function verifyBinding(claims, keyId) {
+async function verifyBinding(claims: ClaimBinding, keyId: string) {
   const response = await claims.fetch(
     `https://userinfo.internal/internal/recipient-keys/${keyId}/verify`,
     { method: 'GET' },
@@ -133,14 +157,23 @@ async function verifyBinding(claims, keyId) {
     );
 }
 
-function requiredService(config) {
+function requiredService(config: {
+  services?: Array<{ binding: string; service?: string; remote?: boolean }>;
+}) {
   const binding = config.services?.find((item) => item.binding === 'USERINFO_CLAIMS');
   if (binding?.service !== 'mikaki-userinfo-claim-worker' || binding.remote !== true) {
     throw new Error('USERINFO_CLAIMS must remotely bind the dedicated claim Worker');
   }
 }
 
-export async function activateKey(db, claims, keyId, actor, reason, now) {
+export async function activateKey(
+  db: any,
+  claims: ClaimBinding,
+  keyId: string,
+  actor: string,
+  reason: string,
+  now: number,
+) {
   const row = await db
     .prepare('SELECT state,revision FROM vault_recipient_key WHERE key_id=?')
     .bind(keyId)
@@ -178,7 +211,14 @@ export async function activateKey(db, claims, keyId, actor, reason, now) {
   ]);
 }
 
-export async function rotateKey(db, claims, newKeyId, actor, reason, now) {
+export async function rotateKey(
+  db: any,
+  claims: ClaimBinding,
+  newKeyId: string,
+  actor: string,
+  reason: string,
+  now: number,
+) {
   const old = await db
     .prepare("SELECT key_id,revision FROM vault_recipient_key WHERE state='active'")
     .first();
@@ -246,7 +286,7 @@ async function main() {
   const configPath = resolve(options['--config']);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   const remote = options['--remote'] === 'yes';
-  const binding = config.d1_databases?.find((item) => item.binding === 'DB');
+  const binding = config.d1_databases?.find((item: { binding: string }) => item.binding === 'DB');
   if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.database_id)) {
     throw new Error('DB binding and --remote do not identify the same database');
   }

@@ -15,6 +15,8 @@
     "local/test/logout-delivery.test.ts",
     "local/test/account-admin.test.ts",
     "local/test/logout-admin.test.ts",
+    "local/test/mds-boundary.test.ts",
+    "local/test/webauthn-errors.test.ts",
     "local/gc.ts",
     "local/account-admin.ts",
     "local/logout-admin.ts",
@@ -29,6 +31,8 @@
     "scripts/worker-policy-store.ts",
     "scripts/activate-worker-policy.ts",
     "scripts/health.ts",
+    "scripts/recipient-key-admin.ts",
+    "scripts/recipient-secret-admin.ts",
     "design/probes/async-signer-worker.ts",
     "design/probes/crypto.test.ts",
     "design/probes/jose.test.ts",
@@ -36,6 +40,7 @@
     "design/probes/pqc/check.ts",
     "design/probes/pqc/analyze-fido.ts",
     "design/probes/pqc/analyze-fido.test.ts",
+    "design/probes/recipient-key-admin.test.ts",
     "design/probes/workers-rs/secret-auth.ts",
     "design/probes/workers-rs/token-exchange.ts"
   ]

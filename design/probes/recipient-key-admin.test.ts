@@ -97,8 +97,10 @@ test('activation and rotation require verified bindings and update both keys ato
     );
     const verifiedIds: string[] = [];
     const verified = {
-      fetch: async (url) => {
-        verifiedIds.push(url.split('/').at(-2));
+      fetch: async (url: string) => {
+        const keyId = url.split('/').at(-2);
+        assert.ok(keyId);
+        verifiedIds.push(keyId);
         return { status: 204 };
       },
     };

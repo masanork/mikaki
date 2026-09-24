@@ -18,7 +18,7 @@ const fixtures = JSON.parse(
 
 test('verified MDS snapshot metadata survives the Wasm JSON boundary', () => {
   for (const name of ['valid MDS', 'valid U2F metadata', 'missing nextUpdate is accepted']) {
-    const fixture = fixtures.mds.find((item) => item.name === name);
+    const fixture = fixtures.mds.find((item: { name: string }) => item.name === name);
     const verified = JSON.parse(verify_mds(JSON.stringify(fixture.input)));
     assert.equal(verified.number, 1);
     assert.equal(verified.issued_at, fixture.input.now);
