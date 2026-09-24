@@ -48,9 +48,9 @@ struct WriteLimits {
 }
 
 #[derive(Deserialize)]
-struct Owner {
-    account_id: String,
-    secret_hash: String,
+pub(crate) struct Owner {
+    pub(crate) account_id: String,
+    pub(crate) secret_hash: String,
     credential_id: String,
 }
 
@@ -68,7 +68,7 @@ struct RevisionResponse {
     deleted: bool,
 }
 
-fn error(status: u16, code: &str) -> worker::Result<Response> {
+pub(crate) fn error(status: u16, code: &str) -> worker::Result<Response> {
     Response::builder()
         .with_status(status)
         .with_header("Cache-Control", "no-store")?
@@ -88,7 +88,7 @@ fn attribute_id(context: &RouteContext<()>) -> Option<&str> {
     Some(id)
 }
 
-async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owner>> {
+pub(crate) async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owner>> {
     let Some(cookie) = browser_cookie(request, "__Host-op-sso")? else {
         return Ok(None);
     };
@@ -252,14 +252,14 @@ pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Res
         .fixed(script.as_bytes().to_vec()))
 }
 
-fn same_origin(request: &Request) -> worker::Result<bool> {
+pub(crate) fn same_origin(request: &Request) -> worker::Result<bool> {
     let Some(origin) = request.headers().get("Origin")? else {
         return Ok(false);
     };
     Ok(origin == request.url()?.origin().ascii_serialization())
 }
 
-fn expected_revision(request: &Request) -> worker::Result<Option<i64>> {
+pub(crate) fn expected_revision(request: &Request) -> worker::Result<Option<i64>> {
     let none_match = request.headers().get("If-None-Match")?;
     let match_header = request.headers().get("If-Match")?;
     if none_match.is_some() && match_header.is_some() {
@@ -280,7 +280,7 @@ fn expected_revision(request: &Request) -> worker::Result<Option<i64>> {
     Ok((revision > 0 && revision < 9_007_199_254_740_991).then_some(revision))
 }
 
-fn operation_id(request: &Request) -> worker::Result<Option<String>> {
+pub(crate) fn operation_id(request: &Request) -> worker::Result<Option<String>> {
     let Some(id) = request.headers().get("X-Operation-ID")? else {
         return Ok(None);
     };
@@ -294,7 +294,7 @@ fn operation_id(request: &Request) -> worker::Result<Option<String>> {
     Ok(Some(id))
 }
 
-fn request_hash(method: &str, attribute: &str, expected: i64, body: &[u8]) -> String {
+pub(crate) fn request_hash(method: &str, attribute: &str, expected: i64, body: &[u8]) -> String {
     let mut hash = Sha256::new();
     hash.update(method.as_bytes());
     hash.update([0]);
@@ -598,7 +598,7 @@ async fn write(
     error(409, "revision_conflict")
 }
 
-fn owner_allowed(account: &str, attribute: &str, action: &str) -> bool {
+pub(crate) fn owner_allowed(account: &str, attribute: &str, action: &str) -> bool {
     let evaluation = vault_authzen::owner_evaluation(account, action, account, attribute);
     vault_authzen::evaluate_owner(&evaluation, account, attribute).decision
 }

@@ -9,6 +9,8 @@ pub const WRITE: &str = "vault.attribute.write";
 pub const DELETE: &str = "vault.attribute.delete";
 pub const SHARE_SYSTEM: &str = "vault.attribute.share-system";
 pub const REVOKE_SYSTEM: &str = "vault.attribute.revoke-system";
+pub const GRANT_RP: &str = "vault.attribute.grant-rp";
+pub const REVOKE_RP: &str = "vault.attribute.revoke-rp";
 
 #[derive(Serialize)]
 pub struct Subject<'a> {
@@ -61,6 +63,8 @@ pub fn evaluate_owner(request: &Evaluation<'_>, owner: &str, attribute: &str) ->
                     | DELETE
                     | SHARE_SYSTEM
                     | REVOKE_SYSTEM
+                    | GRANT_RP
+                    | REVOKE_RP
             ),
     }
 }
@@ -104,9 +108,11 @@ mod tests {
         assert!(!evaluate_owner(&request, "account-a", "email").decision);
         let share = owner_evaluation("account-a", SHARE_SYSTEM, "account-a", "name");
         assert!(evaluate_owner(&share, "account-a", "name").decision);
+        let rp = owner_evaluation("account-a", GRANT_RP, "account-a", "name");
+        assert!(evaluate_owner(&rp, "account-a", "name").decision);
         let denied = owner_evaluation(
             "account-a",
-            "vault.attribute.release-rp",
+            "vault.attribute.release-unknown",
             "account-a",
             "name",
         );

@@ -16,6 +16,8 @@ mod vault_authzen;
 
 #[cfg(target_arch = "wasm32")]
 mod vault_attributes;
+#[cfg(target_arch = "wasm32")]
+mod vault_claim_releases;
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 mod vault_gc;
 
@@ -2374,6 +2376,9 @@ pub async fn main(
             "/vault/shares/userinfo/name",
             vault_attributes::revoke_share,
         )
+        .get_async("/vault/releases/name", vault_claim_releases::status)
+        .post_async("/vault/releases/name", vault_claim_releases::grant)
+        .delete_async("/vault/releases/name", vault_claim_releases::revoke)
         .get_async("/vault/vault.js", vault_attributes::script)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .put_async("/vault/attributes/:attribute", vault_attributes::put)
