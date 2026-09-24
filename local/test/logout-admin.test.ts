@@ -5,7 +5,9 @@ import { retryLogout, adminCommand } from '../logout-admin.ts';
 import { logoutEvent, fanout } from '../logout-delivery.ts';
 import { collect, retained } from '../gc.ts';
 import { CLIENT, now, p, query, row } from '../shared.ts';
-let local, db;
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let db: LocalRuntime['opDB'];
 before(async () => {
   local = await startLocal({ scheduler: false });
   db = local.opDB;
@@ -57,7 +59,7 @@ async function seed() {
     reason: 'network_recovered',
   };
 }
-const count = async (t) => (await row(db, `SELECT COUNT(*) AS n FROM ${t}`)).n;
+const count = async (t: string) => (await row(db, `SELECT COUNT(*) AS n FROM ${t}`)).n;
 
 test('retry changes only failed targets and atomically records actor, deadlines and prior attempts', async () => {
   const request = await seed();
@@ -124,7 +126,7 @@ test('GC racing retry either preserves the entire retry or causes a clean reject
 
 test('operator parser rejects malformed dates and retention shorter than the required bound', async () => {
   const request = await seed();
-  const iso = (t) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
+  const iso = (t: number) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
   assert.equal((await adminCommand(db, 'logout-list', 'operator'))[0].retryable, 1);
   await assert.rejects(
     adminCommand(

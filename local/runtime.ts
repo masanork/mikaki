@@ -9,7 +9,7 @@ import { generateKeyPair, exportJWK } from 'jose';
 import { OP, RP, CLIENT, p, random, hash, now, sqlParts } from './shared.ts';
 
 export async function startLocal({ scheduler = true } = {}) {
-  async function keys(kid) {
+  async function keys(kid: string) {
     const pair = await generateKeyPair('ES256', { extractable: true });
     return {
       private: JSON.stringify({
@@ -34,7 +34,7 @@ export async function startLocal({ scheduler = true } = {}) {
     RP_PUBLIC_JWK: rpKeys.public,
   };
   const servers: Server[] = [];
-  let harness;
+  let harness: ReturnType<typeof createTestHarness> | undefined;
   const timers: NodeJS.Timeout[] = [],
     pending = new Set();
   const close = async () => {
@@ -72,7 +72,7 @@ export async function startLocal({ scheduler = true } = {}) {
       rp = harness.getWorker('mikaki-local-rp');
     const opEnv = await op.getEnv(),
       rpEnv = await rp.getEnv();
-    async function schema(db, name) {
+    async function schema(db: typeof opEnv.DB, name: string) {
       const source = await readFile(new URL(name, import.meta.url), 'utf8');
       for (const statement of sqlParts(source)) await db.prepare(statement).run();
     }
@@ -90,7 +90,7 @@ export async function startLocal({ scheduler = true } = {}) {
       ),
     ]);
     // Loopback HTTP frontends preserve distinct browser origins. No request URLs/bodies are logged.
-    async function listen(origin, worker) {
+    async function listen(origin: string, worker: typeof op) {
       const server = createServer(async (incoming, outgoing) => {
         try {
           if (incoming.headers.host !== new URL(origin).host) {
@@ -98,9 +98,15 @@ export async function startLocal({ scheduler = true } = {}) {
             outgoing.end('local_only');
             return;
           }
+          const headers: Record<string, string> = {};
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            if (Array.isArray(value))
+              headers[name] = value.join(name.toLowerCase() === 'cookie' ? '; ' : ', ');
+            else if (value !== undefined) headers[name] = value;
+          }
           const result = await worker.fetch(new URL(incoming.url ?? '/', origin).href, {
             method: incoming.method,
-            headers: incoming.headers,
+            headers,
             redirect: 'manual',
             ...(!['GET', 'HEAD'].includes(incoming.method ?? 'GET')
               ? { body: Readable.toWeb(incoming), duplex: 'half' }
@@ -124,7 +130,7 @@ export async function startLocal({ scheduler = true } = {}) {
     await listen(RP, rp);
     // The harness does not fire cron automatically. The policy controls local
     // intervals; cron strings route to the corresponding Worker handler.
-    function schedule(workers, cron, seconds) {
+    function schedule(workers: Array<typeof op>, cron: string, seconds: number) {
       let running = false;
       timers.push(
         setInterval(() => {
@@ -155,7 +161,7 @@ export async function startLocal({ scheduler = true } = {}) {
       opKeys,
       rpKeys,
       close,
-      logs: () => harness.getLogs(),
+      logs: () => harness!.getLogs(),
     };
   } catch (error) {
     await close();

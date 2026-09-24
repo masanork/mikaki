@@ -1,7 +1,13 @@
 import { revokeAccountSessions } from '../account-admin.ts';
 import assert from 'node:assert/strict';
 import { after, afterEach, before, test } from 'node:test';
-import { chromium } from '@playwright/test';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type CDPSession,
+  type Page,
+} from '@playwright/test';
 import { startLocal } from '../runtime.ts';
 import {
   OP,
@@ -17,8 +23,14 @@ import {
   signed,
 } from '../shared.ts';
 
-let local, browser, context, page, authenticator, cdp;
-const scalar = async (db, sql, ...args) =>
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let browser: Browser;
+let context: BrowserContext;
+let page: Page;
+let authenticator: string;
+let cdp: CDPSession;
+const scalar = async (db: LocalRuntime['opDB'], sql: string, ...args: unknown[]) =>
   (
     await db
       .prepare(sql)
@@ -28,7 +40,7 @@ const scalar = async (db, sql, ...args) =>
 const clientEnv = () => ({ RP_PRIVATE_JWK: local.rpKeys.private });
 // Playwright's API client does not share Chromium's Secure-cookie exception for loopback HTTP.
 // Forward the cookies captured from the actual browser for these backend race tests only.
-async function browserHeaders(origin, ctx = context) {
+async function browserHeaders(origin: string, ctx: BrowserContext = context) {
   return {
     Origin: origin,
     Cookie: (await ctx.cookies())
@@ -37,7 +49,11 @@ async function browserHeaders(origin, ctx = context) {
       .join('; '),
   };
 }
-async function request(path, fields = {}, assertion: string | undefined = undefined) {
+async function request(
+  path: string,
+  fields: Record<string, string> = {},
+  assertion: string | undefined = undefined,
+) {
   const token = assertion ?? (await clientAssertion(clientEnv(), `${OP}${path}`));
   return fetch(`${OP}${path}`, {
     method: 'POST',
@@ -63,8 +79,10 @@ async function loggedIn() {
   await page.getByTestId('signed-in').waitFor();
 }
 async function pendingCode() {
-  const home = await context.request.get(RP, { headers: await browserHeaders(RP) }),
-    csrf = (await home.text()).match(/name="csrf" value="([^"]+)"/)[1];
+  const home = await context.request.get(RP, { headers: await browserHeaders(RP) });
+  const match = (await home.text()).match(/name="csrf" value="([^"]+)"/);
+  assert.ok(match);
+  const csrf = match[1];
   const start = await context.request.post(`${RP}/login`, {
     form: { csrf },
     headers: await browserHeaders(RP),
@@ -94,7 +112,11 @@ async function pendingCode() {
   );
   return { code, verifier, sid, callback };
 }
-const exchange = (c, assertion: string | undefined = undefined, verifier = c.verifier) =>
+const exchange = (
+  c: { code: string; verifier: string },
+  assertion: string | undefined = undefined,
+  verifier = c.verifier,
+) =>
   request(
     '/token',
     {
@@ -188,6 +210,7 @@ test('invitation + browser Passkey + OIDC exchange creates the first admin and a
   await page.route(`${OP}/ceremony/finish`, async (route) => {
     const req = route.request(),
       data = req.postData();
+    assert.ok(data);
     const headers = { ...(await browserHeaders(OP)), 'Content-Type': 'application/json' };
     // Distinct internal reasons must produce the same public rejection.
     for (const [field, value] of [
@@ -247,8 +270,8 @@ test('invitation + browser Passkey + OIDC exchange creates the first admin and a
     const c = cookies.find((c) => c.name === name);
     assert.ok(c?.secure && c.httpOnly && c.sameSite === 'Lax');
   }
-  assert.equal(cookies.find((c) => c.name === '__Host-op-sso').domain, 'localhost');
-  assert.equal(cookies.find((c) => c.name === '__Host-rp-session').domain, '127.0.0.1');
+  assert.equal(cookies.find((c) => c.name === '__Host-op-sso')?.domain, 'localhost');
+  assert.equal(cookies.find((c) => c.name === '__Host-rp-session')?.domain, '127.0.0.1');
 });
 test('valid SSO reuses consent without another Passkey and keeps pairwise sub', async () => {
   const before = await page.getByTestId('subject').textContent();

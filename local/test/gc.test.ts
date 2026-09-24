@@ -4,7 +4,10 @@ import { startLocal } from '../runtime.ts';
 import { collect, retained } from '../gc.ts';
 import { CLIENT, RP, p, now, query, row, signed } from '../shared.ts';
 
-let local, op, rp;
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let op: LocalRuntime['opDB'];
+let rp: LocalRuntime['rpDB'];
 before(async () => {
   local = await startLocal({ scheduler: false });
   op = local.opDB;
@@ -25,8 +28,9 @@ beforeEach(async () => {
     ),
   );
 });
-const count = async (db, table) => (await row(db, `SELECT COUNT(*) AS n FROM ${table}`)).n;
-const login = (id, expiry, retention) =>
+const count = async (db: LocalRuntime['opDB'], table: string) =>
+  (await row(db, `SELECT COUNT(*) AS n FROM ${table}`)).n;
+const login = (id: string, expiry: number, retention: number) =>
   query(
     op,
     "INSERT INTO op_login(id,browser_hash,csrf,request,expires_at,gc_after) VALUES(?,?,?,'{}',?,?)",
@@ -110,7 +114,7 @@ test('backchannel retention covers sessions issued with a longer old policy and 
     at + 100,
     retained(parent),
   ]).run();
-  async function notify(jti) {
+  async function notify(jti: string) {
     const jwt = await signed(
       { OP_PRIVATE_JWK: local.opKeys.private },
       'op',

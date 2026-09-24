@@ -3,7 +3,7 @@ import { revokeAccountSessions } from './account-admin.ts';
 import { p, now, uuid, query, guard } from './shared.ts';
 import { retained } from './gc.ts';
 
-export async function listLogoutEvents(db) {
+export async function listLogoutEvents(db: any) {
   return (
     await query(
       db,
@@ -16,7 +16,24 @@ export async function listLogoutEvents(db) {
   ).results;
 }
 
-export async function retryLogout(db, { event, revision, deadline, retainUntil, actor, reason }) {
+export async function retryLogout(
+  db: any,
+  {
+    event,
+    revision,
+    deadline,
+    retainUntil,
+    actor,
+    reason,
+  }: {
+    event: string;
+    revision: number;
+    deadline: number;
+    retainUntil: number;
+    actor: string;
+    reason: string;
+  },
+) {
   const at = now();
   if (
     typeof event !== 'string' ||
@@ -84,7 +101,7 @@ export async function retryLogout(db, { event, revision, deadline, retainUntil, 
   return { operation, event, revision: revision + 1 };
 }
 
-export async function adminCommand(db, line, actor) {
+export async function adminCommand(db: any, line: string, actor: string) {
   const parts = line.trim().split(/\s+/);
   if (parts.length === 1 && parts[0] === 'logout-list') return listLogoutEvents(db);
   if (parts.length === 1 && parts[0] === 'account-list')
@@ -105,7 +122,7 @@ export async function adminCommand(db, line, actor) {
     throw new Error(
       'usage: logout-list | logout-retry EVENT REVISION DEADLINE_UTC RETAIN_UNTIL_UTC REASON',
     );
-  function time(value) {
+  function time(value: string) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) throw new Error('invalid_utc_time');
     const millis = Date.parse(value);
     if (!Number.isFinite(millis) || new Date(millis).toISOString().replace('.000Z', 'Z') !== value)

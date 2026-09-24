@@ -5,7 +5,9 @@ import { revokeAccountSessions, expandAccountRevocations } from '../account-admi
 import { adminCommand } from '../logout-admin.ts';
 import { collect } from '../gc.ts';
 import { now, p, query, row } from '../shared.ts';
-let local, db;
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let db: LocalRuntime['opDB'];
 before(async () => {
   local = await startLocal({ scheduler: false });
   db = local.opDB;
@@ -26,8 +28,8 @@ beforeEach(async () => {
   ]);
 });
 const request = { account: 'a', epoch: 0, actor: 'operator', reason: 'session_reset' };
-const count = async (t) => (await row(db, `SELECT COUNT(*) AS n FROM ${t}`)).n;
-const sso = (id, epoch = 0) =>
+const count = async (t: string) => (await row(db, `SELECT COUNT(*) AS n FROM ${t}`)).n;
+const sso = (id: string, epoch = 0) =>
   query(db, "INSERT INTO sso_session VALUES(?,'a','cr',?,?,0,?)", [
     id,
     epoch,

@@ -5,7 +5,9 @@ import { collect, retained } from '../gc.ts';
 import { logoutEvent, fanout, claim, settle } from '../logout-delivery.ts';
 import { CLIENT, now, p, query, row } from '../shared.ts';
 
-let local, db;
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let db: LocalRuntime['opDB'];
 const tables = [
   'logout_delivery',
   'sso_logout_event',
@@ -31,8 +33,8 @@ after(async () => {
 beforeEach(async () => {
   await db.batch(tables.map((t) => query(db, `DELETE FROM ${t}`)));
 });
-const count = async (table) => (await row(db, `SELECT COUNT(*) AS n FROM ${table}`)).n;
-async function seed(expiry, gcAfter) {
+const count = async (table: string) => (await row(db, `SELECT COUNT(*) AS n FROM ${table}`)).n;
+async function seed(expiry: number, gcAfter: number) {
   await db.batch([
     query(db, "INSERT INTO sso_session VALUES('s','a','cr',1,?,0,?)", [expiry, gcAfter]),
     query(db, "INSERT INTO sso_context VALUES('s','secret',1)"),

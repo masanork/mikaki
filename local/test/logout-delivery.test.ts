@@ -14,7 +14,9 @@ import {
   deliveryHealth,
 } from '../logout-delivery.ts';
 
-let local, db;
+type LocalRuntime = Awaited<ReturnType<typeof startLocal>>;
+let local: LocalRuntime;
+let db: LocalRuntime['opDB'];
 before(async () => {
   local = await startLocal({ scheduler: false });
   db = local.opDB;
@@ -51,7 +53,7 @@ async function seed(count = 1) {
     query(db, "UPDATE sso_session SET revoked=1 WHERE sso_id='sso'"),
   ]);
 }
-const state = (id) => row(db, 'SELECT * FROM logout_delivery WHERE id=?', [id]);
+const state = (id: string | number) => row(db, 'SELECT * FROM logout_delivery WHERE id=?', [id]);
 
 test('revocation and durable event roll back together; bounded fanout resumes without duplicates', async () => {
   await assert.rejects(
@@ -142,11 +144,15 @@ test('retry remains unavailable until due; expired leases exhaust attempts and d
 test('each delivery signs a fresh token, refuses redirects and bounds untrusted response consumption', async () => {
   const tokens: ReturnType<typeof decodeJwt>[] = [];
   let cancelled = false;
-  const transport = async (url, init) => {
+  const transport = async (url: string | URL | Request, init?: RequestInit) => {
     assert.equal(url, 'http://127.0.0.1:18878/backchannel');
+    assert.ok(init);
     assert.equal(init.redirect, 'manual');
     assert.ok(init.signal);
-    tokens.push(decodeJwt(init.body.get('logout_token')));
+    assert.ok(init.body instanceof URLSearchParams);
+    const token = init.body.get('logout_token');
+    assert.ok(token);
+    tokens.push(decodeJwt(token));
     return new Response(
       new ReadableStream({
         pull(c) {

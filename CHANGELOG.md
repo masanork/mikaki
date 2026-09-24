@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Extended the strict Node TypeScript gate to the local Wrangler runtime and core end-to-end test harnesses, including typed browser and D1 fixture state.
 - Extended the strict Node TypeScript gate to client, bootstrap invitation, and Worker policy administrator scripts; validated client registration input before treating it as typed data.
 - Added a CI enforced `noImplicitAny` check for shared Node helpers, account revocation, garbage collection, logout delivery, and independent tools; typed policy access, request validation, JWT inputs, and error handling at those boundaries.
 - Enabled strict null checking for the Node scripts, local harnesses, and design probes, with explicit checks for missing HTTP headers and optional claim fields.
