@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Extended the strict Node TypeScript gate to client, bootstrap invitation, and Worker policy administrator scripts; validated client registration input before treating it as typed data.
 - Added a CI enforced `noImplicitAny` check for shared Node helpers, account revocation, garbage collection, logout delivery, and independent tools; typed policy access, request validation, JWT inputs, and error handling at those boundaries.
 - Enabled strict null checking for the Node scripts, local harnesses, and design probes, with explicit checks for missing HTTP headers and optional claim fields.
 - Migrated handwritten Node scripts, local integration harnesses, and design probes to TypeScript 7, including test entrypoints and Wrangler source entries. CI now checks these sources after the Wasm build.

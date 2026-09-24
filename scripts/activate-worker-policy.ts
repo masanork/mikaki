@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
 import { activateWorkerPolicy, validateWorkerPolicyProjection } from './worker-policy-store.ts';
 
-const options = {};
+const options: Record<string, string> = {};
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index];
   if (!key?.startsWith('--') || index + 1 >= process.argv.length || Object.hasOwn(options, key)) {
@@ -37,7 +37,7 @@ if (
 
 const configPath = resolve(options['--config']);
 const config = JSON.parse(await readFile(configPath, 'utf8'));
-const binding = config.d1_databases?.find((entry) => entry.binding === 'DB');
+const binding = config.d1_databases?.find((entry: { binding: string }) => entry.binding === 'DB');
 const remote = options['--remote'] === 'yes';
 if (
   !binding ||

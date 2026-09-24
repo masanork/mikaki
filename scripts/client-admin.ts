@@ -14,7 +14,7 @@ import {
   validateRegistration,
 } from './client-admin-store.ts';
 
-const options = {};
+const options: Record<string, string> = {};
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index];
   if (!key?.startsWith('--') || index + 1 >= process.argv.length || Object.hasOwn(options, key)) {
@@ -55,7 +55,7 @@ if (
 const remote = options['--remote'] === 'yes';
 const configPath = resolve(options['--config']);
 const config = JSON.parse(await readFile(configPath, 'utf8'));
-const binding = config.d1_databases?.find((item) => item.binding === 'DB');
+const binding = config.d1_databases?.find((item: { binding: string }) => item.binding === 'DB');
 if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.database_id)) {
   throw new Error('DB binding and --remote must identify the same configured database');
 }

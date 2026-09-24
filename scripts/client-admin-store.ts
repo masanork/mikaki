@@ -1,13 +1,16 @@
 import { createPublicKey, randomUUID } from 'node:crypto';
 
-function exactKeys(value, keys) {
+function exactKeys<K extends string>(
+  value: unknown,
+  keys: readonly K[],
+): asserts value is Record<K, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid input');
   if (Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) {
     throw new Error('unexpected or missing fields');
   }
 }
 
-function httpsUri(value) {
+function httpsUri(value: unknown) {
   if (typeof value !== 'string' || value.length > 2048 || value.length === 0) {
     throw new Error('invalid URI');
   }
@@ -18,9 +21,10 @@ function httpsUri(value) {
   return url;
 }
 
-export function validateRegistration(input) {
+export function validateRegistration(input: unknown) {
   exactKeys(input, ['client_id', 'sector_identifier', 'redirect_uris', 'key']);
   if (
+    typeof input.client_id !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.client_id)
   ) {
     throw new Error('client_id must be UUIDv4');
@@ -35,22 +39,31 @@ export function validateRegistration(input) {
   const uris = input.redirect_uris.map(httpsUri);
   const hosts = new Set(uris.map((uri) => uri.hostname));
   if (
+    typeof input.sector_identifier !== 'string' ||
     new Set(input.redirect_uris).size !== uris.length ||
     hosts.size !== 1 ||
     !hosts.has(input.sector_identifier)
   ) {
     throw new Error('redirect host and sector must match');
   }
-  return { ...input, key: validateKey(input.key) };
+  return {
+    client_id: input.client_id,
+    sector_identifier: input.sector_identifier,
+    redirect_uris: uris.map((uri) => uri.href),
+    key: validateKey(input.key),
+  };
 }
 
-export function validateKey(input) {
+export function validateKey(input: unknown) {
   exactKeys(input, ['kid', 'jwk']);
   if (typeof input.kid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(input.kid)) {
     throw new Error('invalid key ID');
   }
   exactKeys(input.jwk, ['kty', 'crv', 'x', 'y']);
   if (input.jwk.kty !== 'EC' || input.jwk.crv !== 'P-256') throw new Error('ES256 key required');
+  if (typeof input.jwk.x !== 'string' || typeof input.jwk.y !== 'string') {
+    throw new Error('invalid P-256 coordinates');
+  }
   const x = Buffer.from(input.jwk.x, 'base64url');
   const y = Buffer.from(input.jwk.y, 'base64url');
   if (
@@ -61,17 +74,17 @@ export function validateKey(input) {
   ) {
     throw new Error('invalid P-256 coordinates');
   }
-  createPublicKey({ key: input.jwk, format: 'jwk' });
+  createPublicKey({ key: input.jwk as JsonWebKey, format: 'jwk' });
   return { kid: input.kid, sec1: new Uint8Array(Buffer.concat([Buffer.from([4]), x, y])) };
 }
 
-export function validateRedirect(input) {
+export function validateRedirect(input: unknown) {
   exactKeys(input, ['redirect_uri']);
   const uri = httpsUri(input.redirect_uri);
   return { uri: uri.href, sector: uri.hostname };
 }
 
-function metadata(actor, reason) {
+function metadata(actor: string, reason: string) {
   if (
     typeof actor !== 'string' ||
     actor.length < 1 ||
@@ -85,12 +98,12 @@ function metadata(actor, reason) {
   return { operation: randomUUID(), now: Math.floor(Date.now() / 1000), actor, reason };
 }
 
-function managedClientId(clientId) {
+function managedClientId(clientId: string) {
   if (clientId === 'mikaki-internal-enrollment')
     throw new Error('internal client is not managed here');
 }
 
-function audit(db, meta, clientId, action) {
+function audit(db: any, meta: ReturnType<typeof metadata>, clientId: string, action: string) {
   return db
     .prepare(
       'INSERT INTO client_admin_audit(operation_id,client_id,action,actor,reason,occurred_at) VALUES(?,?,?,?,?,?)',
@@ -98,7 +111,7 @@ function audit(db, meta, clientId, action) {
     .bind(meta.operation, clientId, action, meta.actor, meta.reason, meta.now);
 }
 
-export async function registerClient(db, input, actor, reason) {
+export async function registerClient(db: any, input: unknown, actor: string, reason: string) {
   const value = validateRegistration(input);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -122,7 +135,13 @@ export async function registerClient(db, input, actor, reason) {
   return { clientId: value.client_id, operation: meta.operation };
 }
 
-export async function addKey(db, clientId, input, actor, reason) {
+export async function addKey(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
   managedClientId(clientId);
   const key = validateKey(input);
   const meta = metadata(actor, reason);
@@ -143,7 +162,13 @@ export async function addKey(db, clientId, input, actor, reason) {
   return { clientId, kid: key.kid };
 }
 
-export async function retireKey(db, clientId, kid, actor, reason) {
+export async function retireKey(
+  db: any,
+  clientId: string,
+  kid: string,
+  actor: string,
+  reason: string,
+) {
   managedClientId(clientId);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -163,7 +188,13 @@ export async function retireKey(db, clientId, kid, actor, reason) {
   return { clientId, kid };
 }
 
-export async function addRedirect(db, clientId, input, actor, reason) {
+export async function addRedirect(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
   managedClientId(clientId);
   const redirect = validateRedirect(input);
   const meta = metadata(actor, reason);
@@ -187,7 +218,13 @@ export async function addRedirect(db, clientId, input, actor, reason) {
   return { clientId, redirectUri: redirect.uri };
 }
 
-export async function retireRedirect(db, clientId, input, actor, reason) {
+export async function retireRedirect(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
   managedClientId(clientId);
   const redirect = validateRedirect(input);
   const meta = metadata(actor, reason);
@@ -211,7 +248,7 @@ export async function retireRedirect(db, clientId, input, actor, reason) {
   return { clientId, redirectUri: redirect.uri };
 }
 
-export async function disableClient(db, clientId, actor, reason) {
+export async function disableClient(db: any, clientId: string, actor: string, reason: string) {
   managedClientId(clientId);
   const meta = metadata(actor, reason);
   await db.batch([
@@ -229,7 +266,7 @@ export async function disableClient(db, clientId, actor, reason) {
   return { clientId };
 }
 
-export async function listClients(db) {
+export async function listClients(db: any) {
   return db
     .prepare(
       "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c WHERE c.client_id<>'mikaki-internal-enrollment' ORDER BY c.client_id",

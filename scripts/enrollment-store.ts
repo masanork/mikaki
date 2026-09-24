@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-export async function issueBootstrapInvite(db, actor, reason) {
+export async function issueBootstrapInvite(db: any, actor: string, reason: string) {
   if (
     typeof actor !== 'string' ||
     actor.length < 1 ||

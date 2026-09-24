@@ -17,7 +17,12 @@ const NUMERIC_FIELDS = [
   'token_rate_window_seconds',
   'token_attempts_per_client',
   'sso_absolute_ttl_seconds',
-];
+] as const;
+type WorkerPolicyProjection = Record<(typeof NUMERIC_FIELDS)[number], number> & {
+  schema_version: number;
+  policy_revision: string;
+  projection_revision: string;
+};
 const FIELDS = new Set([
   ...NUMERIC_FIELDS,
   'schema_version',
@@ -25,7 +30,7 @@ const FIELDS = new Set([
   'projection_revision',
 ]);
 
-export function validateWorkerPolicyProjection(policy) {
+export function validateWorkerPolicyProjection(policy: WorkerPolicyProjection) {
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
     throw new Error('worker policy must be an object');
   }
@@ -51,13 +56,15 @@ export function validateWorkerPolicyProjection(policy) {
     ![10, 60].includes(policy.token_rate_window_seconds) ||
     policy.token_attempts_per_client > 1000 ||
     policy.sso_absolute_ttl_seconds > 365 * 86400 ||
-    [
-      'assertion_ttl_seconds',
-      'clock_skew_seconds',
-      'authorization_code_ttl_seconds',
-      'access_token_ttl_seconds',
-      'id_token_ttl_seconds',
-    ].some((field) => policy[field] > 2_147_483_647)
+    (
+      [
+        'assertion_ttl_seconds',
+        'clock_skew_seconds',
+        'authorization_code_ttl_seconds',
+        'access_token_ttl_seconds',
+        'id_token_ttl_seconds',
+      ] as const
+    ).some((field) => policy[field] > 2_147_483_647)
   ) {
     throw new Error('worker policy values are outside the supported range');
   }
@@ -72,7 +79,15 @@ export function validateWorkerPolicyProjection(policy) {
 }
 
 /** Stage a complete Worker projection and atomically switch the active revision. */
-export async function activateWorkerPolicy(db, policy, { expectedRevision = null, actor, reason }) {
+export async function activateWorkerPolicy(
+  db: any,
+  policy: WorkerPolicyProjection,
+  {
+    expectedRevision = null,
+    actor,
+    reason,
+  }: { expectedRevision?: string | null; actor: string; reason: string },
+) {
   const json = validateWorkerPolicyProjection(policy);
   if (
     typeof actor !== 'string' ||
