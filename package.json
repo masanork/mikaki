@@ -14,6 +14,7 @@
     "check:worker-ui": "node_modules/@typescript/native/bin/tsc --project crates/worker/ui/tsconfig.json --noEmit && svelte-check --tsconfig crates/worker/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:product-sources": "python3 scripts/check_product_sources.py",
     "check:i18n": "node scripts/check_i18n.ts",
+    "probe:recipient-envelope": "esbuild scripts/probe-recipient-envelope.ts --bundle --platform=node --format=esm --external:wrangler --outfile=local/generated/probe-recipient-envelope.mjs && node local/generated/probe-recipient-envelope.mjs",
     "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/worker/ui/*.{ts,svelte,json}' 'scripts/*.ts' 'design/probes/**/*.ts' package.json .prettierrc.json 'tsconfig.node*.json'",
     "health": "node scripts/health.ts",
     "dev": "node local/dev.ts"
