@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Extended the strict Node TypeScript gate to the D1 atomicity design probe.
 - Extended the strict Node TypeScript gate to project metrics generation and chart rendering.
 - Extended the strict Node TypeScript gate to recipient key and secret administration and their local D1 tests, plus WebAuthn boundary tests.
 - Extended the strict Node TypeScript gate to JOSE, FIDO analysis, and Worker token exchange design probes.

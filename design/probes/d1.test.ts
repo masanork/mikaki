@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 
-let proxy;
-let db;
-const sql = (name) =>
+let proxy: { dispose: () => Promise<void> } | undefined;
+let db: any;
+const sql = (name: string) =>
   readFileSync(new URL(`../sql/${name}`, import.meta.url), 'utf8')
     .split('\n')
     .filter((line) => !line.trimStart().startsWith('--'))
@@ -15,7 +15,7 @@ const sql = (name) =>
     .map((statement) => statement.trim())
     .filter(Boolean);
 
-function prepared(name, parameters) {
+function prepared(name: string, parameters: Record<string, unknown>) {
   return sql(name).map((statement) => {
     const values: unknown[] = [];
     const positional = statement.replace(/:([a-z_]+)/g, (_, key) => {
@@ -26,9 +26,10 @@ function prepared(name, parameters) {
     return db.prepare(positional).bind(...values);
   });
 }
-const batch = (name, parameters) => db.batch(prepared(name, parameters));
-const scalar = async (statement) => (await db.prepare(statement).raw())[0][0];
-const parameters = (id = 'one') => ({
+const batch = (name: string, parameters: Record<string, unknown>) =>
+  db.batch(prepared(name, parameters));
+const scalar = async (statement: string) => (await db.prepare(statement).raw())[0][0];
+const parameters = (id: string = 'one') => ({
   client_id: 'c',
   client_kid: 'ck',
   client_key_revision: 1,
@@ -47,13 +48,14 @@ const parameters = (id = 'one') => ({
 });
 
 before(async () => {
-  proxy = await getPlatformProxy({
+  const platform = await getPlatformProxy<{ DB: any }>({
     configPath: fileURLToPath(new URL('wrangler.jsonc', import.meta.url)),
     persist: false,
     remoteBindings: false,
     envFiles: [],
   });
-  db = proxy.env.DB;
+  proxy = platform;
+  db = platform.env.DB;
   for (const statement of sql('oidc-critical-schema.sql')) {
     await db.prepare(statement).run();
   }

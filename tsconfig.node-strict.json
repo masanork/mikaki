@@ -36,6 +36,7 @@
     "scripts/recipient-secret-admin.ts",
     "design/probes/async-signer-worker.ts",
     "design/probes/crypto.test.ts",
+    "design/probes/d1.test.ts",
     "design/probes/jose.test.ts",
     "design/probes/jose-custom.test.ts",
     "design/probes/pqc/check.ts",
