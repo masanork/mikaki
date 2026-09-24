@@ -9,7 +9,7 @@ const messages = Object.fromEntries(
   ),
 ) as Record<string, Record<string, string>>;
 assert.deepEqual(Object.keys(messages.ja).sort(), Object.keys(messages.en).sort());
-const placeholders = (message) =>
+const placeholders = (message: string) =>
   [...message.matchAll(/\{([A-Za-z_][A-Za-z_0-9]*)\}/g)].map((match) => match[1]).sort();
 for (const [key, japanese] of Object.entries(messages.ja)) {
   const english = messages.en[key];

@@ -2,7 +2,15 @@
 import { p, now, uuid, query, guard } from './shared.ts';
 import { retained } from './gc.ts';
 
-export async function revokeAccountSessions(db, { account, epoch, actor, reason }) {
+export async function revokeAccountSessions(
+  db: any,
+  {
+    account,
+    epoch,
+    actor,
+    reason,
+  }: { account: string; epoch: number; actor: string; reason: string },
+) {
   if (
     typeof account !== 'string' ||
     !account ||
@@ -45,7 +53,7 @@ export async function revokeAccountSessions(db, { account, epoch, actor, reason 
   return { operation, account, epoch: epoch + 1 };
 }
 
-export async function expandAccountRevocations(db) {
+export async function expandAccountRevocations(db: any) {
   await db.batch([
     // There is at most one logout event per SSO. Its SSO UUID is also a stable
     // event ID here; browser logout may already have created that event.

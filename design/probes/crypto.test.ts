@@ -8,7 +8,7 @@ import { importJWK, jwtVerify, SignJWT, base64url } from 'jose';
 const require = createRequire(import.meta.url);
 const wasm = require('./es256/pkg/mikaki_es256_probe.js');
 const binary = fileURLToPath(new URL('es256/target/debug/fixture', import.meta.url));
-const native = (...args) => execFileSync(binary, args, { encoding: 'utf8' }).trim();
+const native = (...args: string[]) => execFileSync(binary, args, { encoding: 'utf8' }).trim();
 const publicJwk = JSON.parse(wasm.fixture_public_jwk());
 const publicKey = await importJWK(publicJwk, 'ES256');
 // Public RFC 6979 fixture, not an operational private key.
@@ -36,7 +36,7 @@ const options = {
   currentDate: new Date(now * 1000),
   clockTolerance: 0,
 };
-const encode = (value) => base64url.encode(JSON.stringify(value));
+const encode = (value: unknown) => base64url.encode(JSON.stringify(value));
 const input = `${encode({ alg: 'ES256', typ: 'JWT' })}.${encode(claims)}`;
 
 test('actual Wasm execution matches the independent RFC 6979 known answer', () => {

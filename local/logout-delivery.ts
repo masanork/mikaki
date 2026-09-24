@@ -1,12 +1,23 @@
 import { expandAccountRevocations } from './account-admin.ts';
 import { retained } from './gc.ts';
-import { CLIENT, RP, p, now, uuid, query, row, signed } from './shared.ts';
+import { CLIENT, RP, p, now, uuid, query, row, signed, type PolicyKey } from './shared.ts';
 
-const policy = (name) => p(`logout_delivery.${name}`);
+type LogoutPolicyKey = Extract<PolicyKey, `logout_delivery.${string}`>;
+type LogoutPolicyName = LogoutPolicyKey extends `logout_delivery.${infer Name}` ? Name : never;
+const policy = (name: LogoutPolicyName) => p(`logout_delivery.${name}`);
+
+type DeliveryTask = {
+  id: string;
+  lease: string;
+  client_id: string;
+  sid: string;
+  deadline: number;
+  attempts: number;
+};
 
 // The epoch-wide event in the design model has a different scope: this event
 // revokes one SSO session. Insert it in the same batch as the revocation.
-export function logoutEvent(db, ssoId) {
+export function logoutEvent(db: any, ssoId: string) {
   const at = now();
   return query(
     db,
@@ -23,7 +34,7 @@ export function logoutEvent(db, ssoId) {
   );
 }
 
-export async function fanout(db) {
+export async function fanout(db: any) {
   // A single bounded batch across all events; NOT EXISTS makes restart safe.
   await db.batch([
     query(
@@ -45,7 +56,7 @@ export async function fanout(db) {
   ]);
 }
 
-export async function claim(db, at = now()) {
+export async function claim(db: any, at = now()) {
   // Claim only when ready to execute. SQLite serializes this entire predicate
   // and update, including the client-wide concurrency limit across invocations.
   const lease = uuid();
@@ -71,7 +82,13 @@ export async function claim(db, at = now()) {
   );
 }
 
-export function outcome(task, status, retryAfter, at = now(), random = Math.random) {
+export function outcome(
+  task: Pick<DeliveryTask, 'deadline' | 'attempts'>,
+  status: number,
+  retryAfter: string | null,
+  at = now(),
+  random = Math.random,
+) {
   if (status >= 200 && status < 300) return { state: 'delivered', reason: 'success', next: at };
   if (status !== 0 && status !== 408 && status !== 429 && !(status >= 500 && status <= 599))
     return { state: 'failed', reason: 'http_permanent', next: at };
@@ -98,7 +115,13 @@ export function outcome(task, status, retryAfter, at = now(), random = Math.rand
     : { state: 'pending', reason: status ? 'http_retry' : 'transport', next };
 }
 
-export async function settle(db, task, result, status, at = now()) {
+export async function settle(
+  db: any,
+  task: DeliveryTask,
+  result: ReturnType<typeof outcome>,
+  status: number,
+  at = now(),
+) {
   return query(
     db,
     `UPDATE logout_delivery SET state=?,reason=?,next_at=?,last_status=?,
@@ -118,7 +141,7 @@ export async function settle(db, task, result, status, at = now()) {
   ).run();
 }
 
-export async function expire(db, at = now()) {
+export async function expire(db: any, at = now()) {
   await query(
     db,
     `UPDATE logout_delivery SET
@@ -131,7 +154,11 @@ export async function expire(db, at = now()) {
   ).run();
 }
 
-export async function sendLogout(env, task, transport = fetch) {
+export async function sendLogout(
+  env: { OP_PRIVATE_JWK: string },
+  task: Pick<DeliveryTask, 'client_id' | 'sid'>,
+  transport = fetch,
+) {
   // Only the registered local RP is supported. Never derive a destination from
   // a token or event payload; dynamic client registration is a separate feature.
   if (task.client_id !== CLIENT) return { status: 400, retryAfter: null };
@@ -172,7 +199,7 @@ export async function sendLogout(env, task, transport = fetch) {
   return { status: result.status, retryAfter: result.headers.get('retry-after') };
 }
 
-export async function deliveryHealth(db, at = now()) {
+export async function deliveryHealth(db: any, at = now()) {
   const health = await row(
     db,
     `SELECT
@@ -202,7 +229,7 @@ export async function deliveryHealth(db, at = now()) {
   };
 }
 
-export async function deliver(db, env) {
+export async function deliver(db: any, env: { OP_PRIVATE_JWK: string }) {
   await expandAccountRevocations(db);
   await fanout(db);
   await expire(db);

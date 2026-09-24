@@ -445,6 +445,7 @@ async function finish(db, req) {
     ]),
   );
   const result = await issueCode(db, l, { account_id: account, sso_id: ssoId }, commands, secret);
+  check(result.cookie);
   return json({ location: result.location }, 200, { 'Set-Cookie': result.cookie });
 }
 async function acceptClient(db, env, req, input) {

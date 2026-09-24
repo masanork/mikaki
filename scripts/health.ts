@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url);
 const files: string[] = [];
-async function walk(path) {
+async function walk(path: string) {
   for (const entry of await readdir(new URL(path, root), { withFileTypes: true })) {
     if (['node_modules', 'pkg', 'dist', '.wrangler', 'generated', 'target'].includes(entry.name))
       continue;
@@ -25,7 +25,7 @@ const counts = await Promise.all(
     };
   }),
 );
-async function size(path) {
+async function size(path: string) {
   const data = await readFile(new URL(path, root));
   return { path, raw: data.length, gzip: gzipSync(data).length };
 }

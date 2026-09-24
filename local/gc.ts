@@ -2,17 +2,17 @@ import { p, now, query } from './shared.ts';
 
 // Store this bound when the record is created; never recompute old retention
 // using a newly shortened policy. Expiry and retention have separate meanings.
-export const retained = (expiry) =>
+export const retained = (expiry: number) =>
   expiry + p('oidc.validation.clock_skew') + p('retention.gc_grace');
 
 // Parent expiry bounds every code/token in this local profile. Keep all issuance
 // evidence until that bound, its saved grace/audit retention, and notification GC.
-const expiredParent = (reference) => `EXISTS(SELECT 1 FROM sso_session ss
+const expiredParent = (reference: string) => `EXISTS(SELECT 1 FROM sso_session ss
   WHERE ss.sso_id=${reference} AND ss.expires_at<=?1 AND ss.gc_after<=?1
   AND NOT EXISTS(SELECT 1 FROM sso_logout_event e WHERE e.sso_id=ss.sso_id)
   AND NOT EXISTS(SELECT 1 FROM revocation_event r WHERE r.account_id=ss.account_id
     AND r.through_epoch>=ss.epoch AND r.expanded=0))`;
-const expiredCode = (reference) => `EXISTS(SELECT 1 FROM authorization_code ac
+const expiredCode = (reference: string) => `EXISTS(SELECT 1 FROM authorization_code ac
   JOIN client_session cs ON cs.client_id=ac.client_id AND cs.sid=ac.sid
   WHERE ac.code_hash=${reference} AND ${expiredParent('cs.sso_id')})`;
 
@@ -83,7 +83,7 @@ const targets = {
   ],
 };
 
-export async function collect(db, role, at = now()) {
+export async function collect(db: any, role: 'op' | 'rp', at = now()) {
   if (!Object.hasOwn(targets, role)) throw new Error('invalid_gc_role');
   let remaining = p('retention.gc_batch_size');
   const deleted: Record<string, number> = {};

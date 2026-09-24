@@ -11,8 +11,8 @@ const require = createRequire(import.meta.url);
 const probe = require('./pkg/mikaki_pqc_probe.js');
 const bytes = await readFile(new URL('./pkg/mikaki_pqc_probe_bg.wasm', import.meta.url));
 assert.equal(probe.self_test(), true);
-const hex = (value) => Uint8Array.from(Buffer.from(value, 'hex'));
-const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const hex = (value: string) => Uint8Array.from(Buffer.from(value, 'hex'));
+const sha256 = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
 
 const kemSeed = Buffer.concat([hex(nist.mlKemKeygen.d), hex(nist.mlKemKeygen.z)]);
 const kemKeys = ml_kem768.keygen(kemSeed);

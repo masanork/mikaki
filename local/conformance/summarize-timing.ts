@@ -2,9 +2,9 @@
 import { readFileSync } from 'node:fs';
 const files = process.argv.slice(2);
 if (!files.length) throw new Error('Usage: node summarize-timing.ts <timing.log> ...');
-const stats = (values) => {
+const stats = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
-  const at = (p) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
+  const at = (p: number) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
   return {
     count: values.length,
     sum_ms: +values.reduce((a, b) => a + b, 0).toFixed(3),

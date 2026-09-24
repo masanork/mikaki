@@ -81,6 +81,7 @@ async function pendingCode() {
     code = u.searchParams.get('code'),
     state = u.searchParams.get('state');
   assert.ok(code);
+  assert.ok(state);
   const verifier = await scalar(
     local.rpDB,
     'SELECT verifier FROM login WHERE state_hash=?',

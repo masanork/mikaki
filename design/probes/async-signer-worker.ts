@@ -1,6 +1,6 @@
 const encoder = new TextEncoder();
 
-function base64url(value) {
+function base64url(value: string | ArrayBuffer) {
   const bytes = typeof value === 'string' ? encoder.encode(value) : new Uint8Array(value);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "noImplicitAny": true
+  },
+  "include": [
+    "local/shared.ts",
+    "local/gc.ts",
+    "local/account-admin.ts",
+    "local/logout-delivery.ts",
+    "local/webauthn-errors.ts",
+    "local/conformance/summarize-timing.ts",
+    "scripts/check_i18n.ts",
+    "scripts/health.ts",
+    "design/probes/async-signer-worker.ts",
+    "design/probes/crypto.test.ts",
+    "design/probes/pqc/check.ts"
+  ]
+}
