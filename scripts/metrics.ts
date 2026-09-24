@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const value = (name, fallback) => {
+const value = <T extends string | null>(name: string, fallback: T): string | T => {
   const i = args.indexOf(name);
   return i < 0 ? fallback : args[i + 1];
 };
@@ -36,7 +36,7 @@ const GENERATED = [
   /^design\/probes\//,
 ];
 
-function run(command, argv) {
+function run(command: string, argv: string[]) {
   return execFileSync(command, argv, {
     cwd: ROOT,
     encoding: 'utf8',
@@ -46,12 +46,12 @@ function run(command, argv) {
 function trackedFiles() {
   return run('git', ['ls-files', '-co', '--exclude-standard']).split('\n').filter(Boolean);
 }
-function lines(text) {
+function lines(text: string) {
   if (!text) return 0;
   const count = text.split('\n').length;
   return text.endsWith('\n') ? count - 1 : count;
 }
-function isTestFile(path) {
+function isTestFile(path: string) {
   return (
     /(^|\/)(test|tests)\//.test(path) ||
     /(?:^|\/)(?:tests?|test)\.rs$/.test(path) ||
@@ -60,7 +60,7 @@ function isTestFile(path) {
 }
 
 // Count inline Rust #[cfg(test)] modules separately for a useful implementation/test stack.
-function inlineRustTestLines(text) {
+function inlineRustTestLines(text: string) {
   const source = text.split('\n');
   let count = 0;
   let pending = false;
@@ -106,7 +106,7 @@ function codeSize() {
     testLines: 0,
     implementationFiles: 0,
     testFiles: 0,
-    byLanguage: {},
+    byLanguage: {} as Record<string, { implementationLines: number; testLines: number }>,
   };
   for (const path of trackedFiles()) {
     if (!/^(crates|local)\//.test(path) || GENERATED.some((re) => re.test(path))) continue;
@@ -149,7 +149,7 @@ function codeSize() {
   return result;
 }
 
-function countSourceLines(dir, extensions, skipNestedModules = false) {
+function countSourceLines(dir: string, extensions: Set<string>, skipNestedModules = false) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -201,12 +201,27 @@ function dependencies() {
       '--filter-platform',
       'wasm32-unknown-unknown',
     ]),
-  ) as any;
+  ) as {
+    packages: Array<{
+      id: string;
+      name: string;
+      source?: string;
+      manifest_path: string;
+      dependencies: Array<{ name: string; source?: string; kind?: string }>;
+    }>;
+    workspace_members: string[];
+    resolve?: {
+      nodes: Array<{
+        id: string;
+        deps: Array<{ pkg: string; dep_kinds: Array<{ kind: string | null }> }>;
+      }>;
+    };
+  };
   const workspacePackages = metadata.packages.filter((p) =>
     metadata.workspace_members.includes(p.id),
   );
   const workspaceNames = new Set(workspacePackages.map((p) => p.name));
-  const rust = { runtime: new Set(), build: new Set(), dev: new Set() };
+  const rust = { runtime: new Set<string>(), build: new Set<string>(), dev: new Set<string>() };
   for (const pkg of workspacePackages) {
     for (const dep of pkg.dependencies) {
       if (workspaceNames.has(dep.name) || !dep.source) continue;
@@ -217,14 +232,12 @@ function dependencies() {
     }
   }
 
-  const packagesById = new Map<string, any>(metadata.packages.map((pkg) => [pkg.id, pkg]));
-  const nodesById = new Map<string, any>(
-    (metadata.resolve?.nodes ?? []).map((node) => [node.id, node]),
-  );
+  const packagesById = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
+  const nodesById = new Map((metadata.resolve?.nodes ?? []).map((node) => [node.id, node]));
   const visited = new Set<string>();
   const pending = [...metadata.workspace_members];
   while (pending.length) {
-    const id = pending.pop();
+    const id = pending.pop()!;
     if (visited.has(id)) continue;
     visited.add(id);
     for (const dep of nodesById.get(id)?.deps ?? []) {
@@ -288,8 +301,17 @@ function coverage() {
   };
 }
 
-function snapshot() {
-  if (snapshotPath) return JSON.parse(readFileSync(join(ROOT, snapshotPath), 'utf8'));
+type MetricsSnapshot = {
+  date: string;
+  commit: string;
+  code: ReturnType<typeof codeSize>;
+  dependencies: ReturnType<typeof dependencies>;
+  coverage: ReturnType<typeof coverage>;
+};
+
+function snapshot(): MetricsSnapshot {
+  if (snapshotPath)
+    return JSON.parse(readFileSync(join(ROOT, snapshotPath), 'utf8')) as MetricsSnapshot;
   let commit = 'working-tree';
   try {
     commit = run('git', ['rev-parse', '--short', 'HEAD']);
@@ -305,18 +327,18 @@ function snapshot() {
   };
 }
 
-const esc = (s) =>
+const esc = (s: unknown) =>
   String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const COLORS = { rust: '#e57038', frontend: '#8657a6', tests: '#28a176' };
 const FILLS = { rust: '#e5703833', frontend: '#8657a633', tests: '#28a17633' };
-function fmtK(value) {
+function fmtK(value: number) {
   return value >= 1000 ? `${Math.floor(value / 1000)}k` : String(value);
 }
-function xPosition(date, start, end, left, width) {
+function xPosition(date: string, start: string, end: string, left: number, width: number) {
   const span = Math.max(1, Date.parse(end) - Date.parse(start));
   return left + ((Date.parse(date) - Date.parse(start)) / span) * width;
 }
-function yTicks(max) {
+function yTicks(max: number) {
   const rough = max / 5;
   const magnitude = 10 ** Math.floor(Math.log10(Math.max(rough, 1)));
   const normalized = rough / magnitude;
@@ -325,7 +347,7 @@ function yTicks(max) {
   for (let tick = 0; tick <= max + step / 10; tick += step) ticks.push(tick);
   return { step, ticks };
 }
-function stackValues(row) {
+function stackValues(row: MetricsSnapshot) {
   const language = row.code.byLanguage;
   return [
     language.rust?.implementationLines ?? 0,
@@ -335,7 +357,7 @@ function stackValues(row) {
     row.code.testLines,
   ];
 }
-function stackedGrowthChart(history) {
+function stackedGrowthChart(history: MetricsSnapshot[]) {
   const rows = history.slice(-90);
   const W = 900,
     H = 390,
@@ -352,9 +374,9 @@ function stackedGrowthChart(history) {
   const yMax = ticks.at(-1) || max;
   const start = rows[0]?.date ?? new Date().toISOString().slice(0, 10);
   const end = rows.at(-1)?.date ?? start;
-  const xp = (date) =>
+  const xp = (date: string) =>
     rows.length <= 1 ? left + plotW / 2 : xPosition(date, start, end, left, plotW);
-  const yp = (value) => bottom - (value / yMax) * plotH;
+  const yp = (value: number) => bottom - (value / yMax) * plotH;
   let body = '';
   for (const tick of ticks) {
     const y = yp(tick);
@@ -425,13 +447,24 @@ function stackedGrowthChart(history) {
     body += `<rect x="${W - right + 15}" y="${y - 9}" width="12" height="12" fill="${item.color}"/><text x="${W - right + 35}" y="${y + 1}" font-family="system-ui,sans-serif" font-size="10" fill="#344054">${item.name}</text><text x="${W - 9}" y="${y + 1}" text-anchor="end" font-family="system-ui,sans-serif" font-size="10" fill="#172033">${item.value.toLocaleString()}</text>`;
   });
   if (rows.length) {
-    const last = rows.at(-1),
-      latestTotal = totals.at(-1);
+    const last = rows.at(-1)!,
+      latestTotal = totals.at(-1)!;
     body += `<text x="${W - right + 15}" y="280" font-family="system-ui,sans-serif" font-size="11" fill="#667085">Today</text><text x="${W - right + 15}" y="299" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#172033">${fmtK(latestTotal)} lines</text><text x="${W - right + 15}" y="316" font-family="system-ui,sans-serif" font-size="10" fill="#667085">${esc(last.commit)}</text>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="#fff"/>${body}</svg>\n`;
 }
-function lineChart(title, subtitle, history, series, max, suffix = '') {
+function lineChart(
+  title: string,
+  subtitle: string,
+  history: MetricsSnapshot[],
+  series: Array<{
+    label: string;
+    color: string;
+    value: (row: MetricsSnapshot) => number | undefined;
+  }>,
+  max: number,
+  suffix = '',
+) {
   const rows = history.slice(-90);
   const W = 900,
     H = 390,
@@ -443,9 +476,9 @@ function lineChart(title, subtitle, history, series, max, suffix = '') {
     plotH = bottom - top;
   const start = rows[0]?.date ?? new Date().toISOString().slice(0, 10),
     end = rows.at(-1)?.date ?? start;
-  const xp = (date) =>
+  const xp = (date: string) =>
     rows.length <= 1 ? left + plotW / 2 : xPosition(date, start, end, left, plotW);
-  const yp = (value) => bottom - (value / max) * plotH;
+  const yp = (value: number) => bottom - (value / max) * plotH;
   let body = '';
   for (let i = 0; i <= 4; i++) {
     const value = (max * i) / 4,
@@ -454,7 +487,7 @@ function lineChart(title, subtitle, history, series, max, suffix = '') {
   }
   series.forEach((item) => {
     const points = rows
-      .map((row) => ({ x: xp(row.date), y: yp(item.value(row)) }))
+      .map((row) => ({ x: xp(row.date), y: yp(item.value(row) ?? NaN) }))
       .filter((p) => Number.isFinite(p.y));
     if (points.length) {
       body += `<path d="${points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${item.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -487,17 +520,17 @@ function lineChart(title, subtitle, history, series, max, suffix = '') {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="#fff"/>${body}</svg>\n`;
 }
 
-function readHistory() {
+function readHistory(): MetricsSnapshot[] {
   try {
-    return JSON.parse(readFileSync(HISTORY, 'utf8'));
+    return JSON.parse(readFileSync(HISTORY, 'utf8')) as MetricsSnapshot[];
   } catch {
     return [];
   }
 }
-function writeReports(current, history) {
+function writeReports(current: MetricsSnapshot, history: MetricsSnapshot[]) {
   mkdirSync(join(ROOT, outputDir), { recursive: true });
   writeFileSync(join(ROOT, outputDir, 'current.json'), JSON.stringify(current, null, 2) + '\n');
-  const depGroups = [
+  const depGroups: Array<[string, string[]]> = [
     ['Rust runtime', current.dependencies.names.rustRuntime],
     ['Rust build', current.dependencies.names.rustBuild],
     ['Rust development', current.dependencies.names.rustDev],

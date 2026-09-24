@@ -31,6 +31,7 @@
     "scripts/worker-policy-store.ts",
     "scripts/activate-worker-policy.ts",
     "scripts/health.ts",
+    "scripts/metrics.ts",
     "scripts/recipient-key-admin.ts",
     "scripts/recipient-secret-admin.ts",
     "design/probes/async-signer-worker.ts",
