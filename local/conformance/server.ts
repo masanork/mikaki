@@ -21,7 +21,7 @@ const entries = readdirSync(metadataDir)
         ? Buffer.from(m.aaguid.replaceAll('-', ''), 'hex').toString('base64url')
         : '',
       key_ids: m.attestationCertificateKeyIdentifiers ?? [],
-      roots: (m.attestationRootCertificates ?? []).map((r) =>
+      roots: (m.attestationRootCertificates ?? []).map((r: string) =>
         Buffer.from(r, 'base64').toString('base64url'),
       ),
       types: m.attestationTypes,
@@ -61,14 +61,25 @@ for (const file of readdirSync(mdsDir).filter((n) => n.endsWith('.json'))) {
   }
 }
 const token = () => randomBytes(32).toString('base64url');
-const transactions = new Map();
-const users = new Map();
-const credentials = new Map();
-const ok = (data = {}) => ({ status: 'ok', errorMessage: '', ...data });
-function check(value) {
+type User = { id: string; name: string; displayName: string };
+const transactions = new Map<
+  string,
+  {
+    challenge: string;
+    user?: User;
+    expires: number;
+    registration: boolean;
+    uv: string;
+    allowed: string[];
+  }
+>();
+const users = new Map<string, User>();
+const credentials = new Map<string, any>();
+const ok = (data: Record<string, unknown> = {}) => ({ status: 'ok', errorMessage: '', ...data });
+function check(value: unknown): asserts value {
   if (!value) throw new Error('invalid_request');
 }
-function verify(input, credential) {
+function verify(input: any, credential: any) {
   if (target === 'wasm') {
     return JSON.parse(
       input.ceremony.purpose === 'register'
@@ -92,7 +103,7 @@ const server = createServer(async (req, res) => {
   const start = performance.now();
   let status = 'failed';
   const timing = { metadata_ms: 0, verify_ms: 0 };
-  const timed = (field, operation) => {
+  const timed = <T>(field: keyof typeof timing, operation: () => T): T => {
     const start = performance.now();
     try {
       return operation();
@@ -116,7 +127,7 @@ const server = createServer(async (req, res) => {
     if (['/attestation/options', '/assertion/options'].includes(requestPath)) {
       for (const [id, tx] of transactions) if (tx.expires <= Date.now()) transactions.delete(id);
       check(transactions.size < 1000 && users.size < 1000);
-      let user;
+      let user: User | undefined;
       if (registration) {
         check(typeof data.username === 'string' && data.username.length > 0);
         user = users.get(data.username) ?? {
@@ -185,6 +196,7 @@ const server = createServer(async (req, res) => {
         .map((s) => s.trim())
         .find((s) => s.startsWith(`${cookieName}=`))
         ?.slice(cookieName.length + 1);
+      check(id);
       const tx = transactions.get(id);
       transactions.delete(id);
       check(tx && tx.expires > Date.now() && tx.registration === registration);
@@ -240,6 +252,7 @@ const server = createServer(async (req, res) => {
       // Synchronous verification and state commit: no request can interleave here.
       const proof = timed('verify_ms', () => verify(input, credential));
       if (registration) {
+        check(tx.user);
         check(!credentials.has(proof.id) && credentials.size < 1000);
         users.set(tx.user.name, tx.user);
         credentials.set(proof.id, { ...proof, user_handle: tx.user.id });

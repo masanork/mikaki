@@ -43,7 +43,7 @@ const harness = createTestHarness({
     },
   ],
 });
-let server;
+let server: ReturnType<typeof createServer> | undefined;
 try {
   await harness.listen();
   const worker = harness.getWorker('mikaki-op-conformance');
@@ -101,7 +101,7 @@ try {
     ['basic-two', 'client_secret_basic'],
     ['post-one', 'client_secret_post'],
   ];
-  const config = {
+  const config: Record<string, unknown> = {
     alias,
     description: 'mikaki local OIDC conformance probe',
     server: { discoveryUrl: `${issuer}/.well-known/openid-configuration` },
@@ -210,7 +210,7 @@ try {
     JSON.stringify(config, null, 2),
     { mode: 0o600 },
   );
-  server = createServer(
+  const relayServer = createServer(
     {
       key: await readFile(new URL('../generated/oidf-local.key', import.meta.url)),
       cert: await readFile(new URL('../generated/oidf-local.crt', import.meta.url)),
@@ -243,13 +243,16 @@ try {
       }
     },
   );
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(8792, '0.0.0.0', resolve);
+  server = relayServer;
+  await new Promise<void>((resolve, reject) => {
+    relayServer.once('error', reject);
+    relayServer.listen(8792, '0.0.0.0', resolve);
   });
   console.log(`mikaki local conformance worker listening at ${issuer}`);
   const shutdown = async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve, reject) =>
+      relayServer.close((error) => (error ? reject(error) : resolve())),
+    );
     await harness.close();
   };
   process.on('SIGINT', () => {

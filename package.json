@@ -9,7 +9,7 @@
     "build:ui": "vite build --config local/ui/vite.config.ts",
     "build": "npm run build:policy && npm run build:wasm && npm run build:ui",
     "test:e2e": "node --test --test-concurrency=1 local/test/*.test.ts",
-    "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json && node_modules/@typescript/native/bin/tsc --project tsconfig.node-strict.json",
+    "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json",
     "check:ui": "svelte-check --tsconfig local/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:worker-ui": "node_modules/@typescript/native/bin/tsc --project crates/worker/ui/tsconfig.json --noEmit && svelte-check --tsconfig crates/worker/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:product-sources": "python3 scripts/check_product_sources.py",

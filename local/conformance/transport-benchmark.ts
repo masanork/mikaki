@@ -5,9 +5,9 @@ import { Agent, request } from 'node:http';
 import { createECDH, createHash, createPrivateKey, randomBytes, sign } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 const origin = 'http://localhost:8080';
-const b64 = (b) => Buffer.from(b).toString('base64url');
-const hash = (b) => createHash('sha256').update(b).digest();
-const hex = (s) => Buffer.from(s, 'hex');
+const b64 = (b: Buffer) => Buffer.from(b).toString('base64url');
+const hash = (b: string | Buffer) => createHash('sha256').update(b).digest();
+const hex = (s: string) => Buffer.from(s, 'hex');
 const key = createECDH('prime256v1');
 key.generateKeys();
 const pub = key.getPublicKey();
@@ -44,8 +44,18 @@ const attestation = Buffer.concat([
   Buffer.from([auth.length]),
   auth,
 ]);
-const client = (type, challenge) => Buffer.from(JSON.stringify({ type, challenge, origin }));
-function post(path, data, cookie, agent): Promise<{ result: any; ms: number; cookie?: string }> {
+const client = (type: string, challenge: string) =>
+  Buffer.from(JSON.stringify({ type, challenge, origin }));
+function post(
+  path: string,
+  data: unknown,
+  cookie: string | null | undefined,
+  agent: Agent,
+): Promise<{
+  result: { status: string; challenge: string; user: { id: string } };
+  ms: number;
+  cookie?: string;
+}> {
   const body = JSON.stringify(data);
   return new Promise((resolve, reject) => {
     const start = performance.now();
@@ -83,7 +93,7 @@ function post(path, data, cookie, agent): Promise<{ result: any; ms: number; coo
     req.end(body);
   });
 }
-const stats = (values) => {
+const stats = (values: number[]) => {
   const s = [...values].sort((a, b) => a - b);
   return {
     count: s.length,

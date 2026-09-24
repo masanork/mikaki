@@ -17,13 +17,13 @@ const variant =
     ? {}
     : { server_metadata: 'discovery', client_registration: 'static_client' };
 
-async function api(path, options = {}) {
+async function api(path: string, options: RequestInit = {}) {
   const response = await fetch(`${suite}${path}`, options);
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json();
 }
 
-function describeUrl(value) {
+function describeUrl(value: string) {
   const url = new URL(value);
   return `${url.origin}${url.pathname} (${[...url.searchParams.keys()].join(',')})`;
 }
@@ -69,7 +69,9 @@ try {
   });
   page.on('pageerror', (error) => console.error('browser error:', error.message));
   const names =
-    moduleName === 'all' ? plan.modules.map((item) => item.testModule) : moduleName.split(',');
+    moduleName === 'all'
+      ? plan.modules.map((item: { testModule: string }) => item.testModule)
+      : moduleName.split(',');
   const summary: Array<{ name: string; id: string; status: string; result: string }> = [];
   for (const name of names) {
     await context.clearCookies();
@@ -78,7 +80,7 @@ try {
       headers: { 'Content-Type': 'application/json' },
     });
     console.log('module:', name, run.id);
-    const seen = new Set();
+    const seen = new Set<string>();
     let lastReviewScreenshot;
     let reviewSubmitted = false;
     let info;
@@ -109,7 +111,10 @@ try {
         }
         if (info.status === 'WAITING' && lastReviewScreenshot && !reviewSubmitted) {
           const entries = await api(`/api/log/${run.id}?pretty=true`);
-          const review = entries.find((entry) => entry.result === 'REVIEW' && entry.upload);
+          const review = entries.find(
+            (entry: { result: string; upload?: string }) =>
+              entry.result === 'REVIEW' && entry.upload,
+          );
           if (review && (!/second|again|reauth/i.test(review.msg ?? '') || seen.size >= 2)) {
             const response = await fetch(
               `${suite}/api/log/${run.id}/images/${review.upload}?description=${encodeURIComponent('Passkey login prompt')}`,
@@ -138,8 +143,10 @@ try {
     );
     console.log('result:', name, info.status, info.result);
     const events = log
-      .filter((entry) => ['FAILURE', 'FAILED', 'WARNING', 'REVIEW'].includes(entry.result))
-      .map((entry) => ({ result: entry.result, msg: entry.msg }))
+      .filter((entry: { result: string }) =>
+        ['FAILURE', 'FAILED', 'WARNING', 'REVIEW'].includes(entry.result),
+      )
+      .map((entry: { result: string; msg?: string }) => ({ result: entry.result, msg: entry.msg }))
       .slice(-10);
     if (events.length) console.log('events:', events);
     summary.push({ name, id: run.id, status: info.status, result: info.result });

@@ -1,5 +1,5 @@
 export default {
-  async fetch(request) {
+  async fetch(request: Request) {
     const url = new URL(request.url);
     if (
       request.method === 'GET' &&

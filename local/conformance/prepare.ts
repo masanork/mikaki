@@ -24,7 +24,7 @@ const anchor_spki = createPublicKey({
 })
   .export({ type: 'spki', format: 'der' })
   .toString('base64url');
-async function download(url, options = {}, remaining = 3) {
+async function download(url: string, options: RequestInit = {}, remaining = 3): Promise<Buffer> {
   const u = new URL(url);
   if (
     u.protocol !== 'https:' ||
@@ -64,17 +64,17 @@ const endpoints = JSON.parse(
       body: JSON.stringify({ endpoint }),
     })
   ).toString('utf8'),
-);
+) as { status: string; result: string[] };
 if (endpoints.status !== 'ok' || endpoints.result.length > 12) throw Error('Invalid endpoint list');
 const blobs = await Promise.all(
   endpoints.result.map((url) => download(url).then((b) => b.toString('utf8'))),
 );
-const cache = new Map();
+const cache = new Map<string, Promise<string>>();
 let accepted = 0;
 for (const [i, jwt] of blobs.entries()) {
   let crls: string[] = [];
   try {
-    const urls = JSON.parse(wasm.mds_crl_urls(jwt));
+    const urls = JSON.parse(wasm.mds_crl_urls(jwt)) as string[];
     crls = await Promise.all(
       urls.map((url) => {
         if (!cache.has(url))
@@ -82,7 +82,7 @@ for (const [i, jwt] of blobs.entries()) {
             url,
             download(url).then((b) => b.toString('base64url')),
           );
-        return cache.get(url);
+        return cache.get(url)!;
       }),
     );
   } catch {

@@ -105,7 +105,7 @@ test('session check authenticates its RP, binds sid, and observes D1 revocation 
         .setIssuedAt()
         .setExpirationTime('45s')
         .sign(privateKey);
-    const check = async (sid, audience = endpoint) =>
+    const check = async (sid: string, audience = endpoint) =>
       worker.fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

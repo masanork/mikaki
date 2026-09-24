@@ -7,7 +7,7 @@ import {
   validateUserInfoRecipient,
 } from '../../crates/worker/ui/recipient-directory.ts';
 
-function directory(generation, byte) {
+function directory(generation: number, byte: number) {
   const publicKey = Buffer.alloc(1184, byte);
   return {
     service_id: 'userinfo',
@@ -21,10 +21,10 @@ function directory(generation, byte) {
 }
 
 function memoryStorage() {
-  const values = new Map();
+  const values = new Map<string, string>();
   return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
   };
 }
 
@@ -33,8 +33,9 @@ test('browser verifies recipient digest, canonical encoding, and generation cont
   const next = directory(2, 8);
   const storage = memoryStorage();
   let selected = first;
-  const fetcher = async (url, options) => {
+  const fetcher: typeof fetch = async (url, options) => {
     assert.equal(url, '/vault/recipient-keys/userinfo');
+    assert.ok(options);
     assert.equal(options.cache, 'no-store');
     assert.equal(options.credentials, 'same-origin');
     return new Response(JSON.stringify(selected), { status: 200 });
@@ -45,7 +46,9 @@ test('browser verifies recipient digest, canonical encoding, and generation cont
   assert.deepEqual(await fetchVerifiedUserInfoRecipient(fetcher, storage), next);
   selected = first;
   await assert.rejects(fetchVerifiedUserInfoRecipient(fetcher, storage), /continuity/);
-  assert.deepEqual(JSON.parse(storage.getItem(RECIPIENT_CHECKPOINT)), {
+  const checkpoint = storage.getItem(RECIPIENT_CHECKPOINT);
+  assert.ok(checkpoint);
+  assert.deepEqual(JSON.parse(checkpoint), {
     generation: 2,
     key_id: next.key_id,
     revision: 2,

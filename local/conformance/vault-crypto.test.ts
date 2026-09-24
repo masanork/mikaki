@@ -10,7 +10,7 @@ import {
 
 const origin = 'https://mikaki.tossa.app';
 const attribute = 'name';
-const bytes = (length) => crypto.getRandomValues(new Uint8Array(length));
+const bytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));
 
 test('owner can open a sealed attribute, with exact revision and context', async () => {
   const credential = bytes(32);

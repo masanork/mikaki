@@ -13,7 +13,7 @@ import {
   validateRegistration,
 } from '../../scripts/client-admin-store.ts';
 
-function key(kid) {
+function key(kid: string) {
   const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const { kty, crv, x, y } = publicKey.export({ format: 'jwk' });
   return { kid, jwk: { kty, crv, x, y } };
@@ -92,7 +92,10 @@ test('managed RP registration and key changes are audited and constrained', asyn
         )
           .bind(client_id)
           .all()
-      ).results.map(({ redirect_uri, active }) => [redirect_uri, active]),
+      ).results.map(({ redirect_uri, active }: { redirect_uri: string; active: number }) => [
+        redirect_uri,
+        active,
+      ]),
       [
         ['https://rp.example/callback', 0],
         ['https://rp.example/next-callback', 1],
@@ -107,7 +110,7 @@ test('managed RP registration and key changes are audited and constrained', asyn
       .bind(client_id)
       .all();
     assert.deepEqual(
-      keys.results.map(({ kid, active }) => [kid, active]),
+      keys.results.map(({ kid, active }: { kid: string; active: number }) => [kid, active]),
       [
         ['first', 0],
         ['second', 1],

@@ -51,7 +51,7 @@ test('Vault system sharing is opt-in, revision-bound, and revocable in workerd',
       return { enabled: value.enabled, active: value.active };
     };
     const operation = () => randomBytes(32).toString('base64url');
-    const mutationHeaders = (id, revision, contentType = false) => ({
+    const mutationHeaders = (id: string, revision: number, contentType = false) => ({
       ...cookie,
       Origin: 'https://mikaki.test',
       'X-Operation-ID': id,
