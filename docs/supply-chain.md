@@ -6,7 +6,7 @@ The reusable [Worker build workflow](../.github/workflows/supply-chain-build.yml
 | --- | --- | --- |
 | `worker-rust.cdx.json` | Rust packages selected for `wasm32-unknown-unknown` | `cargo-cyclonedx` 0.5.9, CycloneDX 1.5 |
 | `npm-build.cdx.json` | npm dependencies used by the local build | `npm sbom`, CycloneDX 1.5 |
-| `worker-crypto.cdx.json` | Reviewed cryptographic algorithms and key-storage classes in the Worker source | [`build_cbom.py`](../scripts/build_cbom.py), CycloneDX 1.7 |
+| `worker-crypto.cdx.json` | Reviewed cryptographic algorithms and key-storage classes in the Worker source | [`build_cbom.ts`](../scripts/build_cbom.ts), CycloneDX 1.7 |
 
 The CBOM does not contain key values, client secrets, passkeys, or tokens. It records six source-backed cryptographic assets. Cloudflare's TLS termination and the cryptography inside third-party dependencies are outside that initial source inventory. A CBOM entry for a key binding describes the storage class, not a particular live key or proof of HSM protection.
 

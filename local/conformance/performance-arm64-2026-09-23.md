@@ -32,14 +32,14 @@ In the second suite run, handler total was about 1.4%, Rust verification about 0
 [Machine-readable data](performance-arm64-2026-09-23.json) records both runs, request outcomes and gaps, transport checks, and source/binary SHA-256. Conditions: all FIDO2 Server Tests, optional and AUTOSCROLL off, `http://localhost:8080`, Rust 1.98.1 release `opt-level=s`/LTO, SQLite WAL/`synchronous=FULL`. Re-extract Tools 1.9.2 metadata and fetch official MDS BLOB/CRL before starting the server.
 
 ```sh
-python3.14 local/conformance/extract-metadata.py
-node local/conformance/prepare.mjs
+node local/conformance/extract-metadata.ts
+node local/conformance/prepare.ts
 cargo build --release --locked -p mikaki-browser-wasm --example conformance_server
 FIDO_TIMING=1 target/release/examples/conformance_server > target/performance-native-profile.log 2>&1
 # Run and stop the suite; retain separate logs for each run.
-node local/conformance/summarize-timing.mjs target/performance-native-1.9.2-run1.log target/performance-native-1.9.2-run2.log
+node local/conformance/summarize-timing.ts target/performance-native-1.9.2-run1.log target/performance-native-1.9.2-run2.log
 # Run separately while the server is up:
-node local/conformance/transport-benchmark.mjs
+node local/conformance/transport-benchmark.ts
 ```
 
 Formatting, Clippy, and changed-JS Prettier checks passed, as did every independent HTTP response. Both suite runs ended with the test server stopped.

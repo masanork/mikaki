@@ -5,7 +5,7 @@ This is an isolated test adapter. A persistent Rust server is used for native pe
 ```sh
 npm run build:wasm
 cargo build --release --locked -p mikaki-browser-wasm --example conformance
-python3 local/conformance/extract-metadata.py
+node local/conformance/extract-metadata.ts
 node local/conformance/prepare.ts
 node local/conformance/server.ts
 # Stop the previous server before measuring native performance:
@@ -28,7 +28,7 @@ Count reached tests as well as successes: a rejected unsupported format can make
 
 On 2026-09-22 both native and Wasm passed all 155 mandatory cases. Fourteen optional cases were not selected; formal certification submission is separate.
 
-`extract-metadata.py` copies public metadata from an installed suite into `target/fido-metadata`. `prepare.ts` registers the localhost RP origin with the official MDS test service and saves BLOB/CRL data under `target/fido-mds`. `FIDO_ASAR` and `FIDO_PORT` select installation and port. These ignored files contain neither suite source nor private keys.
+`extract-metadata.ts` copies public metadata from an installed suite into `target/fido-metadata`. `prepare.ts` registers the localhost RP origin with the official MDS test service and saves BLOB/CRL data under `target/fido-mds`. `FIDO_ASAR` and `FIDO_PORT` select installation and port. These ignored files contain neither suite source nor private keys.
 
 Network fetches are restricted to two official HTTPS hosts, including redirects, size limits, and timeouts. A failed BLOB does not supply trusted roots or metadata. On startup, each target revalidates BLOB/CRL using current time and its Rust verifier, then selects only verified metadata by AAGUID or certificate key identifier. The test-root SPKI is only in `prepare.ts` and never added to product trust. Re-run preparation when saved material expires or the service changes; do not bypass MDS validity checks. GUI suite and network preparation are outside ordinary CI, which uses independent fixed fixtures.
 

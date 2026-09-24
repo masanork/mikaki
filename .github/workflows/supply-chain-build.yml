@@ -17,9 +17,6 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
       - run: npm ci
       - name: Install pinned BOM and Worker build tools
@@ -57,8 +54,8 @@ jobs:
           cargo cyclonedx --manifest-path crates/userinfo-claim-worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename userinfo-claim-rust.cdx
           cp crates/userinfo-claim-worker/userinfo-claim-rust.cdx.json artifacts/supply-chain/userinfo-claim-rust.cdx.json
           npm sbom --sbom-format=cyclonedx --sbom-type=application > artifacts/supply-chain/npm-build.cdx.json
-          python3.14 scripts/build_cbom.py > artifacts/supply-chain/worker-crypto.cdx.json
-          python3.14 scripts/build_cbom.py --component userinfo-claim-worker > artifacts/supply-chain/userinfo-claim-crypto.cdx.json
+          node scripts/build_cbom.ts > artifacts/supply-chain/worker-crypto.cdx.json
+          node scripts/build_cbom.ts --component userinfo-claim-worker > artifacts/supply-chain/userinfo-claim-crypto.cdx.json
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-rust.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-rust.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/npm-build.cdx.json --input-version v1_5 --fail-on-errors

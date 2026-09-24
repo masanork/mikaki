@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Migrated Python policy generation, design checks, CBOM output, product-source checks, FIDO metadata extraction, and SQLite contract tests to TypeScript 7; retained the independent Python attestation fixture generator for interoperability verification.
 - Enabled `noImplicitAny` for the entire Node TypeScript project and removed the temporary per-file strict gate after typing the conformance harness.
 - Extended the strict Node TypeScript gate to the D1 atomicity design probe.
 - Extended the strict Node TypeScript gate to project metrics generation and chart rendering.
