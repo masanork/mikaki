@@ -47,6 +47,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node --test local/conformance/worker-ui.test.ts
+          node --test local/conformance/vault-share-browser.test.ts
           node --test local/conformance/enrollment-browser.test.ts
       - name: Generate and validate BOMs
         run: |
