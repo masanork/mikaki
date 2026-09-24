@@ -119,48 +119,49 @@
   },
   {
     "date": "2026-09-24",
-    "commit": "ee8b0cc",
+    "commit": "eefd632",
     "code": {
-      "implementationLines": 10931,
-      "testLines": 2905,
-      "implementationFiles": 51,
+      "implementationLines": 11216,
+      "testLines": 2969,
+      "implementationFiles": 53,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 7677,
-          "testLines": 1410
+          "implementationLines": 7780,
+          "testLines": 1474
         },
         "svelte": {
           "implementationLines": 808,
           "testLines": 0
         },
         "typescript": {
-          "implementationLines": 2446,
+          "implementationLines": 2628,
           "testLines": 1495
         }
       }
     },
     "dependencies": {
       "npm": {
-        "runtime": 2,
-        "dev": 12
+        "runtime": 3,
+        "dev": 13
       },
       "rust": {
-        "runtime": 23,
+        "runtime": 24,
         "build": 0,
-        "dev": 9
+        "dev": 8
       },
       "sourceLines": {
-        "npmRuntime": 108465,
-        "rustRuntime": 1042808,
-        "total": 1151273
+        "npmRuntime": 139454,
+        "rustRuntime": 1061904,
+        "total": 1201358
       },
       "sourcePackages": {
-        "npmRuntime": 19,
-        "rustRuntime": 137
+        "npmRuntime": 23,
+        "rustRuntime": 154
       },
       "names": {
         "npmRuntime": [
+          "@noble/post-quantum",
           "jose",
           "svelte"
         ],
@@ -171,6 +172,7 @@
           "@sveltejs/vite-plugin-svelte",
           "@types/node",
           "@typescript/native",
+          "esbuild",
           "prettier",
           "prettier-plugin-svelte",
           "svelte-check",
@@ -184,6 +186,7 @@
           "der",
           "ed25519-dalek",
           "futures-util",
+          "hpke",
           "js-sys",
           "ml-kem",
           "p256",
@@ -207,7 +210,6 @@
         "rustDev": [
           "base64",
           "ciborium",
-          "hpke",
           "p256",
           "rusqlite",
           "serde_json",
@@ -219,19 +221,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 1843,
-        "count": 2486,
-        "percent": 74.13515687851971
+        "covered": 1961,
+        "count": 2605,
+        "percent": 75.27831094049904
       },
       "regions": {
-        "covered": 3298,
-        "count": 4498,
-        "percent": 73.32147621164961
+        "covered": 3499,
+        "count": 4707,
+        "percent": 74.33609517739536
       },
       "functions": {
-        "covered": 187,
-        "count": 267,
-        "percent": 70.0374531835206
+        "covered": 190,
+        "count": 270,
+        "percent": 70.37037037037037
       }
     }
   }
