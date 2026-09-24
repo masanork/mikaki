@@ -119,31 +119,31 @@
   },
   {
     "date": "2026-09-24",
-    "commit": "f689752",
+    "commit": "181573b",
     "code": {
-      "implementationLines": 12123,
-      "testLines": 3066,
-      "implementationFiles": 53,
+      "implementationLines": 12910,
+      "testLines": 3146,
+      "implementationFiles": 55,
       "testFiles": 9,
       "byLanguage": {
         "rust": {
-          "implementationLines": 8390,
-          "testLines": 1529
-        },
-        "svelte": {
-          "implementationLines": 968,
-          "testLines": 0
+          "implementationLines": 8845,
+          "testLines": 1567
         },
         "typescript": {
-          "implementationLines": 2765,
-          "testLines": 1537
+          "implementationLines": 2955,
+          "testLines": 1579
+        },
+        "svelte": {
+          "implementationLines": 1110,
+          "testLines": 0
         }
       }
     },
     "dependencies": {
       "npm": {
         "runtime": 3,
-        "dev": 13
+        "dev": 14
       },
       "rust": {
         "runtime": 25,
@@ -175,6 +175,7 @@
           "esbuild",
           "prettier",
           "prettier-plugin-svelte",
+          "smol-toml",
           "svelte-check",
           "typescript",
           "vite",
@@ -227,9 +228,9 @@
         "percent": 75.86592178770951
       },
       "regions": {
-        "covered": 3582,
+        "covered": 3583,
         "count": 4794,
-        "percent": 74.71839799749687
+        "percent": 74.7392574050897
       },
       "functions": {
         "covered": 192,
