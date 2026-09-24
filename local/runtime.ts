@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { generateKeyPair, exportJWK } from 'jose';
 import { OP, RP, CLIENT, p, random, hash, now, sqlParts } from './shared.ts';
 
-export async function startLocal({ scheduler = true } = {}) {
+export async function startLocal({ scheduler = true, helpdesk = false } = {}) {
   async function keys(kid: string) {
     const pair = await generateKeyPair('ES256', { extractable: true });
     return {
@@ -32,6 +32,9 @@ export async function startLocal({ scheduler = true } = {}) {
     LOCAL_ONLY: 'true',
     OP_PUBLIC_JWK: opKeys.public,
     RP_PUBLIC_JWK: rpKeys.public,
+    ISSUER: OP,
+    RP_ORIGIN: RP,
+    CLIENT_ID: CLIENT,
   };
   const servers: Server[] = [];
   let harness: ReturnType<typeof createTestHarness> | undefined;
@@ -61,7 +64,9 @@ export async function startLocal({ scheduler = true } = {}) {
           secrets: { OP_PRIVATE_JWK: opKeys.private },
         },
         {
-          configPath: 'local/wrangler.rp.jsonc',
+          configPath: helpdesk
+            ? 'crates/helpdesk-rp/wrangler.local.jsonc'
+            : 'local/wrangler.rp.jsonc',
           vars: publicVars,
           secrets: { RP_PRIVATE_JWK: rpKeys.private },
         },
@@ -69,7 +74,7 @@ export async function startLocal({ scheduler = true } = {}) {
     });
     await harness.listen();
     const op = harness.getWorker('mikaki-local-op'),
-      rp = harness.getWorker('mikaki-local-rp');
+      rp = harness.getWorker(helpdesk ? 'mikaki-helpdesk-local' : 'mikaki-local-rp');
     const opEnv = await op.getEnv(),
       rpEnv = await rp.getEnv();
     async function schema(db: typeof opEnv.DB, name: string) {
@@ -78,7 +83,10 @@ export async function startLocal({ scheduler = true } = {}) {
     }
     await schema(opEnv.DB, '../design/sql/oidc-critical-schema.sql');
     await schema(opEnv.DB, 'schema.sql');
-    await schema(rpEnv.DB, 'rp-schema.sql');
+    await schema(
+      rpEnv.DB,
+      helpdesk ? '../crates/helpdesk-rp/migrations/0001_initial.sql' : 'rp-schema.sql',
+    );
     const invitation = random();
     await opEnv.DB.batch([
       opEnv.DB.prepare('INSERT INTO client VALUES(?,1,1)').bind(CLIENT),

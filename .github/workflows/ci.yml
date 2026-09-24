@@ -71,7 +71,9 @@ jobs:
       - name: Build Wasm and UI
         run: npm run build
       - name: Check Node TypeScript sources
-        run: npm run check:node
+        run: |
+          npm run check:node
+          npm run check:helpdesk
       - name: Project size, coverage, and dependency trends
         run: node scripts/metrics.ts --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
       - name: Wasm and browser integration
