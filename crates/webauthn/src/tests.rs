@@ -471,6 +471,42 @@ fn independent_attestation_paths_and_tpm_bindings() {
         );
     }
 }
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn node_generated_registration_and_assertion_interop() {
+    let vectors: serde_json::Value =
+        serde_json::from_str(include_str!("../testdata/interop-node.json")).unwrap();
+    for case in vectors["registrations"].as_array().unwrap() {
+        let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
+        let response = serde_json::from_value(case["response"].clone()).unwrap();
+        let result = register(&ctx, response);
+        assert_eq!(
+            result.is_ok(),
+            case["ok"].as_bool().unwrap(),
+            "{}",
+            case["name"]
+        );
+        if let Ok(proof) = result {
+            assert_eq!(proof.attestation().kind(), case["kind"].as_str().unwrap());
+        }
+    }
+    for case in vectors["assertions"].as_array().unwrap() {
+        let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
+        let stored = serde_json::from_value(case["stored"].clone()).unwrap();
+        let response = serde_json::from_value(case["response"].clone()).unwrap();
+        let result = authenticate(&ctx, &stored, response);
+        assert_eq!(
+            result.is_ok(),
+            case["ok"].as_bool().unwrap(),
+            "{}",
+            case["name"]
+        );
+        if let Ok(proof) = result {
+            assert_eq!(proof.counter, 1);
+        }
+    }
+}
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
 fn independent_mds_signatures_revocation_and_freshness() {

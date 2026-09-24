@@ -12,7 +12,12 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["scripts/**/*.ts", "local/**/*.ts", "design/probes/**/*.ts"],
+  "include": [
+    "scripts/**/*.ts",
+    "local/**/*.ts",
+    "design/probes/**/*.ts",
+    "crates/webauthn/testdata/*.ts"
+  ],
   "exclude": [
     "local/ui",
     "design/probes/node_modules",

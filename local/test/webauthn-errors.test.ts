@@ -10,6 +10,48 @@ initSync({
   ),
 });
 
+test('Node-generated registration fixtures verify through the Wasm boundary', async () => {
+  const fixtures = JSON.parse(
+    await readFile(
+      new URL('../../crates/webauthn/testdata/interop-node.json', import.meta.url),
+      'utf8',
+    ),
+  ) as {
+    registrations: {
+      name: string;
+      ok: boolean;
+      kind?: string;
+      context: Record<string, unknown>;
+      response: Record<string, unknown>;
+    }[];
+  };
+  for (const fixture of fixtures.registrations) {
+    const input = {
+      ceremony: {
+        purpose: 'register',
+        browser_hash: 'browser',
+        expires_at: 100,
+        failures: 0,
+        consumed: false,
+        context: fixture.context,
+      },
+      browser_hash: 'browser',
+      now: 1,
+      max_failures: 5,
+      response: fixture.response,
+    };
+    if (fixture.ok) {
+      assert.equal(JSON.parse(register(JSON.stringify(input))).attestation.kind, fixture.kind);
+    } else {
+      assert.throws(
+        () => register(JSON.stringify(input)),
+        () => true,
+        fixture.name,
+      );
+    }
+  }
+});
+
 test('Wasm rejection carries only a reason code and stage across the JS boundary', async () => {
   const fixtures = JSON.parse(
     await readFile(
