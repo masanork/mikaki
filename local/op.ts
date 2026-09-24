@@ -99,7 +99,13 @@ function transactionGuard(db, l) {
 }
 
 // Caller supplies authentication writes. This batch also rechecks live state at commit.
-async function issueCode(db, l, session, prefix = [], newSecret = undefined) {
+async function issueCode(
+  db,
+  l,
+  session,
+  prefix: unknown[] = [],
+  newSecret: string | undefined = undefined,
+) {
   const request = JSON.parse(l.request),
     code = random(),
     codeHash = await hash(code),
@@ -228,8 +234,8 @@ async function start(db, req) {
   const l = await login(db, req, input.tx, input.csrf);
   await rate(db, `start:${l.browser_hash}`, p('rate_limit.ceremony_start_per_browser'));
   check(['register', 'authenticate'].includes(input.purpose));
-  let invitationHash = null,
-    account = null;
+  let invitationHash: string | null = null,
+    account: string | null = null;
   if (input.purpose === 'register') {
     check(typeof input.invitation === 'string' && /^[A-Za-z0-9_-]{43}$/.test(input.invitation));
     invitationHash = await hash(input.invitation);
@@ -273,7 +279,7 @@ async function start(db, req) {
             ...common,
             rp: { id: 'localhost', name: 'mikaki (local)' },
             user: {
-              id: b64(new TextEncoder().encode(account)),
+              id: b64(new TextEncoder().encode(account ?? fail('invalid_account'))),
               name: account,
               displayName: 'mikaki account',
             },
@@ -454,6 +460,8 @@ async function acceptClient(db, env, req, input) {
       typeof claims.jti === 'string' &&
       claims.jti.length > 0 &&
       claims.jti.length <= p('limits.jti_bytes') &&
+      typeof claims.exp === 'number' &&
+      typeof claims.iat === 'number' &&
       claims.exp - claims.iat <= p('oidc.client_authentication.assertion_ttl'),
     'invalid_client',
     401,

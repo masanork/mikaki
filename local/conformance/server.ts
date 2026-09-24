@@ -88,6 +88,7 @@ function verify(input, credential) {
   return proof;
 }
 const server = createServer(async (req, res) => {
+  const requestPath = req.url ?? '/';
   const start = performance.now();
   let status = 'failed';
   const timing = { metadata_ms: 0, verify_ms: 0 };
@@ -109,10 +110,10 @@ const server = createServer(async (req, res) => {
     }
     check(wasm.valid_json(body, 65536, 16));
     const data = JSON.parse(body);
-    const registration = req.url.startsWith('/attestation/');
+    const registration = requestPath.startsWith('/attestation/');
     const cookieName = registration ? 'fido2_reg_session' : 'fido2_auth_session';
     let output;
-    if (['/attestation/options', '/assertion/options'].includes(req.url)) {
+    if (['/attestation/options', '/assertion/options'].includes(requestPath)) {
       for (const [id, tx] of transactions) if (tx.expires <= Date.now()) transactions.delete(id);
       check(transactions.size < 1000 && users.size < 1000);
       let user;
@@ -178,7 +179,7 @@ const server = createServer(async (req, res) => {
             extensions: data.extensions ?? {},
           });
     } else {
-      check(['/attestation/result', '/assertion/result'].includes(req.url));
+      check(['/attestation/result', '/assertion/result'].includes(requestPath));
       const id = (req.headers.cookie ?? '')
         .split(';')
         .map((s) => s.trim())
@@ -261,7 +262,7 @@ const server = createServer(async (req, res) => {
     console.log(
       JSON.stringify({
         target,
-        path: req.url,
+        path: requestPath,
         status,
         ms: +(performance.now() - start).toFixed(3),
         ...(process.env.FIDO_TIMING === '1'

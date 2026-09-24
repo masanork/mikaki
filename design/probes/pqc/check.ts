@@ -56,7 +56,7 @@ assert.equal(
   ),
   false,
 );
-const times = [];
+const times: number[] = [];
 for (let sample = 0; sample < 10; sample++) {
   const start = performance.now();
   assert.equal(probe.self_test(), true);

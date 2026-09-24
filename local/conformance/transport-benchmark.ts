@@ -62,7 +62,7 @@ function post(path, data, cookie, agent): Promise<{ result: any; ms: number; coo
         },
       },
       (res) => {
-        const chunks = [];
+        const chunks: Buffer[] = [];
         res.on('data', (b) => chunks.push(b));
         res.on('error', reject);
         res.on('end', () => {
@@ -116,11 +116,11 @@ try {
   setupAgent.destroy();
 }
 let counter = 0;
-const runs = [];
+const runs: Array<Record<string, unknown>> = [];
 for (const keepAlive of [true, false]) {
   const agent = new Agent({ keepAlive, maxSockets: 1 });
-  const optionsMs = [],
-    resultMs = [];
+  const optionsMs: number[] = [],
+    resultMs: number[] = [];
   try {
     for (let i = 0; i < 105; i++) {
       const o = await post('/assertion/options', { username }, null, agent);

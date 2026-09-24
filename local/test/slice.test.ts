@@ -37,7 +37,7 @@ async function browserHeaders(origin, ctx = context) {
       .join('; '),
   };
 }
-async function request(path, fields = {}, assertion = undefined) {
+async function request(path, fields = {}, assertion: string | undefined = undefined) {
   const token = assertion ?? (await clientAssertion(clientEnv(), `${OP}${path}`));
   return fetch(`${OP}${path}`, {
     method: 'POST',
@@ -93,7 +93,7 @@ async function pendingCode() {
   );
   return { code, verifier, sid, callback };
 }
-const exchange = (c, assertion = undefined, verifier = c.verifier) =>
+const exchange = (c, assertion: string | undefined = undefined, verifier = c.verifier) =>
   request(
     '/token',
     {

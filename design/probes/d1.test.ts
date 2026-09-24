@@ -17,7 +17,7 @@ const sql = (name) =>
 
 function prepared(name, parameters) {
   return sql(name).map((statement) => {
-    const values = [];
+    const values: unknown[] = [];
     const positional = statement.replace(/:([a-z_]+)/g, (_, key) => {
       assert.ok(Object.hasOwn(parameters, key), `missing parameter ${key}`);
       values.push(parameters[key]);

@@ -27,6 +27,7 @@ function transcript(algorithm) {
         ])
       : (() => {
           const jwk = (signing as { publicKey: KeyObject }).publicKey.export({ format: 'jwk' });
+          assert.ok(jwk.x && jwk.y);
           return new Map<number, number | Buffer>([
             [1, 2],
             [3, -7],

@@ -158,6 +158,8 @@ async function callback(db, env, req, url) {
       typeof id.sub === 'string' &&
       typeof id.sid === 'string' &&
       Number.isSafeInteger(id.auth_time) &&
+      typeof id.iat === 'number' &&
+      typeof id.exp === 'number' &&
       Number(id.auth_time) <= id.iat &&
       (!id.azp || id.azp === CLIENT) &&
       id.exp - id.iat <= p('oidc.id_token_ttl'),
@@ -212,6 +214,8 @@ async function backchannel(db, env, req) {
           'http://schemas.openid.net/event/backchannel-logout'
         ],
       ) === '{}' &&
+      typeof claims.exp === 'number' &&
+      typeof claims.iat === 'number' &&
       claims.exp - claims.iat <= p('oidc_logout.token_ttl'),
     'invalid_logout_token',
   );

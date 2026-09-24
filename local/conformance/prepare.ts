@@ -39,10 +39,14 @@ async function download(url, options = {}, remaining = 3) {
     redirect: 'manual',
     signal: AbortSignal.timeout(20000),
   });
-  if (response.status >= 300 && response.status < 400 && remaining > 0)
-    return download(new URL(response.headers.get('location'), u).href, {}, remaining - 1);
+  if (response.status >= 300 && response.status < 400 && remaining > 0) {
+    const location = response.headers.get('location');
+    if (!location) throw Error('MDS redirect missing location');
+    return download(new URL(location, u).href, {}, remaining - 1);
+  }
   if (!response.ok) throw Error(`MDS HTTP ${response.status}`);
-  const chunks = [];
+  if (!response.body) throw Error('MDS response missing body');
+  const chunks: Uint8Array[] = [];
   let length = 0;
   for await (const chunk of response.body) {
     length += chunk.length;
@@ -68,7 +72,7 @@ const blobs = await Promise.all(
 const cache = new Map();
 let accepted = 0;
 for (const [i, jwt] of blobs.entries()) {
-  let crls = [];
+  let crls: string[] = [];
   try {
     const urls = JSON.parse(wasm.mds_crl_urls(jwt));
     crls = await Promise.all(

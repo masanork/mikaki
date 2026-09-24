@@ -37,7 +37,7 @@ function outsideRepository(path) {
   return fromRepository === '..' || fromRepository.startsWith(`..${sep}`);
 }
 
-async function run(program, args, input = undefined) {
+async function run(program, args, input: Buffer | undefined = undefined) {
   await new Promise<void>((resolveRun, rejectRun) => {
     const child = spawn(program, args, {
       cwd: repository,
@@ -49,6 +49,10 @@ async function run(program, args, input = undefined) {
       else rejectRun(new Error(`${program} exited with status ${code}`));
     });
     if (input) {
+      if (!child.stdin) {
+        rejectRun(new Error(`${program} has no standard input`));
+        return;
+      }
       child.stdin.end(input);
     }
   });
@@ -63,12 +67,14 @@ async function main() {
     throw new Error('seed path must be absolute');
   }
   const seedInfo = await lstat(seedPath);
+  const ownerUid = process.getuid?.();
   if (
     !seedInfo.isFile() ||
     seedInfo.isSymbolicLink() ||
     seedInfo.nlink !== 1 ||
     (seedInfo.mode & 0o777) !== 0o600 ||
-    seedInfo.uid !== process.getuid() ||
+    ownerUid === undefined ||
+    seedInfo.uid !== ownerUid ||
     !outsideRepository(await realpath(seedPath))
   ) {
     throw new Error('seed must be an owner-only regular file outside the repository');

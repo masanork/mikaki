@@ -1,6 +1,7 @@
 // Trusted local runner. It creates ephemeral keys/storage; there is no HTTP bootstrap endpoint.
 import { createTestHarness } from 'wrangler';
 import { createServer } from 'node:http';
+import type { Server } from 'node:http';
 import { Readable } from 'node:stream';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -32,9 +33,9 @@ export async function startLocal({ scheduler = true } = {}) {
     OP_PUBLIC_JWK: opKeys.public,
     RP_PUBLIC_JWK: rpKeys.public,
   };
-  const servers = [];
+  const servers: Server[] = [];
   let harness;
-  const timers = [],
+  const timers: NodeJS.Timeout[] = [],
     pending = new Set();
   const close = async () => {
     for (const timer of timers) clearInterval(timer);
@@ -97,11 +98,11 @@ export async function startLocal({ scheduler = true } = {}) {
             outgoing.end('local_only');
             return;
           }
-          const result = await worker.fetch(new URL(incoming.url, origin).href, {
+          const result = await worker.fetch(new URL(incoming.url ?? '/', origin).href, {
             method: incoming.method,
             headers: incoming.headers,
             redirect: 'manual',
-            ...(!['GET', 'HEAD'].includes(incoming.method)
+            ...(!['GET', 'HEAD'].includes(incoming.method ?? 'GET')
               ? { body: Readable.toWeb(incoming), duplex: 'half' }
               : {}),
           });

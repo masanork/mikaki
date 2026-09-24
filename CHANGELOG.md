@@ -6,6 +6,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Enabled strict null checking for the Node scripts, local harnesses, and design probes, with explicit checks for missing HTTP headers and optional claim fields.
 - Migrated handwritten Node scripts, local integration harnesses, and design probes to TypeScript 7, including test entrypoints and Wrangler source entries. CI now checks these sources after the Wasm build.
 
 ### Added

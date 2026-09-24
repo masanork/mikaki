@@ -42,6 +42,7 @@ test('stage and emergency disable are audited in local D1', async () => {
     const statements = migration.match(
       /CREATE TABLE[\s\S]*?STRICT;|CREATE UNIQUE INDEX[\s\S]*?;|CREATE TRIGGER[\s\S]*?END;/g,
     );
+    assert.ok(statements);
     assert.equal(statements.length, 8);
     for (const statement of statements) await db.prepare(statement).run();
     validatePublicRecord(record);
@@ -80,6 +81,7 @@ test('activation and rotation require verified bindings and update both keys ato
     const statements = migration.match(
       /CREATE TABLE[\s\S]*?STRICT;|CREATE UNIQUE INDEX[\s\S]*?;|CREATE TRIGGER[\s\S]*?END;/g,
     );
+    assert.ok(statements);
     for (const statement of statements) await db.prepare(statement).run();
     await stageKey(db, record, 'operator', 'initial stage', 100);
     const unavailable = { fetch: async () => ({ status: 503 }) };
@@ -93,7 +95,7 @@ test('activation and rotation require verified bindings and update both keys ato
       ).state,
       'staged',
     );
-    const verifiedIds = [];
+    const verifiedIds: string[] = [];
     const verified = {
       fetch: async (url) => {
         verifiedIds.push(url.split('/').at(-2));

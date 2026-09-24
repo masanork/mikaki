@@ -321,7 +321,7 @@ function yTicks(max) {
   const magnitude = 10 ** Math.floor(Math.log10(Math.max(rough, 1)));
   const normalized = rough / magnitude;
   const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
-  const ticks = [];
+  const ticks: number[] = [];
   for (let tick = 0; tick <= max + step / 10; tick += step) ticks.push(tick);
   return { step, ticks };
 }

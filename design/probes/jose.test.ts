@@ -49,6 +49,11 @@ async function makeToken(
     tokenIssuer = issuer,
     tokenAudience = audience,
     exp = Math.floor(Date.now() / 1000) + 300,
+  }: {
+    sub?: string;
+    tokenIssuer?: string | null;
+    tokenAudience?: string | null;
+    exp?: number | null;
   } = {},
 ) {
   let jwt = new SignJWT({ sub }).setProtectedHeader({ alg: algorithm, kid, typ: 'JWT' });

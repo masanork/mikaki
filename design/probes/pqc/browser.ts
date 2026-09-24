@@ -23,7 +23,7 @@ const server = createServer(async (request, response) => {
     ['/pkg-web/mikaki_pqc_probe_bg.wasm', [wasmBinary, 'application/wasm']],
     ['/hpke-envelope-fixture.json', [fixtureFile, 'application/json']],
   ]);
-  let requested = files.get(request.url);
+  let requested = files.get(request.url ?? '');
   if (request.url?.startsWith('/node_modules/@noble/') && request.url.endsWith('.js')) {
     const path = resolve(nobleRoot, request.url.slice('/node_modules/@noble/'.length));
     if (path.startsWith(nobleRoot + sep)) requested = [path, 'text/javascript'];

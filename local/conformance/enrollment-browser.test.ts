@@ -7,6 +7,15 @@ import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
 
+function requiredHeader(
+  response: { headers: { get(name: string): string | null } },
+  name: string,
+): string {
+  const value = response.headers.get(name);
+  assert.ok(value, `${name} header is required`);
+  return value;
+}
+
 test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Chromium', async () => {
   const issuer = 'https://mikaki.test';
   const redirectUri = 'https://rp.example/callback';
@@ -42,7 +51,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
-    const errors = [];
+    const errors: string[] = [];
     let finishBody;
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
@@ -103,8 +112,8 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     }).toString();
     const pending = await worker.fetch(`${issuer}/enroll`, { redirect: 'manual' });
     assert.equal(pending.status, 302);
-    const initialBrowserCookie = pending.headers.get('set-cookie').split(';')[0];
-    const initialLoginUrl = pending.headers.get('location');
+    const initialBrowserCookie = requiredHeader(pending, 'set-cookie').split(';')[0];
+    const initialLoginUrl = requiredHeader(pending, 'location');
     await context.addCookies([
       {
         name: '__Host-op-browser',
@@ -186,7 +195,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
 
     await context.clearCookies();
     const secondPending = await worker.fetch(authorize.href, { redirect: 'manual' });
-    const secondBrowserCookie = secondPending.headers.get('set-cookie').split(';')[0];
+    const secondBrowserCookie = requiredHeader(secondPending, 'set-cookie').split(';')[0];
     await context.addCookies([
       {
         name: '__Host-op-browser',
@@ -198,7 +207,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
         sameSite: 'Lax',
       },
     ]);
-    await page.goto(secondPending.headers.get('location'));
+    await page.goto(requiredHeader(secondPending, 'location'));
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     const secondSso = (await context.cookies(issuer)).find(
@@ -209,11 +218,11 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       headers: { cookie: `${secondSso.name}=${secondSso.value}` },
       redirect: 'manual',
     });
-    assert.ok(new URL(secondAuthorization.headers.get('location')).searchParams.get('code'));
+    assert.ok(new URL(requiredHeader(secondAuthorization, 'location')).searchParams.get('code'));
 
     await context.clearCookies();
     const normalPending = await worker.fetch(`${issuer}/enroll`, { redirect: 'manual' });
-    const normalBrowserCookie = normalPending.headers.get('set-cookie').split(';')[0];
+    const normalBrowserCookie = requiredHeader(normalPending, 'set-cookie').split(';')[0];
     await context.addCookies([
       {
         name: '__Host-op-browser',
@@ -225,7 +234,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
         sameSite: 'Lax',
       },
     ]);
-    await page.goto(normalPending.headers.get('location'));
+    await page.goto(requiredHeader(normalPending, 'location'));
     await page.getByLabel('招待コード').fill(normalInvitation);
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('heading', { name: '登録が完了しました' }).waitFor();

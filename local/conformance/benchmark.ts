@@ -15,7 +15,7 @@ const cases = JSON.parse(
 );
 const measure = (name, operation, iterations = 100) => {
   for (let i = 0; i < 5; i++) operation();
-  const samples = [];
+  const samples: number[] = [];
   for (let sample = 0; sample < 7; sample++) {
     const start = performance.now();
     for (let i = 0; i < iterations; i++) operation();
@@ -36,10 +36,10 @@ const report = {
   node: process.version,
   cpu: cpus()[0].model,
   rust: execFileSync('rustc', ['--version'], { encoding: 'utf8' }).trim(),
-  native: [],
-  wasm_json_boundary: [],
-  native_process_json_boundary: [],
-  metadata_lookup: [],
+  native: [] as Array<Record<string, unknown>>,
+  wasm_json_boundary: [] as Array<Record<string, unknown>>,
+  native_process_json_boundary: [] as Array<Record<string, unknown>>,
+  metadata_lookup: [] as Array<Record<string, unknown>>,
   metadata_entries: 0,
 };
 // No builds or concurrent benchmarks while timing these operations.

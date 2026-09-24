@@ -3,7 +3,7 @@ import { gzipSync } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url);
-const files = [];
+const files: string[] = [];
 async function walk(path) {
   for (const entry of await readdir(new URL(path, root), { withFileTypes: true })) {
     if (['node_modules', 'pkg', 'dist', '.wrangler', 'generated', 'target'].includes(entry.name))

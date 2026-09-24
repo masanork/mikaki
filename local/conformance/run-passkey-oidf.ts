@@ -70,7 +70,7 @@ try {
   page.on('pageerror', (error) => console.error('browser error:', error.message));
   const names =
     moduleName === 'all' ? plan.modules.map((item) => item.testModule) : moduleName.split(',');
-  const summary = [];
+  const summary: Array<{ name: string; id: string; status: string; result: string }> = [];
   for (const name of names) {
     await context.clearCookies();
     const run = await api(`/api/runner?${new URLSearchParams({ test: name, plan: plan.id })}`, {
@@ -127,7 +127,7 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } catch (error) {
-      console.error('driver error:', error.message);
+      console.error('driver error:', error instanceof Error ? error.message : String(error));
     }
     info = await api(`/api/info/${run.id}`);
     const log = await api(`/api/log/${run.id}?pretty=true`);

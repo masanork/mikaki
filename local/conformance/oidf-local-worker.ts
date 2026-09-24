@@ -7,6 +7,15 @@ import { createTestHarness } from 'wrangler';
 import { exportJWK, generateKeyPair } from 'jose';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
+function requiredHeader(
+  response: { headers: { get(name: string): string | null } },
+  name: string,
+): string {
+  const value = response.headers.get(name);
+  assert.ok(value, `${name} header is required`);
+  return value;
+}
+
 const issuer = 'https://host.docker.internal:8792';
 const alias = 'mikaki-local-20260923';
 const redirectUri = `https://suite-frontend:8443/test/a/${alias}/callback`;
@@ -54,6 +63,7 @@ try {
     .run();
   const passkeyPair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const passkeyPublic = passkeyPair.publicKey.export({ format: 'jwk' });
+  assert.ok(passkeyPublic.x && passkeyPublic.y);
   const passkeyId = randomBytes(32).toString('base64url');
   const userHandle = randomBytes(32).toString('base64url');
   const coseKey = Buffer.concat([
@@ -125,8 +135,8 @@ try {
   }).toString();
   const pending = await worker.fetch(authorizeUrl, { redirect: 'manual' });
   assert.equal(pending.status, 302);
-  const browserCookie = pending.headers.get('set-cookie').split(';')[0];
-  const loginUrl = new URL(pending.headers.get('location'));
+  const browserCookie = requiredHeader(pending, 'set-cookie').split(';')[0];
+  const loginUrl = new URL(requiredHeader(pending, 'location'));
   assert.equal(loginUrl.pathname, '/login');
   const loginPage = await worker.fetch(loginUrl, {
     headers: { cookie: browserCookie, 'Accept-Language': 'en-US,en;q=0.9' },
@@ -174,7 +184,7 @@ try {
   });
   assert.equal(completed.status, 200, await completed.text());
   assert.match(
-    completed.headers.get('set-cookie'),
+    requiredHeader(completed, 'set-cookie'),
     new RegExp(`Max-Age=${policy.sso_absolute_ttl_seconds}(?:;|$)`),
   );
   const replay = await worker.fetch(`${issuer}/login/finish`, {
@@ -183,13 +193,13 @@ try {
     body: JSON.stringify({ tx, consent: true, response: assertion }),
   });
   assert.equal(replay.status, 400);
-  const ssoCookie = completed.headers.get('set-cookie').split(';')[0];
+  const ssoCookie = requiredHeader(completed, 'set-cookie').split(';')[0];
   const resumed = await worker.fetch(authorizeUrl, {
     headers: { cookie: ssoCookie },
     redirect: 'manual',
   });
   assert.equal(resumed.status, 302);
-  assert.ok(new URL(resumed.headers.get('location')).searchParams.get('code'));
+  assert.ok(new URL(requiredHeader(resumed, 'location')).searchParams.get('code'));
   console.log('passkey authorization preflight passed');
   if (process.env.MIKAKI_PREFLIGHT_ONLY === '1') {
     await harness.close();
@@ -211,7 +221,7 @@ try {
           outgoing.writeHead(403).end();
           return;
         }
-        const response = await worker.fetch(new URL(incoming.url, issuer), {
+        const response = await worker.fetch(new URL(incoming.url ?? '/', issuer), {
           method: incoming.method,
           headers: Object.fromEntries(
             Object.entries(incoming.headers).map(([name, value]) => [
@@ -220,7 +230,7 @@ try {
             ]),
           ),
           redirect: 'manual',
-          ...(!['GET', 'HEAD'].includes(incoming.method)
+          ...(!['GET', 'HEAD'].includes(incoming.method ?? 'GET')
             ? { body: Readable.toWeb(incoming), duplex: 'half' }
             : {}),
         });

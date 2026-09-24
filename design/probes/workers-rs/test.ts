@@ -35,7 +35,7 @@ try {
     ['first', 'second'].map(async (id) => {
       const response = await worker.fetch(`/exchange/${id}`, { method: 'POST' });
       assert.equal(response.status, 200);
-      return response.json();
+      return response.json() as Promise<{ accepted: boolean }>;
     }),
   );
   assert.equal(exchanges.filter(({ accepted }) => accepted).length, 1);

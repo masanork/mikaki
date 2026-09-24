@@ -23,6 +23,7 @@ async function signingKey(kid) {
   const pair = await generateKeyPair('ES256', { extractable: true });
   const privateJwk = { ...(await exportJWK(pair.privateKey)), kid, alg: 'ES256', use: 'sig' };
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid, alg: 'ES256', use: 'sig' };
+  assert.ok(publicJwk.x && publicJwk.y);
   const publicBytes = Buffer.concat([
     Buffer.from([4]),
     Buffer.from(publicJwk.x, 'base64url'),
@@ -122,11 +123,14 @@ try {
     redirect: 'manual',
   });
   assert.equal(authorizationResponse.status, 302);
-  const callback = new URL(authorizationResponse.headers.get('location'));
+  const location = authorizationResponse.headers.get('location');
+  assert.ok(location);
+  const callback = new URL(location);
   assert.equal(callback.origin + callback.pathname, redirectUri);
   assert.equal(callback.searchParams.get('state'), 'local-integration-state');
   assert.equal(callback.searchParams.get('iss'), issuer);
   const code = callback.searchParams.get('code');
+  assert.ok(code);
   assert.match(code, /^[A-Za-z0-9_-]{43}$/);
 
   const tokenEndpoint = `${issuer}/token`;
@@ -289,9 +293,10 @@ try {
     redirect: 'manual',
   });
   assert.equal(concurrentAuthorizationResponse.status, 302);
-  const concurrentCode = new URL(
-    concurrentAuthorizationResponse.headers.get('location'),
-  ).searchParams.get('code');
+  const concurrentLocation = concurrentAuthorizationResponse.headers.get('location');
+  assert.ok(concurrentLocation);
+  const concurrentCode = new URL(concurrentLocation).searchParams.get('code');
+  assert.ok(concurrentCode);
   const concurrentCodeHash = createHash('sha256')
     .update(Buffer.from(concurrentCode, 'base64url'))
     .digest('base64url');
@@ -326,10 +331,12 @@ try {
   );
   assert.equal(concurrentResponses.filter((response) => response.status === 200).length, 1);
   const concurrentLoser = concurrentResponses.find((response) => response.status !== 200);
+  assert.ok(concurrentLoser);
   const concurrentLoserBody = await concurrentLoser.text();
   assert.equal(concurrentLoser.status, 400, concurrentLoserBody);
   assert.equal(JSON.parse(concurrentLoserBody).error, 'invalid_grant');
   const concurrentWinner = concurrentResponses.find((response) => response.status === 200);
+  assert.ok(concurrentWinner);
   const concurrentTokens = (await concurrentWinner.json()) as { id_token: string };
   const { payload: concurrentPayload } = await jwtVerify(
     concurrentTokens.id_token,

@@ -140,7 +140,7 @@ test('retry remains unavailable until due; expired leases exhaust attempts and d
 });
 
 test('each delivery signs a fresh token, refuses redirects and bounds untrusted response consumption', async () => {
-  const tokens = [];
+  const tokens: ReturnType<typeof decodeJwt>[] = [];
   let cancelled = false;
   const transport = async (url, init) => {
     assert.equal(url, 'http://127.0.0.1:18878/backchannel');
@@ -169,6 +169,7 @@ test('each delivery signs a fresh token, refuses redirects and bounds untrusted 
   assert.notEqual(tokens[0].jti, tokens[1].jti);
   assert.equal(tokens[0].sid, tokens[1].sid);
   assert.equal(tokens[0].aud, CLIENT);
+  assert.ok(typeof tokens[0].exp === 'number' && typeof tokens[0].iat === 'number');
   assert.ok(tokens[0].exp > tokens[0].iat);
 });
 

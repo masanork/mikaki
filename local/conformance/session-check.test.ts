@@ -14,6 +14,7 @@ test('session check authenticates its RP, binds sid, and observes D1 revocation 
   const accessHash = randomBytes(32).toString('base64url');
   const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true });
   const jwk = await exportJWK(publicKey);
+  assert.ok(jwk.x && jwk.y);
   const sec1 = Buffer.concat([
     Buffer.from([4]),
     Buffer.from(jwk.x, 'base64url'),

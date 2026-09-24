@@ -17,7 +17,7 @@ export const b64 = (bytes) =>
 export const random = () => b64(crypto.getRandomValues(new Uint8Array(32)));
 export const hash = async (value) =>
   b64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))));
-export function fail(code = 'invalid_request', status = 400) {
+export function fail(code = 'invalid_request', status = 400): never {
   throw Object.assign(new Error(code), { status });
 }
 export const check = (ok, code = 'invalid_request', status = 400) => {
@@ -55,11 +55,11 @@ export const sqlParts = (sql) =>
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean);
-export const query = (db, sql, args = []) => db.prepare(sql).bind(...args);
-export const row = (db, sql, args = []) => query(db, sql, args).first();
+export const query = (db, sql, args: unknown[] = []) => db.prepare(sql).bind(...args);
+export const row = (db, sql, args: unknown[] = []) => query(db, sql, args).first();
 export function statements(db, sql, params) {
   return sqlParts(sql).map((s) => {
-    const values = [];
+    const values: unknown[] = [];
     const text = s.replace(/:([a-z_]+)/g, (_, key) => {
       check(Object.hasOwn(params, key));
       values.push(params[key]);
@@ -68,7 +68,7 @@ export function statements(db, sql, params) {
     return query(db, text, values);
   });
 }
-export function guard(db, predicate, args = []) {
+export function guard(db, predicate, args: unknown[] = []) {
   const id = uuid();
   return [
     query(db, `INSERT INTO atomic_guard VALUES(?, CASE WHEN ${predicate} THEN 1 ELSE 0 END)`, [
@@ -100,7 +100,7 @@ export async function body(
   const reader = req.body?.getReader();
   check(reader);
   let length = 0;
-  const chunks = [];
+  const chunks: Uint8Array[] = [];
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -160,7 +160,9 @@ export async function verified(env, role, token, audience, typ = 'JWT', allowExp
     requiredClaims: ['iat', 'exp', 'iss', 'aud'],
   });
   check(
-    Number.isSafeInteger(payload.iat) &&
+    typeof payload.iat === 'number' &&
+      typeof payload.exp === 'number' &&
+      Number.isSafeInteger(payload.iat) &&
       Number.isSafeInteger(payload.exp) &&
       payload.iat <= now() + p('oidc.validation.clock_skew') &&
       payload.exp > payload.iat &&
