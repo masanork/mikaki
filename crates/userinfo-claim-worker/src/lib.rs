@@ -60,6 +60,18 @@ struct RecipientKey {
     public_key: Vec<u8>,
     secret_ref: String,
     state: String,
+    generation: i64,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnvelopeValidation {
+    origin: String,
+    account_id: String,
+    revision: u64,
+    ciphertext: String,
+    frame: String,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -74,7 +86,7 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
     let db = env.d1("DB")?;
     let row = db
         .prepare(
-            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state \
+            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
              FROM vault_recipient_key WHERE key_id=?1",
         )
         .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
@@ -115,6 +127,103 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
     Ok(matches)
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn validate_envelope(
+    mut request: worker::Request,
+    env: &worker::Env,
+    key_id: &str,
+) -> worker::Result<bool> {
+    if key_id.len() != 43
+        || !key_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Ok(false);
+    }
+    // This Worker has no public route. The OP service binding sends at most 40 KiB.
+    let body = request.bytes().await?;
+    if body.len() > 40 * 1024 {
+        return Ok(false);
+    }
+    let Ok(value) = serde_json::from_slice::<EnvelopeValidation>(&body) else {
+        return Ok(false);
+    };
+    if value.origin.len() > 256
+        || !value.origin.starts_with("https://")
+        || value.account_id.is_empty()
+        || value.account_id.len() > 128
+        || value.revision == 0
+    {
+        return Ok(false);
+    }
+    let (Ok(frame), Ok(ciphertext)) = (
+        URL_SAFE_NO_PAD.decode(&value.frame),
+        URL_SAFE_NO_PAD.decode(&value.ciphertext),
+    ) else {
+        return Ok(false);
+    };
+    if frame.len() != 1187
+        || ciphertext.len() > 24 * 1024
+        || URL_SAFE_NO_PAD.encode(&frame) != value.frame
+        || URL_SAFE_NO_PAD.encode(&ciphertext) != value.ciphertext
+    {
+        return Ok(false);
+    }
+    let db = env.d1("DB")?;
+    let row = db
+        .prepare(
+            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
+         FROM vault_recipient_key WHERE key_id=?1 AND state='active'",
+        )
+        .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
+        .first::<RecipientKey>(None)
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    if row.key_id != key_id
+        || row.service_id != "userinfo"
+        || row.algorithm != "ML-KEM-768"
+        || row.state != "active"
+        || row.generation < 1
+        || !valid_binding(&row.secret_ref)
+    {
+        return Ok(false);
+    }
+    let secret = match env.secret_store(&row.secret_ref) {
+        Ok(binding) => match binding.get().await {
+            Ok(Some(secret)) => Zeroizing::new(secret),
+            _ => return Ok(false),
+        },
+        Err(_) => return Ok(false),
+    };
+    let Some(seed) = decode_seed(&secret) else {
+        return Ok(false);
+    };
+    let binding = envelope::UserInfoBinding {
+        origin: &value.origin,
+        account_id: &value.account_id,
+        revision: value.revision,
+        ciphertext: &ciphertext,
+    };
+    let Some(data_key) = envelope::open_userinfo_data_key(
+        &seed,
+        &row.public_key,
+        key_id,
+        row.generation as u64,
+        &frame,
+        &binding,
+    ) else {
+        return Ok(false);
+    };
+    Ok(envelope::validates_name_ciphertext(
+        &data_key,
+        &value.origin,
+        value.revision,
+        &ciphertext,
+    ))
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 #[worker::event(fetch)]
 pub async fn main(
@@ -123,6 +232,21 @@ pub async fn main(
     _context: worker::Context,
 ) -> worker::Result<worker::Response> {
     let path = request.url()?.path().to_owned();
+    let validation_key_id = path
+        .strip_prefix("/internal/recipient-keys/")
+        .and_then(|part| part.strip_suffix("/validate-envelope"));
+    if request.method() == worker::Method::Post {
+        let Some(key_id) = validation_key_id else {
+            return Ok(worker::Response::builder().with_status(404).empty());
+        };
+        let valid = validate_envelope(request, &env, key_id)
+            .await
+            .unwrap_or(false);
+        return Ok(worker::Response::builder()
+            .with_status(if valid { 204 } else { 503 })
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
     let key_id = path
         .strip_prefix("/internal/recipient-keys/")
         .and_then(|part| part.strip_suffix("/verify"));

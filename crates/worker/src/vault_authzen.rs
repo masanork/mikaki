@@ -7,6 +7,8 @@ pub const READ_CIPHERTEXT: &str = "vault.attribute.read-ciphertext";
 pub const READ_OWNER_ENVELOPE: &str = "vault.attribute.read-owner-envelope";
 pub const WRITE: &str = "vault.attribute.write";
 pub const DELETE: &str = "vault.attribute.delete";
+pub const SHARE_SYSTEM: &str = "vault.attribute.share-system";
+pub const REVOKE_SYSTEM: &str = "vault.attribute.revoke-system";
 
 #[derive(Serialize)]
 pub struct Subject<'a> {
@@ -53,7 +55,12 @@ pub fn evaluate_owner(request: &Evaluation<'_>, owner: &str, attribute: &str) ->
             && request.resource.id == vault_attribute_resource(owner, attribute)
             && matches!(
                 request.action.name,
-                READ_CIPHERTEXT | READ_OWNER_ENVELOPE | WRITE | DELETE
+                READ_CIPHERTEXT
+                    | READ_OWNER_ENVELOPE
+                    | WRITE
+                    | DELETE
+                    | SHARE_SYSTEM
+                    | REVOKE_SYSTEM
             ),
     }
 }
@@ -95,9 +102,11 @@ mod tests {
         assert!(evaluate_owner(&request, "account-a", "name").decision);
         assert!(!evaluate_owner(&request, "account-b", "name").decision);
         assert!(!evaluate_owner(&request, "account-a", "email").decision);
+        let share = owner_evaluation("account-a", SHARE_SYSTEM, "account-a", "name");
+        assert!(evaluate_owner(&share, "account-a", "name").decision);
         let denied = owner_evaluation(
             "account-a",
-            "vault.attribute.share-system",
+            "vault.attribute.release-rp",
             "account-a",
             "name",
         );

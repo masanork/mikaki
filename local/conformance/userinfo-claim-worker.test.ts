@@ -30,6 +30,22 @@ test('claim Worker fails closed without its Secrets Store binding', async () => 
     );
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    const rejected = await worker.fetch(
+      `https://internal.invalid/internal/recipient-keys/${keyId}/validate-envelope`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: 'https://mikaki.test',
+          account_id: 'owner',
+          revision: 1,
+          ciphertext: 'AA',
+          frame: 'AA',
+        }),
+      },
+    );
+    assert.equal(rejected.status, 503);
+    assert.equal(rejected.headers.get('Cache-Control'), 'no-store');
     const unknown = await worker.fetch('https://internal.invalid/');
     assert.equal(unknown.status, 404);
   } finally {

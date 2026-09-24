@@ -1,6 +1,10 @@
 //! Strict candidate ML-KEM-768 HPKE recipient wrap decoder.
 //! A future claim operation must supply every binding from trusted D1 state.
 
+use aes_gcm::{
+    Aes256Gcm, KeyInit as _, Nonce,
+    aead::{Aead as _, Payload},
+};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hpke::{
     Deserializable as _, Kem as _, OpModeR, Serializable as _, aead::AesGcm256, kdf::HkdfSha256,
@@ -97,6 +101,45 @@ pub fn open_userinfo_data_key(
     Some(Zeroizing::new(plaintext.as_slice().try_into().ok()?))
 }
 
+/// Validates that the wrapped key decrypts the exact owner ciphertext.
+/// Only a boolean result may cross the claim Worker service boundary.
+pub fn validates_name_ciphertext(
+    data_key: &[u8; 32],
+    origin: &str,
+    revision: u64,
+    ciphertext: &[u8],
+) -> bool {
+    if ciphertext.len() < 1 + 12 + 16 || ciphertext.len() > 24 * 1024 || ciphertext[0] != 1 {
+        return false;
+    }
+    let Some(aad) = context(&[
+        b"mikaki-vault-attribute-content",
+        b"1",
+        origin.as_bytes(),
+        b"name",
+        revision.to_string().as_bytes(),
+    ]) else {
+        return false;
+    };
+    let Ok(aead) = Aes256Gcm::new_from_slice(data_key) else {
+        return false;
+    };
+    let Ok(nonce) = Nonce::try_from(&ciphertext[1..13]) else {
+        return false;
+    };
+    let Ok(plaintext) = aead.decrypt(
+        &nonce,
+        Payload {
+            msg: &ciphertext[13..],
+            aad: &aad,
+        },
+    ) else {
+        return false;
+    };
+    let plaintext = Zeroizing::new(plaintext);
+    !plaintext.is_empty() && std::str::from_utf8(&plaintext).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +203,58 @@ mod tests {
             open_userinfo_data_key(&seed, &public_key, &key_id, 1, &changed_frame, &binding)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn data_key_must_open_exact_owner_ciphertext() {
+        let key = [0x51; 32];
+        let nonce = [0x91; 12];
+        let aad = context(&[
+            b"mikaki-vault-attribute-content",
+            b"1",
+            b"https://mikaki.example",
+            b"name",
+            b"9",
+        ])
+        .unwrap();
+        let aead = Aes256Gcm::new_from_slice(&key).unwrap();
+        let nonce_value = Nonce::try_from(nonce.as_slice()).unwrap();
+        let encrypted = aead
+            .encrypt(
+                &nonce_value,
+                Payload {
+                    msg: b"Saved name",
+                    aad: &aad,
+                },
+            )
+            .unwrap();
+        let mut ciphertext = vec![1];
+        ciphertext.extend_from_slice(&nonce);
+        ciphertext.extend_from_slice(&encrypted);
+        assert!(validates_name_ciphertext(
+            &key,
+            "https://mikaki.example",
+            9,
+            &ciphertext
+        ));
+        assert!(!validates_name_ciphertext(
+            &key,
+            "https://other.example",
+            9,
+            &ciphertext
+        ));
+        assert!(!validates_name_ciphertext(
+            &key,
+            "https://mikaki.example",
+            10,
+            &ciphertext
+        ));
+        ciphertext[13] ^= 1;
+        assert!(!validates_name_ciphertext(
+            &key,
+            "https://mikaki.example",
+            9,
+            &ciphertext
+        ));
     }
 }

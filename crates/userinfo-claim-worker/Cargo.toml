@@ -13,19 +13,18 @@ default = ["worker-entry"]
 worker-entry = []
 
 [dependencies]
+aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
 base64.workspace = true
 hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 ml-kem = { version = "=0.3.2", default-features = false, features = ["zeroize"] }
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 zeroize = "=1.9.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 worker = { version = "=0.8.6", features = ["d1"] }
-
-[dev-dependencies]
-serde_json.workspace = true
 
 [lints]
 workspace = true

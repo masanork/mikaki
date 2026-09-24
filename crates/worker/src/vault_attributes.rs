@@ -110,6 +110,7 @@ async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owne
 #[derive(Serialize)]
 struct SessionResponse<'a> {
     credential_id: &'a str,
+    account_id: &'a str,
 }
 
 #[derive(Deserialize)]
@@ -124,6 +125,7 @@ struct RecipientKey {
 struct RecipientKeyResponse<'a> {
     service_id: &'static str,
     algorithm: &'static str,
+    envelope_suite: &'static str,
     key_id: &'a str,
     public_key: String,
     generation: i64,
@@ -190,6 +192,7 @@ pub async fn recipient_key(
         .from_json(&RecipientKeyResponse {
             service_id: "userinfo",
             algorithm: "ML-KEM-768",
+            envelope_suite: "ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1",
             key_id: &key.key_id,
             public_key: URL_SAFE_NO_PAD.encode(&key.public_key),
             generation: key.generation,
@@ -209,6 +212,7 @@ pub async fn session(request: Request, context: RouteContext<()>) -> worker::Res
         .with_header("Cache-Control", "no-store")?
         .from_json(&SessionResponse {
             credential_id: &owner.credential_id,
+            account_id: &owner.account_id,
         })
 }
 
@@ -597,4 +601,426 @@ async fn write(
 fn owner_allowed(account: &str, attribute: &str, action: &str) -> bool {
     let evaluation = vault_authzen::owner_evaluation(account, action, account, attribute);
     vault_authzen::evaluate_owner(&evaluation, account, attribute).decision
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ShareBody {
+    frame: String,
+    key_id: String,
+    generation: i64,
+    directory_revision: i64,
+    ciphertext_sha256: String,
+}
+
+#[derive(Deserialize)]
+struct SharePolicy {
+    enabled: i64,
+    grant_ttl_seconds: i64,
+    revision: i64,
+}
+
+#[derive(Deserialize)]
+struct ShareHead {
+    revision: i64,
+    ciphertext_sha256: Option<String>,
+    object_key: Option<String>,
+    deleted: i64,
+}
+
+#[derive(Deserialize)]
+struct ShareGrant {
+    version: i64,
+    status: String,
+    expires_at: i64,
+}
+
+#[derive(Deserialize)]
+struct ShareAudit {
+    request_hash: String,
+    action: String,
+    attribute_revision: i64,
+    grant_version: i64,
+}
+
+#[derive(Serialize)]
+struct ShareStatus {
+    enabled: bool,
+    grant_ttl_seconds: i64,
+    policy_revision: i64,
+    active: bool,
+    grant_version: Option<i64>,
+    expires_at: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct ShareResult {
+    grant_version: i64,
+    attribute_revision: i64,
+}
+
+async fn share_policy(db: &D1Database) -> worker::Result<SharePolicy> {
+    db.prepare("SELECT enabled,grant_ttl_seconds,revision FROM vault_share_policy WHERE id=1")
+        .first::<SharePolicy>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("share_policy_unavailable".into()))
+}
+
+async fn share_audit(
+    db: &D1Database,
+    account: &str,
+    operation: &str,
+) -> worker::Result<Option<ShareAudit>> {
+    db.prepare(
+        "SELECT request_hash,action,attribute_revision,grant_version \
+         FROM vault_attribute_share_audit WHERE account_id=?1 AND operation_id=?2",
+    )
+    .bind(&[JsValue::from_str(account), JsValue::from_str(operation)])?
+    .first::<ShareAudit>(None)
+    .await
+}
+
+pub async fn share_status(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let db = context.env.d1("DB")?;
+    let Some(owner) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    let policy = share_policy(&db).await?;
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let grant = db
+        .prepare(
+            "SELECT g.version,g.status,g.expires_at \
+         FROM vault_attribute_grant g JOIN vault_attribute_head h \
+         ON h.account_id=g.account_id AND h.attribute_id=g.attribute_id \
+         JOIN vault_attribute_recipient_envelope e ON e.envelope_id=g.envelope_id \
+         JOIN vault_recipient_key k ON k.key_id=e.recipient_key_id \
+         WHERE g.account_id=?1 AND g.attribute_id='name' AND g.recipient_service='userinfo' \
+         AND g.purpose='oidc.userinfo.name' AND k.state IN ('active','decrypt_only') \
+         AND h.revision=g.attribute_revision AND h.deleted=0 \
+         AND h.ciphertext_sha256=e.ciphertext_sha256",
+        )
+        .bind(&[JsValue::from_str(&owner.account_id)])?
+        .first::<ShareGrant>(None)
+        .await?;
+    let active = policy.enabled == 1
+        && grant
+            .as_ref()
+            .is_some_and(|value| value.status == "active" && value.expires_at > now as i64);
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&ShareStatus {
+            enabled: policy.enabled == 1,
+            grant_ttl_seconds: policy.grant_ttl_seconds,
+            policy_revision: policy.revision,
+            active,
+            grant_version: grant.as_ref().map(|value| value.version),
+            expires_at: grant.as_ref().map(|value| value.expires_at),
+        })
+}
+
+pub async fn share(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    if !same_origin(&request)? {
+        return error(403, "origin_required");
+    }
+    let Some(expected) = expected_revision(&request)?.filter(|revision| *revision > 0) else {
+        return error(428, "precondition_required");
+    };
+    let Some(operation) = operation_id(&request)? else {
+        return error(400, "operation_id_required");
+    };
+    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+        return error(415, "json_required");
+    }
+    let body = match read_bounded_body(&mut request, 4096).await {
+        Ok(body) => body,
+        Err(_) => return error(413, "body_too_large_or_invalid"),
+    };
+    let hash = request_hash("SHARE", "name", expected, body.as_bytes());
+    let db = context.env.d1("DB")?;
+    let Some(owner) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    if !owner_allowed(&owner.account_id, "name", vault_authzen::SHARE_SYSTEM) {
+        return error(403, "access_denied");
+    }
+    if let Some(previous) = share_audit(&db, &owner.account_id, &operation).await? {
+        return if previous.request_hash == hash
+            && previous.action == "share"
+            && previous.attribute_revision == expected
+        {
+            Response::builder()
+                .with_header("Cache-Control", "no-store")?
+                .from_json(&ShareResult {
+                    grant_version: previous.grant_version,
+                    attribute_revision: expected,
+                })
+        } else {
+            error(409, "operation_id_reused")
+        };
+    }
+    let Ok(value) = serde_json::from_str::<ShareBody>(&body) else {
+        return error(400, "invalid_body");
+    };
+    let (Ok(frame), Ok(key_id)) = (
+        URL_SAFE_NO_PAD.decode(&value.frame),
+        URL_SAFE_NO_PAD.decode(&value.key_id),
+    ) else {
+        return error(400, "invalid_body");
+    };
+    if frame.len() != 1187
+        || key_id.len() != 32
+        || URL_SAFE_NO_PAD.encode(&frame) != value.frame
+        || URL_SAFE_NO_PAD.encode(&key_id) != value.key_id
+        || frame[..11] != [b'M', b'K', b'V', b'E', 1, 0, 0x41, 0, 1, 0, 2]
+        || frame[11..43] != key_id
+        || value.generation < 1
+        || frame[43..51] != (value.generation as u64).to_be_bytes()
+        || value.directory_revision < 1
+        || value.ciphertext_sha256.len() != 43
+    {
+        return error(400, "invalid_body");
+    }
+    let policy = share_policy(&db).await?;
+    if policy.enabled != 1 {
+        return error(403, "sharing_disabled");
+    }
+    let head = db
+        .prepare(
+            "SELECT revision,ciphertext_sha256,object_key,deleted FROM vault_attribute_head \
+         WHERE account_id=?1 AND attribute_id='name'",
+        )
+        .bind(&[JsValue::from_str(&owner.account_id)])?
+        .first::<ShareHead>(None)
+        .await?;
+    if !head.as_ref().is_some_and(|head| {
+        head.revision == expected
+            && head.deleted == 0
+            && head.ciphertext_sha256.as_deref() == Some(&value.ciphertext_sha256)
+    }) {
+        return error(409, "revision_conflict");
+    }
+    let Some(object_key) = head.and_then(|head| head.object_key) else {
+        return error(503, "storage_unavailable");
+    };
+    let Some(blob) = context
+        .env
+        .bucket("VAULT_BLOBS")?
+        .get(object_key)
+        .execute()
+        .await?
+    else {
+        return error(503, "storage_unavailable");
+    };
+    let Some(blob_body) = blob.body() else {
+        return error(503, "storage_unavailable");
+    };
+    let ciphertext = blob_body.bytes().await?;
+    if ciphertext.len() > MAX_CIPHERTEXT_BYTES
+        || URL_SAFE_NO_PAD.encode(Sha256::digest(&ciphertext)) != value.ciphertext_sha256
+    {
+        return error(503, "storage_unavailable");
+    }
+    let Ok(claims) = context.env.service("USERINFO_CLAIMS") else {
+        return error(503, "recipient_unavailable");
+    };
+    let origin = request.url()?.origin().ascii_serialization();
+    let validation = serde_json::json!({
+        "origin": origin,
+        "account_id": owner.account_id,
+        "revision": expected,
+        "ciphertext": URL_SAFE_NO_PAD.encode(&ciphertext),
+        "frame": value.frame,
+    })
+    .to_string();
+    let mut init = worker::RequestInit::new();
+    init.with_method(worker::Method::Post)
+        .with_body(Some(JsValue::from_str(&validation)));
+    init.headers.set("Content-Type", "application/json")?;
+    let validation = claims
+        .fetch(
+            format!(
+                "https://userinfo.internal/internal/recipient-keys/{}/validate-envelope",
+                value.key_id
+            ),
+            Some(init),
+        )
+        .await;
+    if !matches!(validation, Ok(response) if response.status_code() == 204) {
+        return error(503, "recipient_unavailable");
+    }
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))? as i64;
+    let expires_at = now + policy.grant_ttl_seconds;
+    let envelope = db.prepare(
+        "INSERT INTO vault_attribute_recipient_envelope \
+         (envelope_id,account_id,attribute_id,attribute_revision,recipient_service, \
+          recipient_key_id,recipient_generation,suite,ciphertext_sha256,frame,created_at) \
+         SELECT ?1,?2,'name',?3,'userinfo',?4,?5, \
+          'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1',?6,?7,?8 \
+         WHERE EXISTS (SELECT 1 FROM vault_share_policy WHERE id=1 AND enabled=1 AND revision=?9) \
+         AND EXISTS (SELECT 1 FROM vault_attribute_head WHERE account_id=?2 AND attribute_id='name' \
+                     AND revision=?3 AND deleted=0 AND ciphertext_sha256=?6) \
+         AND EXISTS (SELECT 1 FROM vault_recipient_key WHERE key_id=?4 AND service_id='userinfo' \
+                     AND generation=?5 AND revision=?10 AND state='active') \
+         AND EXISTS (SELECT 1 FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
+           JOIN account_security a ON a.account_id=ss.account_id \
+           JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
+           WHERE sx.secret_hash=?11 AND ss.account_id=?2 AND ss.revoked=0 AND ss.expires_at>?8 \
+           AND a.active=1 AND a.epoch=ss.epoch AND c.active=1)",
+    ).bind(&[
+        JsValue::from_str(&operation), JsValue::from_str(&owner.account_id),
+        JsValue::from_f64(expected as f64), JsValue::from_str(&value.key_id),
+        JsValue::from_f64(value.generation as f64), JsValue::from_str(&value.ciphertext_sha256),
+        JsValue::from(frame), JsValue::from_f64(now as f64),
+        JsValue::from_f64(policy.revision as f64),
+        JsValue::from_f64(value.directory_revision as f64),
+        JsValue::from_str(&owner.secret_hash),
+    ])?;
+    let guard = db
+        .prepare(
+            "INSERT INTO vault_share_atomic_guard(operation_id,passed) \
+         VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)",
+        )
+        .bind(&[JsValue::from_str(&operation)])?;
+    let grant = db
+        .prepare(
+            "INSERT INTO vault_attribute_grant \
+         (account_id,attribute_id,recipient_service,purpose,envelope_id,attribute_revision, \
+          version,status,expires_at,updated_at) \
+         VALUES(?1,'name','userinfo','oidc.userinfo.name',?2,?3,1,'active',?4,?5) \
+         ON CONFLICT(account_id,attribute_id,recipient_service,purpose) DO UPDATE SET \
+          envelope_id=excluded.envelope_id,attribute_revision=excluded.attribute_revision, \
+          version=vault_attribute_grant.version+1,status='active', \
+          expires_at=excluded.expires_at,updated_at=excluded.updated_at",
+        )
+        .bind(&[
+            JsValue::from_str(&owner.account_id),
+            JsValue::from_str(&operation),
+            JsValue::from_f64(expected as f64),
+            JsValue::from_f64(expires_at as f64),
+            JsValue::from_f64(now as f64),
+        ])?;
+    let audit = db.prepare(
+        "INSERT INTO vault_attribute_share_audit \
+         (account_id,operation_id,request_hash,attribute_id,action,attribute_revision,grant_version,occurred_at) \
+         SELECT ?1,?2,?3,'name','share',?4,version,?5 FROM vault_attribute_grant \
+         WHERE account_id=?1 AND attribute_id='name' AND recipient_service='userinfo' \
+         AND purpose='oidc.userinfo.name' AND envelope_id=?2",
+    ).bind(&[
+        JsValue::from_str(&owner.account_id), JsValue::from_str(&operation),
+        JsValue::from_str(&hash), JsValue::from_f64(expected as f64),
+        JsValue::from_f64(now as f64),
+    ])?;
+    if db.batch(vec![envelope, guard, grant, audit]).await.is_err() {
+        if share_audit(&db, &owner.account_id, &operation)
+            .await?
+            .is_some()
+        {
+            return error(409, "operation_id_reused");
+        }
+        return error(409, "share_conflict");
+    }
+    let Some(audit) = share_audit(&db, &owner.account_id, &operation).await? else {
+        return error(503, "storage_unavailable");
+    };
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&ShareResult {
+            grant_version: audit.grant_version,
+            attribute_revision: expected,
+        })
+}
+
+pub async fn revoke_share(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    if !same_origin(&request)? {
+        return error(403, "origin_required");
+    }
+    let Some(expected_version) = expected_revision(&request)?.filter(|version| *version > 0) else {
+        return error(428, "precondition_required");
+    };
+    let Some(operation) = operation_id(&request)? else {
+        return error(400, "operation_id_required");
+    };
+    let hash = request_hash("REVOKE", "name", expected_version, &[]);
+    let db = context.env.d1("DB")?;
+    let Some(owner) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    if !owner_allowed(&owner.account_id, "name", vault_authzen::REVOKE_SYSTEM) {
+        return error(403, "access_denied");
+    }
+    if let Some(previous) = share_audit(&db, &owner.account_id, &operation).await? {
+        return if previous.request_hash == hash && previous.action == "revoke" {
+            Response::builder()
+                .with_header("Cache-Control", "no-store")?
+                .from_json(&ShareResult {
+                    grant_version: previous.grant_version,
+                    attribute_revision: previous.attribute_revision,
+                })
+        } else {
+            error(409, "operation_id_reused")
+        };
+    }
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))? as i64;
+    let update = db
+        .prepare(
+            "UPDATE vault_attribute_grant SET status='revoked',version=version+1,updated_at=?1 \
+         WHERE account_id=?2 AND attribute_id='name' AND recipient_service='userinfo' \
+         AND purpose='oidc.userinfo.name' AND version=?3 AND status='active' \
+         AND EXISTS (SELECT 1 FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
+           JOIN account_security a ON a.account_id=ss.account_id \
+           JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
+           WHERE sx.secret_hash=?4 AND ss.account_id=?2 AND ss.revoked=0 AND ss.expires_at>?1 \
+           AND a.active=1 AND a.epoch=ss.epoch AND c.active=1)",
+        )
+        .bind(&[
+            JsValue::from_f64(now as f64),
+            JsValue::from_str(&owner.account_id),
+            JsValue::from_f64(expected_version as f64),
+            JsValue::from_str(&owner.secret_hash),
+        ])?;
+    let guard = db
+        .prepare(
+            "INSERT INTO vault_share_atomic_guard(operation_id,passed) \
+         VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)",
+        )
+        .bind(&[JsValue::from_str(&operation)])?;
+    let audit = db.prepare(
+        "INSERT INTO vault_attribute_share_audit \
+         (account_id,operation_id,request_hash,attribute_id,action,attribute_revision,grant_version,occurred_at) \
+         SELECT ?1,?2,?3,'name','revoke',attribute_revision,version,?4 \
+         FROM vault_attribute_grant WHERE account_id=?1 AND attribute_id='name' \
+         AND recipient_service='userinfo' AND purpose='oidc.userinfo.name' \
+         AND version=?5 AND status='revoked'",
+    ).bind(&[
+        JsValue::from_str(&owner.account_id), JsValue::from_str(&operation),
+        JsValue::from_str(&hash), JsValue::from_f64(now as f64),
+        JsValue::from_f64((expected_version + 1) as f64),
+    ])?;
+    if db.batch(vec![update, guard, audit]).await.is_err() {
+        if share_audit(&db, &owner.account_id, &operation)
+            .await?
+            .is_some()
+        {
+            return error(409, "operation_id_reused");
+        }
+        return error(409, "share_conflict");
+    }
+    let Some(audit) = share_audit(&db, &owner.account_id, &operation).await? else {
+        return error(503, "storage_unavailable");
+    };
+    Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&ShareResult {
+            grant_version: audit.grant_version,
+            attribute_revision: audit.attribute_revision,
+        })
 }

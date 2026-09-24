@@ -36,6 +36,7 @@ jobs:
           worker-build --release crates/userinfo-claim-worker
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
           node --test local/conformance/vault-attribute.test.ts
+          node --test local/conformance/vault-share.test.ts
           node --test local/conformance/recipient-directory.test.ts
           node --test local/conformance/userinfo-claim-worker.test.ts
           node --test local/conformance/vault-crypto.test.ts

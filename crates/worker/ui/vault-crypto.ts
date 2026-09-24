@@ -152,57 +152,61 @@ export async function sealAttribute(
     throw new Error('attribute too large');
   }
   const dek = random(KEY_BYTES);
-  const dataNonce = random(NONCE_BYTES);
-  const salt = random(KEY_BYTES);
-  const wrapNonce = random(NONCE_BYTES);
-  const dataKey = await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['encrypt']);
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: dataNonce, additionalData: contentAad(origin, attribute, revision) },
-      dataKey,
-      plaintext,
-    ),
-  );
-  const kek = await wrappingKey(prfOutput, salt, origin, attribute, credentialId);
-  const wrappedDek = new Uint8Array(
-    await crypto.subtle.encrypt(
-      {
-        name: 'AES-GCM',
-        iv: wrapNonce,
-        additionalData: wrapAad(origin, attribute, revision, credentialId),
-      },
-      kek,
-      dek,
-    ),
-  );
-  dek.fill(0);
-  const idLength = new Uint8Array(2);
-  new DataView(idLength.buffer).setUint16(0, credentialId.length);
-  return {
-    format_version: 1,
-    ciphertext: encodeBase64Url(concat(new Uint8Array([VERSION]), dataNonce, ciphertext)),
-    owner_envelope: encodeBase64Url(
-      concat(
-        new Uint8Array([VERSION]),
-        idLength,
-        credentialId,
-        prfInput,
-        salt,
-        wrapNonce,
-        wrappedDek,
+  try {
+    const dataNonce = random(NONCE_BYTES);
+    const salt = random(KEY_BYTES);
+    const wrapNonce = random(NONCE_BYTES);
+    const dataKey = await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['encrypt']);
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: dataNonce, additionalData: contentAad(origin, attribute, revision) },
+        dataKey,
+        plaintext,
       ),
-    ),
-  };
+    );
+    const kek = await wrappingKey(prfOutput, salt, origin, attribute, credentialId);
+    const wrappedDek = new Uint8Array(
+      await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: wrapNonce,
+          additionalData: wrapAad(origin, attribute, revision, credentialId),
+        },
+        kek,
+        dek,
+      ),
+    );
+    const idLength = new Uint8Array(2);
+    new DataView(idLength.buffer).setUint16(0, credentialId.length);
+    return {
+      format_version: 1,
+      ciphertext: encodeBase64Url(concat(new Uint8Array([VERSION]), dataNonce, ciphertext)),
+      owner_envelope: encodeBase64Url(
+        concat(
+          new Uint8Array([VERSION]),
+          idLength,
+          credentialId,
+          prfInput,
+          salt,
+          wrapNonce,
+          wrappedDek,
+        ),
+      ),
+    };
+  } finally {
+    dek.fill(0);
+  }
 }
 
-export async function openAttribute(
+export async function withOpenedAttribute<T>(
   sealed: SealedAttribute,
   prfOutput: Uint8Array<ArrayBuffer>,
   expectedCredentialId: Uint8Array<ArrayBuffer>,
   origin: string,
   attribute: string,
   revision: number,
-): Promise<Uint8Array<ArrayBuffer>> {
+  use: (plaintext: Uint8Array<ArrayBuffer>, dataKey: Uint8Array<ArrayBuffer>) => Promise<T>,
+): Promise<T> {
   if (sealed.format_version !== 1) throw new Error('unsupported format');
   const body = decodeBase64Url(sealed.ciphertext);
   if (
@@ -233,18 +237,41 @@ export async function openAttribute(
       wrappedDek,
     ),
   );
-  if (dek.length !== KEY_BYTES) throw new Error('invalid data key');
-  const dataKey = await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['decrypt']);
-  dek.fill(0);
-  return new Uint8Array(
-    await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: body.slice(1, 1 + NONCE_BYTES),
-        additionalData: contentAad(origin, attribute, revision),
-      },
-      dataKey,
-      body.slice(1 + NONCE_BYTES),
-    ),
+  try {
+    if (dek.length !== KEY_BYTES) throw new Error('invalid data key');
+    const dataKey = await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['decrypt']);
+    const plaintext = new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: body.slice(1, 1 + NONCE_BYTES),
+          additionalData: contentAad(origin, attribute, revision),
+        },
+        dataKey,
+        body.slice(1 + NONCE_BYTES),
+      ),
+    );
+    return await use(plaintext, dek);
+  } finally {
+    dek.fill(0);
+  }
+}
+
+export async function openAttribute(
+  sealed: SealedAttribute,
+  prfOutput: Uint8Array<ArrayBuffer>,
+  expectedCredentialId: Uint8Array<ArrayBuffer>,
+  origin: string,
+  attribute: string,
+  revision: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return withOpenedAttribute(
+    sealed,
+    prfOutput,
+    expectedCredentialId,
+    origin,
+    attribute,
+    revision,
+    async (plaintext) => plaintext,
   );
 }

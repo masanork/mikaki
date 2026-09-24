@@ -39,6 +39,7 @@ jobs:
           python3.14 scripts/check_design.py
           python3.14 scripts/test_oidc_sql.py
           python3.14 scripts/test_vault_recipient_keys_sql.py
+          python3.14 scripts/test_vault_attribute_sharing_sql.py
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown

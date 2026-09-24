@@ -35,7 +35,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         return;
       }
       if (url.pathname === '/vault/session') {
-        await route.fulfill({ json: { credential_id: 'Y3JlZGVudGlhbA' } });
+        await route.fulfill({ json: { credential_id: 'Y3JlZGVudGlhbA', account_id: 'owner' } });
         return;
       }
       if (url.pathname === '/vault/attributes/name') {

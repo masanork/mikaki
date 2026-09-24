@@ -12,6 +12,7 @@ function directory(generation, byte) {
   return {
     service_id: 'userinfo',
     algorithm: 'ML-KEM-768',
+    envelope_suite: 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1',
     key_id: createHash('sha256').update(publicKey).digest('base64url'),
     public_key: publicKey.toString('base64url'),
     generation,
@@ -57,6 +58,7 @@ test('browser verifies recipient digest, canonical encoding, and generation cont
   await assert.rejects(validateUserInfoRecipient({ ...next, public_key: `${next.public_key}=` }));
   await assert.rejects(validateUserInfoRecipient({ ...next, public_key: 'AA' }), /length/);
   await assert.rejects(validateUserInfoRecipient({ ...next, generation: 0 }));
+  await assert.rejects(validateUserInfoRecipient({ ...next, envelope_suite: 'unknown' }));
 });
 
 test('unavailable directory and invalid checkpoints fail closed', async () => {

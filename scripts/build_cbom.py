@@ -16,6 +16,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # JWK values, passkeys, client secrets, or token material in a CBOM.
 ASSETS = (
     (
+        "ML-KEM-768 Vault recipient encapsulation",
+        "algorithm",
+        {"primitive": "kem", "algorithmFamily": "ML-KEM", "cryptoFunctions": ["encapsulate"]},
+        "crates/worker/ui/vault-recipient-envelope.ts",
+        "ml_kem768.encapsulate",
+    ),
+    (
+        "AES-256-GCM Vault recipient key wrap",
+        "algorithm",
+        {"primitive": "ae", "algorithmFamily": "AES", "cryptoFunctions": ["encrypt"]},
+        "crates/worker/ui/vault-recipient-envelope.ts",
+        "crypto.subtle.encrypt",
+    ),
+    (
         "ES256",
         "algorithm",
         {"primitive": "signature", "algorithmFamily": "ECDSA", "cryptoFunctions": ["sign", "verify"]},
@@ -60,6 +74,20 @@ ASSETS = (
 )
 
 CLAIM_ASSETS = (
+    (
+        "AES-256-GCM Vault name validation",
+        "algorithm",
+        {"primitive": "ae", "algorithmFamily": "AES", "cryptoFunctions": ["decrypt"]},
+        "crates/userinfo-claim-worker/src/envelope.rs",
+        "Aes256Gcm::new_from_slice",
+    ),
+    (
+        "ML-KEM-768 Vault recipient decapsulation",
+        "algorithm",
+        {"primitive": "kem", "algorithmFamily": "ML-KEM", "cryptoFunctions": ["decapsulate"]},
+        "crates/userinfo-claim-worker/src/envelope.rs",
+        "setup_receiver::<AesGcm256, HkdfSha256, MlKem768>",
+    ),
     (
         "ML-KEM-768",
         "algorithm",

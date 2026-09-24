@@ -34,6 +34,7 @@ test('product sender envelope opens in independent RustCrypto receiver', async (
       {
         service_id: 'userinfo',
         algorithm: 'ML-KEM-768',
+        envelope_suite: 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1',
         key_id: keyId,
         public_key: Buffer.from(keys.publicKey).toString('base64url'),
         generation: 1,

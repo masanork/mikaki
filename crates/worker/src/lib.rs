@@ -2365,6 +2365,15 @@ pub async fn main(
             "/vault/recipient-keys/userinfo",
             vault_attributes::recipient_key,
         )
+        .get_async(
+            "/vault/shares/userinfo/name",
+            vault_attributes::share_status,
+        )
+        .post_async("/vault/shares/userinfo/name", vault_attributes::share)
+        .delete_async(
+            "/vault/shares/userinfo/name",
+            vault_attributes::revoke_share,
+        )
         .get_async("/vault/vault.js", vault_attributes::script)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .put_async("/vault/attributes/:attribute", vault_attributes::put)

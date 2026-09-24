@@ -7,6 +7,16 @@ export default {
     ) {
       return new Response(null, { status: 204 });
     }
+    if (
+      request.method === 'POST' &&
+      /^\/internal\/recipient-keys\/[A-Za-z0-9_-]{43}\/validate-envelope$/.test(url.pathname)
+    ) {
+      const body: unknown = await request.json();
+      if (typeof body !== 'object' || body === null || !('frame' in body)) {
+        return new Response(null, { status: 503 });
+      }
+      return new Response(null, { status: 204 });
+    }
     return new Response(null, { status: 404 });
   },
 };

@@ -3,6 +3,7 @@
 export type UserInfoRecipient = {
   service_id: 'userinfo';
   algorithm: 'ML-KEM-768';
+  envelope_suite: 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1';
   key_id: string;
   public_key: string;
   generation: number;
@@ -58,6 +59,7 @@ export async function validateUserInfoRecipient(value: unknown): Promise<UserInf
   if (
     item.service_id !== 'userinfo' ||
     item.algorithm !== 'ML-KEM-768' ||
+    item.envelope_suite !== 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1' ||
     typeof item.key_id !== 'string' ||
     !/^[A-Za-z0-9_-]{43}$/.test(item.key_id) ||
     typeof item.public_key !== 'string' ||

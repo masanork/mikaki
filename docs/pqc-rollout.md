@@ -1,10 +1,10 @@
 # Phased adoption of ML-KEM and ML-DSA
 
-**Status, 2026-09-23:** No post-quantum algorithm is enabled as a product feature. The [isolated probes](../design/probes/pqc/README.md) exercised ML-KEM-768 and ML-DSA-65 across native, Node Wasm, and Chromium; NIST ACVP sample vectors; interoperability with noble; and an HPKE-wrapped Vault data key with rejection of version mismatches. A FIDO registration/assertion capture page and verification CLI are ready for testing when hardware is available. Current Vault format, passkey enrollment, and OIDC signing have not changed.
+**Status, 2026-09-24:** Production sharing remains disabled. The product browser sender and claim Worker receiver implement a candidate ML-KEM-768 HPKE envelope. A D1-disabled owner approval path stores an envelope and system Grant atomically and supports revocation. Node, Chromium, RustCrypto, SQLite, and local workerd tests exercise the pieces. The live Secrets Store key has not opened a product envelope. FIDO registration/assertion capture and verification tools are ready for hardware evaluation. Passkey enrollment and OIDC signing have not changed.
 
 | Boundary | Current product | Next unit of work | Activation gate |
 | --- | --- | --- | --- |
-| Vault | Owner-only PRF → HKDF → AES-GCM key wrapping, no active system recipient | Complete recipient directory, secret storage, grants, and browser/Worker envelope interoperability | Public-key authenticity and continuity, standard KEM/AEAD composition, rewrapping and recovery, independent vectors, browser performance, and old-version behavior on failure |
+| Vault | Owner-only PRF → HKDF → AES-GCM wrapping; disabled system-sharing path and candidate ML-KEM envelope | Verify a product envelope with the live recipient seed, review decryptability and key failure behavior, then design RP-specific ClaimRelease | Public-key authenticity and continuity, standard KEM/AEAD composition, independent vectors, browser performance, and failure behavior |
 | FIDO authenticator | Product registration/verification uses ES256 (COSE `-7`) | Measure support in actual authenticator, browser, and OS; add isolated ML-DSA-65 (COSE `-49`) registration/assertion verification | Successful enrollment and reauthentication on supported hardware, tamper and mix-up rejection, coexistence with ES256 credentials, and a defined enrollment policy |
 | OIDC/JOSE | Production client authentication uses ES256; ID Tokens use ES256/RS256 | Probe RFC 9964 ML-DSA JWK/JWS interoperability | Check RP libraries, JWKS and rotation, HTTP limits, conformance profile, and signing-key custody before explicit per-client enablement |
 
@@ -12,17 +12,17 @@ ML-KEM establishes a shared secret for key delivery; it is not a passkey signatu
 
 ## Sequence before product use
 
-1. Complete the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys, IDs, generations, and lifecycle state; the dedicated claim Worker's Secrets Store binding holds the private seed. Generation 1 is active and verified. Calling the browser validator from the future envelope flow and defining recovery before shared data depends on this key remain.
-2. Only when the owner unlocks an attribute, create an additional recipient envelope for that revision's data key. Bind origin, attribute, revision, service, and key ID in HPKE info/AAD. Keep the owner envelope. Publish the envelope and grant in the same version; disable system sharing for an update whose key delivery fails.
-3. Test revocation, rotation, attribute updates, wrong key/revision/attribute substitution, and key-service failures across Worker and browser before connecting UserInfo. Owner-only Vault use must not require a PQC key or ML-DSA-capable FIDO device.
+1. Finish the [UserInfo recipient-key lifecycle](vault-recipient-key-lifecycle.md). D1 holds public keys and lifecycle state; the claim Worker's Secrets Store binding holds the private seed. Generation 1 is active and key identity was verified. Validate a product envelope using that live seed and define recovery before shared data depends on it.
+2. The owner-only browser now creates an additional recipient envelope for a saved attribute's data key after PRF unlock. It binds origin, account, attribute, revision, service, key ID, and exact ciphertext in HPKE info/AAD. D1 stores the envelope, Grant, and audit atomically. The D1 policy starts disabled; attribute updates and policy disable revoke the Grant.
+3. The claim Worker now checks decryptability before accepting a system Grant. Test that path with the live Secrets Store seed, then test rotation, wrong key/revision/attribute substitution, and key-service failures across Worker and browser. Add RP-specific consent and ClaimRelease before UserInfo returns `name`. Owner-only Vault use must not require a PQC key or ML-DSA-capable FIDO device.
 
-The isolated HPKE probe validates part of step 2's cryptographic boundary. Directory and lifecycle code and a provisioned generation-1 recipient exist, but grants and browser sharing are not connected to the product.
+The system Grant only permits a future claim service to consider the attribute; it grants no RP access by itself.
 
 An assigned COSE number does not establish support in an available FIDO device, browser, or OS. An existing credential cannot be converted to PQC on the server. Enroll a new credential on verified hardware and run it alongside ES256 before migration. Do not advertise `-49` in `pubKeyCredParams` until verification works, or label an implicit fallback as PQC support.
 
 At the time of the probe, Cloudflare Workers' WebCrypto compatibility table did not list ML-KEM or ML-DSA. Begin with isolated Rust/Wasm validation rather than assuming built-in support. The candidate RustCrypto `ml-kem 0.3.2` and `ml-dsa 0.1.1`, and the noble comparison implementation, state that they lack independent audit. Before product integration, extend known-answer coverage across parameters, review key/signature size bounds and dependencies, and measure resources in the actual Worker and browser.
 
-The Vault HPKE probe implements draft-04 and decrypted one official [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) for ML-KEM-768/HKDF-SHA256/AES-128-GCM. The product AES-256-GCM envelope format and browser/Worker interoperability remain unverified. Keep product issuance separate from “implemented” and “accepted for reading,” and make each explicit in operational policy if adopted.
+The product envelope currently names draft-04 and decrypted one official [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) for ML-KEM-768/HKDF-SHA256/AES-128-GCM. The product AES-256-GCM sender and independent RustCrypto receiver interoperate locally. Live-key acceptance and final suite versioning remain gates before enabling writes.
 
 ## References
 

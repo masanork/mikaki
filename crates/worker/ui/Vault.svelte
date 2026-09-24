@@ -7,8 +7,11 @@
     openAttribute,
     parseOwnerEnvelope,
     sealAttribute,
+    withOpenedAttribute,
     type SealedAttribute,
   } from './vault-crypto.js';
+  import { fetchVerifiedUserInfoRecipient } from './recipient-directory.js';
+  import { sealUserInfoDataKey } from './vault-recipient-envelope.js';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import type { Locale } from './paraglide/runtime.js';
@@ -21,6 +24,14 @@
     id: string;
     body: string | undefined;
   };
+  type ShareStatus = {
+    enabled: boolean;
+    grant_ttl_seconds: number;
+    active: boolean;
+    grant_version: number | null;
+    expires_at: number | null;
+  };
+  type PendingShare = { method: 'POST' | 'DELETE'; revision: number; id: string; body?: string };
 
   let { locale }: { locale: Locale } = $props();
 
@@ -30,6 +41,9 @@
   let current: RecordResponse | null = $state(null);
   let currentRevision = $state(0);
   let sessionCredential: Uint8Array<ArrayBuffer> | null = $state(null);
+  let accountId = $state('');
+  let sharing: ShareStatus | null = $state(null);
+  let pendingShare: PendingShare | null = null;
   let opened = $state(false);
   let loading = $state(true);
   let pending: Pending | null = null;
@@ -38,6 +52,32 @@
 
   function message(value: string): void {
     status = value;
+  }
+
+  function shareRecord(value: unknown): value is ShareStatus {
+    if (typeof value !== 'object' || value === null) return false;
+    const item = value as Partial<ShareStatus>;
+    return (
+      typeof item.enabled === 'boolean' &&
+      Number.isSafeInteger(item.grant_ttl_seconds) &&
+      typeof item.grant_ttl_seconds === 'number' &&
+      item.grant_ttl_seconds >= 60 &&
+      typeof item.active === 'boolean' &&
+      (item.grant_version === null ||
+        (Number.isSafeInteger(item.grant_version) && typeof item.grant_version === 'number')) &&
+      (item.expires_at === null ||
+        (Number.isSafeInteger(item.expires_at) && typeof item.expires_at === 'number'))
+    );
+  }
+
+  async function loadShareStatus(): Promise<void> {
+    const response = await fetch('/vault/shares/userinfo/name', { cache: 'no-store' });
+    if (!response.ok) {
+      sharing = null;
+      return;
+    }
+    const body: unknown = await response.json();
+    sharing = shareRecord(body) ? body : null;
   }
 
   function record(value: unknown): value is RecordResponse {
@@ -87,7 +127,10 @@
     current = null;
     currentRevision = 0;
     pending = null;
+    pendingShare = null;
     name = '';
+    sharing = null;
+    accountId = '';
     const session = await fetch('/vault/session', { cache: 'no-store' });
     if (!session.ok) throw new Error(m.vaultExpired());
     const sessionBody: unknown = await session.json();
@@ -95,11 +138,18 @@
       typeof sessionBody !== 'object' ||
       sessionBody === null ||
       !('credential_id' in sessionBody) ||
-      typeof sessionBody.credential_id !== 'string'
+      typeof sessionBody.credential_id !== 'string' ||
+      !('account_id' in sessionBody) ||
+      typeof sessionBody.account_id !== 'string' ||
+      sessionBody.account_id.length === 0
     ) {
       throw new Error(m.vaultCredentialMissing());
     }
     sessionCredential = decodeBase64Url(sessionBody.credential_id);
+    accountId = sessionBody.account_id;
+    await loadShareStatus().catch(() => {
+      sharing = null;
+    });
     const response = await fetch(endpoint, { cache: 'no-store' });
     if (response.status === 404) {
       const etag = response.headers.get('ETag');
@@ -128,15 +178,23 @@
       if (current) {
         const envelope = parseOwnerEnvelope(current.owner_envelope);
         const output = await prf(envelope.credentialId, envelope.prfInput);
-        const plaintext = await openAttribute(
-          current,
-          output,
-          envelope.credentialId,
-          origin,
-          attribute,
-          current.revision,
-        );
-        name = new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+        try {
+          const plaintext = await openAttribute(
+            current,
+            output,
+            envelope.credentialId,
+            origin,
+            attribute,
+            current.revision,
+          );
+          try {
+            name = new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+          } finally {
+            plaintext.fill(0);
+          }
+        } finally {
+          output.fill(0);
+        }
       } else {
         if (!sessionCredential) throw new Error(m.vaultCredentialMissing());
         const output = await prf(sessionCredential, newPrfInput());
@@ -172,17 +230,22 @@
           if (!credentialId) throw new Error(m.vaultCredentialMissing());
           const prfInput = envelope?.prfInput ?? newPrfInput();
           const output = await prf(credentialId, prfInput);
-          const sealed = await sealAttribute(
-            new TextEncoder().encode(value),
-            output,
-            credentialId,
-            prfInput,
-            origin,
-            attribute,
-            revision + 1,
-          );
-          output.fill(0);
-          body = JSON.stringify(sealed);
+          const plaintext = new TextEncoder().encode(value);
+          try {
+            const sealed = await sealAttribute(
+              plaintext,
+              output,
+              credentialId,
+              prfInput,
+              origin,
+              attribute,
+              revision + 1,
+            );
+            body = JSON.stringify(sealed);
+          } finally {
+            output.fill(0);
+            plaintext.fill(0);
+          }
         }
         pending = {
           method,
@@ -207,6 +270,82 @@
       message(method === 'PUT' ? m.vaultSaved() : m.vaultDeleted());
     } catch (error) {
       message(error instanceof Error ? error.message : m.vaultOperationFailed());
+    }
+  }
+
+  async function changeShare(method: 'POST' | 'DELETE'): Promise<void> {
+    if (!opened || !current || !sharing || !accountId) return;
+    if (method === 'POST' && !sharing.enabled) return;
+    if (method === 'DELETE' && (!sharing.active || !sharing.grant_version)) return;
+    try {
+      const revision = method === 'POST' ? current.revision : sharing.grant_version;
+      if (revision === null) return;
+      if (pendingShare && (pendingShare.method !== method || pendingShare.revision !== revision)) {
+        throw new Error(m.vaultRetryChanged());
+      }
+      if (!pendingShare) {
+        let body: string | undefined;
+        if (method === 'POST') {
+          const recipient = await fetchVerifiedUserInfoRecipient(fetch, localStorage);
+          const envelope = parseOwnerEnvelope(current.owner_envelope);
+          const output = await prf(envelope.credentialId, envelope.prfInput);
+          try {
+            const ciphertext = decodeBase64Url(current.ciphertext);
+            const frame = await withOpenedAttribute(
+              current,
+              output,
+              envelope.credentialId,
+              origin,
+              attribute,
+              current.revision,
+              async (plaintext, dataKey) => {
+                try {
+                  return await sealUserInfoDataKey(dataKey, recipient, {
+                    origin,
+                    accountId,
+                    revision: current.revision,
+                    ciphertext,
+                  });
+                } finally {
+                  plaintext.fill(0);
+                }
+              },
+            );
+            const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', ciphertext));
+            body = JSON.stringify({
+              frame: encodeBase64Url(frame),
+              key_id: recipient.key_id,
+              generation: recipient.generation,
+              directory_revision: recipient.revision,
+              ciphertext_sha256: encodeBase64Url(digest),
+            });
+          } finally {
+            output.fill(0);
+          }
+        }
+        pendingShare = {
+          method,
+          revision,
+          id: encodeBase64Url(crypto.getRandomValues(new Uint8Array(32))),
+          body,
+        };
+      }
+      const operation = pendingShare;
+      const response = await fetch('/vault/shares/userinfo/name', {
+        method,
+        headers: {
+          'X-Operation-ID': operation.id,
+          'If-Match': `"${operation.revision}"`,
+          ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: operation.body ?? null,
+      });
+      if (!response.ok) throw new Error(m.vaultShareFailed());
+      pendingShare = null;
+      await loadShareStatus();
+      message(method === 'POST' ? m.vaultShared() : m.vaultShareRevoked());
+    } catch (error) {
+      message(error instanceof Error ? error.message : m.vaultShareFailed());
     }
   }
 
@@ -252,5 +391,26 @@
     disabled={!opened || current === null}
     onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
   >
+  {#if sharing?.enabled && current}
+    <p>
+      {m.vaultShareExplanation({
+        expiry: new Date(
+          sharing.active && sharing.expires_at
+            ? sharing.expires_at * 1000
+            : Date.now() + sharing.grant_ttl_seconds * 1000,
+        ).toLocaleString(locale),
+      })}
+    </p>
+    {#if sharing.active}
+      <p>{m.vaultShareActive()}</p>
+      <button type="button" disabled={!opened} onclick={() => changeShare('DELETE')}
+        >{m.vaultShareRevoke()}</button
+      >
+    {:else}
+      <button type="button" disabled={!opened} onclick={() => changeShare('POST')}
+        >{m.vaultShare()}</button
+      >
+    {/if}
+  {/if}
   <p id="status" role="status">{status}</p>
 </main>
