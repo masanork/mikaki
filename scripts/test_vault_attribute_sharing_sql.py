@@ -17,6 +17,7 @@ class VaultSharingSqlTest(unittest.TestCase):
             "0002_vault_attribute_storage.sql",
             "0007_vault_recipient_keys.sql",
             "0008_vault_attribute_sharing.sql",
+            "0009_vault_recipient_disable_grants.sql",
         ):
             self.db.executescript((MIGRATIONS / name).read_text())
         self.db.execute("INSERT INTO account_security(account_id) VALUES('owner')")
@@ -110,6 +111,19 @@ class VaultSharingSqlTest(unittest.TestCase):
         self.grant()
         self.db.execute(
             "UPDATE vault_share_policy SET grant_ttl_seconds=60,revision=3 WHERE id=1"
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status,version FROM vault_attribute_grant").fetchone(),
+            ("revoked", 2),
+        )
+
+    def test_disabling_recipient_key_revokes_grant(self):
+        self.db.execute("UPDATE vault_share_policy SET enabled=1,revision=2 WHERE id=1")
+        self.grant()
+        self.db.execute(
+            """UPDATE vault_recipient_key SET state='disabled',revision=3,retired_at=103
+               WHERE key_id=?""",
+            ("k" * 43,),
         )
         self.assertEqual(
             self.db.execute("SELECT status,version FROM vault_attribute_grant").fetchone(),

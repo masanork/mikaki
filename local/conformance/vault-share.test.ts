@@ -158,6 +158,59 @@ test('Vault system sharing is opt-in, revision-bound, and revocable in workerd',
     });
     assert.equal(renewed.status, 200, await renewed.text());
     assert.equal((await shareState()).active, true);
+    await env.DB.prepare(
+      "UPDATE vault_recipient_key SET state='disabled',revision=3,retired_at=? WHERE key_id=?",
+    )
+      .bind(now + 2, keyId)
+      .run();
+    assert.equal((await shareState()).active, false);
+    assert.deepEqual(
+      await env.DB.prepare(
+        "SELECT status,version FROM vault_attribute_grant WHERE account_id='owner'",
+      ).first(),
+      { status: 'revoked', version: 4 },
+    );
+    assert.equal(
+      (
+        await worker.fetch('https://mikaki.test/vault/recipient-keys/userinfo', {
+          headers: cookie,
+        })
+      ).status,
+      404,
+    );
+    const replacementPublicKey = randomBytes(1184);
+    const replacementId = createHash('sha256').update(replacementPublicKey).digest('base64url');
+    await env.DB.prepare(
+      `INSERT INTO vault_recipient_key
+       (key_id,service_id,algorithm,public_key,secret_ref,generation,state,revision,created_at)
+       VALUES(?,'userinfo','ML-KEM-768',?,'VAULT_USERINFO_MLKEM_REPLACEMENT',2,'staged',1,?)`,
+    )
+      .bind(replacementId, replacementPublicKey, now + 2)
+      .run();
+    await env.DB.prepare(
+      "UPDATE vault_recipient_key SET state='active',revision=2,activated_at=? WHERE key_id=?",
+    )
+      .bind(now + 3, replacementId)
+      .run();
+    const replacementFrame = Buffer.concat([
+      Buffer.from([0x4d, 0x4b, 0x56, 0x45, 1, 0, 0x41, 0, 1, 0, 2]),
+      Buffer.from(replacementId, 'base64url'),
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 2]),
+      randomBytes(1088 + 48),
+    ]);
+    const reshared = await worker.fetch(shareUrl, {
+      method: 'POST',
+      headers: mutationHeaders(operation(), 1, true),
+      body: JSON.stringify({
+        frame: replacementFrame.toString('base64url'),
+        key_id: replacementId,
+        generation: 2,
+        directory_revision: 2,
+        ciphertext_sha256: digest,
+      }),
+    });
+    assert.equal(reshared.status, 200, await reshared.text());
+    assert.equal((await shareState()).active, true);
     const updated = await worker.fetch(attributeUrl, {
       method: 'PUT',
       headers: mutationHeaders(operation(), 1, true),
