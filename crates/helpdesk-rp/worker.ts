@@ -23,6 +23,7 @@ type Session = {
   lease_until: number;
   parent_expires_at: number;
   idle_expires_at: number;
+  idle_timeout_seconds: number;
 };
 type Ticket = {
   id: string;
@@ -205,6 +206,8 @@ async function checkSession(env: Env, sid: string, sub: string, authTime: number
     typeof result.lease_ttl !== 'number' ||
     typeof result.app_idle_timeout !== 'number' ||
     !Number.isSafeInteger(result.expires_at) ||
+    !Number.isSafeInteger(result.lease_ttl) ||
+    !Number.isSafeInteger(result.app_idle_timeout) ||
     result.lease_ttl <= 0 ||
     result.lease_ttl > 300 ||
     result.app_idle_timeout <= 0
@@ -216,6 +219,7 @@ async function checkSession(env: Env, sid: string, sub: string, authTime: number
     lease,
     parent: result.expires_at,
     idle: Math.min(now() + result.app_idle_timeout, result.expires_at),
+    idleTimeout: result.app_idle_timeout,
   };
 }
 async function current(request: Request, env: Env): Promise<Session | null> {
@@ -229,16 +233,33 @@ async function current(request: Request, env: Env): Promise<Session | null> {
     .bind(await hash(token), now(), now())
     .first<Session>();
   if (!session) return null;
-  if (session.lease_until <= now()) {
-    const valid = await checkSession(env, session.sid, session.sub, session.auth_time);
-    session = await db
-      .prepare(
-        'UPDATE rp_session SET lease_until=? WHERE token_hash=? AND lease_until=? AND idle_expires_at>? AND parent_expires_at>? RETURNING *',
-      )
-      .bind(valid.lease, session.token_hash, session.lease_until, now(), now())
-      .first<Session>();
-    if (!session) fail(401, 'session_changed');
-  }
+  const valid =
+    session.lease_until <= now()
+      ? await checkSession(env, session.sid, session.sub, session.auth_time)
+      : null;
+  const timestamp = now();
+  if (valid && valid.lease <= timestamp) fail(401, 'session_expired');
+  const parent = Math.min(session.parent_expires_at, valid?.parent ?? session.parent_expires_at);
+  session = await db
+    .prepare(
+      'UPDATE rp_session SET lease_until=MIN(MAX(lease_until,?),?), parent_expires_at=MIN(parent_expires_at,?), idle_timeout_seconds=?, idle_expires_at=MIN(?+?,parent_expires_at,?) WHERE token_hash=? AND idle_expires_at>? AND parent_expires_at>? AND (lease_until>? OR ?=1) RETURNING *',
+    )
+    .bind(
+      valid?.lease ?? session.lease_until,
+      parent,
+      parent,
+      valid?.idleTimeout ?? session.idle_timeout_seconds,
+      timestamp,
+      valid?.idleTimeout ?? session.idle_timeout_seconds,
+      parent,
+      session.token_hash,
+      timestamp,
+      timestamp,
+      timestamp,
+      valid ? 1 : 0,
+    )
+    .first<Session>();
+  if (!session) fail(401, 'session_changed');
   return session;
 }
 async function requireSession(request: Request, env: Env): Promise<Session> {
@@ -247,7 +268,10 @@ async function requireSession(request: Request, env: Env): Promise<Session> {
   return session;
 }
 async function staff(env: Env, sub: string): Promise<boolean> {
-  return !!(await env.DB.prepare('SELECT sub FROM staff WHERE sub=?').bind(sub).first());
+  return !!(await env.DB.withSession('first-primary')
+    .prepare('SELECT sub FROM staff WHERE sub=?')
+    .bind(sub)
+    .first());
 }
 function formCsrf(value: string): string {
   return `<input type="hidden" name="csrf" value="${escape(value)}">`;
@@ -338,7 +362,7 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
   const valid = await checkSession(env, payload.sid, payload.sub, payload.auth_time);
   const secret = random();
   await env.DB.prepare(
-    'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at) VALUES(?,?,?,?,?,?,?)',
+    'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at,idle_timeout_seconds) VALUES(?,?,?,?,?,?,?,?)',
   )
     .bind(
       await hash(secret),
@@ -348,6 +372,7 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
       valid.lease,
       valid.parent,
       valid.idle,
+      valid.idleTimeout,
     )
     .run();
   return redirect(env, '/tickets', cookieHeader(SESSION, secret, valid.parent - now()));
@@ -393,7 +418,7 @@ async function createTicket(request: Request, env: Env): Promise<Response> {
   if (error) fail(400, error);
   const id = crypto.randomUUID(),
     timestamp = now();
-  await env.DB.batch([
+  const [created, inserted] = await env.DB.batch([
     env.DB.prepare(
       'INSERT INTO ticket(id,owner_sub,title,created_at,updated_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM rp_session WHERE token_hash=? AND lease_until>? AND idle_expires_at>? AND parent_expires_at>?)',
     ).bind(
@@ -408,9 +433,10 @@ async function createTicket(request: Request, env: Env): Promise<Response> {
       timestamp,
     ),
     env.DB.prepare(
-      'INSERT INTO ticket_message(id,ticket_id,author_sub,body,created_at) VALUES(?,?,?,?,?)',
-    ).bind(crypto.randomUUID(), id, session.sub, message.trim(), timestamp),
+      'INSERT INTO ticket_message(id,ticket_id,author_sub,body,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ticket WHERE id=? AND owner_sub=?)',
+    ).bind(crypto.randomUUID(), id, session.sub, message.trim(), timestamp, id, session.sub),
   ]);
+  if (created.meta.changes !== 1 || inserted.meta.changes !== 1) fail(409, 'session_changed');
   return redirect(env, `/tickets/${id}`);
 }
 async function mutateTicket(

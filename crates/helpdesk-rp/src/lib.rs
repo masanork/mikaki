@@ -27,14 +27,15 @@ pub const ARTICLES: &[Article] = &[
 ];
 
 pub fn ticket_error(title: &str, message: &str) -> &'static str {
-    if title.trim().is_empty() || title.len() > 120 || title.chars().any(char::is_control) {
+    if title.trim().is_empty() || title.chars().count() > 120 || title.chars().any(char::is_control)
+    {
         return "invalid_title";
     }
     reply_error(message)
 }
 
 pub fn reply_error(message: &str) -> &'static str {
-    if message.trim().is_empty() || message.len() > 4000 || message.contains('\0') {
+    if message.trim().is_empty() || message.chars().count() > 4000 || message.contains('\0') {
         "invalid_message"
     } else {
         ""
@@ -65,6 +66,8 @@ mod tests {
         assert_eq!(ticket_error("Hi", "Help"), "");
         assert_eq!(ticket_error(" ", "Help"), "invalid_title");
         assert_eq!(ticket_error(&"x".repeat(121), "Help"), "invalid_title");
+        assert_eq!(ticket_error(&"あ".repeat(120), "Help"), "");
+        assert_eq!(ticket_error(&"あ".repeat(121), "Help"), "invalid_title");
         assert_eq!(reply_error("\0"), "invalid_message");
         assert_eq!(reply_error(&"x".repeat(4001)), "invalid_message");
         assert_eq!(ARTICLES.len(), 3);

@@ -52,13 +52,23 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       .bind(ticketId)
       .first()) as { owner_sub: string };
     assert.ok(owner.owner_sub);
+    await local.rpDB
+      .prepare('UPDATE rp_session SET idle_expires_at=?,idle_timeout_seconds=? WHERE sub=?')
+      .bind(now() + 5, 60, owner.owner_sub)
+      .run();
+    await page.reload();
+    const renewed = (await local.rpDB
+      .prepare('SELECT idle_expires_at FROM rp_session WHERE sub=?')
+      .bind(owner.owner_sub)
+      .first()) as { idle_expires_at: number };
+    assert.ok(renewed.idle_expires_at > now() + 50);
     await page.getByLabel('返信').fill('端末の設定を確認しました');
     await page.getByRole('button', { name: '送信' }).click();
     assert.match(await page.locator('main').innerText(), /端末の設定を確認しました/);
     const strangerToken = crypto.randomUUID();
     await local.rpDB
       .prepare(
-        'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at) VALUES(?,?,?,?,?,?,?)',
+        'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at,idle_timeout_seconds) VALUES(?,?,?,?,?,?,?,?)',
       )
       .bind(
         await hash(strangerToken),
@@ -68,6 +78,7 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
         now() + 60,
         now() + 600,
         now() + 600,
+        600,
       )
       .run();
     const denied = await context.request.get(`${RP}/tickets/${ticketId}`, {
@@ -92,6 +103,10 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
     await page.reload();
     assert.match(await page.locator('main').innerText(), /担当者からの返信/);
     await local.rpDB.prepare('DELETE FROM staff WHERE sub=?').bind('other-sub').run();
+    const revokedStaff = await context.request.get(`${RP}/tickets/${ticketId}`, {
+      headers: { Cookie: `__Host-help-session=${strangerToken}` },
+    });
+    assert.equal(revokedStaff.status(), 404);
     await page.getByRole('button', { name: '終了する' }).click();
     assert.match(await page.locator('main').innerText(), /終了/);
     const rpCookies = (await context.cookies()).filter((c) => c.domain === '127.0.0.1');

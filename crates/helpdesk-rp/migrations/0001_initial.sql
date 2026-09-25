@@ -12,7 +12,8 @@ CREATE TABLE rp_session (
   auth_time INTEGER NOT NULL,
   lease_until INTEGER NOT NULL,
   parent_expires_at INTEGER NOT NULL,
-  idle_expires_at INTEGER NOT NULL
+  idle_expires_at INTEGER NOT NULL,
+  idle_timeout_seconds INTEGER NOT NULL
 );
 CREATE TABLE staff (sub TEXT PRIMARY KEY);
 CREATE TABLE ticket (
