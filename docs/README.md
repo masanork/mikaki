@@ -8,6 +8,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | --- | --- |
 | Run the disposable local flow | [Getting started](getting-started.md) and the detailed [local harness record](../local/README.md) |
 | Integrate an RP | [RP integration](rp-integration.md), [client operations](rp-client-operations.md), and [managed session check](rp-session-check.md) |
+| Exercise a concrete RP locally | [Help and helpdesk RP](../crates/helpdesk-rp/README.md) |
 | Enroll an account | [Account enrollment](account-enrollment.md) |
 | Operate the Worker | [Cloudflare deployment](cloudflare-deployment.md) and [runtime configuration](runtime-configuration.md) |
 | Review conformance evidence | [WebAuthn](../local/conformance/README.md) and [OIDC](oidc-core-conformance.md) |

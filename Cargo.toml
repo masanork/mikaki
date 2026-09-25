@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/webauthn", "crates/auth", "crates/oidc", "crates/browser-wasm", "crates/worker", "crates/userinfo-claim-worker"]
+members = ["crates/webauthn", "crates/auth", "crates/oidc", "crates/browser-wasm", "crates/worker", "crates/userinfo-claim-worker", "crates/helpdesk-rp"]
 exclude = ["design/probes/es256", "design/probes/pqc", "fuzz"]
 resolver = "3"
 

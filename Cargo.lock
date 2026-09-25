@@ -886,6 +886,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mikaki-helpdesk-rp"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "mikaki-oidc"
 version = "0.1.0"
 dependencies = [

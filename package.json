@@ -6,10 +6,12 @@
   "scripts": {
     "build:policy": "node scripts/build_policy.ts",
     "build:wasm": "wasm-pack build crates/browser-wasm --target web --release --out-dir pkg -- --locked",
+    "build:helpdesk": "wasm-pack build crates/helpdesk-rp --target bundler --release --out-dir pkg -- --locked",
     "build:ui": "vite build --config local/ui/vite.config.ts",
-    "build": "npm run build:policy && npm run build:wasm && npm run build:ui",
+    "build": "npm run build:policy && npm run build:wasm && npm run build:helpdesk && npm run build:ui",
     "test:e2e": "node --test --test-concurrency=1 local/test/*.test.ts",
     "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json",
+    "check:helpdesk": "node_modules/@typescript/native/bin/tsc --project crates/helpdesk-rp/tsconfig.json",
     "check:ui": "svelte-check --tsconfig local/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:worker-ui": "node_modules/@typescript/native/bin/tsc --project crates/worker/ui/tsconfig.json --noEmit && svelte-check --tsconfig crates/worker/ui/tsconfig.json --tsgo --fail-on-warnings",
     "check:product-sources": "node scripts/check_product_sources.ts",
@@ -17,9 +19,10 @@
     "check:i18n": "node scripts/check_i18n.ts",
     "generate:webauthn-interop": "node crates/webauthn/testdata/generate_interop.ts",
     "probe:recipient-envelope": "esbuild scripts/probe-recipient-envelope.ts --bundle --platform=node --format=esm --external:wrangler --outfile=local/generated/probe-recipient-envelope.mjs && node local/generated/probe-recipient-envelope.mjs",
-    "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/worker/ui/*.{ts,svelte,json}' 'crates/webauthn/testdata/*.ts' 'scripts/*.ts' 'design/probes/**/*.ts' package.json .prettierrc.json 'tsconfig.node*.json'",
+    "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/helpdesk-rp/worker.ts' 'crates/helpdesk-rp/wasm*.d.ts' 'crates/helpdesk-rp/*.{json,jsonc}' 'crates/worker/ui/*.{ts,svelte,json}' 'crates/webauthn/testdata/*.ts' 'scripts/*.ts' 'design/probes/**/*.ts' package.json .prettierrc.json 'tsconfig.node*.json'",
     "health": "node scripts/health.ts",
-    "dev": "node local/dev.ts"
+    "dev": "node local/dev.ts",
+    "dev:helpdesk": "node local/helpdesk-dev.ts"
   },
   "dependencies": {
     "@noble/post-quantum": "0.7.1",
@@ -27,6 +30,7 @@
     "svelte": "5.57.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260924.1",
     "@inlang/paraglide-js": "^2.25.4",
     "@inlang/plugin-message-format": "^4.4.4",
     "@playwright/test": "1.63.0",
