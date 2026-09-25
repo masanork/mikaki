@@ -53,6 +53,9 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     const page = await context.newPage();
     const errors: string[] = [];
     let finishBody;
+    let lostFinishBody;
+    let loseNextFinishResponse = false;
+    let concurrentFinishStatuses: number[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
@@ -73,8 +76,10 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       async (route) => {
         try {
           const request = route.request();
-          if (new URL(request.url()).pathname === '/register/finish')
-            finishBody = request.postData();
+          if (new URL(request.url()).pathname === '/register/finish') {
+            if (loseNextFinishResponse) lostFinishBody = request.postData();
+            else finishBody = request.postData();
+          }
           if (new URL(request.url()).pathname === '/authorize') {
             await route.fulfill({
               status: 200,
@@ -83,12 +88,24 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
             });
             return;
           }
-          const response = await worker.fetch(request.url(), {
-            method: request.method(),
-            headers: await request.allHeaders(),
-            redirect: 'manual',
-            ...(request.postDataBuffer() ? { body: request.postDataBuffer() } : {}),
-          });
+          const forward = async () =>
+            worker.fetch(request.url(), {
+              method: request.method(),
+              headers: await request.allHeaders(),
+              redirect: 'manual',
+              ...(request.postDataBuffer() ? { body: request.postDataBuffer() } : {}),
+            });
+          const lostFinish =
+            new URL(request.url()).pathname === '/register/finish' && loseNextFinishResponse;
+          const responses = await Promise.all(lostFinish ? [forward(), forward()] : [forward()]);
+          if (lostFinish) {
+            concurrentFinishStatuses = responses.map((response) => response.status).sort();
+            assert.deepEqual(concurrentFinishStatuses, [200, 400]);
+            loseNextFinishResponse = false;
+            await route.abort('failed');
+            return;
+          }
+          const response = responses[0];
           await route.fulfill({
             status: response.status,
             headers: Object.fromEntries(response.headers),
@@ -246,13 +263,45 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     ]);
     await page.goto(requiredHeader(normalPending, 'location'));
     await page.getByLabel('招待コード').fill(normalInvitation);
+    loseNextFinishResponse = true;
     await page.getByRole('button', { name: '招待で登録する' }).click();
-    await page.getByRole('heading', { name: '登録が完了しました' }).waitFor();
+    await page.getByRole('alert').waitFor();
+    assert.ok(lostFinishBody);
+    assert.deepEqual(concurrentFinishStatuses, [200, 400]);
+    assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n, 2);
+    assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 2);
+    const lostResponseReplay = await worker.fetch(`${issuer}/register/finish`, {
+      method: 'POST',
+      headers: {
+        cookie: normalBrowserCookie,
+        origin: issuer,
+        'content-type': 'application/json',
+      },
+      body: lostFinishBody,
+    });
+    assert.equal(lostResponseReplay.status, 400);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n, 2);
     assert.equal(
       (await DB.prepare("SELECT COUNT(*) AS n FROM account_role WHERE role='admin'").first()).n,
       1,
     );
+    await context.clearCookies();
+    const afterLostResponse = await worker.fetch(authorize.href, { redirect: 'manual' });
+    const recoveryBrowserCookie = requiredHeader(afterLostResponse, 'set-cookie').split(';')[0];
+    await context.addCookies([
+      {
+        name: '__Host-op-browser',
+        value: recoveryBrowserCookie.split('=')[1],
+        domain: 'mikaki.test',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    await page.goto(requiredHeader(afterLostResponse, 'location'));
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
