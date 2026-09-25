@@ -100,7 +100,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
           const responses = await Promise.all(lostFinish ? [forward(), forward()] : [forward()]);
           if (lostFinish) {
             concurrentFinishStatuses = responses.map((response) => response.status).sort();
-            assert.equal(responses.filter((response) => response.status === 200).length, 1);
+            assert.deepEqual(concurrentFinishStatuses, [200, 400]);
             loseNextFinishResponse = false;
             await route.abort('failed');
             return;
@@ -267,7 +267,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').waitFor();
     assert.ok(lostFinishBody);
-    assert.equal(concurrentFinishStatuses.filter((status) => status === 200).length, 1);
+    assert.deepEqual(concurrentFinishStatuses, [200, 400]);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n, 2);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 2);
     const lostResponseReplay = await worker.fetch(`${issuer}/register/finish`, {
