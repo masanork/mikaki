@@ -52,8 +52,43 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     const context = await browser.newContext();
     const page = await context.newPage();
     const errors: string[] = [];
+    const passkeyEvents: string[] = [];
     let finishBody;
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.text().startsWith('passkey-test:')) passkeyEvents.push(message.text());
+    });
+    await context.addInitScript(() => {
+      if (location.pathname !== '/login') return;
+      const credentials = navigator.credentials;
+      const get = credentials.get.bind(credentials);
+      let calls = 0;
+      Object.defineProperty(credentials, 'get', {
+        configurable: true,
+        value: (options: CredentialRequestOptions) => {
+          calls += 1;
+          if (calls !== 1) {
+            if (calls === 2) {
+              console.info('passkey-test:button-cancelled');
+              return Promise.reject(new DOMException('Cancelled', 'NotAllowedError'));
+            }
+            console.info('passkey-test:button-retry');
+            return get(options);
+          }
+          console.info('passkey-test:auto-start');
+          return new Promise<Credential | null>((_resolve, reject) => {
+            options.signal?.addEventListener(
+              'abort',
+              () => {
+                console.info('passkey-test:auto-aborted');
+                reject(new DOMException('Aborted', 'AbortError'));
+              },
+              { once: true },
+            );
+          });
+        },
+      });
+    });
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
     await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -211,7 +246,12 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
         sameSite: 'Lax',
       },
     ]);
+    const autoStarted = page.waitForEvent('console', {
+      predicate: (message) => message.text() === 'passkey-test:auto-start',
+    });
     await page.goto(requiredHeader(secondPending, 'location'));
+    await autoStarted;
+    await page.waitForFunction(() => document.querySelector('#passkey') !== null);
     assert.equal(
       await page
         .locator('.auth-primary')
@@ -219,7 +259,12 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       'rgb(21, 92, 165)',
     );
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('alert').waitFor();
+    assert.ok(passkeyEvents.includes('passkey-test:auto-aborted'));
+    assert.ok(passkeyEvents.includes('passkey-test:button-cancelled'));
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
+    assert.ok(passkeyEvents.includes('passkey-test:button-retry'));
     const secondSso = (await context.cookies(issuer)).find(
       (cookie) => cookie.name === '__Host-op-sso',
     );

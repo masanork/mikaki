@@ -16,6 +16,8 @@ The first production app connection uses OIDC Authorization Code with PKCE S256.
 
 The first connection decision is integrated into authentication. Display names and destinations come from registered client data, never request supplied labels. Ordinary login does not ask for an email address, password, IdP, issuer URL, or PRF output. Browser and authenticator passkey steps still vary by platform.
 
+The login page tries to open the Passkey prompt when it loads. Browsers that require a fresh user gesture may reject that attempt; the visible Passkey button then starts authentication with one click. The button also cancels a pending automatic attempt before starting its own. Starting invitation registration cancels a pending automatic attempt. This username-free screen does not use conditional autofill, which requires an input annotated for WebAuthn autofill. Device and browser coverage must be recorded separately from the Chromium virtual-authenticator test.
+
 ## Separate boundaries
 
 Mikaki SSO, each app session, and Vault unlock are independent. An OIDC token neither unlocks the Vault nor grants a Vault operation. Apps decide their own membership and roles. Start with `openid`; do not request profile or Vault permissions by default.
