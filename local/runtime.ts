@@ -87,6 +87,7 @@ export async function startLocal({ scheduler = true, helpdesk = false } = {}) {
       rpEnv.DB,
       helpdesk ? '../crates/helpdesk-rp/migrations/0001_initial.sql' : 'rp-schema.sql',
     );
+    if (helpdesk) await schema(rpEnv.DB, '../crates/helpdesk-rp/migrations/0002_backchannel.sql');
     const invitation = random();
     await opEnv.DB.batch([
       opEnv.DB.prepare('INSERT INTO client VALUES(?,1,1)').bind(CLIENT),

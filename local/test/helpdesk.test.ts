@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
+import { importJWK, SignJWT } from 'jose';
 import { startLocal } from '../runtime.ts';
-import { OP, RP, hash, now } from '../shared.ts';
+import { CLIENT, OP, RP, hash, now } from '../shared.ts';
 
 test('helpdesk RP completes passkey login and protects tickets', async () => {
   const local = await startLocal({ scheduler: false, helpdesk: true });
@@ -124,6 +125,77 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       .bind(owner.owner_sub)
       .first()) as { sid: string; token_hash: string } | null;
     assert.ok(ownerSession);
+    const opKey = await importJWK(JSON.parse(local.opKeys.private), 'ES256');
+    const logoutToken = (audience: string, extra: Record<string, unknown> = {}) =>
+      new SignJWT({
+        sid: ownerSession.sid,
+        sub: owner.owner_sub,
+        jti: crypto.randomUUID(),
+        events: { 'http://schemas.openid.net/event/backchannel-logout': {} },
+        ...extra,
+      })
+        .setProtectedHeader({ alg: 'ES256', typ: 'logout+jwt', kid: 'local-op-1' })
+        .setIssuer(OP)
+        .setAudience(audience)
+        .setIssuedAt()
+        .setExpirationTime('2m')
+        .sign(opKey);
+    const wrongAudience = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: await logoutToken('other-client') },
+    });
+    assert.equal(wrongAudience.status(), 400);
+    const withNonce = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: await logoutToken(CLIENT, { nonce: 'forbidden' }) },
+    });
+    assert.equal(withNonce.status(), 400);
+    const wrongSubject = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: await logoutToken(CLIENT, { sub: 'other-sub' }) },
+    });
+    assert.equal(wrongSubject.status(), 400);
+    const forged = await new SignJWT({
+      sid: ownerSession.sid,
+      sub: owner.owner_sub,
+      jti: crypto.randomUUID(),
+      events: { 'http://schemas.openid.net/event/backchannel-logout': {} },
+    })
+      .setProtectedHeader({ alg: 'ES256', typ: 'logout+jwt', kid: 'local-op-1' })
+      .setIssuer(OP)
+      .setAudience(CLIENT)
+      .setIssuedAt()
+      .setExpirationTime('2m')
+      .sign(await importJWK(JSON.parse(local.rpKeys.private), 'ES256'));
+    const badSignature = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: forged },
+    });
+    assert.equal(badSignature.status(), 400);
+    assert.ok(
+      await local.rpDB
+        .prepare('SELECT sid FROM rp_session WHERE sid=?')
+        .bind(ownerSession.sid)
+        .first(),
+    );
+    const signedLogout = await logoutToken(CLIENT);
+    const backchannel = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: signedLogout },
+    });
+    assert.equal(backchannel.status(), 200);
+    const duplicate = await context.request.post(`${RP}/backchannel`, {
+      form: { logout_token: signedLogout },
+    });
+    assert.equal(duplicate.status(), 200);
+    assert.equal(
+      await local.rpDB
+        .prepare('SELECT sid FROM rp_session WHERE sid=?')
+        .bind(ownerSession.sid)
+        .first(),
+      null,
+    );
+    assert.ok(
+      await local.rpDB
+        .prepare('SELECT sid FROM logout_tombstone WHERE sid=?')
+        .bind(ownerSession.sid)
+        .first(),
+    );
     await local.opDB
       .prepare('UPDATE client_session SET revoked=1 WHERE sid=?')
       .bind(ownerSession.sid)

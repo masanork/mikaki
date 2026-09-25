@@ -1,4 +1,11 @@
-import { createRemoteJWKSet, decodeProtectedHeader, importJWK, jwtVerify, SignJWT } from 'jose';
+import {
+  createRemoteJWKSet,
+  decodeProtectedHeader,
+  errors,
+  importJWK,
+  jwtVerify,
+  SignJWT,
+} from 'jose';
 import wasmModule from './pkg/mikaki_helpdesk_rp_bg.wasm';
 import {
   __wbg_set_wasm,
@@ -361,8 +368,8 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
     fail(401, 'invalid_id_token');
   const valid = await checkSession(env, payload.sid, payload.sub, payload.auth_time);
   const secret = random();
-  await env.DB.prepare(
-    'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at,idle_timeout_seconds) VALUES(?,?,?,?,?,?,?,?)',
+  const inserted = await env.DB.prepare(
+    'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at,idle_timeout_seconds) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM logout_tombstone WHERE sid=? AND expires_at>?)',
   )
     .bind(
       await hash(secret),
@@ -373,9 +380,121 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
       valid.parent,
       valid.idle,
       valid.idleTimeout,
+      payload.sid,
+      now(),
     )
     .run();
+  if (inserted.meta.changes !== 1) fail(401, 'session_revoked');
   return redirect(env, '/tickets', cookieHeader(SESSION, secret, valid.parent - now()));
+}
+
+async function backchannel(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get('content-type')?.split(';')[0] !== 'application/x-www-form-urlencoded')
+    fail(415, 'unsupported_media_type');
+  const reader = request.body?.getReader();
+  if (!reader) fail(400, 'missing_body');
+  let size = 0;
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > 16384) {
+      await reader.cancel();
+      fail(413, 'request_too_large');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(
+      new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes),
+    );
+  } catch {
+    fail(400, 'invalid_form');
+  }
+  const tokens = params.getAll('logout_token');
+  if (tokens.length !== 1 || tokens[0].length > 12000) fail(400, 'invalid_logout_token');
+  let header;
+  try {
+    header = decodeProtectedHeader(tokens[0]);
+  } catch {
+    fail(400, 'invalid_logout_token');
+  }
+  if (
+    header.alg !== 'ES256' ||
+    header.typ !== 'logout+jwt' ||
+    !header.kid ||
+    header.jku ||
+    header.jwk ||
+    header.x5u
+  )
+    fail(400, 'invalid_logout_token');
+  let payload;
+  try {
+    ({ payload } = await jwtVerify(
+      tokens[0],
+      createRemoteJWKSet(new URL(`${env.ISSUER}/jwks`), { timeoutDuration: 5000 }),
+      {
+        issuer: env.ISSUER,
+        audience: env.CLIENT_ID,
+        algorithms: ['ES256'],
+        typ: 'logout+jwt',
+        clockTolerance: 60,
+        requiredClaims: ['iss', 'aud', 'iat', 'exp', 'jti'],
+      },
+    ));
+  } catch (error) {
+    if (
+      error instanceof TypeError ||
+      error instanceof errors.JWKSTimeout ||
+      (error instanceof errors.JOSEError && error.constructor === errors.JOSEError)
+    )
+      fail(503, 'issuer_keys_unavailable');
+    fail(400, 'invalid_logout_token');
+  }
+  const event = payload.events;
+  const marker =
+    event && typeof event === 'object' && !Array.isArray(event)
+      ? event['http://schemas.openid.net/event/backchannel-logout']
+      : null;
+  if (
+    typeof payload.sid !== 'string' ||
+    !payload.sid ||
+    payload.sid.length > 128 ||
+    (payload.sub !== undefined && (typeof payload.sub !== 'string' || !payload.sub)) ||
+    typeof payload.jti !== 'string' ||
+    !payload.jti ||
+    typeof payload.iat !== 'number' ||
+    typeof payload.exp !== 'number' ||
+    payload.exp <= payload.iat ||
+    payload.exp - payload.iat > 300 ||
+    payload.iat > now() + 60 ||
+    Object.hasOwn(payload, 'nonce') ||
+    !marker ||
+    typeof marker !== 'object' ||
+    Array.isArray(marker)
+  )
+    fail(400, 'invalid_logout_token');
+  const existing = await env.DB.withSession('first-primary')
+    .prepare('SELECT sub FROM rp_session WHERE sid=? LIMIT 1')
+    .bind(payload.sid)
+    .first<{ sub: string }>();
+  if (existing && payload.sub !== undefined && existing.sub !== payload.sub)
+    fail(400, 'invalid_logout_token');
+  await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO logout_tombstone(sid,expires_at) VALUES(?,?) ON CONFLICT(sid) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at)',
+    ).bind(payload.sid, now() + 32 * 86400),
+    env.DB.prepare('DELETE FROM rp_session WHERE sid=?').bind(payload.sid),
+  ]);
+  return new Response(null, { status: 200, headers: baseHeaders(env) });
 }
 async function ticketList(request: Request, env: Env): Promise<Response> {
   const session = await requireSession(request, env);
@@ -543,6 +662,8 @@ export default {
         return html(env, `<h1>${escape(article.title)}</h1><p>${escape(article.body)}</p>`);
       }
       if (request.method === 'POST' && url.pathname === '/login') return await login(request, env);
+      if (request.method === 'POST' && url.pathname === '/backchannel')
+        return await backchannel(request, env);
       if (request.method === 'GET' && url.pathname === '/callback')
         return await callback(request, env, url);
       if (request.method === 'POST' && url.pathname === '/logout') {
@@ -587,6 +708,7 @@ export default {
     const expired = now();
     await env.DB.batch([
       env.DB.prepare('DELETE FROM login_transaction WHERE expires_at<?').bind(expired),
+      env.DB.prepare('DELETE FROM logout_tombstone WHERE expires_at<?').bind(expired),
       env.DB.prepare('DELETE FROM rp_session WHERE idle_expires_at<? OR parent_expires_at<?').bind(
         expired,
         expired,
