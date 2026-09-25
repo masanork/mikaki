@@ -26,6 +26,7 @@ export default defineConfig({
       entry: fileURLToPath(new URL(`./${entry}.ts`, import.meta.url)),
       formats: ['es'],
       fileName: () => `${entry}.js`,
+      cssFileName: entry,
     },
     rolldownOptions: { output: { inlineDynamicImports: true } },
   },

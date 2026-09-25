@@ -127,6 +127,10 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     ]);
     await page.goto(initialLoginUrl);
     await page.getByRole('button', { name: '招待で登録する' }).waitFor();
+    assert.equal(
+      await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor),
+      'rgb(244, 246, 248)',
+    );
     await page.getByLabel('招待コード').fill(invitation);
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('heading', { name: '登録が完了しました' }).waitFor();
@@ -208,6 +212,12 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       },
     ]);
     await page.goto(requiredHeader(secondPending, 'location'));
+    assert.equal(
+      await page
+        .locator('.auth-primary')
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+      'rgb(21, 92, 165)',
+    );
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     const secondSso = (await context.cookies(issuer)).find(

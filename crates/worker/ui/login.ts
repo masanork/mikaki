@@ -1,6 +1,7 @@
 import { mount } from 'svelte';
 import Login from './Login.svelte';
 import { initializeLocale } from './locale.js';
+import './auth.css';
 
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid login page');

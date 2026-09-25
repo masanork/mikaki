@@ -2346,6 +2346,7 @@ pub async fn main(
         .get_async("/authorize", authorize_route)
         .get_async("/login", passkey_login::get)
         .get_async("/login/login.js", passkey_login::script)
+        .get_async("/login/login.css", passkey_login::stylesheet)
         .post_async("/login/finish", passkey_login::finish)
         .post_async("/register/start", enrollment::start)
         .post_async("/register/finish", enrollment::finish)

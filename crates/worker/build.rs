@@ -2,6 +2,7 @@ use std::{env, path::PathBuf, process::Command};
 
 fn main() {
     println!("cargo:rerun-if-changed=ui/login.ts");
+    println!("cargo:rerun-if-changed=ui/auth.css");
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/Login.svelte");
     println!("cargo:rerun-if-changed=ui/Admin.svelte");

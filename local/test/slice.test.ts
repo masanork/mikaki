@@ -181,6 +181,12 @@ afterEach(async (t) => {
 
 test('registration requires the client discoverable-credential signal without consuming the invitation', async () => {
   await begin();
+  await page.getByRole('button', { name: 'Register with invitation' }).click();
+  await page.getByRole('alert').getByText('Enter your invitation code.').waitFor();
+  assert.equal(
+    await page.getByLabel('Invitation code', { exact: true }).getAttribute('aria-invalid'),
+    'true',
+  );
   await page.getByLabel('Invitation code', { exact: true }).fill(local.invitation);
   for (const output of [{}, { credProps: { rk: false } }]) {
     await page.evaluate((value) => {

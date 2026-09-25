@@ -6,6 +6,7 @@
     consent = $state(false),
     busy = $state(false),
     error = $state(false),
+    missingInvitation = $state(false),
     expired = $state(false);
   let context = $state<{ tx: string; csrf: string; client: string; signed_in: boolean } | null>(
     null,
@@ -34,6 +35,11 @@
   });
   async function run(purpose: 'register' | 'authenticate' | 'consent') {
     if (!consent || !context || busy) return;
+    if (purpose === 'register' && !invitation.trim()) {
+      missingInvitation = true;
+      return;
+    }
+    missingInvitation = false;
     busy = true;
     error = false;
     try {
@@ -89,127 +95,82 @@
   });
 </script>
 
-<main>
-  <header>
-    <strong>mikaki</strong><label
-      ><span class="sr">{m.language()}</span><select
+<div class="auth-shell">
+  <header class="auth-header">
+    <div class="auth-brand" aria-label="mikaki">
+      <span class="auth-mark" aria-hidden="true"
+        ><span></span><span></span><span></span><span></span></span
+      >
+      mikaki
+    </div>
+    <label class="auth-language">
+      <span>{m.language()}</span>
+      <select
         aria-label={m.language()}
         value={getLocale()}
         onchange={(event) => setLocale(event.currentTarget.value as Locale)}
         ><option value="ja">日本語</option><option value="en">English</option></select
-      ></label
-    >
+      >
+    </label>
   </header>
-  <p class="tag">{m.local()}</p>
-  <h1>{m.title()}</h1>
-  <p>{m.intro()}</p>
-  {#if expired}<p role="alert">{m.expired()}</p>{:else if context}
-    <p>{m.app()}: <strong>{context.client}</strong></p>
-    <label class="consent"><input type="checkbox" bind:checked={consent} />{m.consent()}</label>
-    {#if context.signed_in}
-      <button disabled={!consent || busy} onclick={() => run('consent')}
-        >{busy ? m.busy() : m.continue()}</button
-      >
-    {:else}
-      <button disabled={!consent || busy} onclick={() => run('authenticate')}
-        >{busy ? m.busy() : m.login()}</button
-      >
-      <hr />
-      <label for="invitation">{m.invite()}</label><input
-        id="invitation"
-        bind:value={invitation}
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <p class="notice">{m.recovery()}</p>
-      <button
-        class="secondary"
-        disabled={!consent || !invitation || busy}
-        onclick={() => run('register')}>{busy ? m.busy() : m.register()}</button
-      >
-    {/if}
-  {/if}
-  {#if error}<p role="alert">{m.error()}</p>{/if}
-</main>
-
-<style>
-  :global(body) {
-    margin: 0;
-    background: #f2f5f4;
-    color: #182b28;
-    font:
-      16px/1.6 system-ui,
-      sans-serif;
-  }
-  main {
-    max-width: 30rem;
-    margin: 7vh auto;
-    padding: 2rem;
-    background: white;
-    border-radius: 1rem;
-    box-shadow: 0 8px 32px #173b2910;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  h1 {
-    font-size: 1.6rem;
-  }
-  input:not([type='checkbox']),
-  button {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 0.8rem;
-    border: 1px solid #78938b;
-    border-radius: 0.4rem;
-    font: inherit;
-  }
-  button {
-    margin-top: 1rem;
-    background: #155e50;
-    color: white;
-    cursor: pointer;
-  }
-  .secondary {
-    background: white;
-    color: #155e50;
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-  .consent {
-    display: flex;
-    gap: 0.7rem;
-    align-items: center;
-    padding: 0.5rem 0;
-  }
-  .notice,
-  .tag {
-    font-size: 0.85rem;
-    color: #526b64;
-  }
-  hr {
-    margin: 2rem 0;
-    border: 0;
-    border-top: 1px solid #d9e3df;
-  }
-  [role='alert'] {
-    color: #9f2424;
-  }
-  .sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-  }
-  @media (max-width: 40rem) {
-    main {
-      margin: 1rem;
-      padding: 1.5rem;
-    }
-  }
-</style>
+  <main class="auth-layout">
+    <section class="auth-intro" aria-labelledby="auth-title">
+      <p class="auth-kicker">{m.authKicker()}</p>
+      <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
+      <p>{m.authHeroDescription()}</p>
+    </section>
+    <section class="auth-card" aria-labelledby="auth-action-title">
+      <h2 id="auth-action-title">{m.login()}</h2>
+      <p class="auth-card-lead">{m.authCheckApp()}</p>
+      {#if expired}
+        <p class="auth-alert" role="alert">{m.expired()}</p>
+      {:else if context}
+        <div class="auth-client">
+          <span class="auth-client-label">{m.app()}</span>
+          <strong class="auth-client-name">{context.client}</strong>
+        </div>
+        <p class="auth-description">{m.loginConsentDescription()}</p>
+        <label class="auth-consent"
+          ><input type="checkbox" bind:checked={consent} />{m.consent()}</label
+        >
+        {#if context.signed_in}
+          <button class="auth-primary" disabled={!consent || busy} onclick={() => run('consent')}
+            >{busy ? m.busy() : m.continue()}</button
+          >
+        {:else}
+          <button
+            class="auth-primary"
+            disabled={!consent || busy}
+            onclick={() => run('authenticate')}>{busy ? m.busy() : m.login()}</button
+          >
+          <hr class="auth-divider" />
+          <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
+          <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
+          <label class="auth-field" for="invitation">
+            {m.invite()}
+            <input
+              id="invitation"
+              bind:value={invitation}
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby={missingInvitation ? 'invite-help invite-error' : 'invite-help'}
+              aria-invalid={missingInvitation}
+              oninput={() => {
+                if (missingInvitation) missingInvitation = false;
+              }}
+            />
+          </label>
+          {#if missingInvitation}<p class="auth-field-error" id="invite-error" role="alert">
+              {m.inviteRequired()}
+            </p>{/if}
+          <button class="auth-secondary" disabled={!consent || busy} onclick={() => run('register')}
+            >{busy ? m.busy() : m.register()}</button
+          >
+          <p class="auth-note">{m.recovery()}</p>
+        {/if}
+      {/if}
+      {#if error}<p class="auth-alert" role="alert">{m.error()}</p>{/if}
+    </section>
+  </main>
+  <footer class="auth-footer">mikaki · {m.local()}</footer>
+</div>
