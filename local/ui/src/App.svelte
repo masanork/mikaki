@@ -6,6 +6,7 @@
     consent = $state(false),
     busy = $state(false),
     error = $state(false),
+    missingInvitation = $state(false),
     expired = $state(false);
   let context = $state<{ tx: string; csrf: string; client: string; signed_in: boolean } | null>(
     null,
@@ -34,6 +35,11 @@
   });
   async function run(purpose: 'register' | 'authenticate' | 'consent') {
     if (!consent || !context || busy) return;
+    if (purpose === 'register' && !invitation.trim()) {
+      missingInvitation = true;
+      return;
+    }
+    missingInvitation = false;
     busy = true;
     error = false;
     try {
@@ -147,13 +153,18 @@
               bind:value={invitation}
               autocomplete="off"
               spellcheck="false"
-              aria-describedby="invite-help"
+              aria-describedby={missingInvitation ? 'invite-help invite-error' : 'invite-help'}
+              aria-invalid={missingInvitation}
+              oninput={() => {
+                if (missingInvitation) missingInvitation = false;
+              }}
             />
           </label>
-          <button
-            class="auth-secondary"
-            disabled={!consent || !invitation || busy}
-            onclick={() => run('register')}>{busy ? m.busy() : m.register()}</button
+          {#if missingInvitation}<p class="auth-field-error" id="invite-error" role="alert">
+              {m.inviteRequired()}
+            </p>{/if}
+          <button class="auth-secondary" disabled={!consent || busy} onclick={() => run('register')}
+            >{busy ? m.busy() : m.register()}</button
           >
           <p class="auth-note">{m.recovery()}</p>
         {/if}
