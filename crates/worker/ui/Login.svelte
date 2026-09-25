@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import type { Locale } from './paraglide/runtime.js';
@@ -21,6 +22,12 @@
   let busy = $state(false);
   let errorKind = $state<'required' | 'operation' | null>(null);
   let invitation = $state('');
+  let authentication: AbortController | null = null;
+
+  onMount(() => {
+    if (!enrollment && typeof PublicKeyCredential !== 'undefined') void authenticate(true);
+    return () => authentication?.abort();
+  });
 
   function decode(value: string): Uint8Array<ArrayBuffer> {
     return Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) =>
@@ -35,12 +42,17 @@
       .replaceAll('=', '');
   }
 
-  async function authenticate(): Promise<void> {
+  async function authenticate(automatic = false): Promise<void> {
     if (busy) return;
-    busy = true;
+    if (automatic && authentication) return;
+    authentication?.abort();
+    const controller = new AbortController();
+    authentication = controller;
+    if (!automatic) busy = true;
     errorKind = null;
     try {
       const credential = await navigator.credentials.get({
+        signal: controller.signal,
         publicKey: {
           challenge: decode(challenge),
           rpId,
@@ -48,6 +60,8 @@
           timeout: 120000,
         },
       });
+      if (authentication !== controller) return;
+      busy = true;
       if (
         !(credential instanceof PublicKeyCredential) ||
         !(credential.response instanceof AuthenticatorAssertionResponse)
@@ -78,7 +92,9 @@
       }
       location.assign(body.location);
     } catch {
-      errorKind = 'operation';
+      if (authentication !== controller) return;
+      authentication = null;
+      if (!automatic && !controller.signal.aborted) errorKind = 'operation';
       busy = false;
     }
   }
@@ -89,6 +105,8 @@
       errorKind = 'required';
       return;
     }
+    authentication?.abort();
+    authentication = null;
     busy = true;
     errorKind = null;
     try {
@@ -202,7 +220,7 @@
           id="passkey"
           type="button"
           disabled={busy}
-          onclick={authenticate}>{busy ? m.busy() : m.loginAuthorize()}</button
+          onclick={() => authenticate()}>{busy ? m.busy() : m.loginAuthorize()}</button
         >
         <hr class="auth-divider" />
         <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
