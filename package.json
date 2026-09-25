@@ -19,7 +19,7 @@
     "check:i18n": "node scripts/check_i18n.ts",
     "generate:webauthn-interop": "node crates/webauthn/testdata/generate_interop.ts",
     "probe:recipient-envelope": "esbuild scripts/probe-recipient-envelope.ts --bundle --platform=node --format=esm --external:wrangler --outfile=local/generated/probe-recipient-envelope.mjs && node local/generated/probe-recipient-envelope.mjs",
-    "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/helpdesk-rp/worker.ts' 'crates/helpdesk-rp/wasm*.d.ts' 'crates/helpdesk-rp/*.{json,jsonc}' 'crates/worker/ui/*.{ts,svelte,json}' 'crates/webauthn/testdata/*.ts' 'scripts/*.ts' 'design/probes/**/*.ts' package.json .prettierrc.json 'tsconfig.node*.json'",
+    "format:check": "prettier --check 'local/**/*.ts' 'local/ui/src/**/*.{ts,svelte}' 'crates/helpdesk-rp/worker.ts' 'crates/helpdesk-rp/wasm*.d.ts' 'crates/helpdesk-rp/*.{json,jsonc}' 'crates/worker/ui/*.{ts,svelte,css,json}' 'crates/webauthn/testdata/*.ts' 'scripts/*.ts' 'design/probes/**/*.ts' 'docs/login-ui-preview/*.mjs' package.json .prettierrc.json 'tsconfig.node*.json'",
     "health": "node scripts/health.ts",
     "dev": "node local/dev.ts",
     "dev:helpdesk": "node local/helpdesk-dev.ts"

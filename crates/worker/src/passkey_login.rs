@@ -122,7 +122,7 @@ pub(super) async fn get(
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let enrollment = login.client_id == "mikaki-internal-enrollment";
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         locale = strings.locale,
         title = crate::i18n::html_escape(strings.message(if enrollment {
             "enrollHeading"
@@ -142,7 +142,7 @@ pub(super) async fn get(
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header(
             "Content-Security-Policy",
-            "default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .from_html(html)
 }
@@ -157,6 +157,21 @@ pub(super) async fn script(
         .with_header("X-Content-Type-Options", "nosniff")?
         .fixed(
             include_str!(concat!(env!("OUT_DIR"), "/login.js"))
+                .as_bytes()
+                .to_vec(),
+        ))
+}
+
+pub(super) async fn stylesheet(
+    _request: worker::Request,
+    _context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/css; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(
+            include_str!(concat!(env!("OUT_DIR"), "/login.css"))
                 .as_bytes()
                 .to_vec(),
         ))

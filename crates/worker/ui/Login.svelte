@@ -19,7 +19,7 @@
     locale: Locale;
   } = $props();
   let busy = $state(false);
-  let failed = $state(false);
+  let errorKind = $state<'required' | 'operation' | null>(null);
   let invitation = $state('');
 
   function decode(value: string): Uint8Array<ArrayBuffer> {
@@ -38,7 +38,7 @@
   async function authenticate(): Promise<void> {
     if (busy) return;
     busy = true;
-    failed = false;
+    errorKind = null;
     try {
       const credential = await navigator.credentials.get({
         publicKey: {
@@ -78,15 +78,19 @@
       }
       location.assign(body.location);
     } catch {
-      failed = true;
+      errorKind = 'operation';
       busy = false;
     }
   }
 
   async function register(): Promise<void> {
-    if (busy || !invitation) return;
+    if (busy) return;
+    if (!invitation.trim()) {
+      errorKind = 'required';
+      return;
+    }
     busy = true;
-    failed = false;
+    errorKind = null;
     try {
       const started = await fetch('/register/start', {
         method: 'POST',
@@ -149,39 +153,87 @@
       invitation = '';
       location.assign(body.location);
     } catch {
-      failed = true;
+      errorKind = 'operation';
       busy = false;
     }
   }
 </script>
 
-<main>
-  <label
-    >{m.language()}
-    <select
-      aria-label={m.language()}
-      value={locale}
-      onchange={(event) => switchLocale(event.currentTarget.value)}
-    >
-      <option value="ja">日本語</option>
-      <option value="en">English</option>
-    </select>
-  </label>
-  <h1>{enrollment ? m.enrollHeading() : m.login()}</h1>
-  {#if enrollment}
-    <p>{m.enrollIntro()}</p>
-  {:else}
-    <p>{m.app()}: <strong>{client}</strong></p>
-    <p>{m.loginConsentDescription()}</p>
-    <button id="passkey" type="button" disabled={busy} onclick={authenticate}
-      >{m.loginAuthorize()}</button
-    >
-  {/if}
-  <label for="invitation">{m.invite()}</label>
-  <input id="invitation" type="text" autocomplete="off" bind:value={invitation} />
-  <button id="register" type="button" disabled={busy || !invitation} onclick={register}
-    >{m.register()}</button
-  >
-  <p>{m.recovery()}</p>
-  {#if failed}<p id="error" role="alert">{m.error()}</p>{/if}
-</main>
+<div class="auth-shell">
+  <header class="auth-header">
+    <div class="auth-brand" aria-label="mikaki">
+      <span class="auth-mark" aria-hidden="true"
+        ><span></span><span></span><span></span><span></span></span
+      >
+      mikaki
+    </div>
+    <label class="auth-language">
+      <span>{m.language()}</span>
+      <select
+        aria-label={m.language()}
+        value={locale}
+        onchange={(event) => switchLocale(event.currentTarget.value)}
+      >
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+  </header>
+  <main class="auth-layout">
+    <section class="auth-intro" aria-labelledby="auth-title">
+      <p class="auth-kicker">{m.authKicker()}</p>
+      <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
+      <p>{m.authHeroDescription()}</p>
+    </section>
+    <section class="auth-card" aria-labelledby="auth-action-title">
+      {#if enrollment}
+        <h2 id="auth-action-title">{m.enrollHeading()}</h2>
+        <p class="auth-card-lead" id="invite-help">{m.authInviteHelp()}</p>
+      {:else}
+        <h2 id="auth-action-title">{m.login()}</h2>
+        <p class="auth-card-lead">{m.authCheckApp()}</p>
+        <div class="auth-client">
+          <span class="auth-client-label">{m.app()}</span>
+          <strong class="auth-client-name">{client}</strong>
+        </div>
+        <p class="auth-description">{m.loginConsentDescription()}</p>
+        <button
+          class="auth-primary"
+          id="passkey"
+          type="button"
+          disabled={busy}
+          onclick={authenticate}>{busy ? m.busy() : m.loginAuthorize()}</button
+        >
+        <hr class="auth-divider" />
+        <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
+        <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
+      {/if}
+      <label class="auth-field" for="invitation">
+        {m.invite()}
+        <input
+          id="invitation"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-describedby={errorKind === 'required' ? 'invite-help invite-error' : 'invite-help'}
+          aria-invalid={errorKind === 'required'}
+          oninput={() => {
+            if (errorKind === 'required') errorKind = null;
+          }}
+          bind:value={invitation}
+        />
+      </label>
+      {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
+          {m.inviteRequired()}
+        </p>{/if}
+      <button class="auth-secondary" id="register" type="button" disabled={busy} onclick={register}
+        >{busy ? m.busy() : m.register()}</button
+      >
+      <p class="auth-note">{m.recovery()}</p>
+      {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
+          {m.error()}
+        </p>{/if}
+    </section>
+  </main>
+  <footer class="auth-footer">mikaki</footer>
+</div>

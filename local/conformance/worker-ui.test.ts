@@ -15,7 +15,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     const scripts = new Map();
-    for (const path of ['/login/login.js', '/vault/vault.js']) {
+    for (const path of ['/login/login.js', '/login/login.css', '/vault/vault.js']) {
       const response = await worker.fetch(`https://mikaki.test${path}`);
       assert.equal(response.status, 200);
       scripts.set(path, await response.text());
@@ -29,7 +29,9 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       if (scripts.has(url.pathname)) {
         await route.fulfill({
           status: 200,
-          contentType: 'text/javascript; charset=utf-8',
+          contentType: url.pathname.endsWith('.css')
+            ? 'text/css; charset=utf-8'
+            : 'text/javascript; charset=utf-8',
           body: scripts.get(url.pathname),
         });
         return;
@@ -46,7 +48,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       if (url.pathname === '/login') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-client="test-rp"></div><script type="module" src="/login/login.js"></script></body></html>`,
+          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
         });
         return;
       }
@@ -63,9 +65,30 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);
+    assert.equal(
+      await page
+        .locator('.auth-primary')
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+      'rgb(21, 92, 165)',
+    );
+    await page.getByRole('button', { name: '招待で登録する' }).click();
+    await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
+    assert.equal(await page.getByLabel('招待コード').getAttribute('aria-invalid'), 'true');
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('button', { name: 'Allow and sign in with passkey' }).waitFor();
     assert.match(page.url(), /lang=en/);
+    await page.setViewportSize({ width: 375, height: 812 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await page.goto('https://mikaki.test/login?enroll=1');
+    await page.getByRole('heading', { name: 'アカウントを登録' }).first().waitFor();
+    assert.equal(await page.locator('#passkey').count(), 0);
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
 
     await page.goto('https://mikaki.test/vault');
     await page.getByRole('button', { name: 'Passkeyで開く' }).waitFor();
