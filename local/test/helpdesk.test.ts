@@ -6,7 +6,21 @@ import { startLocal } from '../runtime.ts';
 import { CLIENT, OP, RP, hash, now } from '../shared.ts';
 
 test('helpdesk RP completes passkey login and protects tickets', async () => {
-  const local = await startLocal({ scheduler: false, helpdesk: true });
+  let holdCheck = false;
+  let notifyHeld = () => {};
+  let releaseCheck = () => {};
+  const held = new Promise<void>((resolve) => (notifyHeld = resolve));
+  const released = new Promise<void>((resolve) => (releaseCheck = resolve));
+  const local = await startLocal({
+    scheduler: false,
+    helpdesk: true,
+    beforeSessionCheckResponse: async () => {
+      if (!holdCheck) return;
+      holdCheck = false;
+      notifyHeld();
+      await released;
+    },
+  });
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext({ locale: 'en-US' });
@@ -148,6 +162,14 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       form: { logout_token: await logoutToken(CLIENT, { nonce: 'forbidden' }) },
     });
     assert.equal(withNonce.status(), 400);
+    const nonemptyEvent = await context.request.post(`${RP}/backchannel`, {
+      form: {
+        logout_token: await logoutToken(CLIENT, {
+          events: { 'http://schemas.openid.net/event/backchannel-logout': { unexpected: true } },
+        }),
+      },
+    });
+    assert.equal(nonemptyEvent.status(), 400);
     const wrongSubject = await context.request.post(`${RP}/backchannel`, {
       form: { logout_token: await logoutToken(CLIENT, { sub: 'other-sub' }) },
     });
@@ -231,7 +253,37 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       .bind('expired')
       .first()) as { count: number };
     assert.equal(expired.count, 0);
+
+    await page.goto(RP);
+    holdCheck = true;
+    const pendingLogin = page.getByRole('button', { name: 'Mikaki でログイン' }).click();
+    await held;
+    const pendingSession = (await local.opDB
+      .prepare('SELECT sid,sub FROM client_session WHERE revoked=0 ORDER BY rowid DESC LIMIT 1')
+      .first()) as { sid: string; sub: string } | null;
+    assert.ok(pendingSession);
+    assert.notEqual(pendingSession.sid, ownerSession.sid);
+    const beforeCallback = await context.request.post(`${RP}/backchannel`, {
+      form: {
+        logout_token: await logoutToken(CLIENT, {
+          sid: pendingSession.sid,
+          sub: pendingSession.sub,
+        }),
+      },
+    });
+    assert.equal(beforeCallback.status(), 200);
+    releaseCheck();
+    await pendingLogin;
+    assert.match(await page.locator('main').innerText(), /session_revoked/);
+    assert.equal(
+      await local.rpDB
+        .prepare('SELECT sid FROM rp_session WHERE sid=?')
+        .bind(pendingSession.sid)
+        .first(),
+      null,
+    );
   } finally {
+    releaseCheck();
     await browser.close();
     await local.close();
   }

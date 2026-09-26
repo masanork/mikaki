@@ -46,6 +46,15 @@ const ARTICLES: Article[] = JSON.parse(articles_json());
 const BROWSER = '__Host-help-browser';
 const SESSION = '__Host-help-session';
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
+const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+function issuerKeys(issuer: string): ReturnType<typeof createRemoteJWKSet> {
+  let keys = jwksByIssuer.get(issuer);
+  if (!keys) {
+    keys = createRemoteJWKSet(new URL(`${issuer}/jwks`), { timeoutDuration: 5000 });
+    jwksByIssuer.set(issuer, keys);
+  }
+  return keys;
+}
 const now = () => Math.floor(Date.now() / 1000);
 const random = () => crypto.randomUUID() + crypto.randomUUID();
 const b64 = (bytes: Uint8Array) =>
@@ -438,18 +447,14 @@ async function backchannel(request: Request, env: Env): Promise<Response> {
     fail(400, 'invalid_logout_token');
   let payload;
   try {
-    ({ payload } = await jwtVerify(
-      tokens[0],
-      createRemoteJWKSet(new URL(`${env.ISSUER}/jwks`), { timeoutDuration: 5000 }),
-      {
-        issuer: env.ISSUER,
-        audience: env.CLIENT_ID,
-        algorithms: ['ES256'],
-        typ: 'logout+jwt',
-        clockTolerance: 60,
-        requiredClaims: ['iss', 'aud', 'iat', 'exp', 'jti'],
-      },
-    ));
+    ({ payload } = await jwtVerify(tokens[0], issuerKeys(env.ISSUER), {
+      issuer: env.ISSUER,
+      audience: env.CLIENT_ID,
+      algorithms: ['ES256'],
+      typ: 'logout+jwt',
+      clockTolerance: 60,
+      requiredClaims: ['iss', 'aud', 'iat', 'exp', 'jti'],
+    }));
   } catch (error) {
     if (
       error instanceof TypeError ||
@@ -479,7 +484,8 @@ async function backchannel(request: Request, env: Env): Promise<Response> {
     Object.hasOwn(payload, 'nonce') ||
     !marker ||
     typeof marker !== 'object' ||
-    Array.isArray(marker)
+    Array.isArray(marker) ||
+    Object.keys(marker).length !== 0
   )
     fail(400, 'invalid_logout_token');
   const existing = await env.DB.withSession('first-primary')
