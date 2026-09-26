@@ -87,14 +87,9 @@ test('session check authenticates its RP, binds sid, and observes D1 revocation 
         'exchange',
         now,
       ),
-      DB.prepare('INSERT INTO token_issue VALUES(?,?,?,?,?,?,0)').bind(
-        codeHash,
-        'exchange',
-        accessHash,
-        now + 60,
-        'op-key',
-        now,
-      ),
+      DB.prepare(
+        'INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked) VALUES(?,?,?,?,?,?,0)',
+      ).bind(codeHash, 'exchange', accessHash, now + 60, 'op-key', now),
     ]);
     const assertion = async (audience = endpoint) =>
       new SignJWT({ jti: randomUUID() })

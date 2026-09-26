@@ -164,6 +164,15 @@ try {
   assert.equal(payload.auth_time, now - 30);
   assert.equal(typeof payload.sub, 'string');
   assert.equal(typeof payload.sid, 'string');
+  const issued = (await env.DB.prepare(
+    'SELECT ti.id_token_hash FROM token_issue ti JOIN authorization_code ac ON ac.code_hash=ti.code_hash WHERE ac.client_id=? AND ac.sid=?',
+  )
+    .bind(clientId, payload.sid)
+    .first()) as { id_token_hash: string } | null;
+  assert.equal(
+    issued?.id_token_hash,
+    createHash('sha256').update(tokens.id_token).digest('base64url'),
+  );
 
   const changedPolicy = {
     ...policy,
