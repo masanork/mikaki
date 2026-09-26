@@ -5,6 +5,8 @@ mod admin_invitations;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;
 #[cfg(target_arch = "wasm32")]
+mod logout;
+#[cfg(target_arch = "wasm32")]
 mod passkey_login;
 #[cfg(target_arch = "wasm32")]
 mod session_check;
@@ -224,6 +226,7 @@ struct DiscoveryResponse {
     token_endpoint: String,
     jwks_uri: String,
     userinfo_endpoint: String,
+    end_session_endpoint: String,
     response_types_supported: [&'static str; 1],
     response_modes_supported: [&'static str; 1],
     grant_types_supported: [&'static str; 1],
@@ -2200,6 +2203,7 @@ async fn discovery_route(
             token_endpoint: format!("{issuer}/token"),
             jwks_uri: format!("{issuer}/jwks"),
             userinfo_endpoint: format!("{issuer}/userinfo"),
+            end_session_endpoint: format!("{issuer}/logout"),
             issuer,
             response_types_supported: ["code"],
             response_modes_supported: ["query"],
@@ -2360,6 +2364,8 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
+        .get_async("/logout", logout::get)
+        .post_async("/logout", logout::post)
         .get_async("/admin", admin_invitations::page)
         .get_async("/admin/admin.js", admin_invitations::script)
         .get_async("/jwks", jwks_route)
