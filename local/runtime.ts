@@ -8,7 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { generateKeyPair, exportJWK } from 'jose';
 import { OP, RP, CLIENT, p, random, hash, now, sqlParts } from './shared.ts';
 
-export async function startLocal({ scheduler = true, helpdesk = false } = {}) {
+export async function startLocal({
+  scheduler = true,
+  helpdesk = false,
+  beforeSessionCheckResponse,
+}: {
+  scheduler?: boolean;
+  helpdesk?: boolean;
+  beforeSessionCheckResponse?: () => Promise<void>;
+} = {}) {
   async function keys(kid: string) {
     const pair = await generateKeyPair('ES256', { extractable: true });
     return {
@@ -87,6 +95,7 @@ export async function startLocal({ scheduler = true, helpdesk = false } = {}) {
       rpEnv.DB,
       helpdesk ? '../crates/helpdesk-rp/migrations/0001_initial.sql' : 'rp-schema.sql',
     );
+    if (helpdesk) await schema(rpEnv.DB, '../crates/helpdesk-rp/migrations/0002_backchannel.sql');
     const invitation = random();
     await opEnv.DB.batch([
       opEnv.DB.prepare('INSERT INTO client VALUES(?,1,1)').bind(CLIENT),
@@ -120,6 +129,8 @@ export async function startLocal({ scheduler = true, helpdesk = false } = {}) {
               ? { body: Readable.toWeb(incoming), duplex: 'half' }
               : {}),
           });
+          if (origin === OP && incoming.url === '/session/check' && beforeSessionCheckResponse)
+            await beforeSessionCheckResponse();
           outgoing.writeHead(result.status, Object.fromEntries(result.headers));
           if (result.body) Readable.fromWeb(result.body).pipe(outgoing);
           else outgoing.end();
