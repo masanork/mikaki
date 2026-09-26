@@ -84,6 +84,18 @@ export function validateRedirect(input: unknown) {
   return { uri: uri.href, sector: uri.hostname };
 }
 
+export function validatePostLogoutRedirect(input: unknown) {
+  exactKeys(input, ['post_logout_redirect_uri']);
+  const uri = httpsUri(input.post_logout_redirect_uri);
+  return { uri: uri.href, sector: uri.hostname };
+}
+
+export function validateBackchannelLogout(input: unknown) {
+  exactKeys(input, ['backchannel_logout_uri']);
+  const uri = httpsUri(input.backchannel_logout_uri);
+  return { uri: uri.href, sector: uri.hostname };
+}
+
 function metadata(actor: string, reason: string) {
   if (
     typeof actor !== 'string' ||
@@ -266,10 +278,116 @@ export async function disableClient(db: any, clientId: string, actor: string, re
   return { clientId };
 }
 
+export async function addPostLogoutRedirect(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
+  managedClientId(clientId);
+  const redirect = validatePostLogoutRedirect(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO client_post_logout_redirect_uri(client_id,redirect_uri,active) SELECT client_id,?,1 FROM client WHERE client_id=? AND active=1 AND sector_identifier=? AND (SELECT COUNT(*) FROM client_post_logout_redirect_uri WHERE client_id=? AND active=1)<8 ON CONFLICT(client_id,redirect_uri) DO UPDATE SET active=1 WHERE active=0',
+      )
+      .bind(redirect.uri, clientId, redirect.sector, clientId),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    audit(db, meta, clientId, 'add-post-logout-redirect'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId, postLogoutRedirectUri: redirect.uri };
+}
+
+export async function retirePostLogoutRedirect(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
+  managedClientId(clientId);
+  const redirect = validatePostLogoutRedirect(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'UPDATE client_post_logout_redirect_uri SET active=0 WHERE client_id=? AND redirect_uri=? AND active=1 AND EXISTS(SELECT 1 FROM client WHERE client_id=? AND active=1)',
+      )
+      .bind(clientId, redirect.uri, clientId),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    audit(db, meta, clientId, 'retire-post-logout-redirect'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId, postLogoutRedirectUri: redirect.uri };
+}
+
+export async function setBackchannelLogout(
+  db: any,
+  clientId: string,
+  input: unknown,
+  actor: string,
+  reason: string,
+) {
+  managedClientId(clientId);
+  const endpoint = validateBackchannelLogout(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) SELECT client_id,?,1 FROM client WHERE client_id=? AND active=1 AND sector_identifier=? ON CONFLICT(client_id) DO UPDATE SET logout_uri=excluded.logout_uri,active=1 WHERE logout_uri<>excluded.logout_uri OR active=0',
+      )
+      .bind(endpoint.uri, clientId, endpoint.sector),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    audit(db, meta, clientId, 'set-backchannel-logout'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId, backchannelLogoutUri: endpoint.uri };
+}
+
+export async function retireBackchannelLogout(
+  db: any,
+  clientId: string,
+  actor: string,
+  reason: string,
+) {
+  managedClientId(clientId);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        'UPDATE client_backchannel_logout_uri SET active=0 WHERE client_id=? AND active=1 AND EXISTS(SELECT 1 FROM client WHERE client_id=? AND active=1)',
+      )
+      .bind(clientId, clientId),
+    db
+      .prepare(
+        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+      )
+      .bind(meta.operation),
+    audit(db, meta, clientId, 'retire-backchannel-logout'),
+    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
+  ]);
+  return { clientId };
+}
+
 export async function listClients(db: any) {
   return db
     .prepare(
-      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c WHERE c.client_id<>'mikaki-internal-enrollment' ORDER BY c.client_id",
+      "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_post_logout_redirect_uri WHERE client_id=c.client_id) AS post_logout_redirect_uris,(SELECT json_object('uri',logout_uri,'active',active) FROM client_backchannel_logout_uri WHERE client_id=c.client_id) AS backchannel_logout_uri,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c WHERE c.client_id<>'mikaki-internal-enrollment' ORDER BY c.client_id",
     )
     .all();
 }

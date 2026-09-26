@@ -3,12 +3,18 @@ import { resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
 import {
   addRedirect,
+  addPostLogoutRedirect,
   addKey,
   disableClient,
   listClients,
   registerClient,
   retireRedirect,
+  retirePostLogoutRedirect,
+  retireBackchannelLogout,
   retireKey,
+  setBackchannelLogout,
+  validateBackchannelLogout,
+  validatePostLogoutRedirect,
   validateRedirect,
   validateKey,
   validateRegistration,
@@ -43,13 +49,17 @@ if (
     'retire-key',
     'add-redirect',
     'retire-redirect',
+    'add-post-logout-redirect',
+    'retire-post-logout-redirect',
+    'set-backchannel-logout',
+    'retire-backchannel-logout',
     'disable',
     'list',
   ].includes(options['--action']) ||
   !['yes', 'no'].includes(options['--apply'])
 ) {
   throw new Error(
-    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|add-key|retire-key|add-redirect|retire-redirect|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
+    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|add-key|retire-key|add-redirect|retire-redirect|add-post-logout-redirect|retire-post-logout-redirect|set-backchannel-logout|retire-backchannel-logout|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
   );
 }
 const remote = options['--remote'] === 'yes';
@@ -66,11 +76,24 @@ const input = options['--input']
 if (action === 'register') validateRegistration(input);
 if (action === 'add-key') validateKey(input);
 if (action === 'add-redirect' || action === 'retire-redirect') validateRedirect(input);
+if (action === 'add-post-logout-redirect' || action === 'retire-post-logout-redirect')
+  validatePostLogoutRedirect(input);
+if (action === 'set-backchannel-logout') validateBackchannelLogout(input);
 if (action !== 'list' && (!options['--actor'] || !options['--reason'])) {
   throw new Error('actor and reason are required for a change');
 }
 if (
-  ['add-key', 'retire-key', 'add-redirect', 'retire-redirect', 'disable'].includes(action) &&
+  [
+    'add-key',
+    'retire-key',
+    'add-redirect',
+    'retire-redirect',
+    'add-post-logout-redirect',
+    'retire-post-logout-redirect',
+    'set-backchannel-logout',
+    'retire-backchannel-logout',
+    'disable',
+  ].includes(action) &&
   !options['--client']
 ) {
   throw new Error('client ID is required');
@@ -111,6 +134,37 @@ try {
       db,
       options['--client'],
       input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'add-post-logout-redirect')
+    result = await addPostLogoutRedirect(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'retire-post-logout-redirect')
+    result = await retirePostLogoutRedirect(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'set-backchannel-logout')
+    result = await setBackchannelLogout(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'retire-backchannel-logout')
+    result = await retireBackchannelLogout(
+      db,
+      options['--client'],
       options['--actor'],
       options['--reason'],
     );

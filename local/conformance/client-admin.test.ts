@@ -4,12 +4,16 @@ import { test } from 'node:test';
 import { createTestHarness } from 'wrangler';
 import {
   addRedirect,
+  addPostLogoutRedirect,
   addKey,
   disableClient,
   listClients,
   registerClient,
   retireRedirect,
+  retirePostLogoutRedirect,
+  retireBackchannelLogout,
   retireKey,
+  setBackchannelLogout,
   validateRegistration,
 } from '../../scripts/client-admin-store.ts';
 
@@ -101,6 +105,89 @@ test('managed RP registration and key changes are audited and constrained', asyn
         ['https://rp.example/next-callback', 1],
       ],
     );
+    await assert.rejects(
+      addPostLogoutRedirect(
+        DB,
+        client_id,
+        { post_logout_redirect_uri: 'https://other.example/logout' },
+        'operator',
+        'wrong sector',
+      ),
+    );
+    await assert.rejects(
+      setBackchannelLogout(
+        DB,
+        client_id,
+        { backchannel_logout_uri: 'https://rp.example.evil/backchannel' },
+        'operator',
+        'wrong sector',
+      ),
+    );
+    await assert.rejects(
+      addPostLogoutRedirect(
+        DB,
+        client_id,
+        { post_logout_redirect_uri: 'https://rp.example/logout#fragment' },
+        'operator',
+        'fragment',
+      ),
+    );
+    await addPostLogoutRedirect(
+      DB,
+      client_id,
+      { post_logout_redirect_uri: 'https://rp.example/logout/callback' },
+      'operator',
+      'logout callback',
+    );
+    await assert.rejects(
+      addPostLogoutRedirect(
+        DB,
+        client_id,
+        { post_logout_redirect_uri: 'https://rp.example/logout/callback' },
+        'operator',
+        'duplicate',
+      ),
+    );
+    await setBackchannelLogout(
+      DB,
+      client_id,
+      { backchannel_logout_uri: 'https://rp.example/backchannel' },
+      'operator',
+      'notifications',
+    );
+    await setBackchannelLogout(
+      DB,
+      client_id,
+      { backchannel_logout_uri: 'https://rp.example/next-backchannel' },
+      'operator',
+      'rotation',
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          'SELECT logout_uri FROM client_backchannel_logout_uri WHERE client_id=? AND active=1',
+        )
+          .bind(client_id)
+          .first()
+      ).logout_uri,
+      'https://rp.example/next-backchannel',
+    );
+    await retirePostLogoutRedirect(
+      DB,
+      client_id,
+      { post_logout_redirect_uri: 'https://rp.example/logout/callback' },
+      'operator',
+      'retire callback',
+    );
+    await retireBackchannelLogout(DB, client_id, 'operator', 'retire notifications');
+    assert.equal(
+      (
+        await DB.prepare('SELECT active FROM client_backchannel_logout_uri WHERE client_id=?')
+          .bind(client_id)
+          .first()
+      ).active,
+      0,
+    );
     await assert.rejects(retireKey(DB, client_id, 'first', 'operator', 'would remove last key'));
     await addKey(DB, client_id, key('second'), 'operator', 'rotation overlap');
     await retireKey(DB, client_id, 'first', 'operator', 'rotation complete');
@@ -124,7 +211,7 @@ test('managed RP registration and key changes are audited and constrained', asyn
     );
     assert.equal(
       (await DB.prepare('SELECT COUNT(*) AS count FROM client_admin_audit').first()).count,
-      6,
+      11,
     );
   } finally {
     await harness.close();
