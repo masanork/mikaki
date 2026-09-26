@@ -1304,6 +1304,7 @@ async fn commit_authorization_code_exchange(
         scope: "openid",
         id_token,
     };
+    let id_token_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(response.id_token.as_bytes()));
     if serde_json::to_vec(&response)
         .map_err(worker::Error::from)?
         .len()
@@ -1342,6 +1343,8 @@ async fn commit_authorization_code_exchange(
         JsValue::from_str(&context.public_jwk),
         JsValue::from_str(&context.signing_algorithm),
     ];
+    let mut issue_values = values[..22].to_vec();
+    issue_values.push(JsValue::from_str(&id_token_hash));
     let commit = db.batch(vec![
         db.prepare(
             "UPDATE authorization_code SET consumed_by=?19, \
@@ -1373,25 +1376,26 @@ async fn commit_authorization_code_exchange(
         )
         .bind(&values)?,
         db.prepare(
-            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked) \
-             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0 \
+            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked,id_token_hash) \
+             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0,?23 \
              FROM authorization_code ac JOIN eligible_client_session v \
                ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.consumed_by=?19 \
                AND ?20 > CAST(strftime('%s','now') AS INTEGER)",
         )
-        .bind(&values[..22])?,
+        .bind(&issue_values)?,
         db.prepare(
             "INSERT INTO atomic_guard(operation_id,passed) VALUES(?19,CASE WHEN EXISTS ( \
              SELECT 1 FROM authorization_code ac JOIN token_issue ti ON ti.code_hash=ac.code_hash \
              JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.client_id=?2 AND ac.sid=?14 \
                AND ac.consumed_by=?19 AND ti.operation_id=?19 AND ti.access_hash=?22 \
+               AND ti.id_token_hash=?23 \
                AND ti.access_expires_at=?20 AND ac.expires_at > CAST(strftime('%s','now') AS INTEGER) \
                AND ?21 > CAST(strftime('%s','now') AS INTEGER) AND ?21 <= ?18 \
              ) THEN 1 ELSE 0 END)",
         )
-        .bind(&values[..22])?,
+        .bind(&issue_values)?,
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19").bind(&values[..19])?,
     ])
     .await;
