@@ -22,6 +22,8 @@ Later on 2026-09-27, OP Worker version `b2b65612-85bb-4a00-96ae-a129493e4fe3` ad
 
 OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer entry page after the bare domain was found to return 404. The page explains that OIDC sign-in begins at a connected app and links invitation holders to `/enroll`. The deploy included `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. Public checks returned 200 for `/`, `/?lang=en`, `/login/login.css`, and `/health`; direct `/login` without a transaction still returned 400. No production RP login transaction was exercised.
 
+Later on 2026-09-27, a narashi RP login exposed three pending production D1 migrations: `0011_issued_id_token_hash.sql`, `0012_client_logout_registration.sql`, and `0013_logout_outbox.sql`. The deployed token exchange writes `token_issue.id_token_hash`, so leaving `0011` unapplied could fail the code exchange. A D1 Time Travel bookmark was recorded before applying all three migrations. `wrangler d1 migrations list` then reported no pending migrations, and the client administration list confirmed narashi's active client, exact callback, and key. A fresh browser path reached the Mikaki login page from narashi; passkey completion and the RP callback still require an owner browser check.
+
 Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md). Apply new migrations before deploying a Worker that queries new columns.
 
 After modifying the Worker, build and deploy with the secret included in the **same** version:
@@ -33,6 +35,14 @@ npx wrangler deploy --config crates/worker/wrangler.production.jsonc \
 ```
 
 The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. Check the deploy output for that binding before considering the update complete.
+
+Before deploying code that uses new D1 columns or tables, list and apply pending production migrations with the same production config and `--remote`. Confirm the list is empty afterward; a healthy `/health` response does not prove the token exchange schema is current.
+
+```sh
+npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+```
 
 Smoke endpoints:
 
