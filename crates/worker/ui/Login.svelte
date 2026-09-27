@@ -178,80 +178,136 @@
 </script>
 
 <div class="auth-shell">
-  <header class="auth-header">
-    <div class="auth-brand" aria-label="mikaki">
-      <span class="auth-mark" aria-hidden="true"
-        ><span></span><span></span><span></span><span></span></span
-      >
-      mikaki
-    </div>
-    <label class="auth-language">
-      <span>{m.language()}</span>
-      <select
-        aria-label={m.language()}
-        value={locale}
-        onchange={(event) => switchLocale(event.currentTarget.value)}
-      >
-        <option value="ja">日本語</option>
-        <option value="en">English</option>
-      </select>
-    </label>
-  </header>
-  <main class="auth-layout">
-    <section class="auth-intro" aria-labelledby="auth-title">
-      <p class="auth-kicker">{m.authKicker()}</p>
+  <section class="auth-story" aria-labelledby="auth-title">
+    <header class="auth-header">
+      <div class="auth-brand" aria-label="mikaki">
+        <span class="auth-mark" aria-hidden="true"
+          ><span></span><span></span><span></span><span></span></span
+        >
+        mikaki
+      </div>
+      <span class="auth-header-tag" aria-hidden="true">IDENTITY</span>
+    </header>
+    <div class="auth-intro">
+      <p class="auth-kicker">
+        <span class="auth-kicker-line" aria-hidden="true"></span>{m.authKicker()}
+      </p>
       <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
-      <p>{m.authHeroDescription()}</p>
-    </section>
-    <section class="auth-card" aria-labelledby="auth-action-title">
-      {#if enrollment}
-        <h2 id="auth-action-title">{m.enrollHeading()}</h2>
-        <p class="auth-card-lead" id="invite-help">{m.authInviteHelp()}</p>
-      {:else}
-        <h2 id="auth-action-title">{m.login()}</h2>
-        <p class="auth-card-lead">{m.authCheckApp()}</p>
-        <div class="auth-client">
-          <span class="auth-client-label">{m.app()}</span>
-          <strong class="auth-client-name">{client}</strong>
+      <p class="auth-hero-description">{m.authHeroDescription()}</p>
+    </div>
+    <div class="auth-art" aria-hidden="true">
+      <div class="auth-art-ring auth-art-ring-outer"></div>
+      <div class="auth-art-ring auth-art-ring-inner"></div>
+      <div class="auth-art-core">
+        <svg viewBox="0 0 64 64" fill="none">
+          <circle cx="27" cy="27" r="11" stroke="currentColor" stroke-width="4" />
+          <path
+            d="M35 35 52 52m-7-7 5-5m-1 9 5-5"
+            stroke="currentColor"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+      <span class="auth-art-label auth-art-label-top">PASSKEY</span>
+      <span class="auth-art-label auth-art-label-bottom">FIDO2 / WebAuthn</span>
+    </div>
+    <p class="auth-story-footer">MIKAKI <span aria-hidden="true">/</span> PASSKEY IDENTITY</p>
+  </section>
+
+  <div class="auth-workspace">
+    <div class="auth-toolbar">
+      <label class="auth-language">
+        <span>{m.language()}</span>
+        <select
+          aria-label={m.language()}
+          value={locale}
+          onchange={(event) => switchLocale(event.currentTarget.value)}
+        >
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+    </div>
+
+    <main class="auth-layout">
+      <section class="auth-card" aria-labelledby="auth-action-title">
+        <div class="auth-card-overline">
+          <span class="auth-card-overline-dot"></span> MIKAKI ACCOUNT
         </div>
-        <p class="auth-description">{m.loginConsentDescription()}</p>
+        {#if enrollment}
+          <h2 id="auth-action-title">{m.enrollHeading()}</h2>
+          <p class="auth-card-lead" id="invite-help">{m.authInviteHelp()}</p>
+        {:else}
+          <h2 id="auth-action-title">{m.login()}</h2>
+          <p class="auth-card-lead">{m.authCheckApp()}</p>
+          <div class="auth-client">
+            <span class="auth-client-icon" aria-hidden="true"
+              >{client.slice(0, 1).toUpperCase()}</span
+            >
+            <span class="auth-client-details">
+              <span class="auth-client-label">{m.app()}</span>
+              <strong class="auth-client-name">{client}</strong>
+            </span>
+          </div>
+          <p class="auth-description">{m.loginConsentDescription()}</p>
+          <button
+            class="auth-primary"
+            id="passkey"
+            type="button"
+            disabled={busy}
+            onclick={() => authenticate()}
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="2" />
+              <path
+                d="m12 12 8 8m-3-3 2-2"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>{busy ? m.busy() : m.loginAuthorize()}</span>
+            <span class="auth-button-arrow" aria-hidden="true">→</span>
+          </button>
+          <div class="auth-separator" aria-hidden="true"><span></span><i></i><span></span></div>
+          <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
+          <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
+        {/if}
+        <label class="auth-field" for="invitation">
+          {m.invite()}
+          <input
+            id="invitation"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            aria-describedby={errorKind === 'required' ? 'invite-help invite-error' : 'invite-help'}
+            aria-invalid={errorKind === 'required'}
+            oninput={() => {
+              if (errorKind === 'required') errorKind = null;
+            }}
+            bind:value={invitation}
+          />
+        </label>
+        {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
+            {m.inviteRequired()}
+          </p>{/if}
         <button
-          class="auth-primary"
-          id="passkey"
+          class="auth-secondary"
+          id="register"
           type="button"
           disabled={busy}
-          onclick={() => authenticate()}>{busy ? m.busy() : m.loginAuthorize()}</button
+          onclick={register}
+          ><span>{busy ? m.busy() : m.register()}</span><span aria-hidden="true">↗</span></button
         >
-        <hr class="auth-divider" />
-        <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
-        <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
-      {/if}
-      <label class="auth-field" for="invitation">
-        {m.invite()}
-        <input
-          id="invitation"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          aria-describedby={errorKind === 'required' ? 'invite-help invite-error' : 'invite-help'}
-          aria-invalid={errorKind === 'required'}
-          oninput={() => {
-            if (errorKind === 'required') errorKind = null;
-          }}
-          bind:value={invitation}
-        />
-      </label>
-      {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
-          {m.inviteRequired()}
-        </p>{/if}
-      <button class="auth-secondary" id="register" type="button" disabled={busy} onclick={register}
-        >{busy ? m.busy() : m.register()}</button
-      >
-      <p class="auth-note">{m.recovery()}</p>
-      {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
-          {m.error()}
-        </p>{/if}
-    </section>
-  </main>
-  <footer class="auth-footer">mikaki</footer>
+        <p class="auth-note">{m.recovery()}</p>
+        {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
+            {m.error()}
+          </p>{/if}
+      </section>
+    </main>
+    <footer class="auth-footer">© mikaki</footer>
+  </div>
 </div>
