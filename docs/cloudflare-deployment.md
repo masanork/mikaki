@@ -20,6 +20,8 @@ On 2026-09-27, OP Worker version `553636c6-c309-4dd8-8882-962a43bee5a6` added a 
 
 Later on 2026-09-27, OP Worker version `b2b65612-85bb-4a00-96ae-a129493e4fe3` added a browser-bound, roughly 20-second rolling cue for active login transactions. The deploy included `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. Public checks returned 200 for health, Discovery, and `/login/login.js`; `/login/cue` without a transaction returned 400. A production RP login transaction was not exercised.
 
+OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer entry page after the bare domain was found to return 404. The page explains that OIDC sign-in begins at a connected app and links invitation holders to `/enroll`. The deploy included `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. Public checks returned 200 for `/`, `/?lang=en`, `/login/login.css`, and `/health`; direct `/login` without a transaction still returned 400. No production RP login transaction was exercised.
+
 Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md). Apply new migrations before deploying a Worker that queries new columns.
 
 After modifying the Worker, build and deploy with the secret included in the **same** version:
