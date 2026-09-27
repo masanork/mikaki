@@ -538,6 +538,13 @@ test('consumed bootstrap invitation cannot register another account; malformed J
     const tx = new URL(tab.url()).searchParams.get('tx');
     const headers = await browserHeaders(OP, other);
     const ctx = await (await other.request.get(`${OP}/login/context?tx=${tx}`, { headers })).json();
+    const cue = await other.request.get(`${OP}/login/cue?tx=${tx}`, { headers });
+    assert.equal(cue.status(), 200);
+    assert.match((await cue.json()).seed, /^[A-Za-z0-9_-]{43}$/);
+    assert.equal(
+      (await other.request.get(`${OP}/login/cue?tx=${tx}`, { headers: { Cookie: '' } })).status(),
+      400,
+    );
     const start = await other.request.post(`${OP}/ceremony/start`, {
       data: { ...ctx, purpose: 'register', invitation: local.invitation },
       headers,

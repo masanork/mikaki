@@ -23,6 +23,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     const errors: string[] = [];
+    let cueRequests = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.route('https://mikaki.test/**', async (route) => {
       const url = new URL(route.request().url());
@@ -33,6 +34,13 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
             ? 'text/css; charset=utf-8'
             : 'text/javascript; charset=utf-8',
           body: scripts.get(url.pathname),
+        });
+        return;
+      }
+      if (url.pathname === '/login/cue') {
+        cueRequests += 1;
+        await route.fulfill({
+          json: { seed: (cueRequests === 1 ? 'c' : 'd').repeat(43), refresh_in_ms: 1_000 },
         });
         return;
       }
@@ -48,7 +56,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       if (url.pathname === '/login') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
+          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="https://${url.searchParams.has('other-rp') ? 'other.example' : 'client.example'}/callback" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
         });
         return;
       }
@@ -65,6 +73,22 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);
+    assert.equal(await page.locator('.auth-origin-host').first().textContent(), 'mikaki.test');
+    assert.equal(await page.locator('.auth-origin-host').nth(1).textContent(), 'client.example');
+    assert.equal(await page.locator('.auth-session-tile').count(), 16);
+    await page.locator('.auth-session-cue[data-cue-live="true"]').waitFor();
+    const firstPattern = await page.locator('.auth-session-pattern').innerHTML();
+    await page.waitForFunction(
+      (oldPattern) => document.querySelector('.auth-session-pattern')?.innerHTML !== oldPattern,
+      firstPattern,
+    );
+    assert.ok(cueRequests >= 2);
+    const firstStyle = await page.locator('.auth-session-cue').getAttribute('style');
+    await page.goto('https://mikaki.test/login?other-rp=1');
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
+    assert.notEqual(await page.locator('.auth-session-cue').getAttribute('style'), firstStyle);
+    await page.goto('https://mikaki.test/login');
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(
       await page
         .locator('.auth-primary')
@@ -89,6 +113,19 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('https://mikaki.test/login');
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
+    assert.equal(await page.locator('.auth-session-cue').getAttribute('data-cue-live'), 'false');
+    assert.equal(
+      await page
+        .locator('.auth-session-tile')
+        .first()
+        .evaluate((node) => getComputedStyle(node).animationName),
+      'none',
+    );
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     await page.goto('https://mikaki.test/vault');
     await page.getByRole('button', { name: 'Passkeyで開く' }).waitFor();

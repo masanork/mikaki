@@ -2,15 +2,20 @@
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { getLocale, setLocale, type Locale } from './paraglide/runtime.js';
+  import SessionCue from '../../../crates/worker/ui/SessionCue.svelte';
   let invitation = $state(''),
     consent = $state(false),
     busy = $state(false),
     error = $state(false),
     missingInvitation = $state(false),
     expired = $state(false);
-  let context = $state<{ tx: string; csrf: string; client: string; signed_in: boolean } | null>(
-    null,
-  );
+  let context = $state<{
+    tx: string;
+    csrf: string;
+    client: string;
+    rp_uri: string;
+    signed_in: boolean;
+  } | null>(null);
   const tx = new URL(location.href).searchParams.get('tx');
   const decode = (s: string) =>
     Uint8Array.from(atob(s.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0));
@@ -118,6 +123,17 @@
       <p class="auth-kicker">{m.authKicker()}</p>
       <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
       <p>{m.authHeroDescription()}</p>
+      {#if context}
+        <SessionCue
+          seed={context.tx}
+          cueUrl={`/login/cue?tx=${encodeURIComponent(context.tx)}`}
+          pageUri={location.href}
+          rpUri={context.rp_uri}
+          pageLabel={m.authOriginLabel()}
+          rpLabel={m.authRpOriginLabel()}
+          hint={m.authOriginHint()}
+        />
+      {/if}
     </section>
     <section class="auth-card" aria-labelledby="auth-action-title">
       <h2 id="auth-action-title">{m.login()}</h2>

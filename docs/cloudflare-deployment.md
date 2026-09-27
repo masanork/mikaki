@@ -16,6 +16,10 @@ Migration `0009_vault_recipient_disable_grants.sql` was applied on 2026-09-24. I
 
 Migration `0010_vault_claim_release.sql` was applied on 2026-09-24, followed by OP Worker version `dbe5e19f-4431-4a0c-9d4d-4f6d5a6ea036`. It adds a separate RP-specific `name` consent ledger and owner controls. D1 confirmed `vault_claim_release_policy.enabled=0`, a one-day TTL, and zero active releases. UserInfo still returns only `sub`; the release policy must stay disabled until `profile` scope, token binding, and claim retrieval are wired together.
 
+On 2026-09-27, OP Worker version `553636c6-c309-4dd8-8882-962a43bee5a6` added a login cue whose colors use the current page and registered RP redirect URIs. The deploy included `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. Public checks returned 200 for health, Discovery, and `/login/login.js`. No production RP login transaction was exercised.
+
+Later on 2026-09-27, OP Worker version `b2b65612-85bb-4a00-96ae-a129493e4fe3` added a browser-bound, roughly 20-second rolling cue for active login transactions. The deploy included `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. Public checks returned 200 for health, Discovery, and `/login/login.js`; `/login/cue` without a transaction returned 400. A production RP login transaction was not exercised.
+
 Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md). Apply new migrations before deploying a Worker that queries new columns.
 
 After modifying the Worker, build and deploy with the secret included in the **same** version:

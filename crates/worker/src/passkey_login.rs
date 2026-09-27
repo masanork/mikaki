@@ -121,8 +121,20 @@ pub(super) async fn get(
         });
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let enrollment = login.client_id == "mikaki-internal-enrollment";
+    let rp_uri = if enrollment {
+        login.authorization_url.clone()
+    } else {
+        url::Url::parse(&login.authorization_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(key, _)| key == "redirect_uri")
+                    .map(|(_, value)| value.into_owned())
+            })
+            .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
+    };
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         locale = strings.locale,
         title = crate::i18n::html_escape(strings.message(if enrollment {
             "enrollHeading"
@@ -136,6 +148,7 @@ pub(super) async fn get(
         }),
         enrollment = if enrollment { "true" } else { "false" },
         challenge = login.challenge,
+        rp_uri = crate::i18n::html_escape(&rp_uri),
     );
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
@@ -145,6 +158,47 @@ pub(super) async fn get(
             "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .from_html(html)
+}
+
+#[derive(Serialize)]
+struct LoginCueOutput {
+    seed: String,
+    refresh_in_ms: u64,
+}
+
+pub(super) async fn cue(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let request_url = request.url()?;
+    let query = request_url.query_pairs().collect::<Vec<_>>();
+    let tx = match query.as_slice() {
+        [(key, value)] if key == "tx" && valid_tx(value) => value.as_ref(),
+        _ => return Ok(worker::Response::builder().with_status(400).empty()),
+    };
+    let Some(browser) = browser_cookie(&request, "__Host-op-browser")? else {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    let browser_hash = hash(&browser);
+    let db = context.env.d1("DB")?;
+    let Some(login) = transaction(&db, tx, &browser_hash).await? else {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let window = now / 20;
+    let seed = hash(&format!(
+        "login-cue-v1:{tx}:{browser_hash}:{}:{}:{window}",
+        login.challenge, login.authorization_url
+    ));
+    worker::Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .with_header("Cross-Origin-Resource-Policy", "same-origin")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .from_json(&LoginCueOutput {
+            seed,
+            refresh_in_ms: (20 - now % 20) * 1000 + 250,
+        })
 }
 
 pub(super) async fn script(
