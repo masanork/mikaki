@@ -487,23 +487,23 @@
   },
   {
     "date": "2026-09-27",
-    "commit": "82e03a1",
+    "commit": "06598c0",
     "code": {
-      "implementationLines": 14596,
-      "testLines": 3492,
-      "implementationFiles": 63,
+      "implementationLines": 14808,
+      "testLines": 3499,
+      "implementationFiles": 64,
       "testFiles": 10,
       "byLanguage": {
         "rust": {
-          "implementationLines": 9650,
+          "implementationLines": 9706,
           "testLines": 1617
         },
         "typescript": {
-          "implementationLines": 3749,
-          "testLines": 1875
+          "implementationLines": 3768,
+          "testLines": 1882
         },
         "svelte": {
-          "implementationLines": 1197,
+          "implementationLines": 1334,
           "testLines": 0
         }
       }
