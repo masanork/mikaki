@@ -17,5 +17,5 @@
   "services": [
     { "binding": "USERINFO_CLAIMS", "service": "mikaki-userinfo-claim-worker" }
   ],
-  "triggers": { "crons": ["0 3 * * *"] }
+  "triggers": { "crons": ["* * * * *", "0 3 * * *"] }
 }

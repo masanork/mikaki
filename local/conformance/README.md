@@ -63,6 +63,9 @@ The fixture creates isolated D1 and prechecks passkey login with a single-use tr
 node local/conformance/run-passkey-oidf.ts all 1
 node local/conformance/run-passkey-oidf.ts oidcc-discovery-endpoint-verification 1 oidcc-config-certification-test-plan
 node local/conformance/run-passkey-oidf.ts all 1 oidcc-rp-initiated-logout-certification-test-plan
+node local/conformance/run-passkey-oidf.ts all 1 oidcc-backchannel-rp-initiated-logout-certification-test-plan
 ```
 
 The `1` is the signature counter after fixture precheck; increase it for subsequent runs against the same fixture. Modules share one virtual authenticator and carry its counter forward. The driver uploads screenshots required for `REVIEW` and saves summary/logs as `local/generated/oidf-passkey-*.json`. This local test is distinct from formal certification at a public issuer; see [OIDC conformance status](../../docs/oidc-core-conformance.md) and [logout run record](../../docs/oidc-logout-conformance.md).
+
+For the Back-Channel plan, `MIKAKI_BACKCHANNEL_TEST_ORIGIN` overrides the fixture's notification receiver origin when the Docker-only `suite-frontend` host is unreachable from the Worker process. The local outbound proxy may still reject calls to host loopback or LAN addresses; verify receipt in the suite rather than inferring success from an enqueued delivery.

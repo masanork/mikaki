@@ -18,8 +18,8 @@ pub use exchange::{
     TokenEndpointInputError, ValidatedTokenEndpointInput,
 };
 pub use signing::{
-    IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, P256TokenSigner, PASSKEY_UV_ACR,
-    RsaPrivateTokenKey,
+    IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, LogoutTokenSigningInput,
+    P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey,
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};

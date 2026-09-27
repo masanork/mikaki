@@ -447,6 +447,24 @@ try {
   assert.equal((await logoutGet(noParameters)).status, 200);
   const onlyState = new URL('/logout?state=local-state', issuer);
   assert.equal((await logoutGet(onlyState)).status, 200);
+  const rpPost = await worker.fetch(`${issuer}/logout`, {
+    method: 'POST',
+    headers: {
+      origin: 'https://rp.example',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: logoutUrl.searchParams.toString(),
+    redirect: 'manual',
+  });
+  assert.equal(rpPost.status, 303);
+  assert.equal((await logoutGet(new URL(rpPost.headers.get('location')!))).status, 200);
+  const invalidRpPost = await worker.fetch(`${issuer}/logout`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `${logoutUrl.searchParams.toString()}&state=duplicate`,
+    redirect: 'manual',
+  });
+  assert.equal(invalidRpPost.status, 400);
   const confirmation = await logoutGet(logoutUrl);
   const confirmationHtml = await confirmation.text();
   assert.equal(confirmation.status, 200, confirmationHtml);
@@ -533,7 +551,9 @@ try {
     1,
   );
   const deliveries = (
-    await env.DB.prepare('SELECT client_id,sid,logout_uri,state FROM logout_delivery').all()
+    await env.DB.prepare(
+      'SELECT client_id,sid,logout_uri,state,attempts FROM logout_delivery',
+    ).all()
   ).results;
   const delivery = deliveries.find((row: { sid: string }) => row.sid === logoutPayload.sid);
   assert.ok(deliveries.length >= 1);
@@ -542,6 +562,7 @@ try {
     sid: logoutPayload.sid,
     logout_uri: 'https://rp.example/backchannel',
     state: 'pending',
+    attempts: 1,
   });
   await env.DB.prepare('UPDATE client_backchannel_logout_uri SET logout_uri=? WHERE client_id=?')
     .bind('https://rp.example/rotated-backchannel', clientId)

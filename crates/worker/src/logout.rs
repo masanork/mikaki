@@ -24,19 +24,6 @@ fn invalid() -> worker::Result<worker::Response> {
         .fixed("Invalid logout request".as_bytes().to_vec()))
 }
 
-fn exact_parameters(
-    pairs: impl Iterator<Item = (String, String)>,
-    names: &[&str],
-) -> Option<HashMap<String, String>> {
-    let mut values = HashMap::new();
-    for (key, value) in pairs {
-        if !names.contains(&key.as_str()) || values.insert(key, value).is_some() {
-            return None;
-        }
-    }
-    (values.len() == names.len()).then_some(values)
-}
-
 fn optional_parameters(
     pairs: impl Iterator<Item = (String, String)>,
     names: &[&str],
@@ -186,9 +173,6 @@ pub(super) async fn post(
     mut request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    if !vault_attributes::same_origin(&request)? {
-        return invalid();
-    }
     let Some(content_type) = request.headers().get("content-type")? else {
         return invalid();
     };
@@ -202,14 +186,48 @@ pub(super) async fn post(
     let db = context.env.d1("DB")?;
     let policy = WorkerRuntimePolicy::from_db(&db).await?;
     let body = read_bounded_body(&mut request, policy.form_body_bytes).await?;
-    let Some(values) = exact_parameters(
+    let Some(values) = optional_parameters(
         url::form_urlencoded::parse(body.as_bytes())
             .map(|(key, value)| (key.into_owned(), value.into_owned())),
-        &["csrf"],
+        &["csrf", "id_token_hint", "post_logout_redirect_uri", "state"],
     ) else {
         return invalid();
     };
-    let csrf = &values["csrf"];
+    if values.contains_key("csrf") {
+        if values.len() != 1 || !vault_attributes::same_origin(&request)? {
+            return invalid();
+        }
+        return confirm(request, context, &db, &values["csrf"]).await;
+    }
+    // A top-level cross-site POST does not carry the Lax SSO cookie. Convert
+    // the validated form to a same-site GET before showing the confirmation.
+    if request.url()?.query().is_some() {
+        return invalid();
+    }
+    let mut destination = request.url()?;
+    destination.set_query(None);
+    if !values.is_empty() {
+        destination
+            .query_pairs_mut()
+            .extend_pairs(values.iter().map(|(key, value)| (key, value)));
+    }
+    if destination.as_str().len() > policy.request_target_bytes() {
+        return invalid();
+    }
+    Ok(worker::Response::builder()
+        .with_status(303)
+        .with_header("Location", destination.as_str())?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .empty())
+}
+
+async fn confirm(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+    db: &worker::D1Database,
+    csrf: &str,
+) -> worker::Result<worker::Response> {
     if !passkey_login::valid_tx(csrf) {
         return invalid();
     }
@@ -300,6 +318,9 @@ pub(super) async fn post(
     if result.is_err() {
         return invalid();
     }
+    // The SSO is already revoked. A failed notification remains leased or
+    // pending in the outbox and the minute cron retries it.
+    let _ = logout_delivery::run_event(&context.env, &event_id).await;
     let mut response = if transaction.redirect_uri.is_empty() {
         worker::Response::builder()
             .with_header("Content-Type", "text/html; charset=utf-8")?
