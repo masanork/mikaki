@@ -69,7 +69,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       await page
         .locator('.auth-primary')
         .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(21, 92, 165)',
+      'rgb(23, 89, 173)',
     );
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
