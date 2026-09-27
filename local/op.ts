@@ -102,7 +102,13 @@ async function sso(db: any, req: Request) {
 async function context(db: any, req: Request, id: string | null) {
   const l = await login(db, req, id);
   const s = await sso(db, req);
-  return json({ tx: l.id, csrf: l.csrf, client: 'Mikaki local RP', signed_in: !!s });
+  return json({
+    tx: l.id,
+    csrf: l.csrf,
+    client: 'Mikaki local RP',
+    rp_uri: CALLBACK,
+    signed_in: !!s,
+  });
 }
 function transactionGuard(db: any, l: { id: string; browser_hash: string }) {
   return guard(

@@ -5,6 +5,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/auth.css");
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/Login.svelte");
+    println!("cargo:rerun-if-changed=ui/SessionCue.svelte");
     println!("cargo:rerun-if-changed=ui/Admin.svelte");
     println!("cargo:rerun-if-changed=ui/admin.ts");
     println!("cargo:rerun-if-changed=ui/Complete.svelte");

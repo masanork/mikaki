@@ -163,6 +163,7 @@ try {
   assert.match(loginHtml, /<html lang="en">/);
   assert.match(loginHtml, /id="app" data-tx="[A-Za-z0-9_-]{43}"/);
   assert.match(loginHtml, /data-client="mikaki-basic-one"/);
+  assert.ok(loginHtml.includes(`data-rp-uri="${redirectUri}"`));
   assert.match(loginHtml, /src="\/login\/login\.js"/);
   const loginScript = await worker.fetch(new URL('/login/login.js', issuer));
   assert.equal(loginScript.status, 200);

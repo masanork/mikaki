@@ -30,7 +30,7 @@ try {
     }
     await route.fulfill({
       contentType: 'text/html',
-      body: `<!doctype html><html lang="${url.searchParams.get('lang') === 'en' ? 'en' : 'ja'}"><head><meta charset="utf-8"><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-client="mikaki-helpdesk-local" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
+      body: `<!doctype html><html lang="${url.searchParams.get('lang') === 'en' ? 'en' : 'ja'}"><head><meta charset="utf-8"><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="https://helpdesk.mikaki.test/callback" data-client="mikaki-helpdesk-local" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
     });
   });
 

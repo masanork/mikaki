@@ -159,6 +159,118 @@ select {
   line-height: 1.85;
 }
 
+.auth-session-cue {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 1.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid hsl(var(--page-hue) 42% 82%);
+  border-radius: 0.8rem;
+  background: linear-gradient(125deg, hsl(var(--page-hue) 75% 97%), hsl(var(--rp-hue) 70% 94%));
+  background-size: 180% 180%;
+  animation: auth-cue-drift 12s ease-in-out infinite alternate;
+}
+
+.auth-story .auth-session-cue {
+  border-color: hsl(var(--page-hue) 65% 72% / 0.48);
+  background: linear-gradient(
+    125deg,
+    hsl(var(--page-hue) 48% 35% / 0.52),
+    hsl(var(--rp-hue) 48% 32% / 0.5)
+  );
+  background-size: 180% 180%;
+  box-shadow: 0 12px 35px #07172938;
+}
+
+.auth-session-pattern {
+  display: grid;
+  grid-template-columns: repeat(4, 0.7rem);
+  gap: 0.3rem;
+  flex: none;
+  padding: 0.25rem;
+  transform: rotate(-12deg);
+}
+
+.auth-session-tile {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.24rem 0.1rem 0.24rem 0.1rem;
+  background: hsl(var(--page-hue) 66% 39%);
+  transform: rotate(var(--turn));
+  animation: auth-tile-breathe 3.6s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+.auth-session-tone-1 {
+  background: hsl(var(--page-hue) 70% 62%);
+}
+.auth-session-tone-2 {
+  background: hsl(var(--rp-hue) 70% 72%);
+}
+.auth-session-tone-3 {
+  background: hsl(var(--rp-hue) 61% 36%);
+}
+
+.auth-origin {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.1rem;
+  line-height: 1.35;
+}
+
+.auth-origin-label,
+.auth-origin-hint {
+  color: #526277;
+  font-size: 0.7rem;
+}
+
+.auth-origin-label {
+  font-weight: 700;
+}
+.auth-origin-rp-label {
+  margin-top: 0.25rem;
+}
+
+.auth-origin-host {
+  color: #173b63;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.auth-story .auth-origin-label,
+.auth-story .auth-origin-hint {
+  color: #c0d6ed;
+}
+.auth-story .auth-origin-host {
+  color: #fff;
+}
+
+@keyframes auth-tile-breathe {
+  0%,
+  100% {
+    opacity: 0.48;
+    scale: 0.75;
+  }
+  45% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes auth-cue-drift {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
 .auth-art {
   position: relative;
   width: clamp(16rem, 28vw, 26rem);
@@ -635,5 +747,12 @@ select {
   .auth-secondary,
   .auth-field input {
     transition: none;
+  }
+  .auth-session-cue,
+  .auth-session-tile {
+    animation: none;
+  }
+  .auth-session-tile {
+    opacity: 1;
   }
 }

@@ -48,7 +48,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       if (url.pathname === '/login') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
+          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="https://${url.searchParams.has('other-rp') ? 'other.example' : 'client.example'}/callback" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
         });
         return;
       }
@@ -65,6 +65,15 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);
+    assert.equal(await page.locator('.auth-origin-host').first().textContent(), 'mikaki.test');
+    assert.equal(await page.locator('.auth-origin-host').nth(1).textContent(), 'client.example');
+    assert.equal(await page.locator('.auth-session-tile').count(), 16);
+    const firstStyle = await page.locator('.auth-session-cue').getAttribute('style');
+    await page.goto('https://mikaki.test/login?other-rp=1');
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
+    assert.notEqual(await page.locator('.auth-session-cue').getAttribute('style'), firstStyle);
+    await page.goto('https://mikaki.test/login');
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(
       await page
         .locator('.auth-primary')

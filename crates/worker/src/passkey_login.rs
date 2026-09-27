@@ -121,8 +121,20 @@ pub(super) async fn get(
         });
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let enrollment = login.client_id == "mikaki-internal-enrollment";
+    let rp_uri = if enrollment {
+        login.authorization_url.clone()
+    } else {
+        url::Url::parse(&login.authorization_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(key, _)| key == "redirect_uri")
+                    .map(|(_, value)| value.into_owned())
+            })
+            .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
+    };
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         locale = strings.locale,
         title = crate::i18n::html_escape(strings.message(if enrollment {
             "enrollHeading"
@@ -136,6 +148,7 @@ pub(super) async fn get(
         }),
         enrollment = if enrollment { "true" } else { "false" },
         challenge = login.challenge,
+        rp_uri = crate::i18n::html_escape(&rp_uri),
     );
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?

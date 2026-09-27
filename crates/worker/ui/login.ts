@@ -5,8 +5,8 @@ import './auth.css';
 
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid login page');
-const { tx, challenge, rpId, client, enrollment } = target.dataset;
-if (!tx || !challenge || !rpId || !client) throw new Error('Invalid login transaction');
+const { tx, challenge, rpId, rpUri, client, enrollment } = target.dataset;
+if (!tx || !challenge || !rpId || !rpUri || !client) throw new Error('Invalid login transaction');
 
 mount(Login, {
   target,
@@ -14,6 +14,7 @@ mount(Login, {
     tx,
     challenge,
     rpId,
+    rpUri,
     client,
     enrollment: enrollment === 'true',
     locale: initializeLocale(),

@@ -2,12 +2,14 @@
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
+  import SessionCue from './SessionCue.svelte';
   import type { Locale } from './paraglide/runtime.js';
 
   let {
     tx,
     challenge,
     rpId,
+    rpUri,
     client,
     enrollment,
     locale,
@@ -15,6 +17,7 @@
     tx: string;
     challenge: string;
     rpId: string;
+    rpUri: string;
     client: string;
     enrollment: boolean;
     locale: Locale;
@@ -194,6 +197,14 @@
       </p>
       <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
       <p class="auth-hero-description">{m.authHeroDescription()}</p>
+      <SessionCue
+        seed={tx}
+        pageUri={location.href}
+        {rpUri}
+        pageLabel={m.authOriginLabel()}
+        rpLabel={m.authRpOriginLabel()}
+        hint={m.authOriginHint()}
+      />
     </div>
     <div class="auth-art" aria-hidden="true">
       <div class="auth-art-ring auth-art-ring-outer"></div>
