@@ -169,6 +169,23 @@ try {
   assert.equal(loginScript.status, 200);
   assert.match(await loginScript.text(), /Allow and sign in with passkey/);
   const tx = loginUrl.searchParams.get('tx');
+  const cueUrl = new URL(`/login/cue?tx=${tx}`, issuer);
+  const cue = await worker.fetch(cueUrl, { headers: { cookie: browserCookie } });
+  assert.equal(cue.status, 200);
+  assert.equal(cue.headers.get('cache-control'), 'no-store');
+  assert.equal(cue.headers.get('cross-origin-resource-policy'), 'same-origin');
+  const cueBody: unknown = await cue.json();
+  assert.ok(
+    typeof cueBody === 'object' &&
+      cueBody !== null &&
+      'seed' in cueBody &&
+      typeof cueBody.seed === 'string' &&
+      'refresh_in_ms' in cueBody &&
+      typeof cueBody.refresh_in_ms === 'number',
+  );
+  assert.match(cueBody.seed, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(cueBody.refresh_in_ms >= 1_000 && cueBody.refresh_in_ms <= 21_000);
+  assert.equal((await worker.fetch(cueUrl)).status, 400);
   const row = await env.DB.prepare('SELECT challenge FROM login_transaction WHERE tx_id=?')
     .bind(tx)
     .first();

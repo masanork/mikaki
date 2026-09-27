@@ -171,7 +171,7 @@ select {
   border-radius: 0.8rem;
   background: linear-gradient(125deg, hsl(var(--page-hue) 75% 97%), hsl(var(--rp-hue) 70% 94%));
   background-size: 180% 180%;
-  animation: auth-cue-drift 12s ease-in-out infinite alternate;
+  animation: auth-cue-drift var(--cue-duration, 12s) ease-in-out infinite alternate;
 }
 
 .auth-story .auth-session-cue {
@@ -191,7 +191,8 @@ select {
   gap: 0.3rem;
   flex: none;
   padding: 0.25rem;
-  transform: rotate(-12deg);
+  transform: rotate(calc(-12deg + var(--cue-tilt, 0deg)));
+  transition: transform 0.8s ease;
 }
 
 .auth-session-tile {
@@ -751,6 +752,9 @@ select {
   .auth-session-cue,
   .auth-session-tile {
     animation: none;
+  }
+  .auth-session-pattern {
+    transition: none;
   }
   .auth-session-tile {
     opacity: 1;

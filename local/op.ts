@@ -110,6 +110,16 @@ async function context(db: any, req: Request, id: string | null) {
     signed_in: !!s,
   });
 }
+async function loginCue(db: any, req: Request, id: string | null) {
+  const l = await login(db, req, id);
+  const timestamp = now();
+  const window = Math.floor(timestamp / 20);
+  const seed = await hash(`login-cue-v1:${l.id}:${l.browser_hash}:${l.request}:${window}`);
+  return json({ seed, refresh_in_ms: (20 - (timestamp % 20)) * 1000 + 250 }, 200, {
+    'Cache-Control': 'no-store',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+}
 function transactionGuard(db: any, l: { id: string; browser_hash: string }) {
   return guard(
     db,
@@ -693,6 +703,8 @@ export default {
         return await beginAuthorization(db, req, url);
       if (url.pathname === '/login/context' && req.method === 'GET')
         return await context(db, req, url.searchParams.get('tx'));
+      if (url.pathname === '/login/cue' && req.method === 'GET')
+        return await loginCue(db, req, url.searchParams.get('tx'));
       if (url.pathname === '/ceremony/start' && req.method === 'POST') return await start(db, req);
       if (url.pathname === '/ceremony/finish' && req.method === 'POST')
         return await finish(db, req);

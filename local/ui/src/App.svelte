@@ -126,6 +126,7 @@
       {#if context}
         <SessionCue
           seed={context.tx}
+          cueUrl={`/login/cue?tx=${encodeURIComponent(context.tx)}`}
           pageUri={location.href}
           rpUri={context.rp_uri}
           pageLabel={m.authOriginLabel()}

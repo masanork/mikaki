@@ -160,6 +160,47 @@ pub(super) async fn get(
         .from_html(html)
 }
 
+#[derive(Serialize)]
+struct LoginCueOutput {
+    seed: String,
+    refresh_in_ms: u64,
+}
+
+pub(super) async fn cue(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let request_url = request.url()?;
+    let query = request_url.query_pairs().collect::<Vec<_>>();
+    let tx = match query.as_slice() {
+        [(key, value)] if key == "tx" && valid_tx(value) => value.as_ref(),
+        _ => return Ok(worker::Response::builder().with_status(400).empty()),
+    };
+    let Some(browser) = browser_cookie(&request, "__Host-op-browser")? else {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    let browser_hash = hash(&browser);
+    let db = context.env.d1("DB")?;
+    let Some(login) = transaction(&db, tx, &browser_hash).await? else {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let window = now / 20;
+    let seed = hash(&format!(
+        "login-cue-v1:{tx}:{browser_hash}:{}:{}:{window}",
+        login.challenge, login.authorization_url
+    ));
+    worker::Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .with_header("Cross-Origin-Resource-Policy", "same-origin")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .from_json(&LoginCueOutput {
+            seed,
+            refresh_in_ms: (20 - now % 20) * 1000 + 250,
+        })
+}
+
 pub(super) async fn script(
     _request: worker::Request,
     _context: worker::RouteContext<()>,

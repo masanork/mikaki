@@ -2410,6 +2410,7 @@ pub async fn main(
         .get_async("/.well-known/openid-configuration", discovery_route)
         .get_async("/authorize", authorize_route)
         .get_async("/login", passkey_login::get)
+        .get_async("/login/cue", passkey_login::cue)
         .get_async("/login/login.js", passkey_login::script)
         .get_async("/login/login.css", passkey_login::stylesheet)
         .post_async("/login/finish", passkey_login::finish)

@@ -199,6 +199,7 @@
       <p class="auth-hero-description">{m.authHeroDescription()}</p>
       <SessionCue
         seed={tx}
+        cueUrl={`/login/cue?tx=${encodeURIComponent(tx)}`}
         pageUri={location.href}
         {rpUri}
         pageLabel={m.authOriginLabel()}
