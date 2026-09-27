@@ -89,6 +89,12 @@ try {
       redirectUri,
     ),
     env.DB.prepare(
+      'INSERT INTO client_post_logout_redirect_uri(client_id,redirect_uri,active) VALUES(?,?,1)',
+    ).bind(clientId, 'https://rp.example/logout/callback'),
+    env.DB.prepare(
+      'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) VALUES(?,?,1)',
+    ).bind(clientId, 'https://rp.example/backchannel'),
+    env.DB.prepare(
       "INSERT INTO client_key(client_id,kid,revision,active,algorithm,public_key_sec1) VALUES(?,?,1,1,'ES256',?)",
     ).bind(clientId, clientKid, client.publicBytes),
     env.DB.prepare(
@@ -357,8 +363,228 @@ try {
   );
   assert.equal(Object.hasOwn(concurrentPayload, 'nonce'), false);
 
+  const logoutVerifier = randomBytes(32).toString('base64url');
+  const logoutAuthorization = new URL('/authorize', issuer);
+  logoutAuthorization.search = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid',
+    state: 'logout-integration-state',
+    code_challenge: createHash('sha256').update(logoutVerifier).digest('base64url'),
+    code_challenge_method: 'S256',
+  }).toString();
+  const logoutAuthorizationResponse = await worker.fetch(logoutAuthorization, {
+    headers: { cookie: `__Host-op-sso=${cookie}` },
+    redirect: 'manual',
+  });
+  assert.equal(logoutAuthorizationResponse.status, 302);
+  const logoutCode = new URL(logoutAuthorizationResponse.headers.get('location')!).searchParams.get(
+    'code',
+  );
+  assert.ok(logoutCode);
+  const logoutExchange = await worker.fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      code: logoutCode,
+      redirect_uri: redirectUri,
+      code_verifier: logoutVerifier,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: await makeClientAssertion(now),
+    }).toString(),
+  });
+  assert.equal(logoutExchange.status, 200, await logoutExchange.clone().text());
+  const logoutTokens = (await logoutExchange.json()) as { id_token: string };
+  const { payload: logoutPayload } = await jwtVerify(logoutTokens.id_token, op.pair.publicKey, {
+    issuer,
+    audience: clientId,
+  });
+  assert.equal(
+    (
+      await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM valid_client_session WHERE client_id=? AND sid=?',
+      )
+        .bind(clientId, logoutPayload.sid)
+        .first()
+    ).count,
+    1,
+  );
+
+  const logoutUrl = new URL('/logout', issuer);
+  logoutUrl.search = new URLSearchParams({
+    id_token_hint: logoutTokens.id_token,
+    post_logout_redirect_uri: 'https://rp.example/logout/callback',
+    state: 'return-state',
+  }).toString();
+  const logoutGet = (url: URL, browserCookie = cookie) =>
+    worker.fetch(url, { headers: { cookie: `__Host-op-sso=${browserCookie}` } });
+  assert.equal(
+    (await logoutGet(new URL(logoutUrl), randomBytes(32).toString('base64url'))).status,
+    400,
+  );
+  const tampered = new URL(logoutUrl);
+  tampered.searchParams.set('id_token_hint', `${logoutTokens.id_token}x`);
+  assert.equal((await logoutGet(tampered)).status, 400);
+  const wrongRedirect = new URL(logoutUrl);
+  wrongRedirect.searchParams.set('post_logout_redirect_uri', 'https://rp.example/other');
+  assert.equal((await logoutGet(wrongRedirect)).status, 400);
+  const duplicate = new URL(logoutUrl);
+  duplicate.searchParams.append('state', 'other');
+  assert.equal((await logoutGet(duplicate)).status, 400);
+  const noHint = new URL(logoutUrl);
+  noHint.searchParams.delete('id_token_hint');
+  assert.equal((await logoutGet(noHint)).status, 400);
+  const noState = new URL(logoutUrl);
+  noState.searchParams.delete('state');
+  assert.equal((await logoutGet(noState)).status, 200);
+  const noRedirect = new URL(logoutUrl);
+  noRedirect.searchParams.delete('post_logout_redirect_uri');
+  assert.equal((await logoutGet(noRedirect)).status, 200);
+  const noParameters = new URL('/logout', issuer);
+  assert.equal((await logoutGet(noParameters)).status, 200);
+  const onlyState = new URL('/logout?state=local-state', issuer);
+  assert.equal((await logoutGet(onlyState)).status, 200);
+  const rpPost = await worker.fetch(`${issuer}/logout`, {
+    method: 'POST',
+    headers: {
+      origin: 'https://rp.example',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: logoutUrl.searchParams.toString(),
+    redirect: 'manual',
+  });
+  assert.equal(rpPost.status, 303);
+  assert.equal((await logoutGet(new URL(rpPost.headers.get('location')!))).status, 200);
+  const invalidRpPost = await worker.fetch(`${issuer}/logout`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `${logoutUrl.searchParams.toString()}&state=duplicate`,
+    redirect: 'manual',
+  });
+  assert.equal(invalidRpPost.status, 400);
+  const confirmation = await logoutGet(logoutUrl);
+  const confirmationHtml = await confirmation.text();
+  assert.equal(confirmation.status, 200, confirmationHtml);
+  const csrf = confirmationHtml.match(/name="csrf" value="([A-Za-z0-9_-]{43})"/)?.[1];
+  assert.ok(csrf);
+  const logoutCookies = `__Host-op-sso=${cookie}; __Host-op-logout=${csrf}`;
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT COUNT(*) AS count FROM logout_transaction WHERE csrf_hash=?')
+        .bind(createHash('sha256').update(csrf).digest('base64url'))
+        .first()
+    ).count,
+    1,
+  );
+  const submit = (origin: string) =>
+    worker.fetch(`${issuer}/logout`, {
+      method: 'POST',
+      headers: {
+        origin,
+        cookie: logoutCookies,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ csrf }).toString(),
+      redirect: 'manual',
+    });
+  assert.equal((await submit('https://other.example')).status, 400);
+  await env.DB.prepare(
+    "CREATE TRIGGER fail_logout_delivery BEFORE INSERT ON logout_delivery BEGIN SELECT RAISE(ABORT, 'injected delivery failure'); END",
+  ).run();
+  assert.equal((await submit(issuer)).status, 400);
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT revoked FROM sso_session WHERE sso_id=?')
+        .bind('oidc-test-sso')
+        .first()
+    ).revoked,
+    0,
+  );
+  assert.equal(
+    (await env.DB.prepare('SELECT COUNT(*) AS count FROM sso_logout_event').first()).count,
+    0,
+  );
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT COUNT(*) AS count FROM logout_transaction WHERE csrf_hash=?')
+        .bind(createHash('sha256').update(csrf).digest('base64url'))
+        .first()
+    ).count,
+    1,
+  );
+  await env.DB.prepare('DROP TRIGGER fail_logout_delivery').run();
+  const submissions = await Promise.all([submit(issuer), submit(issuer)]);
+  assert.deepEqual(submissions.map((response) => response.status).sort(), [302, 400]);
+  const completed = submissions.find((response) => response.status === 302);
+  assert.ok(completed);
+  const completedUrl = new URL(completed.headers.get('location')!);
+  assert.equal(completedUrl.origin + completedUrl.pathname, 'https://rp.example/logout/callback');
+  assert.equal(completedUrl.searchParams.get('state'), 'return-state');
+  assert.match(completed.headers.get('set-cookie') ?? '', /__Host-op-sso=; Max-Age=0/);
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT revoked FROM sso_session WHERE sso_id=?')
+        .bind('oidc-test-sso')
+        .first()
+    ).revoked,
+    1,
+  );
+  assert.equal(
+    (
+      await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM client_session WHERE sso_id=? AND revoked=0',
+      )
+        .bind('oidc-test-sso')
+        .first()
+    ).count,
+    0,
+  );
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT COUNT(*) AS count FROM sso_logout_event WHERE sso_id=?')
+        .bind('oidc-test-sso')
+        .first()
+    ).count,
+    1,
+  );
+  const deliveries = (
+    await env.DB.prepare(
+      'SELECT client_id,sid,logout_uri,state,attempts FROM logout_delivery',
+    ).all()
+  ).results;
+  const delivery = deliveries.find((row: { sid: string }) => row.sid === logoutPayload.sid);
+  assert.ok(deliveries.length >= 1);
+  assert.deepEqual(delivery, {
+    client_id: clientId,
+    sid: logoutPayload.sid,
+    logout_uri: 'https://rp.example/backchannel',
+    state: 'pending',
+    attempts: 1,
+  });
+  await env.DB.prepare('UPDATE client_backchannel_logout_uri SET logout_uri=? WHERE client_id=?')
+    .bind('https://rp.example/rotated-backchannel', clientId)
+    .run();
+  assert.equal(
+    (await env.DB.prepare('SELECT logout_uri FROM logout_delivery').first()).logout_uri,
+    'https://rp.example/backchannel',
+  );
+  assert.equal(
+    (
+      await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM valid_client_session WHERE client_id=? AND sid=?',
+      )
+        .bind(clientId, logoutPayload.sid)
+        .first()
+    ).count,
+    0,
+  );
+  assert.equal((await logoutGet(logoutUrl)).status, 400);
+
   console.log(
-    'mikaki-worker: D1 policy activation and live revision, isolated authorization, private_key_jwt code exchange, ES256 ID Token, UserInfo, replay revocation, and concurrent one-time exchange passed',
+    'mikaki-worker: D1 policy activation, code exchange, UserInfo, replay revocation, concurrent exchange, and atomic logout outbox passed',
   );
 } finally {
   await harness.close();

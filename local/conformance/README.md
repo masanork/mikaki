@@ -48,7 +48,7 @@ They re-verify public fixtures and write `artifacts/webauthn-performance.json`, 
 
 ## Local OIDC Basic OP suite
 
-Start OIDF Conformance Suite 5.2.4 in Colima at `https://localhost:8443`, then start the isolated fixture in another terminal. Certificates, test passkey, client secrets, and detailed logs remain ignored under `local/generated/`.
+Start OIDF Conformance Suite in Colima at `https://localhost:8443`, then start the isolated fixture in another terminal. Certificates, test passkey, client secrets, and detailed logs remain ignored under `local/generated/`.
 
 ```sh
 npm run build:policy
@@ -62,6 +62,17 @@ The fixture creates isolated D1 and prechecks passkey login with a single-use tr
 ```sh
 node local/conformance/run-passkey-oidf.ts all 1
 node local/conformance/run-passkey-oidf.ts oidcc-discovery-endpoint-verification 1 oidcc-config-certification-test-plan
+node local/conformance/run-passkey-oidf.ts all 1 oidcc-rp-initiated-logout-certification-test-plan
+node local/conformance/run-passkey-oidf.ts all 1 oidcc-backchannel-rp-initiated-logout-certification-test-plan
 ```
 
-The `1` is the signature counter after fixture precheck. Modules share one virtual authenticator and carry its counter forward. The driver uploads screenshots required for `REVIEW` and saves summary/logs as `local/generated/oidf-passkey-*.json`. This local test is distinct from formal certification at a public issuer; see [OIDC conformance status](../../docs/oidc-core-conformance.md).
+The `1` is the signature counter after fixture precheck; increase it for subsequent runs against the same fixture. Modules share one virtual authenticator and carry its counter forward. The driver uploads screenshots required for `REVIEW` and saves summary/logs as `local/generated/oidf-passkey-*.json`. This local test is distinct from formal certification at a public issuer; see [OIDC conformance status](../../docs/oidc-core-conformance.md) and [logout run record](../../docs/oidc-logout-conformance.md).
+
+For the Back-Channel plan, run the fixture on the suite's Docker network so its outbound notification can resolve `suite-frontend`. Install the Linux dependencies in an isolated temporary volume, then start the fixture from the repository root:
+
+```sh
+docker run --rm -v "$PWD":/app -v /private/tmp/mikaki-oidf-node-modules:/app/node_modules -w /app node:24-trixie-slim npm ci --ignore-scripts
+docker run --rm --network oidf-conformance_suite-net --add-host host.docker.internal:host-gateway -p 8792:8792 -e NODE_TLS_REJECT_UNAUTHORIZED=0 -v "$PWD":/app -v /private/tmp/mikaki-oidf-node-modules:/app/node_modules -w /app node:24-trixie-slim node local/conformance/oidf-local-worker.ts
+```
+
+Run the Back-Channel driver command above from the host after the fixture reports that it is listening. The suite's self-signed certificate is issued to `localhost`, not `suite-frontend`, so the Docker fixture disables Node certificate verification for this local process only. Do not use that setting outside the isolated conformance fixture. The `MIKAKI_BACKCHANNEL_TEST_ORIGIN` variable can override the notification receiver origin for another local suite topology. Verify the suite's notification result; an enqueued delivery alone does not prove receipt.

@@ -119,6 +119,18 @@ struct IdTokenClaims<'a> {
     acr: &'static str,
 }
 
+#[derive(Serialize)]
+struct LogoutTokenClaims<'a> {
+    iss: &'a str,
+    aud: &'a str,
+    iat: u64,
+    exp: u64,
+    jti: &'a str,
+    sub: &'a str,
+    sid: &'a str,
+    events: std::collections::BTreeMap<&'static str, serde_json::Value>,
+}
+
 /// Authentication context established by the Worker's UV-required passkey ceremony.
 pub const PASSKEY_UV_ACR: &str = "urn:mikaki:acr:passkey-uv";
 
@@ -138,6 +150,87 @@ pub struct RsaPrivateTokenKey {
 pub struct IdTokenSigningInput {
     algorithm: &'static str,
     signing_input: String,
+}
+
+pub struct LogoutTokenSigningInput {
+    algorithm: &'static str,
+    signing_input: String,
+}
+
+impl LogoutTokenSigningInput {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        algorithm: &'static str,
+        kid: &str,
+        issuer: &str,
+        audience: &str,
+        subject: &str,
+        sid: &str,
+        jti: &str,
+        issued_at: u64,
+        expires_at: u64,
+    ) -> Result<Self, InvalidIdTokenClaims> {
+        if !["ES256", "RS256"].contains(&algorithm)
+            || kid.is_empty()
+            || kid.len() > 128
+            || kid.bytes().any(|byte| byte.is_ascii_control())
+            || !issuer.starts_with("https://")
+            || issuer.len() > 2048
+            || audience.is_empty()
+            || audience.len() > 255
+            || subject.is_empty()
+            || subject.len() > 255
+            || sid.is_empty()
+            || sid.len() > 128
+            || jti.is_empty()
+            || jti.len() > 128
+            || issued_at == 0
+            || expires_at <= issued_at
+            || expires_at - issued_at > 300
+        {
+            return Err(InvalidIdTokenClaims);
+        }
+        let header = serde_json::to_vec(&ProtectedHeader {
+            alg: algorithm,
+            kid,
+            typ: "logout+jwt",
+        })
+        .map_err(|_| InvalidIdTokenClaims)?;
+        let claims = serde_json::to_vec(&LogoutTokenClaims {
+            iss: issuer,
+            aud: audience,
+            iat: issued_at,
+            exp: expires_at,
+            jti,
+            sub: subject,
+            sid,
+            events: std::collections::BTreeMap::from([(
+                "http://schemas.openid.net/event/backchannel-logout",
+                serde_json::json!({}),
+            )]),
+        })
+        .map_err(|_| InvalidIdTokenClaims)?;
+        Ok(Self {
+            algorithm,
+            signing_input: format!("{}.{}", B64.encode(header), B64.encode(claims)),
+        })
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.signing_input.as_bytes()
+    }
+
+    pub fn finish(self, signature: &[u8]) -> Result<String, InvalidIdTokenClaims> {
+        let valid_length = match self.algorithm {
+            "ES256" => signature.len() == 64,
+            "RS256" => (256..=512).contains(&signature.len()),
+            _ => false,
+        };
+        if !valid_length {
+            return Err(InvalidIdTokenClaims);
+        }
+        Ok(format!("{}.{}", self.signing_input, B64.encode(signature)))
+    }
 }
 
 impl P256TokenSigner {
@@ -309,6 +402,24 @@ impl P256TokenSigner {
             "{signing_input}.{}",
             B64.encode(signature.to_bytes())
         ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sign_logout_token(
+        &self,
+        issuer: &str,
+        audience: &str,
+        subject: &str,
+        sid: &str,
+        jti: &str,
+        issued_at: u64,
+        expires_at: u64,
+    ) -> Result<String, InvalidIdTokenClaims> {
+        let input = LogoutTokenSigningInput::new(
+            "ES256", &self.kid, issuer, audience, subject, sid, jti, issued_at, expires_at,
+        )?;
+        let signature: Signature = self.key.sign(input.as_bytes());
+        input.finish(&signature.to_bytes())
     }
 }
 
@@ -622,5 +733,40 @@ mod tests {
         .unwrap();
         let token = input.finish(&[0u8; 256]).unwrap();
         assert_eq!(token.split('.').count(), 3);
+    }
+
+    #[test]
+    fn logout_token_is_signed_with_backchannel_claims_and_no_nonce() {
+        let mut scalar = [0u8; 32];
+        scalar[31] = 1;
+        let key = SigningKey::from_slice(&scalar).unwrap();
+        let point = key.verifying_key().to_sec1_point(false);
+        let private = serde_json::json!({
+            "kty":"EC", "crv":"P-256", "kid":"op-1", "d":B64.encode(scalar),
+            "x":B64.encode(point.x().unwrap()), "y":B64.encode(point.y().unwrap())
+        });
+        let signer = P256TokenSigner::from_private_jwk(&private.to_string()).unwrap();
+        let token = signer
+            .sign_logout_token("https://issuer.example", "rp", "sub", "sid", "jti", 10, 310)
+            .unwrap();
+        let parts: Vec<_> = token.split('.').collect();
+        assert_eq!(parts.len(), 3);
+        let header: serde_json::Value =
+            serde_json::from_slice(&B64.decode(parts[0]).unwrap()).unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&B64.decode(parts[1]).unwrap()).unwrap();
+        assert_eq!(header["typ"], "logout+jwt");
+        assert_eq!(claims["aud"], "rp");
+        assert_eq!(claims["sid"], "sid");
+        assert_eq!(
+            claims["events"]["http://schemas.openid.net/event/backchannel-logout"],
+            serde_json::json!({})
+        );
+        assert!(claims.get("nonce").is_none());
+        let signature = Signature::from_slice(&B64.decode(parts[2]).unwrap()).unwrap();
+        use p256::ecdsa::signature::Verifier;
+        key.verifying_key()
+            .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &signature)
+            .unwrap();
     }
 }

@@ -5,6 +5,10 @@ mod admin_invitations;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;
 #[cfg(target_arch = "wasm32")]
+mod logout;
+#[cfg(target_arch = "wasm32")]
+mod logout_delivery;
+#[cfg(target_arch = "wasm32")]
 mod passkey_login;
 #[cfg(target_arch = "wasm32")]
 mod session_check;
@@ -224,6 +228,9 @@ struct DiscoveryResponse {
     token_endpoint: String,
     jwks_uri: String,
     userinfo_endpoint: String,
+    end_session_endpoint: String,
+    backchannel_logout_supported: bool,
+    backchannel_logout_session_supported: bool,
     response_types_supported: [&'static str; 1],
     response_modes_supported: [&'static str; 1],
     grant_types_supported: [&'static str; 1],
@@ -366,6 +373,57 @@ impl WorkerTokenSigner {
                     sid,
                     nonce,
                     auth_time,
+                    issued_at,
+                    expires_at,
+                )
+                .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let global = js_sys::global();
+                let crypto = js_sys::Reflect::get(&global, &"crypto".into())?
+                    .dyn_into::<web_sys::Crypto>()
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let signature = wasm_bindgen_futures::JsFuture::from(
+                    crypto.subtle().sign_with_str_and_u8_array(
+                        "RSASSA-PKCS1-v1_5",
+                        crypto_key,
+                        input.as_bytes(),
+                    )?,
+                )
+                .await?;
+                let signature = js_sys::Uint8Array::new(&signature).to_vec();
+                if signature.len() != key.modulus_bytes() {
+                    return Err(worker::Error::RustError("server_error".into()));
+                }
+                input
+                    .finish(&signature)
+                    .map_err(|_| worker::Error::RustError("server_error".into()))
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn sign_logout_token(
+        &self,
+        issuer: &str,
+        audience: &str,
+        subject: &str,
+        sid: &str,
+        jti: &str,
+        issued_at: u64,
+        expires_at: u64,
+    ) -> worker::Result<String> {
+        match self {
+            Self::Es256(key) => key
+                .sign_logout_token(issuer, audience, subject, sid, jti, issued_at, expires_at)
+                .map_err(|_| worker::Error::RustError("server_error".into())),
+            Self::Rs256 { key, crypto_key } => {
+                let input = mikaki_oidc::LogoutTokenSigningInput::new(
+                    "RS256",
+                    key.kid(),
+                    issuer,
+                    audience,
+                    subject,
+                    sid,
+                    jti,
                     issued_at,
                     expires_at,
                 )
@@ -2200,6 +2258,9 @@ async fn discovery_route(
             token_endpoint: format!("{issuer}/token"),
             jwks_uri: format!("{issuer}/jwks"),
             userinfo_endpoint: format!("{issuer}/userinfo"),
+            end_session_endpoint: format!("{issuer}/logout"),
+            backchannel_logout_supported: true,
+            backchannel_logout_session_supported: true,
             issuer,
             response_types_supported: ["code"],
             response_modes_supported: ["query"],
@@ -2360,6 +2421,8 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
+        .get_async("/logout", logout::get)
+        .post_async("/logout", logout::post)
         .get_async("/admin", admin_invitations::page)
         .get_async("/admin/admin.js", admin_invitations::script)
         .get_async("/jwks", jwks_route)
@@ -2399,7 +2462,12 @@ pub async fn scheduled(
     env: worker::Env,
     _ctx: worker::ScheduleContext,
 ) {
-    vault_gc::run(&env, event.schedule() as u64)
+    if event.cron() == "0 3 * * *" {
+        vault_gc::run(&env, event.schedule() as u64)
+            .await
+            .expect("Vault garbage collection failed");
+    }
+    logout_delivery::run_due(&env)
         .await
-        .expect("Vault garbage collection failed");
+        .expect("Logout delivery failed");
 }

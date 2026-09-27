@@ -19,6 +19,10 @@ function requiredHeader(
 const issuer = 'https://host.docker.internal:8792';
 const alias = 'mikaki-local-20260923';
 const redirectUri = `https://suite-frontend:8443/test/a/${alias}/callback`;
+const postLogoutRedirectUri = `https://suite-frontend:8443/test/a/${alias}/post_logout_redirect`;
+const backchannelOrigin =
+  process.env.MIKAKI_BACKCHANNEL_TEST_ORIGIN ?? 'https://suite-frontend:8443';
+const backchannelLogoutUri = `${backchannelOrigin}/test/a/${alias}/backchannel_logout`;
 const pair = await generateKeyPair('ES256', { extractable: true });
 const privateJwk = {
   ...(await exportJWK(pair.privateKey)),
@@ -119,11 +123,24 @@ try {
         redirectUri,
       ),
       env.DB.prepare(
+        'INSERT INTO client_post_logout_redirect_uri(client_id,redirect_uri,active) VALUES(?,?,1)',
+      ).bind(clientId, postLogoutRedirectUri),
+      env.DB.prepare(
+        'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) VALUES(?,?,1)',
+      ).bind(clientId, backchannelLogoutUri),
+      env.DB.prepare(
         'INSERT INTO client_secret(client_id,revision,active,secret_hash) VALUES(?,1,1,?)',
       ).bind(clientId, hash),
     ]);
     const key = ['client', 'client2', 'client_secret_post'][index];
-    config[key] = { client_id: clientId, client_secret: secret, client_name: clientId };
+    config[key] = {
+      client_id: clientId,
+      client_secret: secret,
+      client_name: clientId,
+      post_logout_redirect_uris: [postLogoutRedirectUri],
+      backchannel_logout_uri: backchannelLogoutUri,
+      backchannel_logout_session_required: true,
+    };
   }
   const authorizeUrl = new URL('/authorize', issuer);
   authorizeUrl.search = new URLSearchParams({

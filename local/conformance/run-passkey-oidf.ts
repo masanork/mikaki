@@ -15,7 +15,9 @@ const passkey = JSON.parse(
 const variant =
   planName === 'oidcc-config-certification-test-plan'
     ? {}
-    : { server_metadata: 'discovery', client_registration: 'static_client' };
+    : planName.includes('logout-certification-test-plan')
+      ? { response_type: 'code', client_registration: 'static_client' }
+      : { server_metadata: 'discovery', client_registration: 'static_client' };
 
 async function api(path: string, options: RequestInit = {}) {
   const response = await fetch(`${suite}${path}`, options);
@@ -47,6 +49,26 @@ const browser = await chromium.launch({
 try {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
+  page.on('console', (message) => {
+    if (message.type() === 'error') console.log('browser console:', message.text());
+  });
+  page.on('requestfailed', (request) =>
+    console.log(
+      'browser request failed:',
+      request.method(),
+      describeUrl(request.url()),
+      request.failure()?.errorText,
+    ),
+  );
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/logout')
+      console.log('logout POST requested');
+  });
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/logout' && response.request().method() === 'POST') {
+      console.log('logout POST:', response.status());
+    }
+  });
   const cdp = await context.newCDPSession(page);
   await cdp.send('WebAuthn.enable', { enableUI: false });
   const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -81,7 +103,7 @@ try {
     });
     console.log('module:', name, run.id);
     const seen = new Set<string>();
-    let lastReviewScreenshot;
+    let lastReviewScreenshot: Buffer | undefined;
     let reviewSubmitted = false;
     let info;
     try {
@@ -97,10 +119,33 @@ try {
           seen.add(url);
           console.log('visiting:', describeUrl(url));
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-          lastReviewScreenshot = await page.screenshot({ fullPage: true });
+          lastReviewScreenshot = await page
+            .screenshot({ fullPage: true, timeout: 5000 })
+            .catch(() => undefined);
           if (new URL(page.url()).pathname === '/login') {
-            await page.locator('#passkey').click();
+            await page
+              .waitForURL((target) => target.pathname !== '/login', { timeout: 5000 })
+              .catch(() => {});
+            if (new URL(page.url()).pathname === '/login') {
+              await page
+                .locator('#passkey')
+                .click({ timeout: 5000 })
+                .catch((error) => {
+                  if (new URL(page.url()).pathname === '/login') throw error;
+                });
+            }
             await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
+          }
+          if (
+            new URL(page.url()).pathname === '/logout' &&
+            (await page.locator('button[type="submit"]').count())
+          ) {
+            console.log('logout document origin:', await page.evaluate(() => location.origin));
+            await page.locator('button[type="submit"]').click();
+            console.log('logout landed:', describeUrl(page.url()));
+            lastReviewScreenshot = await page
+              .screenshot({ fullPage: true, timeout: 5000 })
+              .catch(() => lastReviewScreenshot);
           }
           await page.waitForTimeout(1500);
           console.log('landed:', describeUrl(page.url()));
@@ -115,7 +160,12 @@ try {
             (entry: { result: string; upload?: string }) =>
               entry.result === 'REVIEW' && entry.upload,
           );
-          if (review && (!/second|again|reauth/i.test(review.msg ?? '') || seen.size >= 2)) {
+          const logoutVisited = [...seen].some((url) => new URL(url).pathname === '/logout');
+          if (
+            review &&
+            (!name.includes('logout') || logoutVisited) &&
+            (!/second|again|reauth/i.test(review.msg ?? '') || seen.size >= 2)
+          ) {
             const response = await fetch(
               `${suite}/api/log/${run.id}/images/${review.upload}?description=${encodeURIComponent('Passkey login prompt')}`,
               {
