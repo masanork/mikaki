@@ -5,6 +5,8 @@ mod admin_invitations;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;
 #[cfg(target_arch = "wasm32")]
+mod home;
+#[cfg(target_arch = "wasm32")]
 mod logout;
 #[cfg(target_arch = "wasm32")]
 mod logout_delivery;
@@ -2406,6 +2408,7 @@ pub async fn main(
     _ctx: worker::Context,
 ) -> worker::Result<worker::Response> {
     worker::Router::with_data(())
+        .get_async("/", home::get)
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
         .get_async("/.well-known/openid-configuration", discovery_route)
         .get_async("/authorize", authorize_route)

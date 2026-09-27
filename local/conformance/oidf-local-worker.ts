@@ -142,6 +142,16 @@ try {
       backchannel_logout_session_required: true,
     };
   }
+  const home = await worker.fetch(new URL('/', issuer));
+  assert.equal(home.status, 200);
+  assert.equal(home.headers.get('cache-control'), 'no-store');
+  const homeHtml = await home.text();
+  assert.match(homeHtml, /<html lang="ja">/);
+  assert.match(homeHtml, /href="\/enroll"/);
+  assert.match(homeHtml, /連携先アプリから始めてください/);
+  const englishHome = await worker.fetch(new URL('/?lang=en', issuer));
+  assert.equal(englishHome.status, 200);
+  assert.match(await englishHome.text(), /Start sign-in from the app/);
   const authorizeUrl = new URL('/authorize', issuer);
   authorizeUrl.search = new URLSearchParams({
     client_id: 'mikaki-basic-one',
