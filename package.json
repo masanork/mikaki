@@ -30,7 +30,7 @@
     "svelte": "5.57.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260924.1",
+    "@cloudflare/workers-types": "^5.20260925.2",
     "@inlang/paraglide-js": "^2.25.4",
     "@inlang/plugin-message-format": "^4.4.4",
     "@playwright/test": "1.63.0",
