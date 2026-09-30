@@ -102,5 +102,14 @@
   "productAdminEyebrow": "アカウント管理",
   "productReadyEyebrow": "登録完了",
   "productSessionControl": "セッション管理",
-  "productSessionClosed": "セッション終了"
+  "productSessionClosed": "セッション終了",
+  "productVaultEyebrow": "個人用Vault",
+  "productVaultHint": "暗号化されたプロフィールと連携先を管理します。",
+  "productProfile": "プロフィール",
+  "productConnections": "連携",
+  "productNameSharing": "名前の共有",
+  "productLocked": "ロック中",
+  "productUnlocked": "ロック解除済み",
+  "productConnectionsEmpty": "利用できる連携はまだありません。",
+  "productReload": "読み込みを再試行"
 }

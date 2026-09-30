@@ -102,5 +102,14 @@
   "productAdminEyebrow": "ACCOUNT ADMINISTRATION",
   "productReadyEyebrow": "READY TO GO",
   "productSessionControl": "SESSION CONTROL",
-  "productSessionClosed": "SESSION CLOSED"
+  "productSessionClosed": "SESSION CLOSED",
+  "productVaultEyebrow": "PERSONAL VAULT",
+  "productVaultHint": "Manage your encrypted profile and control its connections.",
+  "productProfile": "Profile",
+  "productConnections": "Connections",
+  "productNameSharing": "Name sharing",
+  "productLocked": "Locked",
+  "productUnlocked": "Unlocked",
+  "productConnectionsEmpty": "No connections are available yet.",
+  "productReload": "Retry loading"
 }
