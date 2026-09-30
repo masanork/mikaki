@@ -87,9 +87,15 @@ Apple association remains unconfigured. The mobile public client is active
 with PKCE mandatory, no client secret and its exact HTTPS callback.
 [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36683839335)
 passed health, Discovery, JWKS, clean source/version identity, readiness 204
-and Android association/callback-host isolation. No installed-app Passkey
-completion, native app return or Vault ciphertext read is established by this
-activation. [Post-registration smoke](https://github.com/masanork/mikaki/actions/runs/36684240729)
+and Android association/callback-host isolation. [Post-registration smoke](https://github.com/masanork/mikaki/actions/runs/36684240729)
 also confirmed that this mobile client reaches the OP's browser login using
 S256 PKCE, without completing authentication or token exchange.
 `MIKAKI_NATIVE_VAULT_OAUTH` remains unset.
+
+Subsequent Pixel testing verified the signed APK's OS domain association,
+ordinary browser login/app return and Rust token validation twice, session
+clearing/process-exit behavior and Keystore signing after restart. D1 showed
+two token issues; the first authentication context was one second old and the
+second reused it. The Passkey prompt was not directly observed. These results
+are recorded in [native activation](native-client-activation.md); they do not
+establish native Vault ciphertext reading or PRF decryption.

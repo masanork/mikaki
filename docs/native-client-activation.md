@@ -1,7 +1,9 @@
 # Native client activation checkpoint
 
 Status: production OP/schema/mobile registration activated on 2026-09-30.
-Installed-app Passkey login remains a device qualification step.
+Signed Android ordinary OIDC app return and token validation are verified.
+Fresh Passkey prompt observation and the remaining negative/device cases
+are separate qualification steps.
 
 ## Activation result
 
@@ -166,9 +168,32 @@ listed this app as a verified owner. A normal implicit `ACTION_VIEW` request
 for the callback URL, without OAuth parameters or a forced component,
 delivered the intent to `app.tossa.mikaki/.MainActivity`. This qualifies OS
 association and URL delivery; it is not a completed browser OAuth callback.
-The Pixel remained locked, so external-browser Passkey completion and token
-exchange still await the owner's device interaction. Release build mode here
-does not mean the experimental app is qualified for distribution.
+After the owner unlocked the phone, the installed app's login action returned
+to the app and displayed `ログインしました。` twice, including after explicit
+native-session clearing. This phase is reached only after callback
+state/issuer validation, S256 PKCE code exchange and signed ID Token/nonce/
+access-token-hash validation in Rust. D1 aggregation confirmed two token
+issues for this native client and a 43-character PKCE challenge; no token,
+code, subject, account identifier or SSO secret was retrieved for this check.
+The SSO authentication context was one second old at the first issue and
+121 seconds old at the second. This supports initial fresh authentication
+followed by SSO reuse. The operator did not directly observe the Passkey
+selection/biometric prompt, so that ceremony's UI/device path is not separately
+qualified by these screenshots.
+
+The native session-clear action displayed its success message; after another
+successful login, force-stopping and reopening the app showed no logged-in
+session. The verification APK's Android Keystore DPoP signature check
+succeeded before and after the process restart. This does not prove hardware
+backing, Vault API access or PRF decryption. Browser SSO was preserved.
+The phone's 30-second screen-off timeout was temporarily extended to five
+minutes during the test and restored to 30 seconds afterward. Device temporary
+screenshots were removed; no device serial or personal screen was committed.
+
+Signed iPhone, fresh Passkey prompt observation, cancellation/timeout and
+interception cases, native Vault consent/read/unlock and card reading remain
+separate gates. Release build mode here does not mean the experimental app is
+qualified for distribution.
 
 ## Reviewed activation order
 

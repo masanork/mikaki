@@ -18,7 +18,8 @@ private key is generated and retained by Android Keystore or the iPhone Secure
 Enclave; the Rust code receives only its public coordinates and DER signatures.
 The access token stays in Rust process memory. It does not decrypt the owner
 envelope. Mobile callback
-and app-association behavior has not been tested in a signed installed app.
+and Android app association and ordinary OIDC return/token validation have
+been tested in a signed installed app; iPhone remains unqualified.
 Wallet, NFC and PDS remain unimplemented. The icon is temporary; a distribution
 signing identity has not been selected. Android release signing can use an
 ignored local keystore configuration described in the activation checkpoint.
@@ -44,7 +45,8 @@ second login, and process restart on each target desktop OS before release.
 The [activation checkpoint](../../docs/native-client-activation.md) records
 the inspected production state, prepared public registration, Android signing
 configuration and deployment evidence. The checked-in registration is now
-applied to production; installed-app login still needs device qualification.
+applied to production. Android's ordinary login and app return are verified;
+fresh Passkey prompt observation and the remaining device cases are open.
 
 Register a separate public mobile client with sector `mikaki-native.tossa.app` and
 exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.
@@ -126,6 +128,12 @@ Later on 2026-09-30, the dedicated verification-signed release-mode APK with
 the registered mobile client ID replaced the Pixel's debug installation.
 Android reported the callback domain as `verified`; an implicit callback URL
 intent reached the app without a forced component or manually approved
-domain state. This confirms OS association and URL delivery. The phone was
-locked, so browser Passkey completion, token exchange and authenticated app
-return still await device interaction.
+domain state. This confirms OS association and URL delivery. After unlocking,
+ordinary login returned to the app and passed Rust's token validation twice,
+including after native-session clearing. D1 confirmed two token issues with
+PKCE; the first used an authentication context one second old, the second
+reused that SSO. The Passkey prompt itself was not directly observed.
+Force-stopping and reopening the app removed the in-memory logged-in state;
+the Keystore signature check passed again after restart. Browser SSO was
+preserved. Native Vault access/decryption, iPhone and remaining cancellation/
+timeout/interception cases are still unqualified.
