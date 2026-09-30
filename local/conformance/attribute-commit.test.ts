@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, readdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createTestHarness } from 'wrangler';
 import { chromium, expect } from '@playwright/test';
@@ -78,7 +80,7 @@ test('approved note commits exact ciphertext once; proof, failures, retries, con
   const privateJwk = await crypto.subtle.exportKey('jwk', pair.privateKey),
     publicJwk = await crypto.subtle.exportKey('jwk', pair.publicKey),
     keyId = await agentKeyId(publicJwk);
-  const directory = await mkdtemp('/private/tmp/mikaki-commit-');
+  const directory = await mkdtemp(join(tmpdir(), 'mikaki-commit-'));
   // Fault injection wraps the real OP entrypoint, changing only R2.put for a test flag.
   const shim = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
   await writeFile(
