@@ -34,6 +34,7 @@ jobs:
       - run: npm ci
       - name: Design and formatting
         run: |
+          npm run generate:i18n
           node scripts/check_design.ts
           npm run test:sql
           npm run test:release

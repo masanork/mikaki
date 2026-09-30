@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:policy": "node scripts/build_policy.ts",
+    "generate:i18n": "paraglide-js compile --project project.inlang --outdir local/ui/src/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale && paraglide-js compile --project project.inlang --outdir crates/worker/ui/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale",
     "build:wasm": "wasm-pack build crates/browser-wasm --target web --release --out-dir pkg -- --locked",
     "build:helpdesk": "wasm-pack build crates/helpdesk-rp --target bundler --release --out-dir pkg -- --locked",
     "build:ui": "vite build --config local/ui/vite.config.ts",
