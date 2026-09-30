@@ -100,3 +100,10 @@ Kotlin plugin was compiled into an arm64 debug APK with `MIKAKI_NATIVE_VAULT_PRE
 npm run tauri -- android build --debug --target aarch64 --apk --ci`. Neither
 build establishes working OS callback association or Vault access on a signed
 physical device.
+
+The Android API 35 arm64 emulator ran the preview APK. The `端末の鍵を確認`
+action created or reopened the Android Keystore key and produced a DPoP proof;
+Rust verified the signature against the public key returned by the plugin.
+The check succeeded again after force-stopping and restarting the app. It does
+not contact the OP or prove OAuth consent, App Link delivery, or hardware-backed
+key storage on a physical device.

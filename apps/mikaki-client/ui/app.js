@@ -3,6 +3,7 @@ const clear = document.querySelector('#clear');
 const status = document.querySelector('#status');
 const vaultSection = document.querySelector('#vault');
 const vaultConsent = document.querySelector('#vault-consent');
+const vaultKey = document.querySelector('#vault-key');
 const vaultRead = document.querySelector('#vault-read');
 const vaultStatus = document.querySelector('#vault-status');
 const invoke = window.__TAURI__?.core?.invoke;
@@ -78,6 +79,19 @@ if (!invoke) {
     } catch (error) {
       vaultStatus.textContent = String(error);
       vaultConsent.disabled = false;
+    }
+  });
+
+  vaultKey.addEventListener('click', async () => {
+    vaultKey.disabled = true;
+    vaultStatus.textContent = '端末の署名鍵を確認しています。';
+    try {
+      await invoke('check_mobile_vault_key');
+      vaultStatus.textContent = '端末の署名鍵を利用できます。';
+    } catch (error) {
+      vaultStatus.textContent = String(error);
+    } finally {
+      vaultKey.disabled = false;
     }
   });
 

@@ -35,6 +35,7 @@ pub fn run() {
             mobile_oidc::clear_native_session,
             mobile_oidc::start_mobile_login,
             mobile_oidc::start_mobile_vault_read,
+            mobile_oidc::check_mobile_vault_key,
             mobile_oidc::read_mobile_vault_ciphertext
         ])
         .setup(|app| {

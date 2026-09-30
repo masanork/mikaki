@@ -166,6 +166,20 @@ pub async fn start_mobile_vault_read(
     start_mobile_authorization(app, state, Some(attribute)).await
 }
 
+#[tauri::command]
+pub async fn check_mobile_vault_key(app: tauri::AppHandle) -> Result<(), String> {
+    if !vault_preview_available() {
+        return Err("Vault preview is not configured".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = vault_dpop::DpopKey::generate(&app)?;
+        key.proof("POST", &format!("{}/token", vault_dpop::ISSUER), None, None)?;
+        Ok(())
+    })
+    .await
+    .map_err(|_| "OS DPoP key check failed".to_owned())?
+}
+
 async fn start_mobile_authorization(
     app: tauri::AppHandle,
     state: State<'_, MobileAuthState>,
