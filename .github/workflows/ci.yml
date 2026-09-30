@@ -101,6 +101,8 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
+      - name: Native client UI lifecycle
+        run: npm run test:mobile-ui
       - name: MDS durable operation regressions
         run: node --test local/conformance/mds-operation.test.ts
       - name: Project size, coverage, and dependency trends

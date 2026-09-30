@@ -24,6 +24,23 @@ Wallet, NFC and PDS remain unimplemented. The icon is temporary; a distribution
 signing identity has not been selected. Android release signing can use an
 ignored local keystore configuration described in the activation checkpoint.
 
+## App interface
+
+The bundled UI provides a login entry, browser-authentication waiting screen,
+account home, account details and settings. Settings offer system/light/dark
+appearance and local logout; browser SSO remains active. Back navigation cannot
+reveal account screens after logout. Cancel invalidates the pending Rust
+transaction, including delayed discovery or token responses. Appearance is the
+only value stored in WebView localStorage; tokens remain in Rust memory.
+
+Technical status and the opt-in Vault key/consent/ciphertext tools live under
+Settings → Diagnostics. The home does not claim to decrypt or manage Vault data.
+See [screen previews and validation](../../docs/mobile-ui-preview/README.md).
+From the repository root, `npm run test:mobile-ui` checks the real bundled
+assets with a synthetic native bridge, and `npm run preview:mobile-ui`
+regenerates the screenshots. These browser checks do not establish OS callback
+delivery or device-specific layout.
+
 ## Desktop setup
 
 Apply the normal OP migrations through `0026_native_loopback_redirect.sql` and
