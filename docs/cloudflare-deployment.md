@@ -92,6 +92,41 @@ also confirmed that this mobile client reaches the OP's browser login using
 S256 PKCE, without completing authentication or token exchange.
 `MIKAKI_NATIVE_VAULT_OAUTH` remains unset.
 
+## Procedural login seal activation, 2026-09-30
+
+Following user approval, clean commit `8bdb1bebb46511f037ef16d6a6d8775b81645722`
+supplied OP version `118f7682-2857-46ec-a2ed-b0f9e5c98ab7`. It replaces the
+brand-panel key illustration with a domain-dependent SVG guilloche around
+mikaki's four-tile mark, with optional WebGL interference light and the
+existing short-lived login cue controlling its phase. See the [login previews](login-ui-preview.md).
+
+The OP was uploaded without activation from a pinned Wrangler dry-run bundle
+using `--no-bundle`, then its binding inventory was inspected before 100%
+activation. The signing key, readiness token, DB, Vault R2, UserInfo service,
+issuer, Android certificate fingerprint and version metadata were preserved.
+No migration was pending or applied; no Claim Worker update or trigger change
+was needed. The previous compatible OP version is
+`eeea96e0-12f6-4d14-993a-9b73e562e0e4`.
+
+| Reviewed input | SHA-256 |
+| --- | --- |
+| Uploaded `shim.js` | `8b0cdc91c604866e32c8b5393745ab56c7464372f60d1083efc4752f3de5ea4d` |
+| Uploaded Wasm module | `c24094ba7cc398cf9d70e8980dfe08f92425e9428a01e0de35e98ecf31997446` |
+| Served `/login/login.js` | `87730d1ab552e67edcb2f02919e060e99986dbedf4f735393ea89f31dfd5a970` |
+| Served `/login/login.css` | `4ee10982423efbf443fb37a96bc6d35f088820223e3f4701114d8c4ee58941a9` |
+
+[Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696)
+passed health, Discovery, JWKS, exact version/clean source identity,
+authenticated readiness 204, both served login asset digests, and Android
+association/callback-host isolation. The local connection still reset during
+TLS negotiation, so these public checks ran from GitHub Actions. The build
+was local, not an independently attested CI artifact; the served UI hashes
+do not attest all remote Worker bytes. Synthetic Chromium checks passed GPU
+loss/unavailability fallback, reduced motion, Passkey-operation animation
+pause, and desktop/mobile layout. A production Passkey ceremony and real-device
+GPU performance were not qualified by this UI activation. The seal remains
+decorative and does not prove authenticity.
+
 Subsequent Pixel testing verified the signed APK's OS domain association,
 ordinary browser login/app return and Rust token validation twice, session
 clearing/process-exit behavior and Keystore signing after restart. D1 showed

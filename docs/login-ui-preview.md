@@ -23,3 +23,5 @@ Both domains are displayed, with a prompt to compare the current domain against 
 To refresh the screenshots, build with `worker-build --release crates/worker`, then run `node docs/login-ui-preview/capture.mjs`. See [quality gates](product-quality.md) for the distinction between synthetic visual evidence and production/intended-device qualification.
 
 The capture uses the login CSP and checks browser exceptions and desktop/mobile horizontal overflow, including forced WebGL unavailability and reduced motion. `node --test local/conformance/worker-ui.test.ts` also checks context-loss fallback and Passkey-operation animation pause. These synthetic Chromium checks do not qualify real-device GPU performance.
+
+The seal was activated in production on 2026-09-30. [Public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696) matched both served login asset hashes and the clean source/version identity, with readiness 204. See the [activation record](cloudflare-deployment.md#procedural-login-seal-activation-2026-09-30) for the versions and verification limits.
