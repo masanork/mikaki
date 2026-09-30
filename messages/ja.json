@@ -89,5 +89,18 @@
   "enrollCompleteTitle": "mikaki 登録完了",
   "enrollCompleteHeading": "登録が完了しました",
   "enrollCompleteBody": "Passkeyでmikakiにログインできます。",
-  "enrollAdminLink": "招待管理へ"
+  "enrollAdminLink": "招待管理へ",
+  "logoutTitle": "ログアウト",
+  "logoutBody": "このブラウザーのMikakiと連携アプリからログアウトします。",
+  "logoutCompleteTitle": "ログアウト完了",
+  "logoutCompleteHeading": "ログアウトしました",
+  "logoutInvalidRequest": "ログアウトのリクエストが無効です。ログアウトを最初からやり直してください。",
+  "productVaultLink": "Vaultを開く",
+  "productLogoutCompleteBody": "このブラウザーのセッションを終了しました。再び利用するには、連携アプリからログインしてください。",
+  "productLogoutCancel": "ログアウトをキャンセル",
+  "productHomeLink": "サービス案内に戻る",
+  "productAdminEyebrow": "アカウント管理",
+  "productReadyEyebrow": "登録完了",
+  "productSessionControl": "セッション管理",
+  "productSessionClosed": "セッション終了"
 }

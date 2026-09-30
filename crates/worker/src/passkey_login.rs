@@ -231,6 +231,24 @@ pub(super) async fn stylesheet(
         ))
 }
 
+pub(super) async fn product_stylesheet(
+    _request: worker::Request,
+    _context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/css; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(
+            format!(
+                "{}\n{}",
+                include_str!("../ui/auth.css"),
+                include_str!("../ui/product.css")
+            )
+            .into_bytes(),
+        ))
+}
+
 pub(super) async fn finish(
     mut request: worker::Request,
     context: worker::RouteContext<()>,

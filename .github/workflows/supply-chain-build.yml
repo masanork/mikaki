@@ -44,6 +44,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:worker-browser
+          node --test local/conformance/logout-i18n.test.ts
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain

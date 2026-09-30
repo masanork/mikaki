@@ -66,14 +66,14 @@ pub async fn page(
     }
     let strings = i18n::catalog(i18n::select(&request, None)?);
     let html = format!(
-        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title></head><body><div id=\"app\"></div><script type=\"module\" src=\"/admin/admin.js\"></script></body></html>",
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/ui/product.css\"></head><body><div id=\"app\"></div><script type=\"module\" src=\"/admin/admin.js\"></script></body></html>",
         strings.locale,
         i18n::html_escape(strings.message("adminTitle")),
     );
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Referrer-Policy", "no-referrer")?
-        .with_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
+        .with_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
         .from_html(html)
 }
 

@@ -125,6 +125,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:worker-browser
+          node --test local/conformance/logout-i18n.test.ts
 
   record-metrics:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
