@@ -45,8 +45,10 @@ second login, and process restart on each target desktop OS before release.
 The [activation checkpoint](../../docs/native-client-activation.md) records
 the inspected production state, prepared public registration, Android signing
 configuration and deployment evidence. The checked-in registration is now
-applied to production. Android's ordinary login and app return are verified;
-fresh Passkey prompt observation and the remaining device cases are open.
+applied to production. Android's ordinary login, fresh Passkey biometric prompt,
+app return, and cancellation are verified on a signed Pixel build; the remaining
+device cases are open. See the [App Links recovery record](../../docs/native-client-activation.md#android-app-links-recovery-observed-on-2026-10-01)
+for a device setting that prevented callback delivery despite domain verification.
 
 Register a separate public mobile client with sector `mikaki-native.tossa.app` and
 exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.
