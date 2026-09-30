@@ -22,6 +22,7 @@ pub fn run() {
             native_oidc::native_platform,
             native_oidc::native_session,
             native_oidc::clear_native_session,
+            native_oidc::cancel_native_login,
             native_oidc::start_desktop_login
         ]);
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -33,6 +34,7 @@ pub fn run() {
             mobile_oidc::native_session,
             mobile_oidc::mobile_auth_status,
             mobile_oidc::clear_native_session,
+            mobile_oidc::cancel_native_login,
             mobile_oidc::start_mobile_login,
             mobile_oidc::start_mobile_vault_read,
             mobile_oidc::check_mobile_vault_key,

@@ -64,11 +64,18 @@ pub struct MobileStatus {
     vault_preview_available: bool,
 }
 
-struct StartingGuard<'a>(&'a AtomicBool);
+struct StartingGuard<'a> {
+    state: &'a MobileAuthState,
+    generation: u64,
+}
 
 impl Drop for StartingGuard<'_> {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
+        if let Ok(inner) = self.state.inner.lock() {
+            if inner.generation == self.generation {
+                self.state.starting.store(false, Ordering::Release);
+            }
+        }
     }
 }
 
@@ -132,6 +139,20 @@ pub fn mobile_auth_status(state: State<'_, MobileAuthState>) -> Result<MobileSta
 }
 
 #[tauri::command]
+pub fn cancel_native_login(state: State<'_, MobileAuthState>) -> Result<(), String> {
+    let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
+    inner.pending = None;
+    inner.generation = inner.generation.wrapping_add(1);
+    state.starting.store(false, Ordering::Release);
+    inner.phase = if inner.session.is_some() {
+        "complete"
+    } else {
+        "idle"
+    };
+    Ok(())
+}
+
+#[tauri::command]
 pub fn clear_native_session(state: State<'_, MobileAuthState>) -> Result<(), String> {
     let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
     inner.session = None;
@@ -142,6 +163,7 @@ pub fn clear_native_session(state: State<'_, MobileAuthState>) -> Result<(), Str
     inner.pending = None;
     inner.phase = "idle";
     inner.generation = inner.generation.wrapping_add(1);
+    state.starting.store(false, Ordering::Release);
     Ok(())
 }
 
@@ -185,17 +207,6 @@ async fn start_mobile_authorization(
     state: State<'_, MobileAuthState>,
     vault_attribute: Option<String>,
 ) -> Result<(), String> {
-    if state
-        .starting
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Err("login already starting".into());
-    }
-    let _starting = StartingGuard(&state.starting);
-    let client_id = option_env!("MIKAKI_MOBILE_CLIENT_ID")
-        .filter(|id| !id.is_empty())
-        .ok_or("mobile client ID is not configured")?;
     let generation = {
         let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
         if inner
@@ -206,9 +217,23 @@ async fn start_mobile_authorization(
         {
             return Err("login already in progress".into());
         }
+        if state
+            .starting
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err("login already starting".into());
+        }
         inner.generation = inner.generation.wrapping_add(1);
         inner.generation
     };
+    let _starting = StartingGuard {
+        state: &state,
+        generation,
+    };
+    let client_id = option_env!("MIKAKI_MOBILE_CLIENT_ID")
+        .filter(|id| !id.is_empty())
+        .ok_or("mobile client ID is not configured")?;
     let http = http_client()?;
     let provider = CoreProviderMetadata::discover_async(
         IssuerUrl::new(ISSUER.to_owned()).map_err(|_| "invalid configured issuer")?,

@@ -1,9 +1,11 @@
 #![cfg(not(any(target_os = "android", target_os = "ios")))]
 
+use std::future::{poll_fn, Future};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
+use std::task::Poll;
 use std::time::Duration;
 
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
@@ -26,6 +28,8 @@ const CALLBACK_TIMEOUT: Duration = Duration::from_secs(180);
 pub struct NativeAuthState {
     busy: AtomicBool,
     session: Mutex<Option<StoredSession>>,
+    generation: AtomicU64,
+    cancelled: tokio::sync::Notify,
 }
 
 struct StoredSession {
@@ -53,6 +57,8 @@ impl Default for NativeAuthState {
         Self {
             busy: AtomicBool::new(false),
             session: Mutex::new(None),
+            generation: AtomicU64::new(0),
+            cancelled: tokio::sync::Notify::new(),
         }
     }
 }
@@ -72,7 +78,21 @@ pub fn native_session(state: State<'_, NativeAuthState>) -> Result<Option<LoginR
 
 #[tauri::command]
 pub fn clear_native_session(state: State<'_, NativeAuthState>) -> Result<(), String> {
-    *state.session.lock().map_err(|_| "session unavailable")? = None;
+    invalidate(&state, true)
+}
+
+#[tauri::command]
+pub fn cancel_native_login(state: State<'_, NativeAuthState>) -> Result<(), String> {
+    invalidate(&state, false)
+}
+
+fn invalidate(state: &NativeAuthState, clear: bool) -> Result<(), String> {
+    let mut session = state.session.lock().map_err(|_| "session unavailable")?;
+    state.generation.fetch_add(1, Ordering::AcqRel);
+    state.cancelled.notify_waiters();
+    if clear {
+        *session = None;
+    }
     Ok(())
 }
 
@@ -89,6 +109,27 @@ pub async fn start_desktop_login(
         return Err("login already in progress".into());
     }
     let _busy = BusyGuard(&state.busy);
+    let generation = state.generation.load(Ordering::Acquire);
+    let mut cancelled = std::pin::pin!(state.cancelled.notified());
+    cancelled.as_mut().enable();
+    if state.generation.load(Ordering::Acquire) != generation {
+        return Err("login cancelled".into());
+    }
+    let mut login = std::pin::pin!(perform_desktop_login(&app, &state, generation));
+    poll_fn(|cx| {
+        if cancelled.as_mut().poll(cx).is_ready() {
+            return Poll::Ready(Err("login cancelled".into()));
+        }
+        login.as_mut().poll(cx)
+    })
+    .await
+}
+
+async fn perform_desktop_login(
+    app: &tauri::AppHandle,
+    state: &NativeAuthState,
+    generation: u64,
+) -> Result<LoginResult, String> {
     let client_id = option_env!("MIKAKI_DESKTOP_CLIENT_ID")
         .filter(|id| !id.is_empty())
         .ok_or("desktop client ID is not configured")?;
@@ -163,13 +204,29 @@ pub async fn start_desktop_login(
             return Err("access token hash mismatch".into());
         }
     }
+    commit_session(
+        state,
+        generation,
+        StoredSession {
+            subject: claims.subject().as_str().to_owned(),
+            _access_token: Zeroizing::new(token.access_token().secret().clone()),
+        },
+    )
+}
+
+fn commit_session(
+    state: &NativeAuthState,
+    generation: u64,
+    stored: StoredSession,
+) -> Result<LoginResult, String> {
+    let mut session = state.session.lock().map_err(|_| "session unavailable")?;
+    if state.generation.load(Ordering::Acquire) != generation {
+        return Err("login cancelled".into());
+    }
     let result = LoginResult {
-        subject: claims.subject().as_str().to_owned(),
+        subject: stored.subject.clone(),
     };
-    *state.session.lock().map_err(|_| "session unavailable")? = Some(StoredSession {
-        subject: result.subject.clone(),
-        _access_token: Zeroizing::new(token.access_token().secret().clone()),
-    });
+    *session = Some(stored);
     Ok(result)
 }
 
@@ -286,9 +343,37 @@ async fn respond(stream: &mut TcpStream, status: u16, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_callback;
+    use super::*;
 
     const CODE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn cancellation_and_logout_reject_late_session_commits() {
+        let state = NativeAuthState::default();
+        let stored = || StoredSession {
+            subject: "synthetic-user".into(),
+            _access_token: Zeroizing::new("synthetic-token".into()),
+        };
+        commit_session(&state, 0, stored()).unwrap();
+        invalidate(&state, false).unwrap();
+        assert!(state.session.lock().unwrap().is_some());
+        assert!(commit_session(&state, 0, stored()).is_err());
+        commit_session(&state, 1, stored()).unwrap();
+        invalidate(&state, true).unwrap();
+        assert!(state.session.lock().unwrap().is_none());
+        assert!(commit_session(&state, 1, stored()).is_err());
+    }
+
+    #[test]
+    fn cancellation_wakes_the_pending_desktop_operation() {
+        let state = NativeAuthState::default();
+        let mut cancelled = std::pin::pin!(state.cancelled.notified());
+        cancelled.as_mut().enable();
+        invalidate(&state, false).unwrap();
+        let waker = std::task::Waker::noop();
+        let mut context = std::task::Context::from_waker(waker);
+        assert!(cancelled.as_mut().poll(&mut context).is_ready());
+    }
 
     fn request(query: &str, host: &str) -> String {
         format!("GET /oidc/callback?{query} HTTP/1.1\r\nHost: {host}\r\n\r\n")

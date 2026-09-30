@@ -29,6 +29,6 @@ sha2 = "0.10"
 tauri-plugin-native-dpop = { path = "../plugins/native-dpop" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tokio = { version = "1", features = ["io-util", "net", "time"] }
+tokio = { version = "1", features = ["io-util", "net", "time", "sync"] }
 
 [workspace]
