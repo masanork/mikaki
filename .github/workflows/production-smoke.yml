@@ -10,6 +10,10 @@ on:
         description: Attested source commit to verify (40 hex characters)
         required: false
         type: string
+      expected_android_fingerprint:
+        description: Optional native Android signing certificate SHA-256 fingerprint
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -53,3 +57,14 @@ jobs:
           path: artifacts/production-smoke.json
           if-no-files-found: error
           retention-days: 30
+      - name: Check native Android association
+        if: ${{ inputs.expected_android_fingerprint != '' }}
+        env:
+          MIKAKI_EXPECTED_ANDROID_FINGERPRINT: ${{ inputs.expected_android_fingerprint }}
+        run: |
+          set -euo pipefail
+          host=https://mikaki-native.tossa.app
+          curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$host/.well-known/assetlinks.json" -o assetlinks.json
+          curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D native-callback-headers.txt -o /dev/null -w '%{http_code}' "$host/oidc/native/callback" > native-callback-status.txt
+          curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$host/authorize" > native-authorize-status.txt
+          node scripts/check-native-association.ts
