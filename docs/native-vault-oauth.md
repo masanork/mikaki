@@ -16,9 +16,11 @@ Access Token. It returns the granted `authorization_details`; UserInfo rejects
 this Token. The preview GET `/vault-api/attributes/{attribute}` verifies the
 Token, exact grant, live owner session, and one-use DPoP proof before calling
 the shared encrypted snapshot reader. The preview must remain off outside
-local testing: an installed, OS-protected DPoP key and production client
-identity display are not implemented. The mobile Tauri preview has a
-short-lived Rust-held DPoP key and ciphertext read command. Ordinary
+local testing: installed-app callback/association and production client
+identity display are not qualified. The mobile Tauri preview has a
+platform-protected installation DPoP key, a Rust-held short-lived token,
+and a ciphertext read command. The Android Keystore path has an emulator
+signature check; iPhone Secure Enclave needs a physical device. Ordinary
 native OIDC Access Tokens remain for UserInfo. The ordinary authorization route
 explicitly rejects unsupported `resource` and `authorization_details`
 parameters while this profile is incomplete, so a requested Vault audience is
@@ -142,7 +144,27 @@ decision handler (implemented); preview authorization code and grant binding
 (implemented); preview DPoP Token exchange with separate audience
 (implemented); DPoP resource
 handler with shared storage reader (implemented in local preview);
-ephemeral app-session key and mobile client request (implemented as a local
-preview); OS-protected installation key; then
-contract and installed-app tests. Each intermediate build must reject Vault
-access until all checks are connected.
+mobile client request (implemented as a local preview); OS-protected
+installation key (implemented, with Android emulator signature evidence);
+then contract and signed installed-app tests. Each intermediate build must
+reject Vault access until all checks are connected.
+
+## Local revalidation before Wallet adoption
+
+On 2026-09-30, the current branch passed `npm run test:vault-lifecycle`
+(6/6), `npm run test:vault-notes` (3/3), `npm run test:vault-transfer`
+(7/7), and `npm run test:worker-contracts` (33/33). These exercise session
+locking, browser/Worker saved-note round trips, owner-envelope transfer,
+native consent, DPoP and ciphertext API boundaries. The branch's GitHub CI
+also passed Worker browser and full verification jobs. These are local and
+CI checks with test credentials; they do not establish native decryption.
+
+No Android device or emulator was attached to the current host during this
+revalidation. The remaining native Vault gate is a signed installed app
+using a registered callback on each target OS: complete external-browser
+Passkey login and exact owner consent, fetch a current ciphertext record,
+unlock the same saved record through the intended PRF/envelope path, and
+exercise second-device transfer, cancellation, session lock, stale revision,
+key loss and recovery. Record Android hardware-backed-key status separately.
+Until that evidence exists, the native Vault preview remains a ciphertext
+reader, not a usable credential store.
