@@ -610,9 +610,9 @@
   },
   {
     "date": "2026-09-30",
-    "commit": "8f17626",
+    "commit": "4a9f3b0",
     "code": {
-      "implementationLines": 15086,
+      "implementationLines": 15149,
       "testLines": 3499,
       "implementationFiles": 66,
       "testFiles": 10,
@@ -626,7 +626,7 @@
           "testLines": 1882
         },
         "svelte": {
-          "implementationLines": 1371,
+          "implementationLines": 1434,
           "testLines": 0
         }
       }

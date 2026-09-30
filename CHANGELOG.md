@@ -8,6 +8,8 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 - Refreshed invitation administration, registration completion, and logout screens with the login visual language; localized logout in Japanese and English and added Worker browser checks for responsive layout and language switching.
 
+- Refreshed the Vault profile and connections layout with shared product navigation, responsive cards, and visible lock state in both supported languages.
+
 - Record source-mapped Chromium execution for the Vault, administration and registration-completion Svelte/TypeScript bundles in PR CI, matching hidden local source maps to the exact served JavaScript and retaining a content-free per-file report.
 
 - Fail CI coverage measurement when line or branch coverage substantially regresses in five directly tested Vault/recipient TypeScript modules; retain the full report without treating the global percentage as a product quality score.

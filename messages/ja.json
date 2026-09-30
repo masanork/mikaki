@@ -279,7 +279,7 @@
   "productLocked": "ロック中",
   "productUnlocked": "ロック解除済み",
   "productLogoutCompleteBody": "このブラウザーのセッションを終了しました。再び利用するには、連携アプリからログインしてください。",
-  "productVaultHint": "必要なデータを、必要な相手に。",
+  "productVaultHint": "暗号化されたプロフィールと連携先を管理します。",
   "productLogoutCancel": "ログアウトをキャンセル",
   "productHomeLink": "サービス案内に戻る",
   "productProfileReload": "プロフィールを再読み込み",
@@ -306,5 +306,10 @@
   "productAdminEyebrow": "アカウント管理",
   "productReadyEyebrow": "準備完了",
   "productSessionControl": "セッション管理",
-  "productSessionClosed": "セッション終了"
+  "productSessionClosed": "セッション終了",
+  "productVaultEyebrow": "個人用Vault",
+  "productConnections": "連携",
+  "productNameSharing": "名前の共有",
+  "productConnectionsEmpty": "利用できる連携はまだありません。",
+  "productReload": "読み込みを再試行"
 }

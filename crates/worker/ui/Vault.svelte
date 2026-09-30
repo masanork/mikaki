@@ -603,7 +603,7 @@
 <ProductHeader {locale} onlock={context.lock} />
 <main class="product-main">
   <div class="product-heading">
-    <span class="product-eyebrow">PERSONAL VAULT</span>
+    <span class="product-eyebrow">{m.productVaultEyebrow()}</span>
     <h1>{m.vaultHeading()}</h1>
     <p>{m.productVaultHint()}</p>
   </div>
@@ -641,34 +641,36 @@
           aria-describedby="status"
           bind:value={name}
         />
-        <button
-          class="product-primary"
-          id="unlock"
-          type="button"
-          disabled={opened || loading || loadFailed || busy || transferBusy}
-          onclick={unlock}>{m.vaultUnlock()}</button
-        >
-        <button
-          class="product-primary"
-          id="save"
-          type="button"
-          disabled={!opened || busy || transferBusy || pending?.method === 'DELETE'}
-          onclick={() => mutate('PUT')}>{m.vaultSave()}</button
-        >
-        <button
-          class="product-danger"
-          id="delete"
-          type="button"
-          disabled={!opened ||
-            current === null ||
-            busy ||
-            transferBusy ||
-            pending?.method === 'PUT'}
-          onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
-        >
-        <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
-          >{m.productProfileReload()}</button
-        >
+        <div class="product-actions">
+          <button
+            class="product-primary"
+            id="unlock"
+            type="button"
+            disabled={opened || loading || loadFailed || busy || transferBusy}
+            onclick={unlock}>{m.vaultUnlock()}</button
+          >
+          <button
+            class="product-primary"
+            id="save"
+            type="button"
+            disabled={!opened || busy || transferBusy || pending?.method === 'DELETE'}
+            onclick={() => mutate('PUT')}>{m.vaultSave()}</button
+          >
+          <button
+            class="product-danger"
+            id="delete"
+            type="button"
+            disabled={!opened ||
+              current === null ||
+              busy ||
+              transferBusy ||
+              pending?.method === 'PUT'}
+            onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
+          >
+          <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
+            >{m.productProfileReload()}</button
+          >
+        </div>
         <p id="status" role="status" aria-live="polite">{status}</p>
         {#if dirty}<p class="product-draft-status" data-draft-state="profile" aria-live="polite">
             {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
@@ -729,7 +731,7 @@
             <p>{m.vaultReleaseExplanation()}</p>
             <p role="status">{releaseStatus}</p>
             {#each releases.clients as client (client.client_id)}
-              <div>
+              <div class="product-release-client">
                 <p>{client.sector_identifier} ({client.client_id})</p>
                 {#if client.release_active}
                   <p>

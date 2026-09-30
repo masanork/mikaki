@@ -279,7 +279,7 @@
   "productLocked": "Locked",
   "productUnlocked": "Unlocked",
   "productLogoutCompleteBody": "Your session in this browser has ended. To use mikaki again, sign in from a connected app.",
-  "productVaultHint": "Your data. Shared on your terms.",
+  "productVaultHint": "Manage your encrypted profile and control its connections.",
   "productLogoutCancel": "Cancel logout",
   "productHomeLink": "Back to mikaki",
   "productProfileReload": "Reload profile",
@@ -306,5 +306,10 @@
   "productAdminEyebrow": "ACCOUNT ADMINISTRATION",
   "productReadyEyebrow": "READY TO GO",
   "productSessionControl": "SESSION CONTROL",
-  "productSessionClosed": "SESSION CLOSED"
+  "productSessionClosed": "SESSION CLOSED",
+  "productVaultEyebrow": "PERSONAL VAULT",
+  "productConnections": "Connections",
+  "productNameSharing": "Name sharing",
+  "productConnectionsEmpty": "No connections are available yet.",
+  "productReload": "Retry loading"
 }
