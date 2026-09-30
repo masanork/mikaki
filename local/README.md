@@ -24,7 +24,7 @@ The runner recreates keys and databases on startup. Accounts disappear when it s
 - Local tables extend the [atomic SQL model](../design/sql/oidc-critical-schema.sql); they are not production migrations.
 - A validated TOML policy is converted to second-based JSON and a revision at build time. Rebuild after a local config change. Some fields describe later features and are not used by the local slice.
 
-The initial local slice used one RP and a static ES256 key. Do not infer production readiness or support for every later Worker feature from this harness. Production RP registration, remote monitoring and audit retention, recovery, actual authenticator coverage, and app integrations have separate gates.
+The initial local slice used one RP and a static ES256 key. Do not infer production readiness or support for every later Worker feature from this harness. Production RP integration, remote monitoring and audit retention, recovery, actual authenticator coverage, and app integrations have separate gates.
 
 ## Logout delivery
 

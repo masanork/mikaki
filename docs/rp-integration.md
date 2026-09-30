@@ -1,6 +1,6 @@
 # Integrate a relying party
 
-This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. Narashi's production registration is recorded in the [deployment guide](cloudflare-deployment.md); an owner-completed production login remains unverified. A Mikaki operator performs registration.
+This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. One web RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A separate native public client is also registered; its client authentication and callback rules differ from this server-side guide. A Mikaki operator registers each RP.
 
 ## 1. Register the RP
 
@@ -19,15 +19,15 @@ Read Discovery at `https://mikaki.tossa.app/.well-known/openid-configuration` an
 
 Protect the RP's login initiation against CSRF. For every transaction, generate high-entropy `state`, `nonce`, and a PKCE `code_verifier`. Store them server-side with the start time, browser binding, and a validated **RP-local** return path. The `code_challenge` is the unpadded base64url encoding of SHA-256 over the verifier. Redirect the browser to the discovered `authorization_endpoint` with:
 
-| Parameter | Value |
-| --- | --- |
-| `client_id` | Registered client ID |
-| `redirect_uri` | Exact registered callback URL |
-| `response_type` | `code` |
-| `scope` | `openid` |
-| `state` | Fresh random value, required |
-| `nonce` | Fresh random value, strongly recommended for the RP |
-| `code_challenge`, `code_challenge_method` | Derived challenge, `S256` |
+| Parameter                                 | Value                                               |
+| ----------------------------------------- | --------------------------------------------------- |
+| `client_id`                               | Registered client ID                                |
+| `redirect_uri`                            | Exact registered callback URL                       |
+| `response_type`                           | `code`                                              |
+| `scope`                                   | `openid`                                            |
+| `state`                                   | Fresh random value, required                        |
+| `nonce`                                   | Fresh random value, strongly recommended for the RP |
+| `code_challenge`, `code_challenge_method` | Derived challenge, `S256`                           |
 
 `request`, `request_uri`, dynamic registration, and `email` scope are outside the current integration. A local `openid profile` implementation can release an owner-approved Vault `name`, but both sharing and RP-release policies default to disabled and this path is not qualified for production RPs. Keep production login at `openid` until that gate is complete. Mikaki handles the passkey screen and first connection approval. The RP never receives the passkey or Mikaki's SSO cookie.
 
@@ -51,6 +51,6 @@ Recheck status when a protected request arrives after the lease deadline. A fail
 
 ## Current limits and acceptance checks
 
-Production Discovery advertises `end_session_endpoint` and `backchannel_logout_supported` / `backchannel_logout_session_supported`. The OP implements RP-Initiated Logout, exact logout-target registration, signed `logout+jwt` delivery, and minute-level outbox retry. The managed `/session/check` lease remains the revocation bound when an RP has no registered `backchannel_logout_uri`, or until a successful notification arrives. No production RP is registered yet, so deployed end-to-end Back-Channel verification is still open (see Issues #4 and #6). Recorded OP logout conformance notes live in [oidc-logout-conformance.md](oidc-logout-conformance.md).
+Production Discovery advertises `end_session_endpoint` and `backchannel_logout_supported` / `backchannel_logout_session_supported`. The OP implements RP-Initiated Logout, exact logout-target registration, signed `logout+jwt` delivery, and minute-level outbox retry. The managed `/session/check` lease remains the revocation bound when an RP has no registered `backchannel_logout_uri`, or until a successful notification arrives. End-to-end Back-Channel delivery and revocation with a production RP remain unverified (see Issues #4 and #6). Recorded OP logout conformance notes live in [oidc-logout-conformance.md](oidc-logout-conformance.md).
 
 Before connecting an RP, test login at the registered redirect, first approval, SSO reuse, rejection of invalid state/nonce/PKCE/signature/issuer/audience, code and assertion replay, another client's sid, revocation and expiry boundaries, temporary OP outage, multiple tabs, and delayed callbacks. See the [login transaction](oidc-login-flow.md), [session lifecycle](session-lifecycle.md), and [token and UserInfo contract](oidc-access-token-and-userinfo.md) for deeper design details.

@@ -86,7 +86,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 ### Documentation
 
 - Reviewed Vault protocol boundaries: retained MCP as an AI adapter, evaluated OpenID4VP/VCI for credentials and JMAP/FileNode for files, and made the FileNode rights mismatch and protocol adoption gates explicit in ADR 0012.
-- Recorded the current production deployment limits: one administrator and real-Passkey Vault save/reopen are recorded, and narashi is registered; completed production RP login/callback and newer Vault/agent activation remain unverified.
+- Updated the deployment runbook and status to reflect the production administrator, verified PRF-backed Vault write and unlock, the registered web and native clients, and the remaining end-to-end checks. Recorded that the running native-enabled Worker is ahead of `main` and must not be replaced by its older configuration.
 - Kept conformance results separate from formal FIDO or OIDF certification claims.
 - Marked implemented behavior separately from design proposals and historical acceptance gates throughout the topic guides.
 

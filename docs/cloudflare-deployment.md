@@ -8,7 +8,7 @@ The owner-only Vault uses the `mikaki-vault` R2 bucket, D1 migration `0002_vault
 
 The bucket and migration were deployed on 2026-09-23. D1 migrations `0003_client_administration.sql` through `0006_session_validation_policy.sql` were applied, and the active runtime policy was moved to schema 5, generation 2, projection `0900d2cf091a3b06e8f07e8a7fcb1fc26dd99bb0701067c041bab8f05f7ea9b9`. Worker version `261b8697-c0a3-4b69-a248-55dbbb21a1b3` introduced the Svelte 5 screens, Vault assets, RP redirect lifecycle, invitation-based Passkey enrollment, and client-authenticated session checks. Initial smoke checks returned 200 for health and Discovery, 302 from `/enroll` to its login transaction, 401 for unauthenticated `/admin`, and 400 for an incomplete `/session/check` request.
 
-On 2026-09-24, Worker version `f960a316-18d9-42bf-9635-7ddfadd04462` added a PRF request during passkey registration and disabled Vault unlock until its record load completes. The deployment included `OP_PRIVATE_JWK`; health and Discovery returned 200 and anonymous `/vault` returned 401. A local Chromium test passed PRF-backed Vault creation, reload/unlock, and update. Production D1 now has one administrator account and credential; the bootstrap gate is closed. In Chrome, the administrator saved the requested display name through `/vault`, reloaded the page, and reopened the matching value with Touch ID. D1 showed an active `name` head at revision 1. The page was reloaded afterward so the value is no longer displayed. No production RP has been registered. Cross-device restore and credential replacement remain unverified. Passkeys enrolled before the PRF request may not be usable for Vault.
+On 2026-09-24, Worker version `f960a316-18d9-42bf-9635-7ddfadd04462` added a PRF request during passkey registration and disabled Vault unlock until its record load completes. The deployment included `OP_PRIVATE_JWK`; health and Discovery returned 200 and anonymous `/vault` returned 401. A local Chromium test passed PRF-backed Vault creation, reload/unlock, and update. Production D1 then had one administrator account and credential; the bootstrap gate was closed. In Chrome, the administrator saved the requested display name through `/vault`, reloaded the page, and reopened the matching value with Touch ID. D1 showed an active `name` head at revision 1. The page was reloaded afterward so the value is no longer displayed. No production RP had been registered at that date. Cross-device restore and credential replacement remain unverified. Passkeys enrolled before the PRF request may not be usable for Vault.
 
 Later on 2026-09-24, migration `0008_vault_attribute_sharing.sql` was applied and the claim Worker (`92adc947-4831-4adc-93b8-5b7bc7eaa175`) and OP Worker (`1a0ae130-64f0-4577-9c04-c25c12a850cf`) were deployed. The OP deployment included both `OP_PRIVATE_JWK` and `USERINFO_CLAIMS`. D1 confirmed `vault_share_policy.enabled=0`, a seven-day TTL, and zero Grants. The active recipient key passed the remote service-binding verification. `npm run probe:recipient-envelope` sent synthetic ciphertext through the product sender and live Claim Worker; the valid envelope returned 204, while a different account and modified ciphertext returned 503. The probe did not write D1 or R2. TLS handshakes to `mikaki.tossa.app` and `tossa.app` were reset before a certificate was received from this local network, including in Chrome. A [GitHub-hosted public smoke run](https://github.com/masanork/mikaki/actions/runs/35945106521) subsequently reached health, Discovery, and JWKS successfully. The local connection problem remains; use the [manual production smoke workflow](../.github/workflows/production-smoke.yml) to distinguish it from an issuer outage.
 
@@ -24,27 +24,60 @@ OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer e
 
 Later on 2026-09-27, a narashi RP login exposed three pending production D1 migrations: `0011_issued_id_token_hash.sql`, `0012_client_logout_registration.sql`, and `0013_logout_outbox.sql`. The deployed token exchange writes `token_issue.id_token_hash`, so leaving `0011` unapplied could fail the code exchange. A D1 Time Travel bookmark was recorded before applying all three migrations. `wrangler d1 migrations list` then reported no pending migrations, and the client administration list confirmed narashi's active client, exact callback, and key. A fresh browser path reached the Mikaki login page from narashi; passkey completion and the RP callback still require an owner browser check.
 
-Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md). Apply new migrations before deploying a Worker that queries new columns.
+## Current production snapshot (checked 2026-09-30)
 
-After modifying the Worker, build and deploy with the secret included in the **same** version:
+The latest recorded OP version is `118f7682-2857-46ec-a2ed-b0f9e5c98ab7`, following the native activation and login-seal activation below. The Claim Worker remains `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696) passed readiness, Discovery/JWKS, login asset digests, Android association/callback isolation and mobile authorization entry. These probes do not authenticate an owner.
+
+Production D1 has no pending migrations through `0029` in the native-enabled source. One active web RP and one active native public client are recorded, excluding internal enrollment. Signed Pixel ordinary OIDC login, app return, native-session clearing and process restart have device evidence below. Direct Passkey ceremony observation, remaining native negative cases, iPhone, web RP completion and recovery are open. Native Vault OAuth remains disabled.
+
+**Do not deploy current `main` to production.** Its older config would replace the native-enabled Worker, remove the callback Custom Domain and readiness binding, and leave a code/schema mismatch. Reconcile and qualify the native source on `main` before a new deployment. A migration list run from an old checkout only compares that checkout's migration files; “no migrations to apply” there does not mean its code matches the newer production schema.
+
+Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md).
+
+## Deploy a reviewed commit
+
+Run the following from the repository root, using an exact reviewed commit in a clean checkout that preserves the active native capabilities and schema. Record that commit and the current Worker version before changing production. The guards below must pass; they intentionally fail on current `main`. The commands use the repository-pinned Wrangler and production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists, contains both required secret names, and is mode 0600. Never commit or print the file or its values.
 
 ```sh
-design/probes/workers-rs/target/tools/bin/worker-build --release crates/worker
-npx wrangler deploy --config crates/worker/wrangler.production.jsonc \
-  --secrets-file local/generated/mikaki-production-secrets.json
+git status --short
+git rev-parse HEAD
+test -f crates/worker/migrations/0029_native_vault_token_context.sql
+rg -q 'MIKAKI_READY_TOKEN' crates/worker/wrangler.production.jsonc
+rg -q 'mikaki-native.tossa.app' crates/worker/wrangler.production.jsonc
+MIKAKI_SECRETS_FILE=local/generated/mikaki-production-secrets.json
+test -f "$MIKAKI_SECRETS_FILE"
+npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
+npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
 ```
 
 The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. The current production config declares both `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN` as required. Generate a separate 32-byte base64url monitoring token (`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`), place it alongside `OP_PRIVATE_JWK` in the ignored, mode-0600 secret JSON, and provision the identical value as the GitHub Actions repository secret `MIKAKI_READY_TOKEN` before using version-aware production smoke. Keep it out of `vars`, URLs, logs and release artifacts. Check the deployed binding inventory for both secret names before activation; if either value is missing or malformed, `/ready` fails closed. Rotate both copies together and rerun version-aware smoke.
 
-Before deploying code that uses new D1 columns or tables, list and apply pending production migrations with the same production config and `--remote`. Confirm the list is empty afterward; a healthy `/health` response does not prove the token exchange schema is current.
+Review any pending migration against the code and active Worker. Take and record a fresh D1 [Time Travel bookmark](https://developers.cloudflare.com/d1/reference/time-travel/) immediately before a migration. Apply migrations with the production config and `--remote` **only if** the list shows pending files, then confirm it is empty. Migrations change production D1 independently of the Worker and can affect the old version before the deploy.
 
 ```sh
-npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 time-travel info mikaki-op --config crates/worker/wrangler.production.jsonc
+# Only when the preceding list showed reviewed, pending migrations:
 npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.production.jsonc --remote
 npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
 ```
 
-Smoke endpoints:
+Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
+
+```sh
+design/probes/workers-rs/target/tools/bin/worker-build --release crates/worker
+npx wrangler deploy --dry-run --config crates/worker/wrangler.production.jsonc \
+  --secrets-file "$MIKAKI_SECRETS_FILE"
+```
+
+Deploy the same bundle with both secrets included in the **same** Worker version. Cloudflare documents [`--secrets-file`](https://developers.cloudflare.com/workers/configuration/secrets/) for uploading secrets alongside code. An earlier deployment without this flag omitted `OP_PRIVATE_JWK`; confirm both secret bindings appear in the deploy output and record the new version ID. Preserve the Claim Worker compatibility and callback-domain routing. Follow the native activation record on draft PR [#28](https://github.com/masanork/mikaki/pull/28) for version-matched readiness checks before activating another native-enabled version.
+
+```sh
+npx wrangler deploy --config crates/worker/wrangler.production.jsonc \
+  --secrets-file "$MIKAKI_SECRETS_FILE"
+npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
+```
+
+Check public endpoints from a network that can reach the issuer. From this local network, TLS connections have reset before the certificate arrived; use the [manual production smoke workflow](../.github/workflows/production-smoke.yml) and save its run URL if that recurs. A passed public smoke check does not establish that login works.
 
 ```sh
 curl -fsS https://mikaki.tossa.app/health
@@ -52,7 +85,7 @@ curl -fsS https://mikaki.tossa.app/.well-known/openid-configuration
 curl -fsS https://mikaki.tossa.app/jwks
 ```
 
-After activating a version with the `CF_VERSION_METADATA` binding, fetch `/version` and compare its Cloudflare version ID and clean source commit with the activation record and verified release manifest. Check authenticated `/ready` for 204 before functional qualification; missing or incorrect bearer credentials receive 404 before dependency checks. Readiness checks policy, migration, signing-key alignment and essential bindings but cannot replace an actual Vault/RP flow. The [manual production smoke workflow](../.github/workflows/production-smoke.yml) accepts both expected values and retains the version/readiness comparison result. A response from `/version` identifies the running source revision, not the digest of the uploaded Worker bytes; record that mapping separately as described in [release and recovery](release-and-recovery.md). The currently deployed version predates both endpoints.
+After activating a version with the `CF_VERSION_METADATA` binding, fetch `/version` and compare its Cloudflare version ID and clean source commit with the activation record and verified release manifest. Check authenticated `/ready` for 204 before functional qualification; missing or incorrect bearer credentials receive 404 before dependency checks. Readiness checks policy, migration, signing-key alignment and essential bindings but cannot replace an actual Vault/RP flow. The [manual production smoke workflow](../.github/workflows/production-smoke.yml) accepts both expected values and retains the version/readiness comparison result. A response from `/version` identifies the running source revision, not the digest of the uploaded Worker bytes; record that mapping separately as described in [release and recovery](release-and-recovery.md). The recorded native-enabled production version provides both endpoints.
 
 The recorded deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
@@ -108,11 +141,11 @@ No migration was pending or applied; no Claim Worker update or trigger change
 was needed. The previous compatible OP version is
 `eeea96e0-12f6-4d14-993a-9b73e562e0e4`.
 
-| Reviewed input | SHA-256 |
-| --- | --- |
-| Uploaded `shim.js` | `8b0cdc91c604866e32c8b5393745ab56c7464372f60d1083efc4752f3de5ea4d` |
-| Uploaded Wasm module | `c24094ba7cc398cf9d70e8980dfe08f92425e9428a01e0de35e98ecf31997446` |
-| Served `/login/login.js` | `87730d1ab552e67edcb2f02919e060e99986dbedf4f735393ea89f31dfd5a970` |
+| Reviewed input            | SHA-256                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| Uploaded `shim.js`        | `8b0cdc91c604866e32c8b5393745ab56c7464372f60d1083efc4752f3de5ea4d` |
+| Uploaded Wasm module      | `c24094ba7cc398cf9d70e8980dfe08f92425e9428a01e0de35e98ecf31997446` |
+| Served `/login/login.js`  | `87730d1ab552e67edcb2f02919e060e99986dbedf4f735393ea89f31dfd5a970` |
 | Served `/login/login.css` | `4ee10982423efbf443fb37a96bc6d35f088820223e3f4701114d8c4ee58941a9` |
 
 [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696)
@@ -134,3 +167,9 @@ two token issues; the first authentication context was one second old and the
 second reused it. The Passkey prompt was not directly observed. These results
 are recorded in [native activation](native-client-activation.md); they do not
 establish native Vault ciphertext reading or PRF decryption.
+
+Before calling the rollout complete, run an owner-browser check on the intended device: start at the registered RP, complete the passkey transaction, confirm the callback and RP session, open and unlock the Vault with PRF, then exercise RP and OP logout and verify the session is rejected. Include both language and small-screen checks for the updated account and Vault pages. Record the commit, Worker version, migration state, smoke run, authenticated result, and any remaining failure. If the owner-browser check cannot run, record the deployment as **public-endpoint checked only**.
+
+If the Worker fails, inspect the deployment and use the [Worker rollback procedure](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) with a version compatible with the current D1 schema. A Worker rollback does not restore D1. A D1 Time Travel restore overwrites the database in place; assess data loss and coordinate it separately before using the recorded bookmark. Neither rollback substitutes for checking the RP and Vault after recovery.
+
+Production recovery and web RP completion remain unverified; signed Android ordinary OIDC completion has the bounded device evidence above. Do not treat its availability as a user-ready launch or an OIDF certification result.
