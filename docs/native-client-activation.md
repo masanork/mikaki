@@ -224,3 +224,30 @@ unlock, iPhone device tests and card reading have separate remaining gates.
 Use [release and recovery](release-and-recovery.md) for activation records and
 compatible code rollback. Do not restore historical D1 authority merely to
 roll back a Worker version.
+
+## Android App Links recovery observed on 2026-10-01
+
+On the signed Pixel build, a fresh Passkey attempt opened Android's biometric
+prompt, but Chrome then showed the HTTPS callback as `not found` and the app
+stayed on its waiting screen. `pm get-app-links --user 0 app.tossa.mikaki`
+reported the domain as `verified` while its **user selection was Disabled**.
+Verification alone therefore did not establish that this user would open the
+callback in the app. After enabling the `mikaki-native.tossa.app` selection,
+another fresh login returned to the app and displayed `ログイン済み`. Cancelling
+the orphaned pending login returned the app to its signed-out welcome screen.
+
+For a user, open Android Settings → Apps → mikaki → Open by default, enable
+supported links and select `mikaki-native.tossa.app`, then cancel the pending
+app login and retry. For device qualification, inspect both the domain state
+and user selection with:
+
+```sh
+adb shell pm get-app-links --user 0 app.tossa.mikaki
+```
+
+The source now redirects a callback that reaches the browser to a fixed,
+query-free recovery page with no-store and no-referrer headers. This fallback
+is **not deployed** in the active production Worker. It must be reviewed and
+activated from a clean commit before claiming browser recovery is available.
+Do not copy a callback URL, authorization code, state, or token into an issue,
+log, screenshot, or support request.

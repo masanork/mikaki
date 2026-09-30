@@ -68,6 +68,54 @@ fn association_response(document: Option<serde_json::Value>) -> worker::Result<w
     }
 }
 
+// A callback in the browser means the OS did not open the verified app link.
+// Never render or forward the one-use authorization code or state from its URL.
+#[cfg(target_arch = "wasm32")]
+pub fn callback_fallback() -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_status(303)
+        .with_header("Location", "/native-link-help")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .fixed(Vec::new()))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn callback_help() -> worker::Result<worker::Response> {
+    const PAGE: &str = r#"<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>アプリに戻れませんでした · mikaki</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color-scheme:light dark}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f5f1;color:#18332e}
+main{box-sizing:border-box;width:min(100%,32rem);padding:3rem 1.5rem}
+.brand{font-weight:750;font-size:1.5rem;letter-spacing:-.04em}
+.card{margin-top:2rem;padding:2rem;border:1px solid #d9e3dd;border-radius:1.25rem;background:#fff;box-shadow:0 12px 36px #18332e10}
+.eyebrow{color:#397263;font-size:.75rem;font-weight:750;letter-spacing:.12em}
+h1{font-size:clamp(1.75rem,6vw,2.25rem);line-height:1.3;letter-spacing:-.04em}
+p,li{line-height:1.7}ol{padding-left:1.4rem}.note{font-size:.9rem;color:#50645d}
+@media(prefers-color-scheme:dark){body{background:#101d1a;color:#e8f4ed}.card{background:#182a25;border-color:#355147;box-shadow:none}.eyebrow{color:#8bcfb3}.note{color:#b0c7bc}}
+</style></head><body><main><div class="brand">mikaki</div><div class="card">
+<p class="eyebrow">RETURN TO APP</p><h1>アプリに戻れませんでした</h1>
+<p>この認証はアプリに届いていません。ブラウザを閉じて、mikakiアプリの待機画面で「キャンセルして戻る」を選んでください。</p>
+<ol><li>Androidの設定で「アプリ」→「mikaki」→「デフォルトで開く」を開きます。</li>
+<li>対応するリンクを開く設定を有効にし、<strong>mikaki-native.tossa.app</strong>を許可します。</li>
+<li>mikakiアプリからログインをやり直します。</li></ol>
+<p class="note">iPhoneでは、アプリを開いて認証をやり直してください。問題が続く場合はアプリのインストールとリンク設定を確認してください。</p>
+<p lang="en" class="note">The sign-in did not reach the app. Cancel the pending sign-in in mikaki, enable its supported links in Android settings, then try again.</p>
+</div></main></body></html>"#;
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/html; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .with_header(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        )?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(PAGE.as_bytes().to_vec()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{android_document, apple_document};

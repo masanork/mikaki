@@ -3642,14 +3642,16 @@ pub async fn main(
     env: worker::Env,
     _ctx: worker::Context,
 ) -> worker::Result<worker::Response> {
-    // The native callback host must not become a second OP origin. It only
-    // serves the OS association files; the authorization code URL is handled
-    // by the installed app and has no browser fallback endpoint.
+    // The native callback host must not become a second OP origin. A browser
+    // reaching the callback gets a fixed redirect that drops the code and
+    // state query before displaying recovery instructions.
     let url = req.url()?;
     if url.host_str() == Some("mikaki-native.tossa.app") {
         return match native_host_route(req.method() == worker::Method::Get, url.path()) {
             NativeHostRoute::Apple => app_association::apple_for_env(&env),
             NativeHostRoute::Android => app_association::android_for_env(&env),
+            NativeHostRoute::CallbackFallback => app_association::callback_fallback(),
+            NativeHostRoute::Help => app_association::callback_help(),
             NativeHostRoute::NotFound => Ok(worker::Response::builder()
                 .with_status(404)
                 .with_header("Cache-Control", "no-store")?
@@ -3756,6 +3758,8 @@ pub async fn main(
 enum NativeHostRoute {
     Apple,
     Android,
+    CallbackFallback,
+    Help,
     NotFound,
 }
 
@@ -3764,6 +3768,8 @@ fn native_host_route(is_get: bool, path: &str) -> NativeHostRoute {
     match (is_get, path) {
         (true, "/.well-known/apple-app-site-association") => NativeHostRoute::Apple,
         (true, "/.well-known/assetlinks.json") => NativeHostRoute::Android,
+        (true, "/oidc/native/callback") => NativeHostRoute::CallbackFallback,
+        (true, "/native-link-help") => NativeHostRoute::Help,
         _ => NativeHostRoute::NotFound,
     }
 }
@@ -3773,7 +3779,7 @@ mod native_host_tests {
     use super::{NativeHostRoute, native_host_route};
 
     #[test]
-    fn native_host_exposes_only_association_documents() {
+    fn native_host_exposes_association_and_callback_recovery() {
         assert_eq!(
             native_host_route(true, "/.well-known/apple-app-site-association"),
             NativeHostRoute::Apple
@@ -3782,9 +3788,21 @@ mod native_host_tests {
             native_host_route(true, "/.well-known/assetlinks.json"),
             NativeHostRoute::Android
         );
-        for path in ["/authorize", "/token", "/jwks", "/oidc/native/callback"] {
+        assert_eq!(
+            native_host_route(true, "/oidc/native/callback"),
+            NativeHostRoute::CallbackFallback
+        );
+        assert_eq!(
+            native_host_route(true, "/native-link-help"),
+            NativeHostRoute::Help
+        );
+        for path in ["/authorize", "/token", "/jwks"] {
             assert_eq!(native_host_route(true, path), NativeHostRoute::NotFound);
         }
+        assert_eq!(
+            native_host_route(false, "/oidc/native/callback"),
+            NativeHostRoute::NotFound
+        );
         assert_eq!(
             native_host_route(false, "/.well-known/apple-app-site-association"),
             NativeHostRoute::NotFound
