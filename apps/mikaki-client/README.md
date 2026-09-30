@@ -19,8 +19,9 @@ Enclave; the Rust code receives only its public coordinates and DER signatures.
 The access token stays in Rust process memory. It does not decrypt the owner
 envelope. Mobile callback
 and app-association behavior has not been tested in a signed installed app.
-Wallet, NFC and PDS remain unimplemented. The icon is temporary and release
-signing is not configured.
+Wallet, NFC and PDS remain unimplemented. The icon is temporary; a distribution
+signing identity has not been selected. Android release signing can use an
+ignored local keystore configuration described in the activation checkpoint.
 
 ## Desktop setup
 
@@ -39,6 +40,11 @@ flow. Test login, cancel/timeout, callback interception, wrong port/issuer,
 second login, and process restart on each target desktop OS before release.
 
 ## Android and iPhone setup
+
+The [activation checkpoint](../../docs/native-client-activation.md) records
+the inspected production state, prepared public registration, Android signing
+configuration and deployment prerequisites. The checked-in registration is
+not yet applied to production.
 
 Register a separate public mobile client with sector `mikaki-native.tossa.app` and
 exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.

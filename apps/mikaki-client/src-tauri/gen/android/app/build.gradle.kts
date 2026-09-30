@@ -14,6 +14,18 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val releaseKeystoreFile = rootProject.file("keystore.properties")
+val releaseKeystore = Properties().apply {
+    if (releaseKeystoreFile.exists()) {
+        releaseKeystoreFile.inputStream().use { load(it) }
+        for (name in listOf("storeFile", "keyAlias", "password")) {
+            require(!getProperty(name).isNullOrBlank()) {
+                "Missing Android release signing property: $name"
+            }
+        }
+    }
+}
+
 android {
     compileSdk = 37
     namespace = "app.tossa.mikaki"
@@ -24,6 +36,16 @@ android {
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (releaseKeystoreFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(releaseKeystore.getProperty("storeFile"))
+                keyAlias = releaseKeystore.getProperty("keyAlias")
+                storePassword = releaseKeystore.getProperty("password")
+                keyPassword = releaseKeystore.getProperty("password")
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -39,6 +61,9 @@ android {
             }
         }
         getByName("release") {
+            if (releaseKeystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             optimization {
                enable = true
             }

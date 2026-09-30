@@ -1,0 +1,5 @@
+{
+  "client_id": "dfd936fd-f33d-4f82-ae39-f25e08ec7948",
+  "sector_identifier": "mikaki-native.tossa.app",
+  "redirect_uris": ["https://mikaki-native.tossa.app/oidc/native/callback"]
+}
