@@ -53,7 +53,12 @@ fingerprint of the Android distribution signing certificate). Each
 `/.well-known/` association response is 404 until its corresponding valid
 value is configured. It must be publicly reachable over HTTPS on
 `mikaki-native.tossa.app`; redirects or a mismatched signing identity will prevent
-the OS from delivering the callback.
+the OS from delivering the callback. The production Wrangler config includes
+that hostname as a second Custom Domain, but it has not been deployed; DNS
+currently returns NXDOMAIN. Register the new exact callback on the OP before
+building with its client ID. The callback host serves only the Apple and Android
+association documents; all other requests, including a browser fallback to
+the callback path, return 404 without cache or referrer disclosure.
 
 The pending PKCE transaction lives only in app memory and expires after three
 minutes. If the OS terminates the app during browser login, restart login;

@@ -3647,12 +3647,8 @@ pub async fn main(
     let url = req.url()?;
     if url.host_str() == Some("mikaki-native.tossa.app") {
         return match native_host_route(req.method() == worker::Method::Get, url.path()) {
-            NativeHostRoute::Apple => {
-                app_association::apple_for_env(&env)
-            }
-            NativeHostRoute::Android => {
-                app_association::android_for_env(&env)
-            }
+            NativeHostRoute::Apple => app_association::apple_for_env(&env),
+            NativeHostRoute::Android => app_association::android_for_env(&env),
             NativeHostRoute::NotFound => Ok(worker::Response::builder()
                 .with_status(404)
                 .with_header("Cache-Control", "no-store")?
@@ -3683,11 +3679,6 @@ pub async fn main(
                 }))
         })
         .get_async("/.well-known/openid-configuration", discovery_route)
-        .get_async(
-            "/.well-known/apple-app-site-association",
-            app_association::apple,
-        )
-        .get_async("/.well-known/assetlinks.json", app_association::android)
         .get_async("/authorize", authorize_route)
         .get_async("/login", passkey_login::get)
         .get_async("/login/cue", passkey_login::cue)
@@ -3778,7 +3769,7 @@ fn native_host_route(is_get: bool, path: &str) -> NativeHostRoute {
 
 #[cfg(test)]
 mod native_host_tests {
-    use super::{native_host_route, NativeHostRoute};
+    use super::{NativeHostRoute, native_host_route};
 
     #[test]
     fn native_host_exposes_only_association_documents() {

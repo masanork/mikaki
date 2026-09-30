@@ -41,28 +41,12 @@ fn android_document(fingerprint: &str) -> Option<serde_json::Value> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn apple(
-    _request: worker::Request,
-    context: worker::RouteContext<()>,
-) -> worker::Result<worker::Response> {
-    apple_for_env(&context.env)
-}
-
-#[cfg(target_arch = "wasm32")]
 pub fn apple_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
     let document = env
         .var("MIKAKI_IOS_TEAM_ID")
         .ok()
         .and_then(|value| apple_document(&value.to_string()));
     association_response(document)
-}
-
-#[cfg(target_arch = "wasm32")]
-pub async fn android(
-    _request: worker::Request,
-    context: worker::RouteContext<()>,
-) -> worker::Result<worker::Response> {
-    android_for_env(&context.env)
 }
 
 #[cfg(target_arch = "wasm32")]
