@@ -14,6 +14,14 @@ on:
         description: Optional native Android signing certificate SHA-256 fingerprint
         required: false
         type: string
+      expected_login_js_sha256:
+        description: Optional SHA-256 of the reviewed login JavaScript
+        required: false
+        type: string
+      expected_login_css_sha256:
+        description: Optional SHA-256 of the reviewed login stylesheet
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -33,12 +41,18 @@ jobs:
           MIKAKI_EXPECTED_VERSION_ID: ${{ inputs.expected_version_id }}
           MIKAKI_EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
           MIKAKI_READY_TOKEN: ${{ secrets.MIKAKI_READY_TOKEN }}
+          MIKAKI_EXPECTED_LOGIN_JS_SHA256: ${{ inputs.expected_login_js_sha256 }}
+          MIKAKI_EXPECTED_LOGIN_CSS_SHA256: ${{ inputs.expected_login_css_sha256 }}
         run: |
           set -euo pipefail
           issuer=https://mikaki.tossa.app
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/health" -o health.txt
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/.well-known/openid-configuration" -o discovery.json
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/jwks" -o jwks.json
+          if [[ -n "$MIKAKI_EXPECTED_LOGIN_JS_SHA256" || -n "$MIKAKI_EXPECTED_LOGIN_CSS_SHA256" ]]; then
+            curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/login/login.js" -o login.js
+            curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/login/login.css" -o login.css
+          fi
           if [[ -n "$MIKAKI_EXPECTED_VERSION_ID" && -n "$MIKAKI_EXPECTED_SOURCE_COMMIT" ]]; then
             if [[ ! "$MIKAKI_READY_TOKEN" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
               echo 'MIKAKI_READY_TOKEN GitHub Actions secret is missing or invalid' >&2

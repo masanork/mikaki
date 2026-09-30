@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,7 +24,11 @@ test('production smoke records matching runtime identity and rejects a different
     );
     writeFileSync(join(directory, 'jwks.json'), JSON.stringify({ keys: [{ kid: 'test' }] }));
     writeFileSync(join(directory, 'ready-status.txt'), '204');
-    const run = (expectedVersion = versionId, expectedCommit = sourceCommit) =>
+    const run = (
+      expectedVersion = versionId,
+      expectedCommit = sourceCommit,
+      assets: Record<string, string> = {},
+    ) =>
       spawnSync(process.execPath, [checker], {
         cwd: directory,
         encoding: 'utf8',
@@ -31,6 +36,9 @@ test('production smoke records matching runtime identity and rejects a different
           ...process.env,
           MIKAKI_EXPECTED_VERSION_ID: expectedVersion,
           MIKAKI_EXPECTED_SOURCE_COMMIT: expectedCommit,
+          MIKAKI_EXPECTED_LOGIN_JS_SHA256: '',
+          MIKAKI_EXPECTED_LOGIN_CSS_SHA256: '',
+          ...assets,
         },
       });
     const writeVersion = (sourceClean: boolean) =>
@@ -53,6 +61,28 @@ test('production smoke records matching runtime identity and rejects a different
     assert.equal(evidence.readiness, 'ok');
     assert.notEqual(run('00000000-0000-0000-0000-000000000000').status, 0);
     assert.notEqual(run(versionId, 'b'.repeat(40)).status, 0);
+    writeFileSync(join(directory, 'login.js'), 'reviewed JavaScript');
+    writeFileSync(join(directory, 'login.css'), 'reviewed stylesheet');
+    const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+    const assets = {
+      MIKAKI_EXPECTED_LOGIN_JS_SHA256: digest('reviewed JavaScript'),
+      MIKAKI_EXPECTED_LOGIN_CSS_SHA256: digest('reviewed stylesheet'),
+    };
+    assert.equal(run(versionId, sourceCommit, assets).status, 0);
+    const assetEvidence = JSON.parse(
+      readFileSync(join(directory, 'artifacts/production-smoke.json'), 'utf8'),
+    );
+    assert.equal(assetEvidence.login_assets.js_sha256, assets.MIKAKI_EXPECTED_LOGIN_JS_SHA256);
+    assert.notEqual(
+      run(versionId, sourceCommit, { ...assets, MIKAKI_EXPECTED_LOGIN_CSS_SHA256: '' }).status,
+      0,
+    );
+    assert.notEqual(run('', '', assets).status, 0);
+    writeFileSync(join(directory, 'login.js'), 'stale JavaScript');
+    assert.notEqual(run(versionId, sourceCommit, assets).status, 0);
+    writeFileSync(join(directory, 'login.js'), 'reviewed JavaScript');
+    writeFileSync(join(directory, 'login.css'), 'stale stylesheet');
+    assert.notEqual(run(versionId, sourceCommit, assets).status, 0);
     writeVersion(false);
     assert.notEqual(run().status, 0);
     writeVersion(true);
