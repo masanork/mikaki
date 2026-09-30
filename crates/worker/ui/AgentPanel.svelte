@@ -193,9 +193,9 @@
   } | null = $state(null);
   const selection = $derived(
     JSON.stringify([
-      opened,
-      sourceRevision,
-      noteRevision,
+      selected ? opened : null,
+      selected ? sourceRevision : null,
+      selectedNote ? noteRevision : null,
       ownerId,
       credentialId && encodeBase64Url(credentialId),
       selected,
