@@ -1,0 +1,22 @@
+{
+  "name": "mikaki-shared-snapshot",
+  "version": "0.1.0",
+  "description": "Read only owner-selected Mikaki snapshots under an expiring delegated grant.",
+  "mcpServers": "mcp.json",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "MIKAKI_AGENT_RESOURCE": {
+        "type": "string",
+        "title": "Mikaki agent MCP URL",
+        "description": "Exact HTTPS /mcp URL of the approved separate agent service."
+      },
+      "MIKAKI_AGENT_CLIENT_ID": {
+        "type": "string",
+        "title": "Preregistered public client ID",
+        "description": "Operator-approved public ID for this hosted connector and exact registered callback."
+      }
+    },
+    "required": ["MIKAKI_AGENT_RESOURCE", "MIKAKI_AGENT_CLIENT_ID"]
+  }
+}

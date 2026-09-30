@@ -19,17 +19,17 @@ Read Discovery at `https://mikaki.tossa.app/.well-known/openid-configuration` an
 
 Protect the RP's login initiation against CSRF. For every transaction, generate high-entropy `state`, `nonce`, and a PKCE `code_verifier`. Store them server-side with the start time, browser binding, and a validated **RP-local** return path. The `code_challenge` is the unpadded base64url encoding of SHA-256 over the verifier. Redirect the browser to the discovered `authorization_endpoint` with:
 
-| Parameter | Value |
-| --- | --- |
-| `client_id` | Registered client ID |
-| `redirect_uri` | Exact registered callback URL |
-| `response_type` | `code` |
-| `scope` | `openid` |
-| `state` | Fresh random value, required |
-| `nonce` | Fresh random value, strongly recommended for the RP |
-| `code_challenge`, `code_challenge_method` | Derived challenge, `S256` |
+| Parameter                                 | Value                                               |
+| ----------------------------------------- | --------------------------------------------------- |
+| `client_id`                               | Registered client ID                                |
+| `redirect_uri`                            | Exact registered callback URL                       |
+| `response_type`                           | `code`                                              |
+| `scope`                                   | `openid`                                            |
+| `state`                                   | Fresh random value, required                        |
+| `nonce`                                   | Fresh random value, strongly recommended for the RP |
+| `code_challenge`, `code_challenge_method` | Derived challenge, `S256`                           |
 
-`request`, `request_uri`, dynamic registration, and `profile` or `email` scopes are outside the current integration. Mikaki handles the passkey screen and first connection approval. The RP never receives the passkey or Mikaki's SSO cookie.
+`request`, `request_uri`, dynamic registration, and `email` scope are outside the current integration. A local `openid profile` implementation can release an owner-approved Vault `name`, but both sharing and RP-release policies default to disabled and this path is not qualified for production RPs. Keep production login at `openid` until that gate is complete. Mikaki handles the passkey screen and first connection approval. The RP never receives the passkey or Mikaki's SSO cookie.
 
 ## 3. Handle the callback and exchange the code
 
@@ -39,7 +39,7 @@ POST `application/x-www-form-urlencoded` to the discovered `token_endpoint` from
 
 The assertion is an ES256 JWT signed by the registered private key. Its header carries that key's `kid`; `iss` and `sub` equal `client_id`; `aud` equals the **exact discovered token endpoint URL**; `jti` is unique per request; and `iat` and `exp` are present. Keep its lifetime within the configured limit. Never replay an assertion or code. After a lost response, restart with a new login transaction.
 
-Validate the ID Token's signature and `alg` against JWKS, then check `iss`, `aud`, `exp`, `iat`, the sent `nonce`, and `auth_time` where required. Use `sub` as the external identity mapped to an RP-local subject, and `sid` for session status. The pairwise `sub` is neither an email address nor Mikaki's common `AccountId`. The opaque `access_token` is only for UserInfo; it is not an RP API authorization token or a session lease. If calling UserInfo, match its `sub` to the verified ID Token. Current UserInfo returns only `sub`.
+Validate the ID Token's signature and `alg` against JWKS, then check `iss`, `aud`, `exp`, `iat`, the sent `nonce`, and `auth_time` where required. Use `sub` as the external identity mapped to an RP-local subject, and `sid` for session status. The pairwise `sub` is neither an email address nor Mikaki's common `AccountId`. The opaque `access_token` is only for UserInfo; it is not an RP API authorization token or a session lease. If calling UserInfo, match its `sub` to the verified ID Token. The production `openid` integration returns only `sub`; the gated local `openid profile` path may also return the consented `name` and can omit it again after withdrawal.
 
 ## 4. Establish an application session
 

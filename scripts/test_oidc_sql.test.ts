@@ -65,17 +65,9 @@ function seed(db: DatabaseSync) {
     1,
     0,
   );
-  db.prepare('INSERT INTO authorization_code VALUES(?,?,?,?,?,?,?,?,?)').run(
-    'codehash',
-    'c',
-    'sid',
-    1,
-    'https://app.example/cb',
-    'challenge',
-    now + 600,
-    null,
-    null,
-  );
+  db.prepare(
+    'INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) VALUES(?,?,?,?,?,?,?,?,?)',
+  ).run('codehash', 'c', 'sid', 1, 'https://app.example/cb', 'challenge', now + 600, null, null);
 }
 
 function params(operation = 'exchange', jti = 'assertion'): Parameters {
@@ -239,7 +231,7 @@ if (isMainThread) {
       );
       db.exec("INSERT INTO client_session VALUES('c','new-sid','new-sso','a','sub',1,0)");
       db.exec(
-        "INSERT INTO authorization_code SELECT 'new-code',client_id,'new-sid',client_revision,redirect_uri,pkce_challenge,expires_at,NULL,NULL FROM authorization_code WHERE code_hash='codehash'",
+        "INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) SELECT 'new-code',client_id,'new-sid',client_revision,redirect_uri,pkce_challenge,expires_at,NULL,NULL FROM authorization_code WHERE code_hash='codehash'",
       );
       const next = params('new-exchange', 'new-jti');
       next.code_hash = 'new-code';

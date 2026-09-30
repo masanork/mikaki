@@ -1,7 +1,9 @@
+import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
+import { execFileSync } from 'node:child_process';
 
 test('Worker login and Vault mount their Svelte screens in both locales', async () => {
   const harness = createTestHarness({
@@ -11,9 +13,22 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     ],
   });
   let browser;
+  let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
+  let failure: unknown;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
+    const versionResponse = await worker.fetch('https://mikaki.test/version');
+    assert.equal(versionResponse.status, 200);
+    assert.equal(versionResponse.headers.get('Cache-Control'), 'no-store');
+    const version = (await versionResponse.json()) as Record<string, unknown>;
+    assert.equal(version.worker, 'mikaki-op');
+    assert.match(String(version.version_id), /^[0-9a-f-]{36}$/i);
+    assert.equal(
+      version.source_commit,
+      execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    );
+    assert.equal(typeof version.source_clean, 'boolean');
     const scripts = new Map();
     for (const path of [
       '/login/login.js',
@@ -27,10 +42,33 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     }
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
+    evidence = await startBrowserEvidence(page.context(), 'worker-ui');
     const errors: string[] = [];
     let cueRequests = 0;
     let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      if (location.search.includes('pending-passkey')) {
+        Object.defineProperty(navigator.credentials, 'get', {
+          value({ signal }: { signal?: AbortSignal }) {
+            return new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener(
+                'abort',
+                () => reject(new DOMException('Aborted', 'AbortError')),
+                { once: true },
+              );
+            });
+          },
+        });
+      }
+      if (!location.search.includes('no-webgl')) return;
+      const original = HTMLCanvasElement.prototype.getContext;
+      Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+        value(this: HTMLCanvasElement, kind: string, ...args: unknown[]) {
+          return kind === 'webgl' ? null : Reflect.apply(original, this, [kind, ...args]);
+        },
+      });
+    });
     await page.route('https://mikaki.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (scripts.has(url.pathname)) {
@@ -56,7 +94,13 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
           await route.fulfill({ status: 503, body: '' });
           return;
         }
-        await route.fulfill({ json: { credential_id: 'Y3JlZGVudGlhbA', account_id: 'owner' } });
+        await route.fulfill({
+          json: {
+            credential_id: 'Y3JlZGVudGlhbA',
+            account_id: 'owner',
+            session_tag: 's'.repeat(43),
+          },
+        });
         return;
       }
       if (url.pathname === '/vault/attributes/name') {
@@ -94,6 +138,13 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       firstPattern,
     );
     assert.ok(cueRequests >= 2);
+    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
+    // A lost GPU context must leave the SVG and login controls available.
+    await page.locator('.auth-seal-light').evaluate((canvas) => {
+      canvas.dispatchEvent(new Event('webglcontextlost'));
+    });
+    await page.locator('.auth-seal[data-renderer="svg"]').waitFor();
+    assert.equal(await page.locator('#passkey').isEnabled(), true);
     const firstStyle = await page.locator('.auth-session-cue').getAttribute('style');
     await page.goto('https://mikaki.test/login?other-rp=1');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
@@ -106,6 +157,21 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         .evaluate((node) => getComputedStyle(node).backgroundColor),
       'rgb(23, 89, 173)',
     );
+    await page.goto('https://mikaki.test/login?pending-passkey=1');
+    await page.locator('.auth-seal-paused').waitFor();
+    assert.equal(
+      await page
+        .locator('.auth-seal-weave')
+        .evaluate((node) => getComputedStyle(node).animationPlayState),
+      'paused',
+    );
+    await page.locator('#passkey').click();
+    assert.equal(await page.locator('#passkey').isDisabled(), true);
+    assert.equal(await page.locator('.auth-seal-paused').count(), 1);
+    await page.goto('https://mikaki.test/login?no-webgl=1');
+    await page.locator('.auth-session-cue[data-cue-live="true"]').waitFor();
+    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
+    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
     assert.equal(await page.getByLabel('招待コード').getAttribute('aria-invalid'), 'true');
@@ -126,9 +192,17 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     );
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(await page.locator('.auth-session-cue').getAttribute('data-cue-live'), 'false');
+    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
+    assert.equal(
+      await page
+        .locator('.auth-seal-weave')
+        .evaluate((node) => getComputedStyle(node).animationName),
+      'none',
+    );
     assert.equal(
       await page
         .locator('.auth-session-tile')
@@ -142,7 +216,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.getByRole('button', { name: 'Passkeyで開く' }).waitFor();
     await page.getByText('表示名は未登録です。Passkeyで開いて登録できます。').waitFor();
     assert.equal(await page.locator('.product-header').count(), 1);
-    assert.equal(await page.locator('.product-nav a').count(), 2);
+    assert.equal(await page.locator('.product-nav a').count(), 4);
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
       'rgb(246, 248, 251)',
@@ -153,7 +227,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     );
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('button', { name: 'Unlock with passkey' }).waitFor();
-    await page.getByRole('link', { name: 'Connections' }).click();
+    await page.getByRole('link', { name: 'Sharing & connections' }).click();
     assert.match(page.url(), /#connections$/);
     await page.waitForFunction(
       () =>
@@ -161,23 +235,28 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         'location',
     );
     assert.equal(
-      await page.getByRole('link', { name: 'Connections' }).getAttribute('aria-current'),
+      await page.getByRole('link', { name: 'Sharing & connections' }).getAttribute('aria-current'),
       'location',
     );
     vaultSessionFailures = 1;
     await page.goto('https://mikaki.test/vault?lang=en');
-    await page.getByRole('button', { name: 'Retry loading' }).waitFor();
+    await page.locator('#status').getByText('Loading failed.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Reload profile' }).waitFor();
     assert.equal(
       await page.getByRole('button', { name: 'Unlock with passkey' }).isDisabled(),
       true,
     );
-    await page.getByRole('button', { name: 'Retry loading' }).click();
+    await page.getByRole('button', { name: 'Reload profile' }).click();
     await page
       .getByText('No display name is saved. Unlock with your passkey to add one.')
       .waitFor();
     assert.equal(await page.getByRole('button', { name: 'Unlock with passkey' }).isEnabled(), true);
     assert.deepEqual(errors, []);
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    await evidence?.finish(failure);
     await browser?.close();
     await harness.close();
   }

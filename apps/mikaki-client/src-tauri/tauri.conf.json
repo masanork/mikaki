@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mikaki",
+  "version": "0.1.0",
+  "identifier": "app.tossa.mikaki",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mikaki",
+        "width": 1080,
+        "height": 760,
+        "minWidth": 360,
+        "minHeight": 500
+      }
+    ],
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "local-main",
+          "windows": ["main"],
+          "permissions": ["core:default"]
+        }
+      ],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": false
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["https"],
+          "host": "mikaki-native.tossa.app",
+          "pathPrefix": ["/oidc/native/"],
+          "appLink": true
+        }
+      ]
+    }
+  }
+}

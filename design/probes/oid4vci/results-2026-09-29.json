@@ -1,0 +1,251 @@
+{
+  "generated_at": "2026-09-29T12:56:26.158Z",
+  "scope": "synthetic-component-probe",
+  "protocol": "OpenID4VCI 1.0 Final (2025-09-16)",
+  "flow": "Anonymous Pre-Authorized Code with separate six-digit tx_code; immediate single dc+sd-jwt credential",
+  "profile": {
+    "issuer": "https://issuer.mikaki.test",
+    "vct": "https://issuer.mikaki.test/membership/v1",
+    "configurationId": "membership_v1",
+    "grantType": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+    "issuerLibraryVersion": "0.6.0",
+    "tokenEndpoint": "https://issuer.mikaki.test/token",
+    "nonceEndpoint": "https://issuer.mikaki.test/nonce",
+    "credentialEndpoint": "https://issuer.mikaki.test/credential",
+    "metadataEndpoint": "https://issuer.mikaki.test/.well-known/openid-credential-issuer",
+    "authorizationMetadataEndpoint": "https://issuer.mikaki.test/.well-known/oauth-authorization-server"
+  },
+  "installed_versions": {
+    "@openid4vc/openid4vci": "0.6.0",
+    "@openid4vc/oauth2": "0.6.0",
+    "@openid4vc/utils": "0.6.0",
+    "@openeudi/openid4vp": "0.12.0",
+    "jose": "6.2.12"
+  },
+  "dependency_lock_sha256": "yasixZQBLviONv1mge4rYWzcbt3utQt_5oEMMDZT6q0",
+  "independent_issuer": "OWF @openid4vc/openid4vci protocol library; JOSE callback, code/token/nonce ledgers and SD-JWT signing are Mikaki fixtures",
+  "wallet": "Mikaki receipt harness and shared encrypted OID4VP fixture store",
+  "holder": "Dedicated disposable ES256 key, public jwk proof and separately encrypted private-key envelope",
+  "transport": "In-process Web Request/Response with HTTPS .test endpoints; no network/TLS or external application test",
+  "trust": "Exact synthetic issuer and pinned public JWK; no public issuer trust/discovery claim",
+  "environment": {
+    "node": "v26.10.0",
+    "platform": "darwin",
+    "release": "27.0.0",
+    "arch": "arm64"
+  },
+  "devices": [],
+  "results": [
+    {
+      "id": "issuance-token-scope",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unadvertised-refresh-token",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "cacheable-nonce",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "receipt-encryption-and-presentation",
+      "layer": "independent-issuer",
+      "passed": true
+    },
+    {
+      "id": "receipt-cancellation",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "untrusted-offer-issuer",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unoffered-configuration",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unsupported-offer-grant",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "metadata-issuer-mismatch",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "metadata-endpoint-substitution",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "metadata-proof-downgrade",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unsupported-encryption",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "authorization-server-substitution",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "redirect-metadata",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "transaction-code-attempt-limit",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "code-replay-and-concurrency",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "expired-code-and-token",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "wrong-proof-nonce",
+      "layer": "independent-issuer",
+      "passed": true
+    },
+    {
+      "id": "wrong-proof-audience",
+      "layer": "independent-issuer",
+      "passed": true
+    },
+    {
+      "id": "wrong-proof-type",
+      "layer": "independent-issuer",
+      "passed": true
+    },
+    {
+      "id": "wrong-proof-signature",
+      "layer": "independent-issuer",
+      "passed": true
+    },
+    {
+      "id": "anonymous-proof-issuer",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "proof-iat-future",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "proof-iat-stale",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "private-key-in-header",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "nonce-replay-expiry-and-retry",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "credential-one-winner-and-token-replay",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "unapproved-configuration",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "legacy-request-proof",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "multiple-holder-proofs",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "mixed-request-identifiers",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "invalid-access-token",
+      "layer": "issuer-policy",
+      "passed": true
+    },
+    {
+      "id": "legacy-response",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "deferred-response",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "multiple-credentials",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "wrong-response-type",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "wrong-credential-holder",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "untrusted-credential-key",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "wrong-credential-type",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "expired-credential",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "future-credential-iat",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "duplicate-disclosure",
+      "layer": "wallet",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

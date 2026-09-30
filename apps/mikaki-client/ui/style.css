@@ -1,0 +1,40 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #192940;
+  background: #f7f8fb;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 32rem;
+  margin: 12vh auto;
+  padding: 2rem;
+}
+h1 {
+  font-size: 2rem;
+}
+button {
+  border: 0;
+  border-radius: 0.5rem;
+  background: #1656a6;
+  color: white;
+  padding: 0.8rem 1.2rem;
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+#status {
+  min-height: 1.5rem;
+}
+#vault {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #c8d2e0;
+}
+#vault button {
+  margin: 0 0.5rem 0.5rem 0;
+}

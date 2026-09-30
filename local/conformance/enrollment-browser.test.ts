@@ -1,3 +1,4 @@
+import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -29,6 +30,8 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     ],
   });
   let browser;
+  let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
+  let failure: unknown;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -51,6 +54,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
+    evidence = await startBrowserEvidence(page.context(), 'enrollment-browser');
     const errors: string[] = [];
     const passkeyEvents: string[] = [];
     let finishBody;
@@ -132,10 +136,37 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
             });
           const lostFinish =
             new URL(request.url()).pathname === '/register/finish' && loseNextFinishResponse;
-          const responses = await Promise.all(lostFinish ? [forward(), forward()] : [forward()]);
+          if (lostFinish) {
+            // An unrelated failed batch must remain a server error and roll back
+            // invite/transaction consumption so the same verified input can retry.
+            await DB.prepare(
+              "CREATE TRIGGER fail_test_registration BEFORE INSERT ON account_security BEGIN SELECT RAISE(ABORT,'fixture storage failure'); END",
+            ).run();
+            try {
+              const rejected = await forward();
+              assert.equal(rejected.status, 500);
+              assert.equal(
+                (await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n,
+                1,
+              );
+              assert.equal(
+                (
+                  await DB.prepare(
+                    "SELECT COUNT(*) AS n FROM enrollment_invite WHERE kind='normal' AND consumed_at IS NULL",
+                  ).first()
+                ).n,
+                1,
+              );
+            } finally {
+              await DB.prepare('DROP TRIGGER fail_test_registration').run();
+            }
+          }
+          const responses = await Promise.all(
+            lostFinish ? Array.from({ length: 8 }, forward) : [forward()],
+          );
           if (lostFinish) {
             concurrentFinishStatuses = responses.map((response) => response.status).sort();
-            assert.deepEqual(concurrentFinishStatuses, [200, 400]);
+            assert.deepEqual(concurrentFinishStatuses, [200, ...Array<number>(7).fill(400)]);
             loseNextFinishResponse = false;
             await route.abort('failed');
             return;
@@ -193,7 +224,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.goto(`${issuer}/vault`);
     await page.getByRole('button', { name: 'Passkeyで開く' }).click();
     await page.getByLabel('表示名').fill('Vault browser test');
-    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
     await page.getByRole('status').getByText('保存しました').waitFor();
     await page.reload();
     await page.getByRole('button', { name: 'Passkeyで開く' }).click();
@@ -204,7 +235,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     );
     assert.equal(await page.getByLabel('表示名').inputValue(), 'Vault browser test');
     await page.getByLabel('表示名').fill('Updated vault name');
-    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
     await page.getByRole('status').getByText('保存しました').waitFor();
     await page.reload();
     await page.getByRole('button', { name: 'Passkeyで開く' }).click();
@@ -312,7 +343,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').waitFor();
     assert.ok(lostFinishBody);
-    assert.deepEqual(concurrentFinishStatuses, [200, 400]);
+    assert.deepEqual(concurrentFinishStatuses, [200, ...Array<number>(7).fill(400)]);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n, 2);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 2);
     const lostResponseReplay = await worker.fetch(`${issuer}/register/finish`, {
@@ -346,11 +377,16 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     ]);
     await page.goto(requiredHeader(afterLostResponse, 'location'));
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    // The injected cancellation occurs on the first button attempt after every navigation.
     await page.getByRole('alert').waitFor();
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.deepEqual(errors, []);
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    await evidence?.finish(failure);
     await browser?.close();
     await harness.close();
   }

@@ -9,12 +9,14 @@ import {
   disableClient,
   listClients,
   registerClient,
+  registerNativeClient,
   retireRedirect,
   retirePostLogoutRedirect,
   retireBackchannelLogout,
   retireKey,
   setBackchannelLogout,
   validateRegistration,
+  validateNativeRegistration,
 } from '../../scripts/client-admin-store.ts';
 
 function key(kid: string) {
@@ -212,6 +214,78 @@ test('managed RP registration and key changes are audited and constrained', asyn
     assert.equal(
       (await DB.prepare('SELECT COUNT(*) AS count FROM client_admin_audit').first()).count,
       11,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test('native registration has no shared client credential and constrains callback types', async () => {
+  const harness = createTestHarness({
+    root: new URL('../..', import.meta.url).pathname,
+    workers: [
+      { configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname },
+    ],
+  });
+  try {
+    await harness.listen();
+    const worker = harness.getWorker('mikaki-op-worker');
+    await worker.applyD1Migrations('DB');
+    const { DB } = await worker.getEnv();
+    const registration = {
+      client_id: randomUUID(),
+      sector_identifier: 'app.example',
+      redirect_uris: ['https://app.example/oidc/callback'],
+    };
+    assert.throws(() => validateNativeRegistration({ ...registration, key: key('embedded-key') }));
+    assert.deepEqual(
+      validateNativeRegistration({
+        ...registration,
+        sector_identifier: '127.0.0.1',
+        redirect_uris: ['http://127.0.0.1:0/oidc/callback'],
+      }).redirect_uris,
+      ['http://127.0.0.1:0/oidc/callback'],
+    );
+    for (const uri of [
+      'http://localhost:0/oidc/callback',
+      'http://127.0.0.2:0/oidc/callback',
+      'http://127.0.0.1:8080/oidc/callback',
+      'http://127.0.0.1:0/',
+      'http://127.0.0.1:0/oidc/callback?x=1',
+    ]) {
+      assert.throws(() =>
+        validateNativeRegistration({
+          ...registration,
+          sector_identifier: '127.0.0.1',
+          redirect_uris: [uri],
+        }),
+      );
+    }
+    assert.throws(() =>
+      validateNativeRegistration({
+        ...registration,
+        redirect_uris: ['http://127.0.0.1:4000/callback'],
+      }),
+    );
+    await registerNativeClient(DB, registration, 'operator', 'native app');
+    const row = await DB.prepare(
+      'SELECT client_type,auth_method,allow_missing_pkce FROM client WHERE client_id=?',
+    )
+      .bind(registration.client_id)
+      .first();
+    assert.deepEqual(row, {
+      client_type: 'native',
+      auth_method: 'none',
+      allow_missing_pkce: 0,
+    });
+    assert.equal(
+      await DB.prepare('SELECT count(*) AS n FROM client_key WHERE client_id=?')
+        .bind(registration.client_id)
+        .first('n'),
+      0,
+    );
+    await assert.rejects(
+      addKey(DB, registration.client_id, key('injected'), 'operator', 'must reject'),
     );
   } finally {
     await harness.close();

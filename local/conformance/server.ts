@@ -34,9 +34,11 @@ const port = Number(process.env.FIDO_PORT ?? 8080);
 const origin = `http://localhost:${port}`;
 const native = fileURLToPath(new URL('../../target/release/examples/conformance', import.meta.url));
 const mdsDir = new URL('../../target/fido-mds/', import.meta.url);
+let validBlobs = 0;
 for (const file of readdirSync(mdsDir).filter((n) => n.endsWith('.json'))) {
   const input = JSON.parse(readFileSync(new URL(file, mdsDir), 'utf8'));
   input.now = Math.floor(Date.now() / 1000);
+  input.profile = process.env.FIDO_MDS_PROFILE ?? 'mds3.1.1';
   try {
     const verified =
       target === 'wasm'
@@ -50,6 +52,7 @@ for (const file of readdirSync(mdsDir).filter((n) => n.endsWith('.json'))) {
             }).stdout,
           );
     check(verified);
+    validBlobs++;
     for (const m of verified.entries) {
       const index = entries.findIndex((e) => e.aaguid === m.aaguid);
       if (index >= 0) entries[index] = m;
@@ -60,6 +63,8 @@ for (const file of readdirSync(mdsDir).filter((n) => n.endsWith('.json'))) {
     console.log(`MDS ${file}: rejected (${target})`);
   }
 }
+if (!validBlobs)
+  throw Error('No valid MDS BLOB verified for the selected profile; re-run preparation');
 const token = () => randomBytes(32).toString('base64url');
 type User = { id: string; name: string; displayName: string };
 const transactions = new Map<
@@ -102,6 +107,7 @@ const server = createServer(async (req, res) => {
   const requestPath = req.url ?? '/';
   const start = performance.now();
   let status = 'failed';
+  let stage = 'request';
   const timing = { metadata_ms: 0, verify_ms: 0 };
   const timed = <T>(field: keyof typeof timing, operation: () => T): T => {
     const start = performance.now();
@@ -113,6 +119,17 @@ const server = createServer(async (req, res) => {
   };
   try {
     check(req.headers.host === `localhost:${port}`);
+    if (req.method === 'GET' && requestPath === '/device') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+      );
+      res.end(readFileSync(new URL('./device.html', import.meta.url)));
+      status = 'ok';
+      return;
+    }
     check(req.method === 'POST');
     let body = '';
     for await (const chunk of req) {
@@ -170,7 +187,9 @@ const server = createServer(async (req, res) => {
             rp: { id: 'localhost', name: 'mikaki conformance' },
             user,
             challenge,
-            pubKeyCredParams: [-7, -8, -257, -65535].map((alg) => ({ type: 'public-key', alg })),
+            pubKeyCredParams: [-7, -8, -257, -65535, -37, -38, -39, -258, -259, -35, -36, -47].map(
+              (alg) => ({ type: 'public-key', alg }),
+            ),
             timeout: 120000,
             excludeCredentials: list,
             attestation: data.attestation ?? 'none',
@@ -190,6 +209,7 @@ const server = createServer(async (req, res) => {
             extensions: data.extensions ?? {},
           });
     } else {
+      stage = 'session';
       check(['/attestation/result', '/assertion/result'].includes(requestPath));
       const id = (req.headers.cookie ?? '')
         .split(';')
@@ -205,6 +225,7 @@ const server = createServer(async (req, res) => {
       const r = data.response;
       check(r && typeof r.clientDataJSON === 'string');
       const credential = credentials.get(data.id);
+      stage = 'credential';
       if (!registration) check(credential && (!tx.user || credential.user_handle === tx.user.id));
       const input = {
         ceremony: {
@@ -220,7 +241,7 @@ const server = createServer(async (req, res) => {
             max_bytes: 65536,
             max_depth: 8,
             user_verification: tx.uv,
-            algorithms: [-7, -8, -257, -65535],
+            algorithms: [-7, -8, -257, -65535, -37, -38, -39, -258, -259, -35, -36, -47],
             attestation: {
               now: Math.floor(Date.now() / 1000),
               entries: registration
@@ -250,6 +271,7 @@ const server = createServer(async (req, res) => {
             },
       };
       // Synchronous verification and state commit: no request can interleave here.
+      stage = 'verification';
       const proof = timed('verify_ms', () => verify(input, credential));
       if (registration) {
         check(tx.user);
@@ -268,7 +290,7 @@ const server = createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         status: 'failed',
-        errorMessage: 'Request rejected by mikaki profile or verifier',
+        errorMessage: `Request rejected at ${stage}`,
       }),
     );
   } finally {
@@ -277,6 +299,7 @@ const server = createServer(async (req, res) => {
         target,
         path: requestPath,
         status,
+        ...(status === 'failed' ? { stage } : {}),
         ms: +(performance.now() - start).toFixed(3),
         ...(process.env.FIDO_TIMING === '1'
           ? Object.fromEntries(

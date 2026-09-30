@@ -83,6 +83,7 @@ test('Vault screen shares an unlocked name and revokes it with explicit owner ac
         await route.fulfill({
           json: {
             account_id: 'owner',
+            session_tag: 's'.repeat(43),
             credential_id: Buffer.from(credential).toString('base64url'),
           },
         });

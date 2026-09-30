@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["worker-entry"]
 worker-entry = []
+conformance-gate = []
 
 [dependencies]
 aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }

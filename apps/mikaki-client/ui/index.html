@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mikaki</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" type="module"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Mikaki</h1>
+      <p>ログインとVaultへの同意はシステムブラウザで行います。</p>
+      <button id="login" type="button">ブラウザでログイン</button>
+      <button id="clear" type="button">この端末のセッションを消去</button>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="vault" hidden>
+        <h2>Vault 暗号文</h2>
+        <p>所有者の同意後、所有者メモの暗号文を取得します。復号は行いません。</p>
+        <button id="vault-key" type="button">端末の鍵を確認</button>
+        <button id="vault-consent" type="button">所有者メモの読取に同意する</button>
+        <button id="vault-read" type="button" disabled>暗号文を取得</button>
+        <p id="vault-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  </body>
+</html>

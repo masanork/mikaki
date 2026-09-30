@@ -6,10 +6,22 @@
     "test:crypto": "node --test --test-concurrency=1 crypto.test.ts jose.test.ts jose-custom.test.ts",
     "test:crypto:workers": "node jose-workers.ts",
     "bench:crypto": "node jose.bench.ts",
-    "test:d1": "node --test d1.test.ts"
+    "test:d1": "node --test d1.test.ts",
+    "test:oid4vp": "node --test oid4vp/probe.test.ts",
+    "probe:oid4vp": "node oid4vp/report.ts",
+    "test:oid4vci": "node --test oid4vci/probe.test.ts",
+    "probe:oid4vci": "node oid4vci/report.ts",
+    "probe:oidf-metadata": "node oidf/metadata.ts",
+    "probe:oidf-verifier": "node oidf/verifier.ts",
+    "test:dpop": "node --test dpop/probe.test.ts",
+    "test:dpop-network": "node --test dpop/network.test.ts",
+    "probe:dpop": "node dpop/report.ts"
   },
   "devDependencies": {
     "@noble/post-quantum": "0.7.1",
+    "@openeudi/openid4vp": "0.12.0",
+    "@openid4vc/oauth2": "0.6.0",
+    "@openid4vc/openid4vci": "0.6.0",
     "cborg": "6.1.2",
     "jose": "6.2.12",
     "wrangler": "4.144.0"

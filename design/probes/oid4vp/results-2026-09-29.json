@@ -1,0 +1,181 @@
+{
+  "generated_at": "2026-09-29T12:56:26.650Z",
+  "scope": "synthetic-component-probe",
+  "protocol": "OpenID4VP 1.0 Final (2025-07-09)",
+  "credential_format": "SD-JWT RFC 9901 / SD-JWT VC draft-19 subset",
+  "independent_verifier": {
+    "package": "@openeudi/openid4vp",
+    "version": "0.12.0"
+  },
+  "installed_versions": {
+    "@openeudi/openid4vp": "0.12.0",
+    "@openeudi/dcql": "0.2.0",
+    "@sd-jwt/decode": "0.19.0",
+    "jose": "6.2.12"
+  },
+  "dependency_lock_sha256": "yasixZQBLviONv1mge4rYWzcbt3utQt_5oEMMDZT6q0",
+  "issuer_wallet": "Mikaki fixture harness using jose 6.2.12; not an independent wallet",
+  "profile": {
+    "issuer": "https://issuer.mikaki.test",
+    "vct": "https://issuer.mikaki.test/membership/v1",
+    "clientId": "mikaki-probe-verifier",
+    "responseUri": "https://verifier.mikaki.test/response",
+    "verifierVersion": "0.12.0",
+    "format": "dc+sd-jwt",
+    "responseMode": "direct_post"
+  },
+  "issuer_trust": "Pinned synthetic issuer public JWK plus exact iss; no x509/HAIP claim",
+  "status_policy": "Synthetic local digest-keyed status service; good required on every presentation",
+  "holder_key": "Disposable dedicated ES256, separate AES-GCM envelope; random in-memory unlock key",
+  "transport": "Web Request/Response form serialization in-process; no network/TLS or browser wallet test",
+  "environment": {
+    "node": "v26.10.0",
+    "platform": "darwin",
+    "release": "27.0.0",
+    "arch": "arm64"
+  },
+  "devices": [],
+  "results": [
+    {
+      "id": "selective-disclosure-accepted",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "wrong-nonce",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "wrong-audience",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "wrong-holder-key",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "missing-holder-binding",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "wrong-sd-hash",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "unanchored-disclosure",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "altered-disclosure",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "expired-credential",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "wrong-credential-type",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "inactive-membership",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "untrusted-issuer-key",
+      "layer": "independent-verifier",
+      "passed": true
+    },
+    {
+      "id": "original-artifact-and-annotation-separation",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "owner-cancellation",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "overbroad-query",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unregistered-verifier",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "wrong-response-uri",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "unsupported-response-mode",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "replay-and-concurrent-submission",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "state-and-session-expiry",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "revoked-credential",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "unknown-status",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "status-outage",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "status-rechecked-per-presentation",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "response-envelope-and-transport",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "holder-proof-time-and-type",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "excess-disclosure",
+      "layer": "verifier-policy",
+      "passed": true
+    },
+    {
+      "id": "failed-proof-consumes-session",
+      "layer": "verifier-policy",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

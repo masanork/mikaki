@@ -1,10 +1,13 @@
 //! Bounded COSE public keys and verification; identical on native and Wasm.
 use super::*;
 use ed25519_dalek::{Signature as EdSignature, VerifyingKey as EdKey};
-use rsa::{BoxedUint, RsaPublicKey, pkcs1v15};
+use rsa::{BoxedUint, RsaPublicKey, pkcs1v15, pss};
 
 pub(super) enum PublicKey {
     Es256(VerifyingKey),
+    Es384(p384::ecdsa::VerifyingKey),
+    Es512(p521::ecdsa::VerifyingKey),
+    Es256k(k256::ecdsa::VerifyingKey),
     Ed25519(EdKey),
     Rsa { key: RsaPublicKey, alg: i32 },
 }
@@ -33,6 +36,33 @@ impl PublicKey {
                     VerifyingKey::from_sec1_bytes(&point).map_err(|_| Invalid::PublicKey)?,
                 ))
             }
+            (2, alg @ (-35 | -36 | -47)) => {
+                let (curve, size) = match alg {
+                    -35 => (2, 48),
+                    -36 => (3, 66),
+                    _ => (8, 32),
+                };
+                require(integer(-1)? == curve && key_field(value, -4).is_err())?;
+                let (x, y) = (bytes(-2)?, bytes(-3)?);
+                require(x.len() == size && y.len() == size)?;
+                let mut point = vec![4];
+                point.extend(x);
+                point.extend(y);
+                Ok(match alg {
+                    -35 => Self::Es384(
+                        p384::ecdsa::VerifyingKey::from_sec1_bytes(&point)
+                            .map_err(|_| Invalid::PublicKey)?,
+                    ),
+                    -36 => Self::Es512(
+                        p521::ecdsa::VerifyingKey::from_sec1_bytes(&point)
+                            .map_err(|_| Invalid::PublicKey)?,
+                    ),
+                    _ => Self::Es256k(
+                        k256::ecdsa::VerifyingKey::from_sec1_bytes(&point)
+                            .map_err(|_| Invalid::PublicKey)?,
+                    ),
+                })
+            }
             (1, -8) => {
                 require(integer(-1)? == 6 && key_field(value, -4).is_err())?;
                 let key = EdKey::from_bytes(
@@ -45,7 +75,7 @@ impl PublicKey {
                 require(!key.is_weak())?;
                 Ok(Self::Ed25519(key))
             }
-            (3, alg @ (-257 | -65535)) => {
+            (3, alg @ (-257 | -258 | -259 | -65535 | -37 | -38 | -39)) => {
                 // No private RSA parameters. Bound work before constructing big integers.
                 for label in -9..=-3 {
                     require(key_field(value, label).is_err())?;
@@ -63,9 +93,37 @@ impl PublicKey {
             _ => Err(Invalid::PublicKey),
         }
     }
+    // Called after certificate::verify has checked the SPKI algorithm and curve.
+    pub(super) fn matches_spki(
+        &self,
+        spki: &x509_cert::spki::SubjectPublicKeyInfoOwned,
+    ) -> Result<bool> {
+        use der::Encode;
+        use rsa::pkcs8::DecodePublicKey;
+        let bytes = spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or(Invalid::Certificate)?;
+        Ok(match self {
+            Self::Es256(k) => k.to_sec1_point(false).as_bytes() == bytes,
+            Self::Es384(k) => k.to_sec1_point(false).as_bytes() == bytes,
+            Self::Es512(k) => k.to_sec1_point(false).as_bytes() == bytes,
+            Self::Es256k(k) => k.to_sec1_point(false).as_bytes() == bytes,
+            Self::Ed25519(k) => k.as_bytes() == bytes,
+            Self::Rsa { key, .. } => {
+                *key == RsaPublicKey::from_public_key_der(
+                    &spki.to_der().map_err(|_| Invalid::Certificate)?,
+                )
+                .map_err(|_| Invalid::Certificate)?
+            }
+        })
+    }
     pub(super) fn algorithm(&self) -> i32 {
         match self {
             Self::Es256(_) => -7,
+            Self::Es384(_) => -35,
+            Self::Es512(_) => -36,
+            Self::Es256k(_) => -47,
             Self::Ed25519(_) => -8,
             Self::Rsa { alg, .. } => *alg,
         }
@@ -78,6 +136,30 @@ impl PublicKey {
                 key.verify(message, &signature)
                     .map_err(|_| Invalid::Signature)
             }
+            Self::Es384(key) => {
+                ensure(signature.len() <= 112, Invalid::Limit)?;
+                key.verify(
+                    message,
+                    &p384::ecdsa::Signature::from_der(signature).map_err(|_| Invalid::Signature)?,
+                )
+                .map_err(|_| Invalid::Signature)
+            }
+            Self::Es512(key) => {
+                ensure(signature.len() <= 144, Invalid::Limit)?;
+                key.verify(
+                    message,
+                    &p521::ecdsa::Signature::from_der(signature).map_err(|_| Invalid::Signature)?,
+                )
+                .map_err(|_| Invalid::Signature)
+            }
+            Self::Es256k(key) => {
+                ensure(signature.len() <= 80, Invalid::Limit)?;
+                let sig =
+                    k256::ecdsa::Signature::from_der(signature).map_err(|_| Invalid::Signature)?;
+                // WebAuthn ECDSA accepts either S representative; k256 expects low-S.
+                key.verify(message, &sig.normalize_s())
+                    .map_err(|_| Invalid::Signature)
+            }
             Self::Ed25519(key) => {
                 let signature =
                     EdSignature::from_slice(signature).map_err(|_| Invalid::Signature)?;
@@ -86,16 +168,38 @@ impl PublicKey {
             }
             Self::Rsa { key, alg } => {
                 ensure(signature.len() <= 512, Invalid::Limit)?;
-                let signature =
-                    pkcs1v15::Signature::try_from(signature).map_err(|_| Invalid::Signature)?;
-                if *alg == -257 {
-                    pkcs1v15::VerifyingKey::<Sha256>::new(key.clone())
-                        .verify(message, &signature)
+                match alg {
+                    -39..=-37 => {
+                        let sig =
+                            pss::Signature::try_from(signature).map_err(|_| Invalid::Signature)?;
+                        // COSE fixes MGF1 to the message hash and salt length to its output size.
+                        match alg {
+                            -37 => {
+                                pss::VerifyingKey::<Sha256>::new(key.clone()).verify(message, &sig)
+                            }
+                            -38 => pss::VerifyingKey::<sha2::Sha384>::new(key.clone())
+                                .verify(message, &sig),
+                            _ => pss::VerifyingKey::<sha2::Sha512>::new(key.clone())
+                                .verify(message, &sig),
+                        }
                         .map_err(|_| Invalid::Signature)
-                } else {
-                    pkcs1v15::VerifyingKey::<sha1::Sha1>::new(key.clone())
-                        .verify(message, &signature)
+                    }
+                    _ => {
+                        let sig = pkcs1v15::Signature::try_from(signature)
+                            .map_err(|_| Invalid::Signature)?;
+                        match alg {
+                            -257 => pkcs1v15::VerifyingKey::<Sha256>::new(key.clone())
+                                .verify(message, &sig),
+                            -258 => pkcs1v15::VerifyingKey::<sha2::Sha384>::new(key.clone())
+                                .verify(message, &sig),
+                            -259 => pkcs1v15::VerifyingKey::<sha2::Sha512>::new(key.clone())
+                                .verify(message, &sig),
+                            -65535 => pkcs1v15::VerifyingKey::<sha1::Sha1>::new(key.clone())
+                                .verify(message, &sig),
+                            _ => return Err(Invalid::Algorithm),
+                        }
                         .map_err(|_| Invalid::Signature)
+                    }
                 }
             }
         }

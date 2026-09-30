@@ -9,6 +9,7 @@
     pageLabel,
     rpLabel,
     hint,
+    onSeed,
   }: {
     seed: string;
     cueUrl?: string;
@@ -17,6 +18,7 @@
     pageLabel: string;
     rpLabel: string;
     hint: string;
+    onSeed?: (value: string) => void;
   } = $props();
 
   let liveSeed = $state('');
@@ -43,7 +45,10 @@
             typeof body.refresh_in_ms === 'number' &&
             Number.isFinite(body.refresh_in_ms)
           ) {
-            if (active) liveSeed = body.seed;
+            if (active) {
+              liveSeed = body.seed;
+              onSeed?.(body.seed);
+            }
             delay = Math.max(1_000, Math.min(body.refresh_in_ms, 30_000));
           }
         }

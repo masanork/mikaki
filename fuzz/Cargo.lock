@@ -386,6 +386,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "k256"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93f50113171a713f4a4231ef82eb26703607139b35dcb56241f0ceab2ae1f7d8"
+dependencies = [
+ "cpubits",
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "sha2",
+ "wnaf",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -406,6 +420,40 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "mikaki-fuzz"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "ciborium",
+ "libfuzzer-sys",
+ "mikaki-webauthn",
+ "p256",
+ "serde_json",
+ "sha2",
+ "x509-cert",
+]
+
+[[package]]
+name = "mikaki-webauthn"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ciborium",
+ "der",
+ "ed25519-dalek",
+ "k256",
+ "p256",
+ "p384",
+ "p521",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "x509-cert",
+]
 
 [[package]]
 name = "num-traits"
@@ -438,6 +486,20 @@ dependencies = [
  "ecdsa",
  "elliptic-curve",
  "fiat-crypto",
+ "primefield",
+ "primeorder",
+ "sha2",
+]
+
+[[package]]
+name = "p521"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ad64cc32c2dc466317c12ee5853e61f159f9eab1fe7efade0395dc2e7b43449"
+dependencies = [
+ "base16ct",
+ "ecdsa",
+ "elliptic-curve",
  "primefield",
  "primeorder",
  "sha2",
@@ -563,36 +625,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
-]
-
-[[package]]
-name = "mikaki-fuzz"
-version = "0.0.0"
-dependencies = [
- "base64",
- "libfuzzer-sys",
- "p256",
- "mikaki-webauthn",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "mikaki-webauthn"
-version = "0.1.0"
-dependencies = [
- "base64",
- "ciborium",
- "der",
- "ed25519-dalek",
- "p256",
- "p384",
- "rsa",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "x509-cert",
 ]
 
 [[package]]

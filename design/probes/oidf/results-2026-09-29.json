@@ -1,0 +1,647 @@
+{
+  "generatedAt": "2026-09-29T13:26:46.783Z",
+  "environment": {
+    "node": "v26.10.0",
+    "platform": "darwin"
+  },
+  "suite": {
+    "build_time": "2026-09-25T04:01:10Z",
+    "tag": "release-v5.3.1",
+    "version": "5.3.1",
+    "external_ip": null,
+    "revision": "4bfcdf8"
+  },
+  "libraries": {
+    "@openeudi/openid4vp": "0.12.0",
+    "@openid4vc/openid4vci": "0.6.0",
+    "jose": "6.2.12"
+  },
+  "fingerprints": {
+    "workerWasmSha256": "003b029a4ef9ca6bb1b214a71bd8cf22ce7aa5fe769d042bee76b755c7983e5f",
+    "workerJsSha256": "1046ab7513ed833c556d153eed16fd27867f0fb986915215b36dfd8c0938f49c",
+    "probeLockSha256": "c9ab22c594012ef88e36fd6681ee2b616cdc6eddeeb50b7fe6810c303653eaad"
+  },
+  "oidc": {
+    "scope": "Current Rust Worker/workerd, ephemeral D1, local HTTPS, Chromium virtual passkey",
+    "basic": {
+      "originalPlanId": "AwJ4SgANFpsos",
+      "variant": {
+        "server_metadata": "discovery",
+        "client_registration": "static_client"
+      },
+      "runs": [
+        {
+          "planId": "AwJ4SgANFpsos",
+          "results": [
+            {
+              "name": "oidcc-server",
+              "id": "rzYn6keZ2Ae2vp7",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-response-type-missing",
+              "id": "61TqynFBjm3KCx1",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-userinfo-get",
+              "id": "w4vc877Qe8aMOYB",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-userinfo-post-header",
+              "id": "U7B0NK0ciQlrSvB",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-userinfo-post-body",
+              "id": "27JZbKcWYW141PZ",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-ensure-request-without-nonce-succeeds-for-code-flow",
+              "id": "PS61eRkV0BUbsGg",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-scope-profile",
+              "id": "FR7lloA8h1lA1Lf",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-scope-email",
+              "id": "eraFxyxwLF4AXbF",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-scope-address",
+              "id": "0CYlW5HHyWAphMa",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-scope-phone",
+              "id": "jPEFiSSadUiVvYz",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-scope-all",
+              "id": "vdUBVXi8A7OzK9Z",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-alternate-happy-flow",
+              "id": "Cti36TlaeX7kCFH",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-display-page",
+              "id": "5cM09RWgjTDt29R",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-display-popup",
+              "id": "jMGAW0JIupu2l7Z",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-prompt-login",
+              "id": "8QMOHsUl7DfvX04",
+              "status": "FINISHED",
+              "result": "REVIEW"
+            },
+            {
+              "name": "oidcc-prompt-none-not-logged-in",
+              "id": "u42TBjKC4l5qSzH",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-prompt-none-logged-in",
+              "id": "xx9qsjKliiwjvr8",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-max-age-1",
+              "id": "8lUi6vmzB1WmF05",
+              "status": "FINISHED",
+              "result": "REVIEW"
+            },
+            {
+              "name": "oidcc-max-age-10000",
+              "id": "IdTiknyPuROvcyh",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-ensure-request-with-unknown-parameter-succeeds",
+              "id": "qu0wZFAGOYmg1Lr",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-id-token-hint",
+              "id": "6kzwsiAU9AETyBO",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-login-hint",
+              "id": "jF7Dd2ikEu7YocZ",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-ui-locales",
+              "id": "LZ09ghJ3aBueGqH",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-claims-locales",
+              "id": "ye83TicYaXIHiRX",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-ensure-request-with-acr-values-succeeds",
+              "id": "8sQrTgztPiY6UvX",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-codereuse",
+              "id": "UgM340ZHrFGsArM",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-codereuse-30seconds",
+              "id": "0hNL3oxCCkTqpeL",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-ensure-registered-redirect-uri",
+              "id": "K4qC467iNDz4MQb",
+              "status": "FINISHED",
+              "result": "REVIEW"
+            },
+            {
+              "name": "oidcc-ensure-post-request-succeeds",
+              "id": "XtaGRbXf4Ww5tnd",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-server-client-secret-post",
+              "id": "64Benk4TLPW8I8p",
+              "status": "FINISHED",
+              "result": "PASSED"
+            },
+            {
+              "name": "oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported",
+              "id": "A37yDh7C9h9UjaK",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-claims-essential",
+              "id": "GG3Aof6KbP0rq85",
+              "status": "FINISHED",
+              "result": "WARNING"
+            },
+            {
+              "name": "oidcc-ensure-request-object-with-redirect-uri",
+              "id": "xXPJPaTDAdt4NUX",
+              "status": "FINISHED",
+              "result": "REVIEW"
+            },
+            {
+              "name": "oidcc-refresh-token",
+              "id": "VX3qHazFPOf0Y0W",
+              "status": "FINISHED",
+              "result": "SKIPPED"
+            },
+            {
+              "name": "oidcc-ensure-request-with-valid-pkce-succeeds",
+              "id": "HBDX7fMvftC3XMZ",
+              "status": "FINISHED",
+              "result": "PASSED"
+            }
+          ]
+        }
+      ],
+      "effectiveCounts": {
+        "PASSED": 22,
+        "SKIPPED": 8,
+        "REVIEW": 4,
+        "WARNING": 1
+      },
+      "effectiveResults": [
+        {
+          "name": "oidcc-server",
+          "id": "rzYn6keZ2Ae2vp7",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-response-type-missing",
+          "id": "61TqynFBjm3KCx1",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-userinfo-get",
+          "id": "w4vc877Qe8aMOYB",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-userinfo-post-header",
+          "id": "U7B0NK0ciQlrSvB",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-userinfo-post-body",
+          "id": "27JZbKcWYW141PZ",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-request-without-nonce-succeeds-for-code-flow",
+          "id": "PS61eRkV0BUbsGg",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-scope-profile",
+          "id": "FR7lloA8h1lA1Lf",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-scope-email",
+          "id": "eraFxyxwLF4AXbF",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-scope-address",
+          "id": "0CYlW5HHyWAphMa",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-scope-phone",
+          "id": "jPEFiSSadUiVvYz",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-scope-all",
+          "id": "vdUBVXi8A7OzK9Z",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-alternate-happy-flow",
+          "id": "Cti36TlaeX7kCFH",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-display-page",
+          "id": "5cM09RWgjTDt29R",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-display-popup",
+          "id": "jMGAW0JIupu2l7Z",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-prompt-login",
+          "id": "8QMOHsUl7DfvX04",
+          "status": "FINISHED",
+          "result": "REVIEW",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-prompt-none-not-logged-in",
+          "id": "u42TBjKC4l5qSzH",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-prompt-none-logged-in",
+          "id": "xx9qsjKliiwjvr8",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-max-age-1",
+          "id": "8lUi6vmzB1WmF05",
+          "status": "FINISHED",
+          "result": "REVIEW",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-max-age-10000",
+          "id": "IdTiknyPuROvcyh",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-request-with-unknown-parameter-succeeds",
+          "id": "qu0wZFAGOYmg1Lr",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-id-token-hint",
+          "id": "6kzwsiAU9AETyBO",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-login-hint",
+          "id": "jF7Dd2ikEu7YocZ",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ui-locales",
+          "id": "LZ09ghJ3aBueGqH",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-claims-locales",
+          "id": "ye83TicYaXIHiRX",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-request-with-acr-values-succeeds",
+          "id": "8sQrTgztPiY6UvX",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-codereuse",
+          "id": "UgM340ZHrFGsArM",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-codereuse-30seconds",
+          "id": "0hNL3oxCCkTqpeL",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-registered-redirect-uri",
+          "id": "K4qC467iNDz4MQb",
+          "status": "FINISHED",
+          "result": "REVIEW",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-post-request-succeeds",
+          "id": "XtaGRbXf4Ww5tnd",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-server-client-secret-post",
+          "id": "64Benk4TLPW8I8p",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported",
+          "id": "A37yDh7C9h9UjaK",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-claims-essential",
+          "id": "GG3Aof6KbP0rq85",
+          "status": "FINISHED",
+          "result": "WARNING",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-request-object-with-redirect-uri",
+          "id": "xXPJPaTDAdt4NUX",
+          "status": "FINISHED",
+          "result": "REVIEW",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-refresh-token",
+          "id": "VX3qHazFPOf0Y0W",
+          "status": "FINISHED",
+          "result": "SKIPPED",
+          "planId": "AwJ4SgANFpsos"
+        },
+        {
+          "name": "oidcc-ensure-request-with-valid-pkce-succeeds",
+          "id": "HBDX7fMvftC3XMZ",
+          "status": "FINISHED",
+          "result": "PASSED",
+          "planId": "AwJ4SgANFpsos"
+        }
+      ]
+    },
+    "config": {
+      "planId": "vQkETO2BloaIB",
+      "results": [
+        {
+          "name": "oidcc-discovery-endpoint-verification",
+          "id": "91Z7fWD5ZkEVpvq",
+          "status": "FINISHED",
+          "result": "PASSED"
+        }
+      ],
+      "counts": {
+        "PASSED": 1
+      }
+    }
+  },
+  "oid4vci": {
+    "scope": "Synthetic issuer credential metadata over local HTTPS only",
+    "planId": "vDLbeAjPfxHPJ",
+    "exclusions": [
+      "Token endpoint",
+      "DPoP",
+      "Client authentication",
+      "Issuance",
+      "HAIP certification",
+      "Product issuer"
+    ],
+    "results": [
+      {
+        "name": "oid4vci-1_0-issuer-metadata-test",
+        "id": "FTV7udgzmSFLdYz",
+        "status": "FINISHED",
+        "result": "PASSED"
+      }
+    ]
+  },
+  "oid4vp": {
+    "scope": "OIDF emulated wallet -> independent verifier component over local HTTPS",
+    "planId": "vYHNRpP1nBcL7",
+    "profile": {
+      "vp_profile": "plain_vp",
+      "client_id_prefix": "redirect_uri",
+      "request_method": "url_query",
+      "response_mode": "direct_post",
+      "credential_format": "sd_jwt_vc"
+    },
+    "exclusions": [
+      "Product verifier",
+      "Membership policy",
+      "Credential status",
+      "External wallet application",
+      "Hardware holder keys",
+      "HAIP certification"
+    ],
+    "results": [
+      {
+        "name": "oid4vp-1final-verifier-happy-flow",
+        "id": "K8NhNdoE2xWIoxV",
+        "status": "FINISHED",
+        "result": "REVIEW",
+        "decision": true,
+        "expectedAcceptance": true,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-invalid-credential-signature",
+        "id": "ivZJkkowAyhm0oN",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-invalid-kb-jwt-aud",
+        "id": "H644MbwXcNqp1Bw",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-invalid-kb-jwt-nonce",
+        "id": "0WbBoT5ojq8IZ05",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-invalid-kb-jwt-signature",
+        "id": "LObGzWIl4IV3V9k",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-invalid-sd-hash",
+        "id": "6UvZ7sN1PWrRipa",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-kb-jwt-iat-in-future",
+        "id": "lzVH9Q4QCEpfh50",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-kb-jwt-iat-in-past",
+        "id": "MHOOKHVHJz5H5G6",
+        "status": "FINISHED",
+        "result": "PASSED",
+        "decision": false,
+        "expectedAcceptance": false,
+        "expectationMet": true
+      },
+      {
+        "name": "oid4vp-1final-verifier-minimal-cnf-jwk",
+        "id": "eY3Fpmm54L45QUe",
+        "status": "FINISHED",
+        "result": "REVIEW",
+        "decision": true,
+        "expectedAcceptance": true,
+        "expectationMet": true
+      }
+    ],
+    "counts": {
+      "REVIEW": 2,
+      "PASSED": 7
+    }
+  },
+  "certification": false,
+  "reviewPolicy": "REVIEW means screenshot uploaded and awaiting human review; WARNING and SKIPPED are not PASSED. Followups do not replace original evidence.",
+  "externalWalletApplicationTested": false
+}

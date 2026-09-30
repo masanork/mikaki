@@ -83,6 +83,14 @@ pub fn mds_crl_urls(jwt: &str) -> Result<String, JsValue> {
     serde_json::to_string(&urls).map_err(|_| JsValue::from_str("invalid_mds"))
 }
 #[wasm_bindgen]
+pub fn mds_crl_urls_with_profile(jwt: &str, profile: &str) -> Result<String, JsValue> {
+    let profile = serde_json::from_value(serde_json::Value::String(profile.to_owned()))
+        .map_err(|_| diagnostic(mikaki_webauthn::Invalid::Input))?;
+    let urls =
+        mikaki_webauthn::metadata::mds_crl_urls_with_profile(jwt, profile).map_err(diagnostic)?;
+    serde_json::to_string(&urls).map_err(|_| JsValue::from_str("invalid_mds"))
+}
+#[wasm_bindgen]
 pub fn verify_mds(input: &str) -> Result<String, JsValue> {
     mikaki_webauthn::strict_json(input, 8_388_608, 8).map_err(diagnostic)?;
     let i = serde_json::from_str(input).map_err(|_| diagnostic(mikaki_webauthn::Invalid::Input))?;

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const entry = process.env['MIKAKI_UI_ENTRY'] ?? 'login';
 const outDir = process.env['MIKAKI_UI_OUTDIR'] ?? '../../../target/worker-ui-check';
-if (!['login', 'vault', 'admin', 'complete'].includes(entry))
+if (!['login', 'vault', 'admin', 'complete', 'logout'].includes(entry))
   throw new Error('Unknown Worker UI entry');
 
 export default defineConfig({
@@ -22,6 +22,7 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: false,
+    sourcemap: process.env['MIKAKI_UI_COVERAGE'] === '1' ? 'hidden' : false,
     lib: {
       entry: fileURLToPath(new URL(`./${entry}.ts`, import.meta.url)),
       formats: ['es'],

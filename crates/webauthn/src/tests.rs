@@ -474,6 +474,48 @@ fn independent_attestation_paths_and_tpm_bindings() {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
+fn independent_optional_algorithms_and_android_key() {
+    let vectors: serde_json::Value =
+        serde_json::from_str(include_str!("../testdata/optional.json")).unwrap();
+    for case in vectors["registrations"].as_array().unwrap() {
+        let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
+        let response = serde_json::from_value(case["response"].clone()).unwrap();
+        let result = register(&ctx, response);
+        if case["name"].as_str().unwrap().contains("Android") && case["ok"] == true {
+            let proof = result.as_ref().unwrap();
+            assert_eq!(proof.attestation().format(), "android-key");
+            assert_eq!(proof.attestation().kind(), "trusted");
+            assert!(proof.attestation().trust().is_some());
+            let mut required = ctx;
+            required.attestation_policy = AttestationPolicy::RequiredTrusted;
+            let response = serde_json::from_value(case["response"].clone()).unwrap();
+            assert!(register(&required, response).is_ok());
+        }
+        assert_eq!(
+            result.is_ok(),
+            case["ok"].as_bool().unwrap(),
+            "{}: {:?}",
+            case["name"],
+            result.err()
+        );
+    }
+    for case in vectors["assertions"].as_array().unwrap() {
+        let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
+        let stored = serde_json::from_value(case["stored"].clone()).unwrap();
+        let response = serde_json::from_value(case["response"].clone()).unwrap();
+        let result = authenticate(&ctx, &stored, response);
+        assert_eq!(
+            result.is_ok(),
+            case["ok"].as_bool().unwrap(),
+            "{}: {:?}",
+            case["name"],
+            result.err()
+        );
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
 fn node_generated_registration_and_assertion_interop() {
     let vectors: serde_json::Value =
         serde_json::from_str(include_str!("../testdata/interop-node.json")).unwrap();
@@ -509,6 +551,40 @@ fn node_generated_registration_and_assertion_interop() {
 }
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
+fn legacy_mds_requires_explicit_profile_and_preserves_verification() {
+    use metadata::{MdsInput, MdsProfile};
+    let vectors: serde_json::Value =
+        serde_json::from_str(include_str!("../testdata/attestations.json")).unwrap();
+    for case in vectors["mds"].as_array().unwrap() {
+        let mut input: MdsInput = serde_json::from_value(case["input"].clone()).unwrap();
+        assert_eq!(input.profile, MdsProfile::Mds311);
+        input.profile = MdsProfile::Mds30;
+        let expected = match case["name"].as_str().unwrap() {
+            "missing issued-at" => true,
+            "past nextUpdate is retained" | "missing nextUpdate is accepted" => false,
+            _ => case["ok"].as_bool().unwrap(),
+        };
+        let result = metadata::verify_mds(input);
+        assert_eq!(result.is_ok(), expected, "legacy {}", case["name"]);
+        if case["name"] == "missing issued-at" {
+            let verified = result.unwrap();
+            assert_eq!(verified.profile, MdsProfile::Mds30);
+            assert_eq!(verified.issued_at, None);
+            assert_eq!(verified.entries.len(), 1);
+            let jwt = case["input"]["jwt"].as_str().unwrap();
+            assert_eq!(metadata::mds_crl_urls(jwt).err(), Some(Invalid::Metadata));
+        }
+    }
+    let case = &vectors["mds"][0]["input"];
+    for profile in [serde_json::json!("unknown"), serde_json::Value::Null] {
+        let mut input = case.clone();
+        input["profile"] = profile;
+        assert!(serde_json::from_value::<MdsInput>(input).is_err());
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
 fn independent_mds_signatures_revocation_and_freshness() {
     let vectors: serde_json::Value =
         serde_json::from_str(include_str!("../testdata/attestations.json")).unwrap();
@@ -523,7 +599,7 @@ fn independent_mds_signatures_revocation_and_freshness() {
         );
         if let Ok(verified) = result {
             assert_eq!(verified.number, 1);
-            assert_eq!(verified.issued_at, case["input"]["now"].as_u64().unwrap());
+            assert_eq!(verified.issued_at, case["input"]["now"].as_u64());
             match (case["no_next_update"].as_bool(), verified.next_update) {
                 (Some(true), None) => {}
                 (Some(true), _) => panic!("nextUpdate should be absent"),
@@ -581,6 +657,23 @@ fn independent_mds_signatures_revocation_and_freshness() {
                 );
             }
         }
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn independent_mds_rsa_and_algorithm_binding() {
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("../testdata/mds-operations.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let result = metadata::verify_mds(serde_json::from_value(case["input"].clone()).unwrap());
+        assert_eq!(
+            result.is_ok(),
+            case["ok"].as_bool().unwrap(),
+            "{}: {:?}",
+            case["name"],
+            result.err()
+        );
     }
 }
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]

@@ -4,25 +4,25 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct Article {
     pub slug: &'static str,
-    pub title: &'static str,
-    pub body: &'static str,
+    pub title_key: &'static str,
+    pub body_key: &'static str,
 }
 
 pub const ARTICLES: &[Article] = &[
     Article {
         slug: "passkeys",
-        title: "パスキーでログインする",
-        body: "ログイン画面でパスキーを選び、端末のロックを解除してください。パスキーはこのサービスに送信されません。端末を変更する前に、別のログイン方法を確認してください。",
+        title_key: "helpPasskeysTitle",
+        body_key: "helpPasskeysBody",
     },
     Article {
         slug: "vault",
-        title: "Vault を開く",
-        body: "Vault の復号には PRF 対応のパスキーが必要です。通常のログインだけなら PRF は不要です。復号できない場合は保存済みデータを上書きせず、問い合わせてください。",
+        title_key: "helpVaultTitle",
+        body_key: "helpVaultBody",
     },
     Article {
         slug: "sessions",
-        title: "ログイン状態を確認する",
-        body: "アプリごとにログイン状態があります。アプリからログアウトするとそのアプリのセッションが終了します。身に覚えのない利用があれば管理者に連絡してください。",
+        title_key: "helpSessionsTitle",
+        body_key: "helpSessionsBody",
     },
 ];
 

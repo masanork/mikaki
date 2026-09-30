@@ -4,7 +4,7 @@ The local harness connects invitation enrollment, a discoverable passkey, OIDC A
 
 ## Start
 
-Use [.node-version](../.node-version), [rust-toolchain.toml](../rust-toolchain.toml), Python 3.14, and wasm-pack 0.15.0:
+Use [.node-version](../.node-version), [rust-toolchain.toml](../rust-toolchain.toml), wasm-pack 0.15.0:
 
 ```sh
 npm ci
@@ -79,6 +79,7 @@ cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets -- -D warnings
 npm run check:ui
 npm run check:i18n
+npm run check:docs
 npm run format:check
 npx playwright install chromium
 npm run test:e2e
@@ -86,4 +87,8 @@ npm run test:e2e
 
 Integration tests cover concurrent registration/code exchange, one-time assertions, PKCE, expiry, key suspension, UserInfo, SSO reuse, logout delivery, delayed callbacks, expired leases, and bootstrap reuse. The [CI workflow](../.github/workflows/ci.yml) also runs dependency audit, native coverage, and size measurements; check current CI results before claiming a GitHub run. Coverage is for native default-feature auth/OIDC/WebAuthn code and excludes Wasm adapters and JS/Svelte. See [metrics](../metrics/README.md).
 
+The live UserInfo/Secrets Store regression in `npm run test:worker-contracts` requires a separate claim Worker test artifact: run `worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate` after the normal Worker builds. Its service-binding pause runs only in this artifact, after decryption and before conditional audit. CI builds both artifacts; release packaging uses only the normal `build/` output.
+
 Browser tests use a CDP virtual authenticator. The [device matrix](../docs/webauthn-device-compatibility.md) separates that from real hardware. The registration UI checks `credProps.rk===true` as a client compatibility condition, not signed identity evidence; see [extensions](../docs/webauthn-extensions.md). Diagnostic errors are normalized at the Wasm/JS boundary; see [error contract](../docs/webauthn-errors.md).
+
+The Rust Worker UI has a separate `npm run test:product-ui` regression command after `worker-build --release crates/worker` and Chromium installation. See [product quality](../docs/product-quality.md) and [screen previews](../docs/product-ui-preview.md). The local TypeScript OP remains a test adapter; Worker UI checks do not change its authorization or establish production readiness. Python 3.14 is needed only when regenerating independent attestation fixtures.

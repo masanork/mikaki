@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { vaultScope, vaultContext } from './vault-context.js';
+  const context = vaultContext();
+  const scope = vaultScope();
+  const fetch = scope.request;
   import { onMount } from 'svelte';
   import {
     decodeBase64Url,
@@ -15,6 +19,9 @@
   import * as m from './paraglide/messages.js';
   import ProductHeader from './ProductHeader.svelte';
   import type { Locale } from './paraglide/runtime.js';
+  import AgentPanel from './AgentPanel.svelte';
+  import PasskeyTransfer from './PasskeyTransfer.svelte';
+  import OwnerNote from './OwnerNote.svelte';
 
   type RecordResponse = SealedAttribute & { revision: number };
   type Pending = {
@@ -66,17 +73,62 @@
   let currentRevision = $state(0);
   let sessionCredential: Uint8Array<ArrayBuffer> | null = $state(null);
   let accountId = $state('');
+  let noteRevision = $state(0);
   let sharing: ShareStatus | null = $state(null);
   let pendingShare: PendingShare | null = null;
   let releases: ReleaseStatus | null = $state(null);
   let pendingRelease: PendingRelease | null = null;
   let opened = $state(false);
   let loading = $state(true);
+  let busy = $state(false);
+  let transferBusy = $state(false);
   let loadFailed = $state(false);
-  let pending: Pending | null = null;
+  let originalName = $state('');
+  let pending: Pending | null = $state(null);
   let name = $state('');
   let status = $state(m.vaultLoading());
-  let activeSection = $state(location.hash === '#connections' ? 'connections' : 'profile');
+  let shareStatus = $state('');
+  let releaseStatus = $state('');
+  let activeSection = $state(location.hash.slice(1) || 'profile');
+  const dirty = $derived(pending !== null || (opened && name !== originalName));
+
+  function errorMessage(error: unknown, fallback: string): string {
+    const known = [
+      m.vaultUnsupported(),
+      m.vaultWrongCredential(),
+      m.vaultPrfUnsupported(),
+      m.vaultExpired(),
+      m.vaultCredentialMissing(),
+      m.vaultRevisionInvalid(),
+      m.vaultRecordInvalid(),
+      m.vaultReadFailed(),
+      m.vaultInvalidName(),
+      m.vaultRetryChanged(),
+      m.vaultPrepareFailed(),
+      m.vaultConflict(),
+      m.vaultWriteFailed(),
+      m.productDeleteFailed(),
+      m.vaultShareFailed(),
+      m.vaultReleaseFailed(),
+    ];
+    if (error instanceof DOMException && error.name === 'NotAllowedError')
+      return m.productPasskeyCancelled();
+    return error instanceof Error && known.includes(error.message) ? error.message : fallback;
+  }
+
+  async function reload(): Promise<void> {
+    if (busy || transferBusy || loading) return;
+    if ((pending || (opened && name !== originalName)) && !confirm(m.productProfileDiscard()))
+      return;
+    busy = true;
+    try {
+      await load();
+    } catch (error) {
+      message(errorMessage(error, m.vaultLoadFailed()));
+    } finally {
+      busy = false;
+    }
+  }
 
   function message(value: string): void {
     status = value;
@@ -160,7 +212,9 @@
   ): Promise<Uint8Array<ArrayBuffer>> {
     if (!window.PublicKeyCredential || !navigator.credentials)
       throw new Error(m.vaultUnsupported());
+    await scope.ensure();
     const credential = await navigator.credentials.get({
+      signal: scope.signal,
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         allowCredentials: [{ id: credentialId, type: 'public-key' }],
@@ -179,68 +233,85 @@
     if (!(output instanceof ArrayBuffer) || output.byteLength !== 32) {
       throw new Error(m.vaultPrfUnsupported());
     }
+    try {
+      await scope.ensure();
+    } catch (error) {
+      new Uint8Array(output).fill(0);
+      throw error;
+    }
     return new Uint8Array(output);
   }
 
   async function load(): Promise<void> {
     loading = true;
-    loadFailed = false;
-    opened = false;
-    current = null;
-    currentRevision = 0;
-    pending = null;
-    pendingShare = null;
-    pendingRelease = null;
-    name = '';
-    sharing = null;
-    releases = null;
-    accountId = '';
-    const session = await fetch('/vault/session', { cache: 'no-store' });
-    if (!session.ok) throw new Error(m.vaultExpired());
-    const sessionBody: unknown = await session.json();
-    if (
-      typeof sessionBody !== 'object' ||
-      sessionBody === null ||
-      !('credential_id' in sessionBody) ||
-      typeof sessionBody.credential_id !== 'string' ||
-      !('account_id' in sessionBody) ||
-      typeof sessionBody.account_id !== 'string' ||
-      sessionBody.account_id.length === 0
-    ) {
-      throw new Error(m.vaultCredentialMissing());
-    }
-    sessionCredential = decodeBase64Url(sessionBody.credential_id);
-    accountId = sessionBody.account_id;
-    await loadShareStatus().catch(() => {
+    loadFailed = true;
+    try {
+      opened = false;
+      current = null;
+      currentRevision = 0;
+      pending = null;
+      pendingShare = null;
+      pendingRelease = null;
+      shareStatus = '';
+      releaseStatus = '';
+      name = '';
       sharing = null;
-    });
-    await loadReleaseStatus().catch(() => {
       releases = null;
-    });
-    const response = await fetch(endpoint, { cache: 'no-store' });
-    if (response.status === 404) {
-      const etag = response.headers.get('ETag');
-      if (etag !== null) {
-        const match = /^"([1-9][0-9]*)"$/.exec(etag);
-        if (!match) throw new Error(m.vaultRevisionInvalid());
-        currentRevision = Number(match[1]);
-        if (!Number.isSafeInteger(currentRevision)) throw new Error(m.vaultRevisionInvalid());
+      accountId = '';
+      sessionCredential = null;
+      const session = await fetch('/vault/session', { cache: 'no-store' });
+      if (!session.ok)
+        throw new Error(
+          [401, 403].includes(session.status) ? m.vaultExpired() : m.vaultLoadFailed(),
+        );
+      const sessionBody: unknown = await session.json();
+      if (
+        typeof sessionBody !== 'object' ||
+        sessionBody === null ||
+        !('credential_id' in sessionBody) ||
+        typeof sessionBody.credential_id !== 'string' ||
+        !('account_id' in sessionBody) ||
+        typeof sessionBody.account_id !== 'string' ||
+        sessionBody.account_id.length === 0
+      ) {
+        throw new Error(m.vaultCredentialMissing());
       }
-      message(m.vaultNotFound());
+      sessionCredential = decodeBase64Url(sessionBody.credential_id);
+      accountId = sessionBody.account_id;
+      await loadShareStatus().catch(() => {
+        sharing = null;
+      });
+      await loadReleaseStatus().catch(() => {
+        releases = null;
+      });
+      const response = await fetch(endpoint, { cache: 'no-store' });
+      if (response.status === 404) {
+        const etag = response.headers.get('ETag');
+        if (etag !== null) {
+          const match = /^"([1-9][0-9]*)"$/.exec(etag);
+          if (!match) throw new Error(m.vaultRevisionInvalid());
+          currentRevision = Number(match[1]);
+          if (!Number.isSafeInteger(currentRevision)) throw new Error(m.vaultRevisionInvalid());
+        }
+        message(m.vaultNotFound());
+        loadFailed = false;
+        return;
+      }
+      if (!response.ok) throw new Error(m.vaultReadFailed());
+      const body: unknown = await response.json();
+      if (!record(body)) throw new Error(m.vaultRecordInvalid());
+      current = body;
+      currentRevision = body.revision;
+      message(m.vaultLoaded());
+      loadFailed = false;
+    } finally {
       loading = false;
-      return;
     }
-    if (!response.ok) throw new Error(m.vaultReadFailed());
-    const body: unknown = await response.json();
-    if (!record(body)) throw new Error(m.vaultRecordInvalid());
-    current = body;
-    currentRevision = body.revision;
-    message(m.vaultLoaded());
-    loading = false;
   }
 
   async function unlock(): Promise<void> {
-    if (loading) return;
+    if (loading || loadFailed || busy || transferBusy || opened) return;
+    busy = true;
     try {
       if (current) {
         const envelope = parseOwnerEnvelope(current.owner_envelope);
@@ -267,15 +338,47 @@
         const output = await prf(sessionCredential, newPrfInput());
         output.fill(0);
       }
+      originalName = name;
       opened = true;
       message(m.vaultReady());
     } catch (error) {
-      message(error instanceof Error ? error.message : m.vaultOpenFailed());
+      message(errorMessage(error, m.vaultOpenFailed()));
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function exportSavedName(): Promise<string> {
+    if (!opened || busy || transferBusy || pending || !current)
+      throw new Error(m.vaultOpenFailed());
+    const record = current;
+    const envelope = parseOwnerEnvelope(record.owner_envelope);
+    const output = await prf(envelope.credentialId, envelope.prfInput);
+    try {
+      return await withOpenedAttribute(
+        record,
+        output,
+        envelope.credentialId,
+        origin,
+        attribute,
+        record.revision,
+        async (plaintext) => {
+          try {
+            return new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+          } finally {
+            plaintext.fill(0);
+          }
+        },
+      );
+    } finally {
+      output.fill(0);
     }
   }
 
   async function mutate(method: 'PUT' | 'DELETE'): Promise<void> {
-    if (!opened) return;
+    if (!opened || busy || transferBusy || loading) return;
+    if (method === 'DELETE' && !pending && !confirm(m.productProfileDeleteConfirm())) return;
+    busy = true;
     try {
       const revision = currentRevision;
       const value = name;
@@ -331,33 +434,30 @@
       if (method === 'PUT') headers['Content-Type'] = 'application/json';
       const response = await fetch(endpoint, { method, headers, body: operation.body ?? null });
       if (response.status === 409) throw new Error(m.vaultConflict());
-      if (!response.ok) throw new Error(m.vaultWriteFailed());
+      if (!response.ok)
+        throw new Error(method === 'DELETE' ? m.productDeleteFailed() : m.vaultWriteFailed());
       pending = null;
-      await load();
+      try {
+        await load();
+      } catch {
+        message(m.productProfileRefreshFailed());
+        return;
+      }
       message(method === 'PUT' ? m.vaultSaved() : m.vaultDeleted());
     } catch (error) {
-      if (loading) {
-        loading = false;
-        loadFailed = true;
-      }
-      message(error instanceof Error ? error.message : m.vaultOperationFailed());
-    }
-  }
-
-  async function reload(): Promise<void> {
-    try {
-      await load();
-    } catch (error) {
-      loading = false;
-      loadFailed = true;
-      message(error instanceof Error ? error.message : m.vaultLoadFailed());
+      message(
+        errorMessage(error, method === 'DELETE' ? m.productDeleteFailed() : m.vaultWriteFailed()),
+      );
+    } finally {
+      busy = false;
     }
   }
 
   async function changeShare(method: 'POST' | 'DELETE'): Promise<void> {
-    if (!opened || !current || !sharing || !accountId) return;
+    if (!opened || busy || transferBusy || pending || !current || !sharing || !accountId) return;
     if (method === 'POST' && !sharing.enabled) return;
     if (method === 'DELETE' && (!sharing.active || !sharing.grant_version)) return;
+    busy = true;
     try {
       const revision = method === 'POST' ? current.revision : sharing.grant_version;
       if (revision === null) return;
@@ -425,16 +525,19 @@
       pendingShare = null;
       await loadShareStatus();
       await loadReleaseStatus();
-      message(method === 'POST' ? m.vaultShared() : m.vaultShareRevoked());
+      shareStatus = method === 'POST' ? m.vaultShared() : m.vaultShareRevoked();
     } catch (error) {
-      message(error instanceof Error ? error.message : m.vaultShareFailed());
+      shareStatus = errorMessage(error, m.vaultShareFailed());
+    } finally {
+      busy = false;
     }
   }
 
   async function changeRelease(client: ReleaseClient, method: 'POST' | 'DELETE'): Promise<void> {
-    if (!opened || !releases?.enabled) return;
+    if (!opened || busy || transferBusy || pending || !releases?.enabled) return;
     if (method === 'POST' && (!releases.share_active || !releases.share_grant_version)) return;
     if (method === 'DELETE' && (!client.release_active || !client.release_version)) return;
+    busy = true;
     try {
       const revision = method === 'POST' ? releases.share_grant_version : client.release_version;
       if (!revision) return;
@@ -475,23 +578,29 @@
       if (!response.ok) throw new Error(m.vaultReleaseFailed());
       pendingRelease = null;
       await loadReleaseStatus();
-      message(method === 'POST' ? m.vaultReleaseGranted() : m.vaultReleaseRevoked());
+      releaseStatus = method === 'POST' ? m.vaultReleaseGranted() : m.vaultReleaseRevoked();
     } catch (error) {
-      message(error instanceof Error ? error.message : m.vaultReleaseFailed());
+      releaseStatus = errorMessage(error, m.vaultReleaseFailed());
+    } finally {
+      busy = false;
     }
   }
 
   onMount(() => {
-    void reload();
+    const unregister = context.registerDraft(() => dirty || (opened && busy));
+    void load().catch((error: unknown) => {
+      message(errorMessage(error, m.vaultLoadFailed()));
+    });
+    return unregister;
   });
 </script>
 
 <svelte:window
   onhashchange={() => {
-    activeSection = location.hash === '#connections' ? 'connections' : 'profile';
+    activeSection = location.hash.slice(1) || 'profile';
   }}
 />
-<ProductHeader {locale} />
+<ProductHeader {locale} onlock={context.lock} />
 <main class="product-main">
   <div class="product-heading">
     <span class="product-eyebrow">{m.productVaultEyebrow()}</span>
@@ -503,12 +612,18 @@
       <a href="#profile" aria-current={activeSection === 'profile' ? 'location' : undefined}
         ><span aria-hidden="true">01</span>{m.productProfile()}</a
       >
+      <a href="#notes" aria-current={activeSection === 'notes' ? 'location' : undefined}
+        ><span aria-hidden="true">02</span>{m.vaultNoteHeading()}</a
+      >
       <a href="#connections" aria-current={activeSection === 'connections' ? 'location' : undefined}
-        ><span aria-hidden="true">02</span>{m.productConnections()}</a
+        ><span aria-hidden="true">03</span>{m.productSharing()}</a
+      >
+      <a href="#security" aria-current={activeSection === 'security' ? 'location' : undefined}
+        ><span aria-hidden="true">04</span>{m.productSecurity()}</a
       >
     </nav>
     <div class="product-content">
-      <section id="profile" aria-labelledby="profile-heading" aria-busy={loading}>
+      <section id="profile" aria-labelledby="profile-heading" aria-busy={busy || loading}>
         <div class="product-section-top">
           <h2 id="profile-heading">{m.productProfile()}</h2>
           <span class="product-lock-state" class:is-open={opened}
@@ -522,41 +637,58 @@
           type="text"
           maxlength="256"
           autocomplete="name"
-          disabled={!opened}
+          disabled={!opened || busy || transferBusy || pending !== null}
           aria-describedby="status"
           bind:value={name}
         />
         <div class="product-actions">
           <button
-            id="unlock"
             class="product-primary"
+            id="unlock"
             type="button"
-            disabled={opened || loading || loadFailed}
+            disabled={opened || loading || loadFailed || busy || transferBusy}
             onclick={unlock}>{m.vaultUnlock()}</button
           >
           <button
-            id="save"
             class="product-primary"
+            id="save"
             type="button"
-            disabled={!opened}
+            disabled={!opened || busy || transferBusy || pending?.method === 'DELETE'}
             onclick={() => mutate('PUT')}>{m.vaultSave()}</button
           >
           <button
-            id="delete"
             class="product-danger"
+            id="delete"
             type="button"
-            disabled={!opened || current === null}
+            disabled={!opened ||
+              current === null ||
+              busy ||
+              transferBusy ||
+              pending?.method === 'PUT'}
             onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
           >
-          {#if loadFailed}<button type="button" onclick={reload}>{m.productReload()}</button>{/if}
+          <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
+            >{m.productProfileReload()}</button
+          >
         </div>
         <p id="status" role="status" aria-live="polite">{status}</p>
+        {#if dirty}<p class="product-draft-status" data-draft-state="profile" aria-live="polite">
+            {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
+          </p>{/if}
       </section>
-      <section id="connections" aria-labelledby="connections-heading">
-        <h2 id="connections-heading">{m.productConnections()}</h2>
+      <div id="notes" class="product-content">
+        <OwnerNote
+          credentialId={sessionCredential}
+          evaluatePrf={prf}
+          onSavedRevision={(revision) => {
+            noteRevision = revision;
+          }}
+        />
+      </div>
+      <div id="connections" class="product-content">
         {#if sharing?.enabled && current}
-          <section aria-label={m.productNameSharing()}>
-            <h3>{m.productNameSharing()}</h3>
+          <section aria-label={m.productSharing()}>
+            <h2>{m.productSharing()}</h2>
             <p>
               {m.vaultShareExplanation({
                 expiry: new Date(
@@ -566,22 +698,38 @@
                 ).toLocaleString(locale),
               })}
             </p>
+            <p role="status">{shareStatus}</p>
             {#if sharing.active}
-              <p role="status">{m.vaultShareActive()}</p>
-              <button type="button" disabled={!opened} onclick={() => changeShare('DELETE')}
-                >{m.vaultShareRevoke()}</button
+              <p>{m.vaultShareActive()}</p>
+              <button
+                type="button"
+                disabled={!opened || busy || transferBusy || pending !== null}
+                onclick={() => changeShare('DELETE')}>{m.vaultShareRevoke()}</button
               >
             {:else}
-              <button type="button" disabled={!opened} onclick={() => changeShare('POST')}
-                >{m.vaultShare()}</button
+              <button
+                type="button"
+                disabled={!opened || busy || transferBusy || pending !== null}
+                onclick={() => changeShare('POST')}>{m.vaultShare()}</button
               >
             {/if}
           </section>
         {/if}
+        <AgentPanel
+          {opened}
+          sourceRevision={current?.revision ?? 0}
+          ownerId={accountId}
+          loadName={exportSavedName}
+          {noteRevision}
+          {locale}
+          credentialId={sessionCredential}
+          evaluatePrf={prf}
+        />
         {#if releases?.enabled && releases.clients.length > 0}
           <section aria-label={m.vaultReleaseHeading()}>
-            <h3>{m.vaultReleaseHeading()}</h3>
+            <h2>{m.vaultReleaseHeading()}</h2>
             <p>{m.vaultReleaseExplanation()}</p>
+            <p role="status">{releaseStatus}</p>
             {#each releases.clients as client (client.client_id)}
               <div class="product-release-client">
                 <p>{client.sector_identifier} ({client.client_id})</p>
@@ -593,13 +741,17 @@
                   </p>
                   <button
                     type="button"
-                    disabled={!opened}
+                    disabled={!opened || busy || transferBusy || pending !== null}
                     onclick={() => changeRelease(client, 'DELETE')}>{m.vaultReleaseRevoke()}</button
                   >
                 {:else}
                   <button
                     type="button"
-                    disabled={!opened || !releases.share_active}
+                    disabled={!opened ||
+                      busy ||
+                      transferBusy ||
+                      pending !== null ||
+                      !releases.share_active}
                     onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
                   >
                 {/if}
@@ -607,14 +759,20 @@
             {/each}
           </section>
         {/if}
-        {#if loading}
-          <p>{m.vaultLoading()}</p>
-        {:else if loadFailed}
-          <p>{m.vaultLoadFailed()}</p>
-        {:else if !(sharing?.enabled && current) && !(releases?.enabled && releases.clients.length > 0)}
-          <p>{m.productConnectionsEmpty()}</p>
-        {/if}
-      </section>
+      </div>
+      <div id="security" class="product-content">
+        <PasskeyTransfer
+          saved={current}
+          {opened}
+          evaluatePrf={prf}
+          changed={load}
+          beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
+          disabled={busy || pending !== null}
+          onBusy={(value) => {
+            transferBusy = value;
+          }}
+        />
+      </div>
     </div>
   </div>
   <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>

@@ -13,15 +13,26 @@ const passkey = JSON.parse(
   await readFile(new URL('../generated/oidf-passkey.json', import.meta.url), 'utf8'),
 );
 const variant =
-  planName === 'oidcc-config-certification-test-plan'
-    ? {}
-    : planName.includes('logout-certification-test-plan')
-      ? { response_type: 'code', client_registration: 'static_client' }
-      : { server_metadata: 'discovery', client_registration: 'static_client' };
+  planName === 'fapi2-security-profile-final-test-plan'
+    ? {
+        fapi_profile: 'plain_fapi',
+        client_auth_type: 'private_key_jwt',
+        sender_constrain: 'dpop',
+        authorization_request_type: 'simple',
+        openid: 'openid_connect',
+      }
+    : planName === 'oidcc-config-certification-test-plan'
+      ? {}
+      : planName.includes('logout-certification-test-plan')
+        ? { response_type: 'code', client_registration: 'static_client' }
+        : { server_metadata: 'discovery', client_registration: 'static_client' };
 
 async function api(path: string, options: RequestInit = {}) {
   const response = await fetch(`${suite}${path}`, options);
-  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = (await response.text()).replace(/[A-Za-z0-9_-]{32,}/g, '[redacted]');
+    throw new Error(`${path}: HTTP ${response.status}: ${detail.slice(0, 1200)}`);
+  }
   return response.json();
 }
 
@@ -47,7 +58,12 @@ const browser = await chromium.launch({
   ],
 });
 try {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    ...(planName === 'fapi2-security-profile-final-test-plan'
+      ? { locale: 'en-US', extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' } }
+      : {}),
+  });
   const page = await context.newPage();
   page.on('console', (message) => {
     if (message.type() === 'error') console.log('browser console:', message.text());
@@ -77,7 +93,7 @@ try {
       transport: 'internal',
       hasResidentKey: true,
       hasUserVerification: true,
-      automaticPresenceSimulation: true,
+      automaticPresenceSimulation: false,
       isUserVerified: true,
     },
   });
@@ -103,11 +119,14 @@ try {
     });
     console.log('module:', name, run.id);
     const seen = new Set<string>();
+    let reusedSecondVisit = false;
     let lastReviewScreenshot: Buffer | undefined;
     let reviewSubmitted = false;
     let info;
     try {
-      for (let i = 0; i < 60; i++) {
+      const maxPolls =
+        name === 'fapi2-security-profile-final-par-attempt-to-use-expired-request_uri' ? 240 : 60;
+      for (let i = 0; i < maxPolls; i++) {
         const [current, state] = await Promise.all([
           api(`/api/info/${run.id}`),
           api(`/api/runner/${run.id}`),
@@ -115,26 +134,80 @@ try {
         info = current;
         const urls = state.browser?.urls ?? [];
         for (const url of urls) {
-          if (seen.has(url)) continue;
-          seen.add(url);
+          let reportedBeforeNavigation = false;
+          if (seen.has(url)) {
+            if (reusedSecondVisit) continue;
+            const beforeAuthReuse =
+              name ===
+              'fapi2-security-profile-final-par-ensure-reused-request-uri-prior-to-auth-completion-succeeds';
+            const afterAuthReuse =
+              name === 'fapi2-security-profile-final-par-attempt-reuse-request_uri';
+            if (!beforeAuthReuse && !afterAuthReuse) continue;
+            const entries = await api(`/api/log/${run.id}?pretty=true`);
+            const secondBlock = beforeAuthReuse
+              ? 'Make second request to authorization endpoint'
+              : 'Attempting reuse of request_uri and testing if Authorization server returns error in callback';
+            if (!entries.some((entry: { msg?: string }) => entry.msg === secondBlock)) continue;
+            reusedSecondVisit = true;
+            if (beforeAuthReuse) {
+              await fetch(
+                `${suite}/api/runner/browser/${run.id}/visit?url=${encodeURIComponent(url)}`,
+                { method: 'POST' },
+              );
+              reportedBeforeNavigation = true;
+            }
+          } else {
+            seen.add(url);
+          }
           console.log('visiting:', describeUrl(url));
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+          const navigation = await page.goto(url, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30_000,
+          });
+          if (navigation && navigation.status() >= 400)
+            console.log('navigation error:', navigation.status(), new URL(page.url()).pathname);
           lastReviewScreenshot = await page
-            .screenshot({ fullPage: true, timeout: 5000 })
+            .screenshot({ type: 'jpeg', quality: 70, timeout: 5000 })
             .catch(() => undefined);
           if (new URL(page.url()).pathname === '/login') {
-            await page
-              .waitForURL((target) => target.pathname !== '/login', { timeout: 5000 })
-              .catch(() => {});
-            if (new URL(page.url()).pathname === '/login') {
-              await page
-                .locator('#passkey')
-                .click({ timeout: 5000 })
-                .catch((error) => {
-                  if (new URL(page.url()).pathname === '/login') throw error;
-                });
+            if (navigation && navigation.status() >= 400)
+              throw new Error(`Login page returned HTTP ${navigation.status()}`);
+            // Hold the virtual authenticator until the actual prompt is captured.
+            // Otherwise conditional UI can navigate away before screenshot() finishes.
+            await page.locator('#passkey').waitFor({ state: 'visible', timeout: 10_000 });
+            lastReviewScreenshot = await page.screenshot({
+              type: 'jpeg',
+              quality: 70,
+              timeout: 5000,
+            });
+            if (
+              name ===
+                'fapi2-security-profile-final-par-ensure-reused-request-uri-prior-to-auth-completion-succeeds' &&
+              !reusedSecondVisit
+            ) {
+              console.log('leaving first login visit unauthenticated');
+            } else if (name === 'fapi2-security-profile-final-user-rejects-authentication') {
+              await page.locator('#deny').click();
+              await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
+            } else {
+              await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {
+                authenticatorId,
+                enabled: true,
+              });
+              if (new URL(page.url()).pathname === '/login') {
+                await page
+                  .locator('#passkey')
+                  .click({ timeout: 5000 })
+                  .catch((error) => {
+                    if (new URL(page.url()).pathname === '/login') throw error;
+                  });
+              }
+              await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
+              await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {
+                authenticatorId,
+                enabled: false,
+              });
             }
-            await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
           }
           if (
             new URL(page.url()).pathname === '/logout' &&
@@ -144,15 +217,16 @@ try {
             await page.locator('button[type="submit"]').click();
             console.log('logout landed:', describeUrl(page.url()));
             lastReviewScreenshot = await page
-              .screenshot({ fullPage: true, timeout: 5000 })
+              .screenshot({ type: 'jpeg', quality: 70, timeout: 5000 })
               .catch(() => lastReviewScreenshot);
           }
           await page.waitForTimeout(1500);
           console.log('landed:', describeUrl(page.url()));
-          await fetch(
-            `${suite}/api/runner/browser/${run.id}/visit?url=${encodeURIComponent(url)}`,
-            { method: 'POST' },
-          );
+          if (!reportedBeforeNavigation)
+            await fetch(
+              `${suite}/api/runner/browser/${run.id}/visit?url=${encodeURIComponent(url)}`,
+              { method: 'POST' },
+            );
         }
         if (info.status === 'WAITING' && lastReviewScreenshot && !reviewSubmitted) {
           const entries = await api(`/api/log/${run.id}?pretty=true`);
@@ -163,17 +237,34 @@ try {
           const logoutVisited = [...seen].some((url) => new URL(url).pathname === '/logout');
           if (
             review &&
+            (name !== 'fapi2-security-profile-final-par-attempt-reuse-request_uri' ||
+              reusedSecondVisit) &&
             (!name.includes('logout') || logoutVisited) &&
             (!/second|again|reauth/i.test(review.msg ?? '') || seen.size >= 2)
           ) {
+            if (lastReviewScreenshot.byteLength > 500 * 1024)
+              throw new Error('Screenshot exceeds the local suite 500KB limit');
+            await writeFile(
+              new URL(`../generated/oidf-review-${run.id}.jpg`, import.meta.url),
+              lastReviewScreenshot,
+              { mode: 0o600 },
+            );
             const response = await fetch(
-              `${suite}/api/log/${run.id}/images/${review.upload}?description=${encodeURIComponent('Passkey login prompt')}`,
+              `${suite}/api/log/${run.id}/images/${review.upload}?description=${encodeURIComponent(new URL(page.url()).pathname === '/login' ? 'Passkey login prompt' : 'Authorization error page')}`,
               {
                 method: 'POST',
-                body: `data:image/png;base64,${lastReviewScreenshot.toString('base64')}`,
+                body: `data:image/jpeg;base64,${lastReviewScreenshot.toString('base64')}`,
               },
             );
             console.log('review upload:', response.status);
+            if (!response.ok) {
+              await writeFile(
+                new URL('../generated/oidf-review-upload-error.txt', import.meta.url),
+                await response.text(),
+                { mode: 0o600 },
+              );
+              throw new Error(`Review upload rejected: HTTP ${response.status}`);
+            }
             reviewSubmitted = response.ok;
           }
         }
@@ -210,6 +301,14 @@ try {
     { mode: 0o600 },
   );
   console.log('summary:', summary);
+  if (
+    summary.some(
+      (entry) =>
+        entry.status !== 'FINISHED' ||
+        !['PASSED', 'REVIEW', 'WARNING', 'SKIPPED'].includes(entry.result),
+    )
+  )
+    process.exitCode = 1;
   const credentials = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
   console.log('signCount:', credentials.credentials?.[0]?.signCount);
   await context.close();

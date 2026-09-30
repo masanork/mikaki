@@ -24,10 +24,31 @@ pub struct TokenEndpointInput {
     grant_type: String,
     code: String,
     redirect_uri: String,
-    code_verifier: String,
-    client_id: String,
+    code_verifier: Option<String>,
+    client_id: Option<String>,
     client_assertion_type: String,
     client_assertion: String,
+}
+
+/// A public native client's token request. This validates syntax and PKCE but
+/// does not authenticate the application. The adapter must check that the
+/// client is registered as public and consume the code atomically.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicTokenEndpointInput {
+    grant_type: String,
+    code: String,
+    redirect_uri: String,
+    code_verifier: String,
+    client_id: String,
+    resource: Option<String>,
+}
+
+#[must_use = "bind this request to a registered public client and one-use code"]
+pub struct ValidatedPublicTokenEndpointInput {
+    client_id: String,
+    exchange: AuthorizationCodeExchange,
+    resource: Option<String>,
 }
 
 /// Compact assertion remains a bearer credential until verification; it is
@@ -58,6 +79,7 @@ pub enum TokenEndpointInputError {
     UnsupportedGrantType,
     InvalidClient,
     InvalidRequest,
+    InvalidGrant,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -134,18 +156,75 @@ impl TokenEndpointInput {
         self,
         max_assertion_bytes: usize,
     ) -> Result<ValidatedTokenEndpointInput, TokenEndpointInputError> {
+        self.validate_with_client_id_policy(max_assertion_bytes, false)
+    }
+
+    /// FAPI private_key_jwt permits an omitted form `client_id`; the assertion
+    /// issuer is only a lookup hint until the registered key verifies it.
+    pub fn validate_for_fapi(
+        self,
+        max_assertion_bytes: usize,
+    ) -> Result<ValidatedTokenEndpointInput, TokenEndpointInputError> {
+        self.validate_with_client_id_policy(max_assertion_bytes, true)
+    }
+
+    fn validate_with_client_id_policy(
+        self,
+        max_assertion_bytes: usize,
+        allow_missing_client_id: bool,
+    ) -> Result<ValidatedTokenEndpointInput, TokenEndpointInputError> {
         if self.grant_type != "authorization_code" {
             return Err(TokenEndpointInputError::UnsupportedGrantType);
         }
+        let client_id = match self.client_id {
+            Some(client_id) => client_id,
+            None if allow_missing_client_id => {
+                crate::client_assertion_issuer(&self.client_assertion, max_assertion_bytes)
+                    .map_err(|_| TokenEndpointInputError::InvalidClient)?
+            }
+            None => return Err(TokenEndpointInputError::InvalidClient),
+        };
         if self.client_assertion_type != PRIVATE_KEY_JWT_ASSERTION_TYPE
-            || self.client_id.is_empty()
-            || self.client_id.len() > 128
-            || self.client_id.bytes().any(|byte| byte.is_ascii_control())
+            || client_id.is_empty()
+            || client_id.len() > 128
+            || client_id.bytes().any(|byte| byte.is_ascii_control())
             || self.client_assertion.is_empty()
             || max_assertion_bytes == 0
             || self.client_assertion.len() > max_assertion_bytes
         {
             return Err(TokenEndpointInputError::InvalidClient);
+        }
+        let code_verifier = match self.code_verifier {
+            Some(value) => value,
+            None if allow_missing_client_id => return Err(TokenEndpointInputError::InvalidGrant),
+            None => return Err(TokenEndpointInputError::InvalidRequest),
+        };
+        let exchange = CodeExchangeInput {
+            grant_type: self.grant_type,
+            code: self.code,
+            redirect_uri: self.redirect_uri,
+            code_verifier,
+        }
+        .validate()
+        .map_err(|_| TokenEndpointInputError::InvalidRequest)?;
+        Ok(ValidatedTokenEndpointInput {
+            client_id,
+            exchange,
+            assertion: PresentedClientAssertion(self.client_assertion),
+        })
+    }
+}
+
+impl PublicTokenEndpointInput {
+    pub fn validate(self) -> Result<ValidatedPublicTokenEndpointInput, TokenEndpointInputError> {
+        if self.client_id.is_empty()
+            || self.client_id.len() > 128
+            || self.client_id.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err(TokenEndpointInputError::InvalidClient);
+        }
+        if self.grant_type != "authorization_code" {
+            return Err(TokenEndpointInputError::UnsupportedGrantType);
         }
         let exchange = CodeExchangeInput {
             grant_type: self.grant_type,
@@ -155,11 +234,25 @@ impl TokenEndpointInput {
         }
         .validate()
         .map_err(|_| TokenEndpointInputError::InvalidRequest)?;
-        Ok(ValidatedTokenEndpointInput {
+        Ok(ValidatedPublicTokenEndpointInput {
             client_id: self.client_id,
             exchange,
-            assertion: PresentedClientAssertion(self.client_assertion),
+            resource: self.resource,
         })
+    }
+}
+
+impl ValidatedPublicTokenEndpointInput {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub fn exchange(&self) -> &AuthorizationCodeExchange {
+        &self.exchange
+    }
+
+    pub fn resource(&self) -> Option<&str> {
+        self.resource.as_deref()
     }
 }
 

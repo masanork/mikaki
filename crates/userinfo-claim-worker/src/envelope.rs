@@ -109,41 +109,91 @@ pub fn validates_name_ciphertext(
     revision: u64,
     ciphertext: &[u8],
 ) -> bool {
+    decrypt_name_ciphertext(data_key, origin, revision, ciphertext).is_some()
+}
+
+/// Decrypts a shared owner name only after the caller has checked current
+/// token scope, RP consent, system Grant, recipient key, and ciphertext digest.
+pub fn decrypt_name_ciphertext(
+    data_key: &[u8; 32],
+    origin: &str,
+    revision: u64,
+    ciphertext: &[u8],
+) -> Option<Zeroizing<String>> {
     if ciphertext.len() < 1 + 12 + 16 || ciphertext.len() > 24 * 1024 || ciphertext[0] != 1 {
-        return false;
+        return None;
     }
-    let Some(aad) = context(&[
+    let aad = context(&[
         b"mikaki-vault-attribute-content",
         b"1",
         origin.as_bytes(),
         b"name",
         revision.to_string().as_bytes(),
-    ]) else {
-        return false;
-    };
-    let Ok(aead) = Aes256Gcm::new_from_slice(data_key) else {
-        return false;
-    };
-    let Ok(nonce) = Nonce::try_from(&ciphertext[1..13]) else {
-        return false;
-    };
-    let Ok(plaintext) = aead.decrypt(
-        &nonce,
-        Payload {
-            msg: &ciphertext[13..],
-            aad: &aad,
-        },
-    ) else {
-        return false;
-    };
-    let plaintext = Zeroizing::new(plaintext);
-    !plaintext.is_empty() && std::str::from_utf8(&plaintext).is_ok()
+    ])?;
+    let aead = Aes256Gcm::new_from_slice(data_key).ok()?;
+    let nonce = Nonce::try_from(&ciphertext[1..13]).ok()?;
+    let plaintext = Zeroizing::new(
+        aead.decrypt(
+            &nonce,
+            Payload {
+                msg: &ciphertext[13..],
+                aad: &aad,
+            },
+        )
+        .ok()?,
+    );
+    if plaintext.is_empty() || plaintext.len() > 1024 {
+        return None;
+    }
+    Some(Zeroizing::new(
+        std::str::from_utf8(&plaintext).ok()?.to_owned(),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ml_kem::{DecapsulationKey, Seed, kem::KeyExport};
+
+    #[test]
+    fn owner_name_decrypts_only_under_the_matching_origin_and_revision() {
+        let key = [0x51; 32];
+        let origin = "https://mikaki.test";
+        let revision = 9_u64;
+        let aad = context(&[
+            b"mikaki-vault-attribute-content",
+            b"1",
+            origin.as_bytes(),
+            b"name",
+            revision.to_string().as_bytes(),
+        ])
+        .unwrap();
+        let nonce = [7_u8; 12];
+        let aead = Aes256Gcm::new_from_slice(&key).unwrap();
+        let encrypted = aead
+            .encrypt(
+                &Nonce::try_from(nonce.as_slice()).unwrap(),
+                Payload {
+                    msg: "Alice".as_bytes(),
+                    aad: &aad,
+                },
+            )
+            .unwrap();
+        let mut ciphertext = vec![1];
+        ciphertext.extend_from_slice(&nonce);
+        ciphertext.extend_from_slice(&encrypted);
+        assert_eq!(
+            decrypt_name_ciphertext(&key, origin, revision, &ciphertext)
+                .unwrap()
+                .as_str(),
+            "Alice"
+        );
+        assert!(
+            decrypt_name_ciphertext(&key, "https://other.test", revision, &ciphertext).is_none()
+        );
+        assert!(decrypt_name_ciphertext(&key, origin, revision + 1, &ciphertext).is_none());
+        assert!(decrypt_name_ciphertext(&[0x52; 32], origin, revision, &ciphertext).is_none());
+    }
 
     #[test]
     fn checked_in_noble_frame_opens_only_for_its_vault_binding() {

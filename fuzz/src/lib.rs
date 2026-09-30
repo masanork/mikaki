@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
-use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use mikaki_webauthn::{self as webauthn, Assertion, Context, Registration, StoredCredential};
+use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
@@ -14,6 +14,42 @@ pub fn fixtures() -> &'static Value {
         .unwrap()
     })
 }
+pub fn registration_cases() -> &'static Vec<Value> {
+    static CASES: OnceLock<Vec<Value>> = OnceLock::new();
+    CASES.get_or_init(|| {
+        let mut cases = fixtures()["registrations"].as_array().unwrap().clone();
+        cases.extend(optional()["registrations"].as_array().unwrap().clone());
+        assert!(cases.len() <= 256);
+        cases
+    })
+}
+pub fn optional() -> &'static Value {
+    static OPTIONAL: OnceLock<Value> = OnceLock::new();
+    OPTIONAL.get_or_init(|| {
+        serde_json::from_str(include_str!("../../crates/webauthn/testdata/optional.json")).unwrap()
+    })
+}
+pub fn assertion_cases() -> &'static Vec<Value> {
+    static CASES: OnceLock<Vec<Value>> = OnceLock::new();
+    CASES.get_or_init(|| {
+        let mut cases = vec![json!({"context":fixtures()["registrations"][0]["context"],"stored":assertion_seed(),"response":assertion_seed(),"ok":true})];
+        cases.extend(optional()["assertions"].as_array().unwrap().clone());
+        cases
+    })
+}
+pub fn metadata_cases() -> &'static Vec<Value> {
+    static CASES: OnceLock<Vec<Value>> = OnceLock::new();
+    CASES.get_or_init(|| {
+        let mut cases = fixtures()["mds"].as_array().unwrap().clone();
+        let operations: Value = serde_json::from_str(include_str!(
+            "../../crates/webauthn/testdata/mds-operations.json"
+        ))
+        .unwrap();
+        cases.extend(operations.as_array().unwrap().clone());
+        assert!(cases.len() <= 256);
+        cases
+    })
+}
 pub fn decode(value: &Value) -> Vec<u8> {
     B64.decode(value.as_str().unwrap()).unwrap()
 }
@@ -23,7 +59,7 @@ pub fn registration(data: &[u8]) -> bool {
     if data.len() < 2 || data.len() > 65_538 {
         return false;
     }
-    let cases = fixtures()["registrations"].as_array().unwrap();
+    let cases = registration_cases();
     let case = &cases[data[0] as usize % cases.len()];
     let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
     let mut response: Registration = serde_json::from_value(case["response"].clone()).unwrap();
@@ -77,22 +113,23 @@ pub fn assertion_seed() -> &'static Value {
         seed
     })
 }
-pub fn assertion(data: &[u8]) {
-    if data.is_empty() || data.len() > 65_537 {
-        return;
+pub fn assertion(data: &[u8]) -> bool {
+    if data.len() < 2 || data.len() > 65_538 {
+        return false;
     }
-    let ctx: Context =
-        serde_json::from_value(fixtures()["registrations"][0]["context"].clone()).unwrap();
-    let mut stored: StoredCredential = serde_json::from_value(assertion_seed().clone()).unwrap();
-    let mut response: Assertion = serde_json::from_value(assertion_seed().clone()).unwrap();
-    let value = B64.encode(&data[1..]);
-    match data[0] % 4 {
+    let cases = assertion_cases();
+    let case = &cases[data[0] as usize % cases.len()];
+    let ctx: Context = serde_json::from_value(case["context"].clone()).unwrap();
+    let mut stored: StoredCredential = serde_json::from_value(case["stored"].clone()).unwrap();
+    let mut response: Assertion = serde_json::from_value(case["response"].clone()).unwrap();
+    let value = B64.encode(&data[2..]);
+    match data[1] % 4 {
         0 => response.authenticator_data = value,
         1 => stored.public_key = value,
         2 => response.signature = value,
         _ => response.client_data = value,
     }
-    let _ = webauthn::authenticate(&ctx, &stored, response);
+    webauthn::authenticate(&ctx, &stored, response).is_ok()
 }
 
 pub fn metadata(data: &[u8]) -> bool {
@@ -106,7 +143,7 @@ pub fn metadata(data: &[u8]) -> bool {
         let _ = webauthn::metadata::mds_crl_urls(&input.jwt);
         return webauthn::metadata::verify_mds(input).is_ok();
     }
-    let cases = fixtures()["mds"].as_array().unwrap();
+    let cases = metadata_cases();
     let mut input: webauthn::metadata::MdsInput =
         serde_json::from_value(cases[data[0] as usize % cases.len()]["input"].clone()).unwrap();
     match data[1] % 4 {

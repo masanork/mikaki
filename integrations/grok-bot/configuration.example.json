@@ -1,0 +1,8 @@
+{
+  "resource": "https://agent-test.example/mcp",
+  "client": {
+    "client_id": "mikaki-cursor-hosted-test",
+    "client_name": "Grok Bot hosted test (shared account)",
+    "redirect_uris": ["https://www.cursor.com/agents/mcp/oauth/callback"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mikaki": {
+      "url": "${MIKAKI_AGENT_RESOURCE}",
+      "auth": {
+        "CLIENT_ID": "${MIKAKI_AGENT_CLIENT_ID}",
+        "scopes": ["list", "search", "read"]
+      }
+    }
+  }
+}

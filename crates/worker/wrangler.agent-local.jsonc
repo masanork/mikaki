@@ -1,0 +1,19 @@
+{
+  "name": "mikaki-op-agent-local",
+  "main": "build/worker/shim.mjs",
+  "compatibility_date": "2026-09-23",
+  "vars": { "MIKAKI_ISSUER": "https://mikaki.test" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikaki-op-dev",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+      "remote": false,
+    },
+  ],
+  "r2_buckets": [{ "binding": "VAULT_BLOBS", "bucket_name": "mikaki-vault-dev" }],
+  "services": [
+    { "binding": "AGENT_ACCESS", "service": "mikaki-agent-local", "entrypoint": "OwnerAgents" },
+  ],
+}

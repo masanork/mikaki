@@ -6,6 +6,7 @@ import {
   openAttribute,
   parseOwnerEnvelope,
   sealAttribute,
+  transferAttribute,
 } from '../../crates/worker/ui/vault-crypto.ts';
 
 const origin = 'https://mikaki.tossa.app';
@@ -69,4 +70,39 @@ test('owner can open a sealed attribute, with exact revision and context', async
 test('owner envelope rejects malformed and noncanonical encodings', () => {
   assert.throws(() => parseOwnerEnvelope('a='));
   assert.throws(() => parseOwnerEnvelope(encodeBase64Url(bytes(200))));
+});
+
+test('passkey transfer creates a verified fresh revision and cannot reuse the source key', async () => {
+  const source = bytes(32),
+    target = bytes(32);
+  const sourcePrf = bytes(32),
+    targetPrf = bytes(32),
+    targetInput = bytes(32);
+  const value = new TextEncoder().encode('saved value, not an unsaved edit');
+  const saved = await sealAttribute(value, sourcePrf, source, bytes(32), origin, attribute, 1);
+  const transferred = await transferAttribute(
+    saved,
+    sourcePrf,
+    targetPrf,
+    target,
+    targetInput,
+    origin,
+    attribute,
+    1,
+  );
+  assert.notEqual(saved.ciphertext, transferred.ciphertext);
+  assert.deepEqual(parseOwnerEnvelope(transferred.owner_envelope).credentialId, target);
+  assert.deepEqual(
+    await openAttribute(transferred, targetPrf, target, origin, attribute, 2),
+    value,
+  );
+  await assert.rejects(openAttribute(transferred, sourcePrf, source, origin, attribute, 2));
+  await assert.rejects(openAttribute(transferred, targetPrf, target, origin, attribute, 1));
+  await assert.rejects(
+    transferAttribute(saved, bytes(32), targetPrf, target, targetInput, origin, attribute, 1),
+  );
+  await assert.rejects(
+    transferAttribute(saved, sourcePrf, targetPrf, source, targetInput, origin, attribute, 1),
+  );
+  assert.deepEqual(await openAttribute(saved, sourcePrf, source, origin, attribute, 1), value);
 });

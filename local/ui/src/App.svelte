@@ -17,6 +17,12 @@
     signed_in: boolean;
   } | null>(null);
   const tx = new URL(location.href).searchParams.get('tx');
+  function switchLocale(locale: Locale): void {
+    setLocale(locale, { reload: false });
+    const next = new URL(location.href);
+    next.searchParams.set('lang', locale);
+    location.assign(next);
+  }
   const decode = (s: string) =>
     Uint8Array.from(atob(s.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0));
   const encode = (b: ArrayBuffer) =>
@@ -113,7 +119,7 @@
       <select
         aria-label={m.language()}
         value={getLocale()}
-        onchange={(event) => setLocale(event.currentTarget.value as Locale)}
+        onchange={(event) => switchLocale(event.currentTarget.value as Locale)}
         ><option value="ja">日本語</option><option value="en">English</option></select
       >
     </label>

@@ -48,5 +48,10 @@ pub async fn run(env: &Env, scheduled_ms: u64) -> Result<()> {
         .bind(&[JsValue::from_f64(retention as f64)])?
         .run()
         .await?;
+    let registration_retention = (scheduled_ms / 1000).saturating_sub(24 * 60 * 60);
+    db.prepare("DELETE FROM owner_passkey_registration WHERE transaction_id IN (SELECT transaction_id FROM owner_passkey_registration WHERE expires_at<?1 LIMIT 1000)")
+        .bind(&[JsValue::from_f64(registration_retention as f64)])?
+        .run()
+        .await?;
     Ok(())
 }

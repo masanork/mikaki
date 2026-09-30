@@ -1,4 +1,12 @@
 import {
+  catalog,
+  selectLocale,
+  errorMessage,
+  LOCALE_COOKIE,
+  type Catalog,
+  type MessageKey,
+} from './i18n';
+import {
   createRemoteJWKSet,
   decodeProtectedHeader,
   errors,
@@ -41,7 +49,7 @@ type Ticket = {
   updated_at: number;
 };
 type Message = { author_sub: string; body: string; created_at: number };
-type Article = { slug: string; title: string; body: string };
+type Article = { slug: string; title_key: MessageKey; body_key: MessageKey };
 const ARTICLES: Article[] = JSON.parse(articles_json());
 const BROWSER = '__Host-help-browser';
 const SESSION = '__Host-help-session';
@@ -101,12 +109,27 @@ function baseHeaders(env: Env): Headers {
     'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${env.ISSUER}; frame-ancestors 'none'; base-uri 'none'`,
   });
 }
-function html(env: Env, content: string, status = 200, setCookie?: string): Response {
+function html(
+  env: Env,
+  strings: Catalog,
+  content: string,
+  status = 200,
+  setCookie?: string,
+  path = '/',
+): Response {
+  const t = (key: MessageKey) => escape(strings.message(key));
+  const languageUrl = new URL(path, env.RP_ORIGIN);
+  // Keep the current page when switching, without replaying callback parameters or POSTs.
+  if (languageUrl.pathname === '/callback') languageUrl.pathname = '/';
+  languageUrl.search = '';
+  languageUrl.searchParams.set('lang', strings.locale === 'ja' ? 'en' : 'ja');
   const headers = baseHeaders(env);
   headers.set('Content-Type', 'text/html; charset=utf-8');
-  if (setCookie) headers.set('Set-Cookie', setCookie);
+  headers.set('Content-Language', strings.locale);
+  headers.append('Set-Cookie', cookieHeader(LOCALE_COOKIE, strings.locale, 31536000));
+  if (setCookie) headers.append('Set-Cookie', setCookie);
   return new Response(
-    `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mikaki Help</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}</style><nav><a href="/">Mikaki Help</a><a href="/help">ヘルプ</a><a href="/tickets">問い合わせ</a></nav><main>${content}</main></html>`,
+    `<!doctype html><html lang="${strings.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t('helpTitle')}</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}</style><nav><a href="/">${t('helpTitle')}</a><a href="/help">${t('helpHeading')}</a><a href="/tickets">${t('helpTickets')}</a><a href="${escape(languageUrl.pathname + languageUrl.search)}" lang="${strings.locale === 'ja' ? 'en' : 'ja'}" aria-label="${t('language')}">${strings.locale === 'ja' ? 'English' : '日本語'}</a></nav><main>${content}</main></html>`,
     { status, headers },
   );
 }
@@ -316,6 +339,7 @@ async function login(request: Request, env: Env): Promise<Response> {
     nonce,
     code_challenge: await hash(verifier),
     code_challenge_method: 'S256',
+    ui_locales: selectLocale(request),
   }).toString();
   return redirect(env, target.href);
 }
@@ -502,7 +526,8 @@ async function backchannel(request: Request, env: Env): Promise<Response> {
   ]);
   return new Response(null, { status: 200, headers: baseHeaders(env) });
 }
-async function ticketList(request: Request, env: Env): Promise<Response> {
+async function ticketList(request: Request, env: Env, strings: Catalog): Promise<Response> {
+  const t = (key: MessageKey) => escape(strings.message(key));
   const session = await requireSession(request, env);
   const agent = await staff(env, session.sub);
   const rows = agent
@@ -515,10 +540,20 @@ async function ticketList(request: Request, env: Env): Promise<Response> {
   const csrf = await browserCsrf(request);
   return html(
     env,
-    `<h1>問い合わせ</h1><p>${agent ? '担当者用の一覧' : 'あなたの問い合わせ'}</p><p><a href="/tickets/new">新しい問い合わせ</a></p>${(rows.results ?? []).map((item) => `<article><a href="/tickets/${escape(item.id)}">${escape(item.title)}</a> — ${item.status === 'open' ? '対応中' : '終了'}</article>`).join('') || '<p>まだ問い合わせはありません。</p>'}<form method="post" action="/logout">${formCsrf(csrf)}<button>このアプリからログアウト</button></form>`,
+    strings,
+    `<h1>${t('helpTickets')}</h1><p>${agent ? t('helpStaffTickets') : t('helpYourTickets')}</p><p><a href="/tickets/new">${t('helpNewTicket')}</a></p>${(rows.results ?? []).map((item) => `<article><a href="/tickets/${escape(item.id)}">${escape(item.title)}</a> — ${item.status === 'open' ? t('helpOpen') : t('helpClosed')}</article>`).join('') || `<p>${t('helpEmptyTickets')}</p>`}<form method="post" action="/logout">${formCsrf(csrf)}<button>${t('helpLogout')}</button></form>`,
+    200,
+    undefined,
+    new URL(request.url).pathname,
   );
 }
-async function ticketPage(request: Request, env: Env, id: string): Promise<Response> {
+async function ticketPage(
+  request: Request,
+  env: Env,
+  id: string,
+  strings: Catalog,
+): Promise<Response> {
+  const t = (key: MessageKey) => escape(strings.message(key));
   const session = await requireSession(request, env);
   const ticket = await env.DB.prepare('SELECT * FROM ticket WHERE id=?').bind(id).first<Ticket>();
   if (!ticket || (ticket.owner_sub !== session.sub && !(await staff(env, session.sub))))
@@ -531,7 +566,11 @@ async function ticketPage(request: Request, env: Env, id: string): Promise<Respo
   const csrf = await browserCsrf(request);
   return html(
     env,
-    `<h1>${escape(ticket.title)}</h1><p>${ticket.status === 'open' ? '対応中' : '終了'}</p>${(rows.results ?? []).map((message) => `<article><strong>${message.author_sub === ticket.owner_sub ? '依頼者' : '担当者'}</strong><pre>${escape(message.body)}</pre></article>`).join('')}${ticket.status === 'open' ? `<h2>返信</h2><form method="post" action="/tickets/${escape(id)}/reply">${formCsrf(csrf)}<label>返信<textarea name="message" maxlength="4000" required></textarea></label><p><button>送信</button></p></form><form method="post" action="/tickets/${escape(id)}/close">${formCsrf(csrf)}<button>終了する</button></form>` : ''}`,
+    strings,
+    `<h1>${escape(ticket.title)}</h1><p>${ticket.status === 'open' ? t('helpOpen') : t('helpClosed')}</p>${(rows.results ?? []).map((message) => `<article><strong>${message.author_sub === ticket.owner_sub ? t('helpRequester') : t('helpAgent')}</strong><pre>${escape(message.body)}</pre></article>`).join('')}${ticket.status === 'open' ? `<h2>${t('helpReply')}</h2><form method="post" action="/tickets/${escape(id)}/reply">${formCsrf(csrf)}<label>${t('helpReply')}<textarea name="message" maxlength="4000" required></textarea></label><p><button>${t('helpSend')}</button></p></form><form method="post" action="/tickets/${escape(id)}/close">${formCsrf(csrf)}<button>${t('helpCloseTicket')}</button></form>` : ''}`,
+    200,
+    undefined,
+    new URL(request.url).pathname,
   );
 }
 async function createTicket(request: Request, env: Env): Promise<Response> {
@@ -634,6 +673,8 @@ async function mutateTicket(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const strings = catalog(selectLocale(request));
+    const t = (key: MessageKey) => escape(strings.message(key));
     try {
       const url = new URL(request.url);
       const issuer = new URL(env.ISSUER);
@@ -652,7 +693,8 @@ export default {
         const session = await current(request, env);
         return html(
           env,
-          `<h1>困ったときに</h1><p>パスキーと Mikaki の使い方を確認できます。解決しないときは問い合わせを送ってください。</p><p><a href="/help">ヘルプを読む</a> · <a href="/tickets">問い合わせ</a></p>${session ? '<p>ログイン済みです。</p>' : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>Mikaki でログイン</button></form>`}`,
+          strings,
+          `<h1>${t('helpHomeHeading')}</h1><p>${t('helpHomeBody')}</p><p><a href="/help">${t('helpReadArticles')}</a> · <a href="/tickets">${t('helpTickets')}</a></p>${session ? `<p>${t('helpLoggedIn')}</p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${t('helpLogin')}</button></form>`}`,
           200,
           cookieHeader(BROWSER, browser, 86400),
         );
@@ -660,12 +702,23 @@ export default {
       if (request.method === 'GET' && url.pathname === '/help')
         return html(
           env,
-          `<h1>ヘルプ</h1>${ARTICLES.map((article) => `<article><a href="/help/${article.slug}">${escape(article.title)}</a></article>`).join('')}`,
+          strings,
+          `<h1>${t('helpHeading')}</h1>${ARTICLES.map((article) => `<article><a href="/help/${article.slug}">${t(article.title_key)}</a></article>`).join('')}`,
+          200,
+          undefined,
+          url.pathname,
         );
       if (request.method === 'GET' && url.pathname.startsWith('/help/')) {
         const article = ARTICLES.find((entry) => `/help/${entry.slug}` === url.pathname);
         if (!article) fail(404, 'not_found');
-        return html(env, `<h1>${escape(article.title)}</h1><p>${escape(article.body)}</p>`);
+        return html(
+          env,
+          strings,
+          `<h1>${t(article.title_key)}</h1><p>${t(article.body_key)}</p>`,
+          200,
+          undefined,
+          url.pathname,
+        );
       }
       if (request.method === 'POST' && url.pathname === '/login') return await login(request, env);
       if (request.method === 'POST' && url.pathname === '/backchannel')
@@ -682,19 +735,23 @@ export default {
         return redirect(env, '/', cookieHeader(SESSION, '', 0));
       }
       if (request.method === 'GET' && url.pathname === '/tickets')
-        return await ticketList(request, env);
+        return await ticketList(request, env, strings);
       if (request.method === 'GET' && url.pathname === '/tickets/new') {
         await requireSession(request, env);
         return html(
           env,
-          `<h1>新しい問い合わせ</h1><form method="post" action="/tickets">${formCsrf(await browserCsrf(request))}<label>件名<input type="text" name="title" maxlength="120" required></label><label>内容<textarea name="message" maxlength="4000" required></textarea></label><p><button>送信</button></p></form>`,
+          strings,
+          `<h1>${t('helpNewTicket')}</h1><form method="post" action="/tickets">${formCsrf(await browserCsrf(request))}<label>${t('helpSubject')}<input type="text" name="title" maxlength="120" required></label><label>${t('helpMessage')}<textarea name="message" maxlength="4000" required></textarea></label><p><button>${t('helpSend')}</button></p></form>`,
+          200,
+          undefined,
+          url.pathname,
         );
       }
       if (request.method === 'POST' && url.pathname === '/tickets')
         return await createTicket(request, env);
       const match = /^\/tickets\/([0-9a-f-]{36})(?:\/(reply|close))?$/.exec(url.pathname);
       if (match && request.method === 'GET' && !match[2])
-        return await ticketPage(request, env, match[1]);
+        return await ticketPage(request, env, match[1], strings);
       if (match && request.method === 'POST' && (match[2] === 'reply' || match[2] === 'close'))
         return await mutateTicket(request, env, match[1], match[2]);
       fail(404, 'not_found');
@@ -705,8 +762,11 @@ export default {
         console.error('helpdesk_request_failed', error instanceof Error ? error.name : 'unknown');
       return html(
         env,
-        `<h1>${failure.status === 404 ? '見つかりません' : '操作を完了できませんでした'}</h1><p>${escape(failure.message)}</p><p><a href="/">トップへ戻る</a></p>`,
+        strings,
+        `<h1>${failure.status === 404 ? t('helpNotFound') : t('helpErrorHeading')}</h1><p>${escape(errorMessage(strings, failure.message))}</p><p><a href="/">${t('helpBackHome')}</a></p>`,
         failure.status,
+        undefined,
+        new URL(request.url).pathname,
       );
     }
   },

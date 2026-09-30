@@ -34,6 +34,8 @@ Alert on oldest pending delivery over 15 minutes, backlog over 10,000, permanent
 
 ## Recovery
 
+The [release and recovery runbook](release-and-recovery.md) supplies byte verification, backup boundaries, historical-restore gates, monitoring evidence requirements and the disposable local rehearsal. Its passing SQLite exercise does not establish production recovery readiness.
+
 D1 uncertainty stops new authentication/exchange/UserInfo with 503; RPs stop use after their existing lease. A client key compromise stops that client and revokes derivatives. An OP key compromise stops issuance, distributes a kid denial rule, and may require all sessions revoked. Outbox recovery resumes from persisted cursor and leases. A bad configuration does not silently fall back to defaults. Code rollback must not reactivate retired keys or grants.
 
 For historical DB restore, stop ingress, change an externally held recovery generation, invalidate old SSO/codes/tokens/admin grants and RP sessions, rotate signing keys, and reconcile account/credential/client/grant state from independent audit or registration backups. A restored database alone cannot prove that deleted credentials or revoked grants remain invalid. Rehearse this before claiming production recovery readiness.

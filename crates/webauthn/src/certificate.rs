@@ -32,7 +32,7 @@ pub(super) fn verify_spki(
         .ok_or(Invalid::Certificate)?;
     let oid = spki.algorithm.oid.to_string();
     match alg {
-        -7 | -35 => {
+        -7 | -35 | -36 | -47 => {
             require(oid == "1.2.840.10045.2.1")?;
             let curve = spki
                 .algorithm
@@ -42,24 +42,39 @@ pub(super) fn verify_spki(
                 .decode_as::<x509_cert::der::asn1::ObjectIdentifier>()
                 .map_err(|_| Invalid::Certificate)?
                 .to_string();
-            if alg == -7 {
-                require(curve == "1.2.840.10045.3.1.7")?;
-                PublicKey::Es256(
-                    VerifyingKey::from_sec1_bytes(bytes).map_err(|_| Invalid::Certificate)?,
-                )
-                .verify(message, sig)
-            } else {
-                require(curve == "1.3.132.0.34")?;
-                let key = p384::ecdsa::VerifyingKey::from_sec1_bytes(bytes)
-                    .map_err(|_| Invalid::Certificate)?;
-                key.verify(
-                    message,
-                    &p384::ecdsa::Signature::from_der(sig).map_err(|_| Invalid::Signature)?,
-                )
-                .map_err(|_| Invalid::Signature)
-            }
+            let (expected, key) = match alg {
+                -7 => (
+                    "1.2.840.10045.3.1.7",
+                    PublicKey::Es256(
+                        VerifyingKey::from_sec1_bytes(bytes).map_err(|_| Invalid::Certificate)?,
+                    ),
+                ),
+                -35 => (
+                    "1.3.132.0.34",
+                    PublicKey::Es384(
+                        p384::ecdsa::VerifyingKey::from_sec1_bytes(bytes)
+                            .map_err(|_| Invalid::Certificate)?,
+                    ),
+                ),
+                -36 => (
+                    "1.3.132.0.35",
+                    PublicKey::Es512(
+                        p521::ecdsa::VerifyingKey::from_sec1_bytes(bytes)
+                            .map_err(|_| Invalid::Certificate)?,
+                    ),
+                ),
+                _ => (
+                    "1.3.132.0.10",
+                    PublicKey::Es256k(
+                        k256::ecdsa::VerifyingKey::from_sec1_bytes(bytes)
+                            .map_err(|_| Invalid::Certificate)?,
+                    ),
+                ),
+            };
+            require(curve == expected)?;
+            key.verify(message, sig)
         }
-        -257 | -65535 => {
+        -257 | -258 | -259 | -65535 | -37 | -38 | -39 => {
             require(oid == "1.2.840.113549.1.1.1")?;
             let key = rsa::RsaPublicKey::from_public_key_der(
                 &spki.to_der().map_err(|_| Invalid::Certificate)?,
@@ -103,12 +118,15 @@ pub(super) fn signature_spki(
     let alg = match algorithm.oid.to_string().as_str() {
         "1.2.840.10045.4.3.2" => -7,
         "1.2.840.10045.4.3.3" => -35,
+        "1.2.840.10045.4.3.4" => -36,
         "1.2.840.113549.1.1.11" => -257,
+        "1.2.840.113549.1.1.12" => -258,
+        "1.2.840.113549.1.1.13" => -259,
         "1.2.840.113549.1.1.5" => -65535,
         "1.3.101.112" => -8,
         _ => return Err(Invalid::Certificate),
     };
-    if matches!(alg, -7 | -35 | -8) {
+    if matches!(alg, -7 | -35 | -36 | -8) {
         require(algorithm.parameters.is_none())?;
     }
     verify_spki(spki, alg, message, sig)

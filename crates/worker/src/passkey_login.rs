@@ -25,6 +25,8 @@ pub(super) async fn start(
     db: &worker::d1::D1Database,
     issuer: &str,
     client_id: &str,
+    redirect_uri: &str,
+    state: Option<&str>,
 ) -> worker::Result<worker::Response> {
     let mut random = WorkersCryptoRandom;
     let tx = random_secret(&mut random)?;
@@ -36,7 +38,15 @@ pub(super) async fn start(
     continuation
         .query_pairs_mut()
         .clear()
-        .extend_pairs(requested.query_pairs().filter(|(key, _)| key != "prompt"));
+        .extend_pairs(
+            requested
+                .query_pairs()
+                .filter(|(key, _)| key != "prompt" && key != "redirect_uri" && key != "state"),
+        )
+        .append_pair("redirect_uri", redirect_uri);
+    if let Some(state) = state {
+        continuation.query_pairs_mut().append_pair("state", state);
+    }
     let authorization_url = continuation.to_string();
     db.prepare(
         "INSERT INTO login_transaction(tx_id,browser_hash,authorization_url,client_id,challenge,expires_at) \
@@ -71,14 +81,101 @@ pub(super) async fn transaction(
     tx: &str,
     browser_hash: &str,
 ) -> worker::Result<Option<LoginTransactionRow>> {
-    db.prepare(
-        "SELECT authorization_url,client_id,challenge,expires_at,failures \
+    let row = db
+        .prepare(
+            "SELECT authorization_url,client_id,challenge,expires_at,failures,0 AS owner_login \
          FROM login_transaction WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 \
          AND expires_at>CAST(strftime('%s','now') AS INTEGER) AND failures<5",
-    )
-    .bind(&[JsValue::from_str(tx), JsValue::from_str(browser_hash)])?
-    .first::<LoginTransactionRow>(None)
-    .await
+        )
+        .bind(&[JsValue::from_str(tx), JsValue::from_str(browser_hash)])?
+        .first::<LoginTransactionRow>(None)
+        .await?;
+    if row.is_some() {
+        return Ok(row);
+    }
+    db.prepare("SELECT l.authorization_url,'mikaki-internal-agent' AS client_id,l.challenge,l.expires_at,l.failures,1 AS owner_login \
+      FROM owner_login_transaction l JOIN agent_oauth_request r ON r.request_id=l.request_id \
+      JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 \
+      WHERE l.tx_id=?1 AND l.browser_hash=?2 AND l.consumed=0 AND l.failures<5 \
+      AND l.expires_at>unixepoch() AND r.expires_at>unixepoch() AND r.decision IS NULL AND r.owner_account IS NULL")
+      .bind(&[JsValue::from_str(tx),JsValue::from_str(browser_hash)])?
+      .first::<LoginTransactionRow>(None).await
+}
+
+pub(super) async fn start_owner(
+    request: &worker::Request,
+    context: &worker::RouteContext<()>,
+    db: &worker::d1::D1Database,
+) -> worker::Result<worker::Response> {
+    if context.env.service("AGENT_ACCESS").is_err() {
+        return crate::vault_attributes::error(503, "agent_service_unavailable");
+    }
+    let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
+    let Some(issuer) = configured_issuer(&issuer) else {
+        return crate::vault_attributes::error(503, "invalid_configuration");
+    };
+    let requested = request.url()?;
+    let query = requested.query_pairs().collect::<Vec<_>>();
+    let ids = query
+        .iter()
+        .filter(|(key, _)| key == "agent_oauth_request")
+        .collect::<Vec<_>>();
+    if requested.origin().ascii_serialization() != issuer
+        || ids.len() != 1
+        || !valid_tx(&ids[0].1)
+        || query
+            .iter()
+            .any(|(key, _)| key != "agent_oauth_request" && key != "lang")
+        || query.iter().filter(|(key, _)| key == "lang").count() > 1
+    {
+        return crate::vault_attributes::error(400, "invalid_request");
+    }
+    let request_id = ids[0].1.as_ref();
+    let mut continuation = url::Url::parse(&format!("{issuer}/vault"))
+        .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
+    continuation
+        .query_pairs_mut()
+        .append_pair("agent_oauth_request", request_id);
+    if let Some((_, lang)) = query.iter().find(|(key, _)| key == "lang") {
+        if !matches!(lang.as_ref(), "ja" | "en") {
+            return crate::vault_attributes::error(400, "invalid_request");
+        }
+        continuation.query_pairs_mut().append_pair("lang", lang);
+    }
+    let mut random = WorkersCryptoRandom;
+    let tx = random_secret(&mut random)?;
+    let browser = random_secret(&mut random)?;
+    let challenge = random_secret(&mut random)?;
+    let time = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let result=db.prepare("INSERT INTO owner_login_transaction(tx_id,browser_hash,request_id,authorization_url,challenge,expires_at) \
+      SELECT ?1,?2,r.request_id,?3,?4,min(r.expires_at,?5) FROM agent_oauth_request r \
+      JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 \
+      WHERE r.request_id=?6 AND r.owner_origin=?7 AND r.decision IS NULL AND r.owner_account IS NULL AND r.expires_at>unixepoch() \
+      AND (SELECT count(*) FROM owner_login_transaction WHERE request_id=r.request_id AND consumed=0 AND expires_at>unixepoch())<5 \
+      AND (SELECT count(*) FROM owner_login_transaction WHERE consumed=0 AND expires_at>unixepoch())<1000")
+      .bind(&[JsValue::from_str(&tx),JsValue::from_str(&hash(&browser)),JsValue::from_str(continuation.as_str()),
+        JsValue::from_str(&challenge),JsValue::from_f64((time+300) as f64),JsValue::from_str(request_id),JsValue::from_str(&issuer)])?
+      .run().await?;
+    if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
+        return crate::vault_attributes::error(409, "authorization_unavailable");
+    }
+    let mut login_url = url::Url::parse(&format!("{issuer}/login?tx={tx}"))
+        .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
+    if let Some((_, lang)) = query.iter().find(|(key, _)| key == "lang") {
+        login_url.query_pairs_mut().append_pair("lang", lang);
+    }
+    Ok(worker::Response::builder()
+        .with_status(302)
+        .with_header("Location", login_url.as_str())?
+        .with_header(
+            "Set-Cookie",
+            &format!(
+                "__Host-op-browser={browser}; Max-Age=300; Path=/; Secure; HttpOnly; SameSite=Lax"
+            ),
+        )?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .empty())
 }
 
 pub(super) async fn get(
@@ -121,7 +218,7 @@ pub(super) async fn get(
         });
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let enrollment = login.client_id == "mikaki-internal-enrollment";
-    let rp_uri = if enrollment {
+    let rp_uri = if enrollment || login.owner_login == 1 {
         login.authorization_url.clone()
     } else {
         url::Url::parse(&login.authorization_url)
@@ -134,14 +231,19 @@ pub(super) async fn get(
             .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
     };
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        owner_login = if login.owner_login == 1 {
+            "true"
+        } else {
+            "false"
+        },
         locale = strings.locale,
         title = crate::i18n::html_escape(strings.message(if enrollment {
             "enrollHeading"
         } else {
             "title"
         })),
-        client = crate::i18n::html_escape(if enrollment {
+        client = crate::i18n::html_escape(if enrollment || login.owner_login == 1 {
             "mikaki"
         } else {
             &login.client_id
@@ -231,22 +333,91 @@ pub(super) async fn stylesheet(
         ))
 }
 
-pub(super) async fn product_stylesheet(
-    _request: worker::Request,
-    _context: worker::RouteContext<()>,
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoginDenyInput {
+    tx: String,
+}
+
+pub(super) async fn deny(
+    mut request: worker::Request,
+    context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    Ok(worker::Response::builder()
-        .with_header("Content-Type", "text/css; charset=utf-8")?
+    let issuer = context
+        .env
+        .var("MIKAKI_ISSUER")
+        .map_err(|_| worker::Error::RustError("server_error".into()))?
+        .to_string();
+    let issuer = configured_issuer(&issuer)
+        .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    if request.headers().get("origin")?.as_deref() != Some(issuer.as_str()) {
+        return Ok(worker::Response::builder().with_status(403).empty());
+    }
+    let Some(browser) = browser_cookie(&request, "__Host-op-browser")? else {
+        return Ok(worker::Response::builder().with_status(403).empty());
+    };
+    let db = context.env.d1("DB")?;
+    let policy = WorkerRuntimePolicy::from_db(&db).await?;
+    let body = read_bounded_body(&mut request, policy.form_body_bytes).await?;
+    mikaki_webauthn::strict_json(&body, policy.form_body_bytes, 4)
+        .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
+    let input: LoginDenyInput = serde_json::from_str(&body)
+        .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
+    if !valid_tx(&input.tx) {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    }
+    let browser_hash = hash(&browser);
+    let Some(login) = transaction(&db, &input.tx, &browser_hash).await? else {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    if login.owner_login == 1 {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    }
+    let authorization_url = url::Url::parse(&login.authorization_url)
+        .map_err(|_| worker::Error::RustError("invalid continuation".into()))?;
+    if authorization_url.origin().ascii_serialization() != issuer
+        || authorization_url.path() != "/authorize"
+    {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    }
+    let redirect_uri = authorization_url
+        .query_pairs()
+        .find(|(key, _)| key == "redirect_uri")
+        .map(|(_, value)| value.into_owned())
+        .ok_or_else(|| worker::Error::RustError("invalid continuation".into()))?;
+    let state = authorization_url
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .map(|(_, value)| value.into_owned());
+    let result = db
+        .prepare(
+            "UPDATE login_transaction SET consumed=1 WHERE tx_id=?1 AND browser_hash=?2 \
+             AND consumed=0 AND expires_at>unixepoch()",
+        )
+        .bind(&[
+            JsValue::from_str(&input.tx),
+            JsValue::from_str(&browser_hash),
+        ])?
+        .run()
+        .await?;
+    if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
+        return Ok(worker::Response::builder().with_status(400).empty());
+    }
+    let mut target = url::Url::parse(&redirect_uri)
+        .map_err(|_| worker::Error::RustError("invalid registered redirect".into()))?;
+    {
+        let mut query = target.query_pairs_mut();
+        query.append_pair("error", "access_denied");
+        if let Some(state) = state.as_deref() {
+            query.append_pair("state", state);
+        }
+        query.append_pair("iss", &issuer);
+    }
+    worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
-        .with_header("X-Content-Type-Options", "nosniff")?
-        .fixed(
-            format!(
-                "{}\n{}",
-                include_str!("../ui/auth.css"),
-                include_str!("../ui/product.css")
-            )
-            .into_bytes(),
-        ))
+        .from_json(&LoginFinishOutput {
+            location: target.to_string(),
+        })
 }
 
 pub(super) async fn finish(
@@ -279,6 +450,19 @@ pub(super) async fn finish(
     let browser_hash = hash(&browser);
     let Some(login) = transaction(&db, &input.tx, &browser_hash).await? else {
         return Ok(worker::Response::builder().with_status(400).empty());
+    };
+    let owner_login = login.owner_login == 1;
+    if owner_login {
+        let destination = url::Url::parse(&login.authorization_url)
+            .map_err(|_| worker::Error::RustError("invalid continuation".into()))?;
+        if destination.origin().ascii_serialization() != issuer || destination.path() != "/vault" {
+            return crate::vault_attributes::error(400, "invalid_continuation");
+        }
+    }
+    let login_table = if owner_login {
+        "owner_login_transaction"
+    } else {
+        "login_transaction"
     };
     let credential = db
         .prepare(
@@ -328,7 +512,7 @@ pub(super) async fn finish(
     let proof = match ceremony.authenticate(&browser_hash, now, 5, &stored, input.response) {
         Ok(proof) => proof,
         Err(_) => {
-            db.prepare("UPDATE login_transaction SET failures=failures+1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5")
+            db.prepare(format!("UPDATE {login_table} SET failures=failures+1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5"))
                 .bind(&[JsValue::from_str(&input.tx),JsValue::from_str(&browser_hash)])?
                 .run().await?;
             return Ok(worker::Response::builder().with_status(401).empty());
@@ -341,8 +525,13 @@ pub(super) async fn finish(
     let sso_id = random_secret(&mut random)?;
     let sso_secret = random_secret(&mut random)?;
     let sso_hash = hash(&sso_secret);
+    let live_request = if owner_login {
+        " AND EXISTS(SELECT 1 FROM agent_oauth_request r JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 WHERE r.request_id=owner_login_transaction.request_id AND r.expires_at>unixepoch() AND r.decision IS NULL AND r.owner_account IS NULL)"
+    } else {
+        ""
+    };
     db.batch(vec![
-        db.prepare("UPDATE login_transaction SET consumed=1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>?3")
+        db.prepare(format!("UPDATE {login_table} SET consumed=1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>?3{live_request}"))
             .bind(&[JsValue::from_str(&input.tx),JsValue::from_str(&browser_hash),JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
             .bind(&[JsValue::from_str(&sso_id)])?,
@@ -356,8 +545,8 @@ pub(super) async fn finish(
             .bind(&[JsValue::from_str(&format!("{sso_id}-sso"))])?,
         db.prepare("INSERT INTO sso_context(sso_id,secret_hash,auth_time) VALUES(?1,?2,?3)")
             .bind(&[JsValue::from_str(&sso_id),JsValue::from_str(&sso_hash),JsValue::from_f64(now as f64)])?,
-        db.prepare("INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?1,?2,1,1) ON CONFLICT(account_id,client_id) DO UPDATE SET grant_version=CASE WHEN active=0 THEN grant_version+1 ELSE grant_version END,active=1")
-            .bind(&[JsValue::from_str(&credential.account_id),JsValue::from_str(&login.client_id)])?,
+        db.prepare("INSERT INTO app_connection(account_id,client_id,grant_version,active) SELECT ?1,?2,1,1 WHERE ?3=0 ON CONFLICT(account_id,client_id) DO UPDATE SET grant_version=CASE WHEN active=0 THEN grant_version+1 ELSE grant_version END,active=1")
+            .bind(&[JsValue::from_str(&credential.account_id),JsValue::from_str(&login.client_id),JsValue::from_f64(login.owner_login as f64)])?,
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
             .bind(&[JsValue::from_str(&sso_id)])?,
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
@@ -378,4 +567,22 @@ pub(super) async fn finish(
         .from_json(&LoginFinishOutput {
             location: login.authorization_url,
         })
+}
+
+pub(super) async fn product_stylesheet(
+    _request: worker::Request,
+    _context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/css; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(
+            format!(
+                "{}\n{}",
+                include_str!("../ui/auth.css"),
+                include_str!("../ui/product.css")
+            )
+            .into_bytes(),
+        ))
 }

@@ -23,7 +23,10 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
   });
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext({ locale: 'en-US' });
+    const context = await browser.newContext({
+      locale: 'en-US',
+      extraHTTPHeaders: { 'Accept-Language': 'en-US' },
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
     page.setDefaultNavigationTimeout(5000);
@@ -41,27 +44,58 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       },
     });
     await page.goto(RP);
-    await page.getByRole('link', { name: 'ヘルプ', exact: true }).click();
-    await page.getByRole('link', { name: 'パスキーでログインする' }).click();
+    await page.getByRole('link', { name: 'Help', exact: true }).click();
+    await page.getByRole('link', { name: 'Log in with a passkey' }).click();
+    assert.match(await page.locator('main').innerText(), /unlock your device/);
+    assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+    await page.getByRole('link', { name: 'Language', exact: true }).click();
+    assert.equal(new URL(page.url()).pathname, '/help/passkeys');
+    assert.equal(await page.locator('html').getAttribute('lang'), 'ja');
     assert.match(await page.locator('main').innerText(), /端末のロック/);
+    await page.getByRole('link', { name: '言語', exact: true }).click();
+    for (const locale of ['ja', 'en']) {
+      const vault = await context.request.get(`${RP}/help/vault?lang=${locale}`);
+      assert.equal(vault.headers()['content-language'], locale);
+      assert.match(await vault.text(), locale === 'ja' ? /通常のログインだけなら/ : /normal login/);
+      const sessions = await context.request.get(`${RP}/help/sessions?lang=${locale}`);
+      assert.match(
+        await sessions.text(),
+        locale === 'ja' ? /アプリごとに/ : /Each app has its own/,
+      );
+      const missing = await context.request.get(`${RP}/help/missing?lang=${locale}`);
+      assert.equal(missing.status(), 404);
+      assert.match(await missing.text(), locale === 'ja' ? /見つかりません/ : /Not found/);
+      assert.doesNotMatch(await missing.text(), /not_found/);
+    }
     await page.goto(`${RP}/tickets`);
-    assert.match(await page.locator('main').innerText(), /login_required/);
+    assert.match(await page.locator('main').innerText(), /Please log in to access support tickets/);
     await page.goto(RP);
-    await page.getByRole('button', { name: 'Mikaki でログイン' }).click();
+    await page.getByRole('button', { name: 'Log in with Mikaki' }).click();
     await page.waitForURL(`${OP}/login?**`);
-    await page.getByLabel('Language').selectOption('en');
+    assert.equal(new URL(page.url()).searchParams.get('lang'), 'en');
+    assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+    const loginTx = new URL(page.url()).searchParams.get('tx');
+    await page.getByLabel('Language').selectOption('ja');
+    await page.getByLabel('言語').selectOption('en');
+    await page.getByLabel('Language').waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('tx'), loginTx);
     await page.getByRole('checkbox').check();
     await page.getByLabel('Invitation code', { exact: true }).fill(local.invitation);
     await page.getByRole('button', { name: 'Register with invitation' }).click();
     await page.waitForURL(`${RP}/tickets`);
-    assert.match(await page.locator('main').innerText(), /まだ問い合わせはありません/);
-    await page.getByRole('link', { name: '新しい問い合わせ' }).click();
-    await page.getByLabel('件名').fill('ログインの相談');
-    await page.getByLabel('内容').fill('新しい端末でログインしたい');
-    await page.getByRole('button', { name: '送信' }).click();
+    assert.match(await page.locator('main').innerText(), /You have no support tickets yet/);
+    await page.getByRole('link', { name: 'New support ticket' }).click();
+    await page.getByLabel('Subject').fill('ログインの相談');
+    await page.getByLabel('Message').fill('新しい端末でログインしたい');
+    await page.getByRole('button', { name: 'Send' }).click();
     await page.waitForURL(`${RP}/tickets/*`);
     const ticketId = new URL(page.url()).pathname.split('/')[2];
     assert.match(await page.locator('main').innerText(), /新しい端末でログインしたい/);
+    await page.getByRole('link', { name: 'Language', exact: true }).click();
+    assert.equal(new URL(page.url()).pathname, `/tickets/${ticketId}`);
+    assert.match(await page.locator('main').innerText(), /対応中/);
+    assert.match(await page.locator('main').innerText(), /新しい端末でログインしたい/);
+    await page.getByRole('link', { name: '言語', exact: true }).click();
     const owner = (await local.rpDB
       .prepare('SELECT owner_sub FROM ticket WHERE id=?')
       .bind(ticketId)
@@ -77,8 +111,8 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       .bind(owner.owner_sub)
       .first()) as { idle_expires_at: number };
     assert.ok(renewed.idle_expires_at > now() + 50);
-    await page.getByLabel('返信').fill('端末の設定を確認しました');
-    await page.getByRole('button', { name: '送信' }).click();
+    await page.getByLabel('Reply').fill('端末の設定を確認しました');
+    await page.getByRole('button', { name: 'Send' }).click();
     assert.match(await page.locator('main').innerText(), /端末の設定を確認しました/);
     const strangerToken = crypto.randomUUID();
     await local.rpDB
@@ -122,8 +156,8 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
       headers: { Cookie: `__Host-help-session=${strangerToken}` },
     });
     assert.equal(revokedStaff.status(), 404);
-    await page.getByRole('button', { name: '終了する' }).click();
-    assert.match(await page.locator('main').innerText(), /終了/);
+    await page.getByRole('button', { name: 'Close ticket' }).click();
+    assert.match(await page.locator('main').innerText(), /Closed/);
     const rpCookies = (await context.cookies()).filter((c) => c.domain === '127.0.0.1');
     const blockedReply = await page.request.post(`${RP}/tickets/${ticketId}/reply`, {
       headers: { Origin: RP, Cookie: rpCookies.map((c) => `${c.name}=${c.value}`).join('; ') },
@@ -256,7 +290,7 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
 
     await page.goto(RP);
     holdCheck = true;
-    const pendingLogin = page.getByRole('button', { name: 'Mikaki でログイン' }).click();
+    const pendingLogin = page.getByRole('button', { name: 'Log in with Mikaki' }).click();
     await held;
     const pendingSession = (await local.opDB
       .prepare('SELECT sid,sub FROM client_session WHERE revoked=0 ORDER BY rowid DESC LIMIT 1')
@@ -274,7 +308,10 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
     assert.equal(beforeCallback.status(), 200);
     releaseCheck();
     await pendingLogin;
-    assert.match(await page.locator('main').innerText(), /session_revoked/);
+    assert.match(
+      await page.locator('main').innerText(),
+      /Your session has expired or you have been logged out/,
+    );
     assert.equal(
       await local.rpDB
         .prepare('SELECT sid FROM rp_session WHERE sid=?')

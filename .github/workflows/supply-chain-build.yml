@@ -31,20 +31,23 @@ jobs:
           npm run build:policy
           worker-build --release crates/worker
           worker-build --release crates/userinfo-claim-worker
+          worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
-          node --test local/conformance/vault-attribute.test.ts
-          node --test local/conformance/vault-share.test.ts
-          node --test local/conformance/recipient-directory.test.ts
-          node --test local/conformance/userinfo-claim-worker.test.ts
-          node --test local/conformance/vault-crypto.test.ts
-          node --test local/conformance/client-admin.test.ts
-          node --test local/conformance/enrollment.test.ts
-          node --test local/conformance/session-check.test.ts
-      - name: Verify Worker Svelte screens in Chromium
-        run: |
           npx playwright install --with-deps chromium
+          npm run test:worker-contracts
+          npm run test:release
+          npm run test:frontend-coverage
+      - name: Verify product journeys and Worker screens in Chromium
+        run: |
           npm run test:worker-browser
-          node --test local/conformance/logout-i18n.test.ts
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attested-build-browser-failures-${{ github.sha }}
+          path: artifacts/browser-failures/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain
@@ -64,6 +67,25 @@ jobs:
         run: |
           tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+      - name: Bind release bytes and migrations to the clean source revision
+        run: |
+          npm run release:inventory
+          npm run release:verify
+      - name: Prepare reviewed upload bundles
+        id: promotion
+        run: npm run release:prepare-upload
+      - name: Recheck upload inputs
+        env:
+          PROMOTION_DIR: ${{ steps.promotion.outputs.promotion_dir }}
+        run: npm run release:verify-upload -- "$PROMOTION_DIR"
+      - name: Attest release inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/release-manifest.json
+      - name: Attest upload inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.promotion.outputs.promotion_dir }}/upload-manifest.json
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

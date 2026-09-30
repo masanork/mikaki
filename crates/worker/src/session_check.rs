@@ -84,6 +84,7 @@ pub async fn check(
         &input.client_assertion,
         &endpoint,
         &endpoint,
+        false,
         now,
         &runtime,
         &mut random,

@@ -46,7 +46,18 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
     const session = await worker.fetch('https://mikaki.test/vault/session', {
       headers: { Cookie: `__Host-op-sso=${secret}` },
     });
-    assert.deepEqual(await session.json(), { credential_id: 'credential', account_id: 'owner' });
+    const identity = (await session.json()) as {
+      credential_id: string;
+      account_id: string;
+      session_tag: string;
+    };
+    assert.deepEqual(Object.keys(identity).sort(), ['account_id', 'credential_id', 'session_tag']);
+    assert.equal(identity.credential_id, 'credential');
+    assert.equal(identity.account_id, 'owner');
+    assert.match(identity.session_tag, /^[A-Za-z0-9_-]{43}$/);
+    assert.notEqual(identity.session_tag, secret);
+    assert.notEqual(identity.session_tag, cookieHash);
+    assert.equal(session.headers.get('cache-control'), 'no-store');
     const operation = () => randomBytes(32).toString('base64url');
     const content = (value: string) =>
       JSON.stringify({

@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { publishVaultLock } from './session-events.js';
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import SessionCue from './SessionCue.svelte';
+  import LivingSeal from './LivingSeal.svelte';
   import type { Locale } from './paraglide/runtime.js';
 
   let {
@@ -12,6 +14,7 @@
     rpUri,
     client,
     enrollment,
+    ownerLogin,
     locale,
   }: {
     tx: string;
@@ -20,9 +23,12 @@
     rpUri: string;
     client: string;
     enrollment: boolean;
+    ownerLogin: boolean;
     locale: Locale;
   } = $props();
   let busy = $state(false);
+  let sealSeed = $state('');
+  let passkeyPending = $state(false);
   let errorKind = $state<'required' | 'operation' | null>(null);
   let invitation = $state('');
   let authentication: AbortController | null = null;
@@ -51,6 +57,7 @@
     authentication?.abort();
     const controller = new AbortController();
     authentication = controller;
+    passkeyPending = true;
     if (!automatic) busy = true;
     errorKind = null;
     try {
@@ -64,6 +71,7 @@
         },
       });
       if (authentication !== controller) return;
+      passkeyPending = false;
       busy = true;
       if (
         !(credential instanceof PublicKeyCredential) ||
@@ -93,11 +101,42 @@
       ) {
         throw new Error('invalid response');
       }
+      publishVaultLock();
       location.assign(body.location);
     } catch {
       if (authentication !== controller) return;
+      passkeyPending = false;
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
+      busy = false;
+    }
+  }
+
+  async function deny(): Promise<void> {
+    if (busy || enrollment || ownerLogin) return;
+    authentication?.abort();
+    authentication = null;
+    passkeyPending = false;
+    busy = true;
+    errorKind = null;
+    try {
+      const result = await fetch('/login/deny', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tx }),
+      });
+      if (!result.ok) throw new Error('rejected');
+      const body: unknown = await result.json();
+      if (
+        typeof body !== 'object' ||
+        body === null ||
+        !('location' in body) ||
+        typeof body.location !== 'string'
+      )
+        throw new Error('invalid response');
+      location.assign(body.location);
+    } catch {
+      errorKind = 'operation';
       busy = false;
     }
   }
@@ -110,6 +149,7 @@
     }
     authentication?.abort();
     authentication = null;
+    passkeyPending = false;
     busy = true;
     errorKind = null;
     try {
@@ -172,6 +212,7 @@
       )
         throw new Error('invalid response');
       invitation = '';
+      publishVaultLock();
       location.assign(body.location);
     } catch {
       errorKind = 'operation';
@@ -205,26 +246,17 @@
         pageLabel={m.authOriginLabel()}
         rpLabel={m.authRpOriginLabel()}
         hint={m.authOriginHint()}
+        onSeed={(value) => {
+          if (!busy && !passkeyPending) sealSeed = value;
+        }}
       />
     </div>
-    <div class="auth-art" aria-hidden="true">
-      <div class="auth-art-ring auth-art-ring-outer"></div>
-      <div class="auth-art-ring auth-art-ring-inner"></div>
-      <div class="auth-art-core">
-        <svg viewBox="0 0 64 64" fill="none">
-          <circle cx="27" cy="27" r="11" stroke="currentColor" stroke-width="4" />
-          <path
-            d="M35 35 52 52m-7-7 5-5m-1 9 5-5"
-            stroke="currentColor"
-            stroke-width="4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </div>
-      <span class="auth-art-label auth-art-label-top">PASSKEY</span>
-      <span class="auth-art-label auth-art-label-bottom">FIDO2 / WebAuthn</span>
-    </div>
+    <LivingSeal
+      seed={sealSeed || tx}
+      pageOrigin={location.origin}
+      rpOrigin={new URL(rpUri).origin}
+      paused={busy || passkeyPending}
+    />
     <p class="auth-story-footer">MIKAKI <span aria-hidden="true">/</span> PASSKEY IDENTITY</p>
   </section>
 
@@ -253,7 +285,7 @@
           <p class="auth-card-lead" id="invite-help">{m.authInviteHelp()}</p>
         {:else}
           <h2 id="auth-action-title">{m.login()}</h2>
-          <p class="auth-card-lead">{m.authCheckApp()}</p>
+          <p class="auth-card-lead">{ownerLogin ? m.agentOwnerLoginLead() : m.authCheckApp()}</p>
           <div class="auth-client">
             <span class="auth-client-icon" aria-hidden="true"
               >{client.slice(0, 1).toUpperCase()}</span
@@ -263,7 +295,9 @@
               <strong class="auth-client-name">{client}</strong>
             </span>
           </div>
-          <p class="auth-description">{m.loginConsentDescription()}</p>
+          <p class="auth-description">
+            {ownerLogin ? m.agentOwnerLoginDescription() : m.loginConsentDescription()}
+          </p>
           <button
             class="auth-primary"
             id="passkey"
@@ -281,9 +315,16 @@
                 stroke-linejoin="round"
               />
             </svg>
-            <span>{busy ? m.busy() : m.loginAuthorize()}</span>
+            <span
+              >{busy ? m.busy() : ownerLogin ? m.agentOwnerLoginAction() : m.loginAuthorize()}</span
+            >
             <span class="auth-button-arrow" aria-hidden="true">→</span>
           </button>
+          {#if !ownerLogin}
+            <button class="auth-secondary" id="deny" type="button" disabled={busy} onclick={deny}>
+              <span>{m.loginDeny()}</span><span aria-hidden="true">→</span>
+            </button>
+          {/if}
           <div class="auth-separator" aria-hidden="true"><span></span><i></i><span></span></div>
           <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
           <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>

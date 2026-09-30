@@ -126,6 +126,7 @@ const entries = readdirSync(path('target/fido-metadata'))
 for (const file of readdirSync(path('target/fido-mds')).filter((n) => n.endsWith('.json'))) {
   const input = JSON.parse(readFileSync(path(`target/fido-mds/${file}`), 'utf8'));
   input.now = Math.floor(Date.now() / 1000);
+  input.profile = process.env.FIDO_MDS_PROFILE ?? 'mds3.1.1';
   try {
     entries.push(...JSON.parse(wasm.verify_mds(JSON.stringify(input))).entries);
   } catch {

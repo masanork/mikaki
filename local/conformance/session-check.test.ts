@@ -76,17 +76,9 @@ test('session check authenticates its RP, binds sid, and observes D1 revocation 
         'pairwise-sub',
         1,
       ),
-      DB.prepare('INSERT INTO authorization_code VALUES(?,?,?,?,?,?,?,?,?)').bind(
-        codeHash,
-        clientId,
-        'owned-sid',
-        1,
-        redirectUri,
-        '',
-        now + 60,
-        'exchange',
-        now,
-      ),
+      DB.prepare(
+        'INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      ).bind(codeHash, clientId, 'owned-sid', 1, redirectUri, '', now + 60, 'exchange', now),
       DB.prepare(
         'INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked) VALUES(?,?,?,?,?,?,0)',
       ).bind(codeHash, 'exchange', accessHash, now + 60, 'op-key', now),

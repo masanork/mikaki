@@ -6,7 +6,7 @@ The local runner demonstrates a disposable end-to-end slice: invitation enrollme
 
 - Node.js matching [.node-version](../.node-version)
 - Rust matching [rust-toolchain.toml](../rust-toolchain.toml)
-- Python 3.14
+- Python 3.14 only for independent attestation fixture regeneration
 - `wasm-pack` 0.15.0
 - A browser that treats loopback HTTP as a secure context for WebAuthn
 
@@ -30,6 +30,21 @@ npm run test:e2e
 npm run check:node
 npm run check:ui
 npm run check:i18n
+npm run check:docs
 ```
 
 The local runner's TypeScript OP adapter, test RP, D1 fixtures, and generated configuration are verification tools. They do not establish that the production Rust Worker has passed the same browser flow. For the exact deployed capabilities and test results, see [status](status.md). For code organization and review expectations, see [contributing](contributing.md).
+
+## Product Worker UI checks
+
+The production-source account and Vault screens have a separate local workerd/Chromium check:
+
+```sh
+npm run check:worker-ui
+worker-build --release crates/worker
+npx playwright install chromium
+npm run test:product-ui
+npm run preview:product-ui
+```
+
+Install `worker-build` 0.8.6 to run that build command. The screenshot command uses disposable local data and mocked PRF. See [product previews](product-ui-preview.md) and [quality gates](product-quality.md); it does not establish a production deployment or real-device compatibility.

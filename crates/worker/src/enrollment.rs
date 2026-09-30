@@ -136,7 +136,7 @@ pub async fn complete(
     worker::Response::builder()
         .with_header("Cache-Control","no-store")?
         .with_header("Referrer-Policy","no-referrer")?
-        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
+        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
         .from_html(html)
 }
 

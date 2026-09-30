@@ -23,6 +23,14 @@ function httpsUri(value: unknown) {
 
 export function validateRegistration(input: unknown) {
   exactKeys(input, ['client_id', 'sector_identifier', 'redirect_uris', 'key']);
+  return { ...validateRegistrationIdentity(input), key: validateKey(input.key) };
+}
+
+function validateRegistrationIdentity(input: {
+  client_id: unknown;
+  sector_identifier: unknown;
+  redirect_uris: unknown;
+}) {
   if (
     typeof input.client_id !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.client_id)
@@ -50,8 +58,38 @@ export function validateRegistration(input: unknown) {
     client_id: input.client_id,
     sector_identifier: input.sector_identifier,
     redirect_uris: uris.map((uri) => uri.href),
-    key: validateKey(input.key),
   };
+}
+
+export function validateNativeRegistration(input: unknown) {
+  exactKeys(input, ['client_id', 'sector_identifier', 'redirect_uris']);
+  if (!Array.isArray(input.redirect_uris)) throw new Error('invalid redirect URI count');
+  const loopback = input.redirect_uris.some(
+    (value) => typeof value === 'string' && value.startsWith('http:'),
+  );
+  if (!loopback) return validateRegistrationIdentity(input);
+  const identity = validateRegistrationIdentity({
+    ...input,
+    redirect_uris: input.redirect_uris.map((value) => {
+      if (typeof value !== 'string') throw new Error('invalid loopback URI');
+      const uri = new URL(value);
+      if (
+        uri.protocol !== 'http:' ||
+        !['127.0.0.1', '[::1]'].includes(uri.hostname) ||
+        uri.port !== '0' ||
+        uri.pathname === '/' ||
+        uri.search ||
+        uri.hash ||
+        uri.username ||
+        uri.password ||
+        uri.href !== value
+      ) {
+        throw new Error('loopback registration requires an exact port-0 IP callback path');
+      }
+      return `https://${uri.hostname}${uri.pathname}`;
+    }),
+  });
+  return { ...identity, redirect_uris: input.redirect_uris };
 }
 
 export function validateKey(input: unknown) {
@@ -129,7 +167,7 @@ export async function registerClient(db: any, input: unknown, actor: string, rea
   await db.batch([
     db
       .prepare(
-        "INSERT INTO client(client_id,revision,active,auth_method,allow_missing_pkce,sector_identifier) VALUES(?,1,1,'private_key_jwt',0,?)",
+        "INSERT INTO client(client_id,revision,active,client_type,auth_method,allow_missing_pkce,sector_identifier) VALUES(?,1,1,'web','private_key_jwt',0,?)",
       )
       .bind(value.client_id, value.sector_identifier),
     ...value.redirect_uris.map((uri) =>
@@ -147,6 +185,25 @@ export async function registerClient(db: any, input: unknown, actor: string, rea
   return { clientId: value.client_id, operation: meta.operation };
 }
 
+export async function registerNativeClient(db: any, input: unknown, actor: string, reason: string) {
+  const value = validateNativeRegistration(input);
+  const meta = metadata(actor, reason);
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO client(client_id,revision,active,client_type,auth_method,allow_missing_pkce,sector_identifier) VALUES(?,1,1,'native','none',0,?)",
+      )
+      .bind(value.client_id, value.sector_identifier),
+    ...value.redirect_uris.map((uri) =>
+      db
+        .prepare('INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES(?,?)')
+        .bind(value.client_id, uri),
+    ),
+    audit(db, meta, value.client_id, 'register'),
+  ]);
+  return { clientId: value.client_id, operation: meta.operation, clientType: 'native' };
+}
+
 export async function addKey(
   db: any,
   clientId: string,
@@ -160,7 +217,7 @@ export async function addKey(
   await db.batch([
     db
       .prepare(
-        "INSERT INTO client_key(client_id,kid,revision,active,algorithm,public_key_sec1) SELECT client_id,?,1,1,'ES256',? FROM client WHERE client_id=? AND active=1",
+        "INSERT INTO client_key(client_id,kid,revision,active,algorithm,public_key_sec1) SELECT client_id,?,1,1,'ES256',? FROM client WHERE client_id=? AND active=1 AND client_type='web'",
       )
       .bind(key.kid, key.sec1, clientId),
     db

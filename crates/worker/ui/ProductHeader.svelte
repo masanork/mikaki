@@ -2,7 +2,11 @@
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import type { Locale } from './paraglide/runtime.js';
-  let { locale, session = true }: { locale: Locale; session?: boolean } = $props();
+  let {
+    locale,
+    session = true,
+    onlock,
+  }: { locale: Locale; session?: boolean; onlock?: () => void } = $props();
 </script>
 
 <header class="product-header">
@@ -29,6 +33,9 @@
           <option value="ja">日本語</option><option value="en">English</option>
         </select>
       </label>
+      {#if onlock}<button class="product-signout product-lock-button" type="button" onclick={onlock}
+          >{m.vaultSessionLockAction()}</button
+        >{/if}
       {#if session}<a class="product-signout" href="/logout?lang={locale}"
           >{m.logoutTitle()} <span aria-hidden="true">↗</span></a
         >{/if}

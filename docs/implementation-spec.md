@@ -70,6 +70,8 @@ Federation uses authenticated HTTPS between independently operated instances. Re
 
 ## 7. MCP and operating limits
 
+[ADR 0012](adr/0012-vault-protocol-boundaries.md) fixes MCP as an AI adapter boundary. Owner storage/recovery, OIDC profile release, proposed wallet presentation/issuance, and FileNode sync remain independent contracts; the [protocol review](vault-protocol-review.md) defines their adoption gates. Agent private drafts are not Vault writes. Future encrypted attribute changes require exact owner approval, owner-device encryption, and the same conditional domain commit as other storage clients.
+
 MCP begins with local or owner present list/search/read of selected archive content. Bind grant to recipient, operation, collection, expiry, and audit. The model cannot enlarge its own tool permissions through conversation text. An OIDC ID Token or access token does not unlock Vault keys. A remote unattended decrypting service requires an explicit separate recipient design and disclosure.
 
 Initial design limits include: ceremony TTL 300 seconds and 32 byte challenge with at most five finish failures; WebAuthn body 64 KiB and JSON/CBOR depth eight; at most 10 credentials per account with last active credential protected; Vault ciphertext snapshot 1 MiB and initial 100 MiB per owner; message text 8 KiB UTF-8 and delivery envelope 256 KiB; at most 20 unused KeyPackages per device, initially valid seven days; delivery expiry seven days with duplicate records retained at least another 24 hours. Revisit these against actual protocol/library/deployment constraints. No unconditional sync overwrite or automatic tombstone deletion. [OIDC operations](oidc-operations.md) owns OIDC limits and recovery policy.

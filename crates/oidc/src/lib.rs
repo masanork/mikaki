@@ -1,25 +1,35 @@
 //! Static confidential ES256 OIDC profile and typed protocol state.
 mod client_assertion;
 mod code;
+mod dpop;
 mod exchange;
 mod signing;
+#[cfg(test)]
+mod token_boundary_tests;
+mod vault_read;
 
 pub use client_assertion::{
     ClientAssertionKey, ClientAssertionPolicy, InvalidClientAssertion, VerifiedClientAssertion,
-    client_assertion_key_id,
+    client_assertion_audience, client_assertion_issuer, client_assertion_key_id,
 };
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
+pub use dpop::{DpopTarget, InvalidDpopProof, VerifiedDpopProof, verify_dpop_proof};
 pub use exchange::{
     AuthenticatedTokenEndpointInput, AuthorizationCodeExchange, CodeExchangeInput,
     InvalidAuthenticatedTokenEndpointInput, InvalidCodeExchange, InvalidTokenEndpointInput,
-    PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, TokenEndpointInput,
-    TokenEndpointInputError, ValidatedTokenEndpointInput,
+    PRIVATE_KEY_JWT_ASSERTION_TYPE, PresentedClientAssertion, PublicTokenEndpointInput,
+    TokenEndpointInput, TokenEndpointInputError, ValidatedPublicTokenEndpointInput,
+    ValidatedTokenEndpointInput,
 };
 pub use signing::{
     IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, LogoutTokenSigningInput,
     P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey,
+};
+pub use vault_read::{
+    DETAIL_TYPE as VAULT_READ_DETAIL_TYPE, InvalidVaultReadRequest, RESOURCE as VAULT_RESOURCE,
+    VaultReadRequest,
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
@@ -86,6 +96,12 @@ impl PreparedAuthorizationCode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAuthorization;
 
+enum AuthorizationProfile {
+    Core,
+    Fapi,
+    Vault,
+}
+
 impl Authorization {
     pub fn validate(
         &self,
@@ -105,6 +121,62 @@ impl Authorization {
         nonce_limit: usize,
         allow_missing_pkce: bool,
     ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        self.validate_with_options(
+            client_id,
+            redirect_uri,
+            state_limit,
+            nonce_limit,
+            allow_missing_pkce,
+            AuthorizationProfile::Core,
+        )
+    }
+
+    pub fn validate_for_fapi(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        self.validate_with_options(
+            client_id,
+            redirect_uri,
+            state_limit,
+            nonce_limit,
+            false,
+            AuthorizationProfile::Fapi,
+        )
+    }
+
+    pub fn validate_for_vault(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        if self.nonce.is_none() {
+            return Err(InvalidAuthorization);
+        }
+        self.validate_with_options(
+            client_id,
+            redirect_uri,
+            state_limit,
+            nonce_limit,
+            false,
+            AuthorizationProfile::Vault,
+        )
+    }
+
+    fn validate_with_options(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+        allow_missing_pkce: bool,
+        profile: AuthorizationProfile,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
         let challenge = B64
             .decode(&self.code_challenge)
             .map_err(|_| InvalidAuthorization)?;
@@ -117,8 +189,18 @@ impl Authorization {
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
-            || self.scope != "openid"
-            || self.state.is_empty()
+            || !(if matches!(profile, AuthorizationProfile::Vault) {
+                matches!(
+                    self.scope.as_str(),
+                    "openid vault.read" | "vault.read openid"
+                )
+            } else {
+                matches!(
+                    self.scope.as_str(),
+                    "openid" | "openid profile" | "profile openid"
+                )
+            })
+            || (!matches!(profile, AuthorizationProfile::Fapi) && self.state.is_empty())
             || self.state.len() > state_limit
             || self
                 .nonce
@@ -184,6 +266,38 @@ pub fn pkce(verifier: &str) -> Option<String> {
 mod tests {
     use super::*;
     #[test]
+    fn fapi_accepts_optional_state_and_order_independent_registered_scopes() {
+        let mut request = Authorization {
+            client_id: "client".into(),
+            redirect_uri: "https://app.example/callback".into(),
+            response_type: "code".into(),
+            scope: "openid profile".into(),
+            state: String::new(),
+            nonce: None,
+            code_challenge: pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
+            code_challenge_method: "S256".into(),
+        };
+        for scope in ["openid profile", "profile openid"] {
+            request.scope = scope.into();
+            assert!(
+                request
+                    .validate_for_fapi("client", "https://app.example/callback", 256, 256)
+                    .is_ok()
+            );
+            assert!(
+                request
+                    .validate("client", "https://app.example/callback", 256, 256)
+                    .is_err()
+            );
+        }
+        request.scope = "openid profile profile".into();
+        assert!(
+            request
+                .validate_for_fapi("client", "https://app.example/callback", 256, 256)
+                .is_err()
+        );
+    }
+    #[test]
     fn authorization_profile_rejects_redirect_scope_pkce_and_parameter_changes() {
         let mut request = Authorization {
             client_id: "client".into(),
@@ -198,6 +312,11 @@ mod tests {
         let validate =
             |r: &Authorization| r.validate("client", "https://app.example/callback", 256, 256);
         let validated = validate(&request).unwrap();
+        request.scope = "openid profile".into();
+        assert!(validate(&request).is_ok());
+        request.scope = "profile openid".into();
+        assert!(validate(&request).is_ok());
+        request.scope = "openid".into();
         assert_eq!(validated.client_id(), "client");
         assert_eq!(validated.redirect_uri(), "https://app.example/callback");
         assert_eq!(validated.state(), "state");

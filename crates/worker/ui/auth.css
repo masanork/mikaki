@@ -279,51 +279,116 @@ select {
   margin: 2rem 0 0 auto;
 }
 
-.auth-art-ring {
+/* Vector guilloche is the complete visual; GPU light is optional. */
+.auth-seal {
+  width: min(100%, 24rem);
+  height: auto;
+  aspect-ratio: 1.18;
+  margin-top: 1.5rem;
+  pointer-events: none;
+  contain: layout;
+}
+
+.auth-seal-vector,
+.auth-seal-light,
+.auth-seal-aura {
   position: absolute;
+  width: 88%;
+  height: auto;
+  aspect-ratio: 1;
   left: 50%;
   top: 50%;
-  border: 1px solid #acd8f35c;
-  border-radius: 50%;
   transform: translate(-50%, -50%);
 }
 
-.auth-art-ring-outer {
-  width: 16rem;
-  height: 16rem;
-  box-shadow:
-    0 0 0 2.8rem #9bd4f210,
-    0 0 0 5.6rem #9bd4f208;
+.auth-seal-aura {
+  border-radius: 50%;
+  background: radial-gradient(circle, #78dded16 0, #3977b018 43%, transparent 69%);
 }
 
-.auth-art-ring-inner {
-  width: 11rem;
-  height: 11rem;
-  border-style: dashed;
-  border-color: #b4e6fc8c;
+.auth-seal-light {
+  opacity: 0;
+  transition: opacity 1.2s ease;
 }
 
-.auth-art-core {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: grid;
-  width: 7.1rem;
-  height: 7.1rem;
-  place-items: center;
-  border: 1px solid #d0efff93;
-  border-radius: 1.8rem;
-  color: #e5f7ff;
-  background: linear-gradient(145deg, #4d96c7a8, #1c5687d9);
-  box-shadow:
-    0 1.4rem 3.5rem #00172a67,
-    inset 0 1px #ffffff64;
-  transform: translate(-50%, -50%) rotate(-9deg);
+.auth-seal[data-renderer='webgl'] .auth-seal-light {
+  opacity: 1;
 }
 
-.auth-art-core svg {
-  width: 3.3rem;
-  height: 3.3rem;
+.auth-seal-vector {
+  overflow: visible;
+  filter: hue-rotate(var(--seal-hue));
+}
+
+.auth-seal-boundary {
+  stroke: #a3daf64d;
+  stroke-width: 0.7;
+}
+
+.auth-seal-ticks {
+  stroke: #bae9fb80;
+  stroke-width: 3;
+  stroke-dasharray: 0.12 0.88;
+}
+
+.auth-seal-weave,
+.auth-seal-counterweave,
+.auth-seal-orbit {
+  transform-origin: 200px 200px;
+  animation: auth-seal-revolve 100s linear infinite;
+}
+
+.auth-seal-weave {
+  stroke: #75c8ed70;
+  stroke-width: 0.55;
+  rotate: var(--seal-phase);
+  transition: rotate 4s ease-in-out;
+}
+
+.auth-seal-weave .auth-seal-thread-accent {
+  stroke: #c1f5eeaa;
+}
+
+.auth-seal-counterweave {
+  stroke: #75b4e247;
+  stroke-width: 0.6;
+  animation-duration: 140s;
+  animation-direction: reverse;
+  rotate: calc(-1 * var(--seal-phase));
+  transition: rotate 4s ease-in-out;
+}
+
+.auth-seal-orbit {
+  stroke: #b5e9f7a6;
+  stroke-width: 1;
+  stroke-dasharray: 18 7 1 7;
+  animation-duration: 65s;
+}
+
+.auth-seal-mark rect {
+  fill: #daf5ff;
+  stroke: #ffffff8c;
+  stroke-width: 0.8;
+}
+.auth-seal-mark rect:nth-child(2) {
+  fill: #7ac8e9;
+}
+.auth-seal-mark rect:nth-child(3) {
+  fill: #54a2db;
+}
+.auth-seal-mark rect:nth-child(4) {
+  fill: #c1e7fa;
+}
+
+.auth-seal-paused :is(.auth-seal-weave, .auth-seal-counterweave, .auth-seal-orbit) {
+  animation-play-state: paused;
+  transition: none;
+}
+
+@keyframes auth-seal-revolve {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .auth-art-label {
@@ -764,8 +829,19 @@ select {
   .auth-session-tile {
     animation: none;
   }
-  .auth-session-pattern {
+  .auth-session-pattern,
+  .auth-seal-light,
+  .auth-seal-weave,
+  .auth-seal-counterweave {
     transition: none;
+  }
+  .auth-seal-weave,
+  .auth-seal-counterweave,
+  .auth-seal-orbit {
+    animation: none;
+  }
+  .auth-seal-light {
+    display: none;
   }
   .auth-session-tile {
     opacity: 1;

@@ -206,7 +206,7 @@ pub(super) async fn get(
         .with_header(
             "Content-Security-Policy",
             &format!(
-                "default-src 'none'; style-src 'self'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
+                "default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
             ),
         )?
         .with_header(
@@ -391,7 +391,7 @@ async fn confirm(
             .with_header("Referrer-Policy", "no-referrer")?
             .with_header(
                 "Content-Security-Policy",
-                "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
             )?
             .from_html(render_page(
                 &strings,
@@ -505,4 +505,19 @@ fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: 
     }
     html.push_str(remainder);
     html
+}
+
+pub(super) async fn script(
+    _request: worker::Request,
+    _context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_header("Content-Type", "text/javascript; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(
+            include_str!(concat!(env!("OUT_DIR"), "/logout.js"))
+                .as_bytes()
+                .to_vec(),
+        ))
 }

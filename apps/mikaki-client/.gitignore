@@ -1,0 +1,7 @@
+src-tauri/gen/schemas/
+node_modules/
+src-tauri/gen/android/keystore.properties
+src-tauri/gen/android/.kotlin/
+*.jks
+*.keystore
+src-tauri/target/

@@ -259,6 +259,28 @@ pub(super) fn verify(
             certificate::verify(&cert, -7, &message, bytes(statement, "sig")?)?;
             ("fido-u2f", "trusted", Some(trust))
         }
+        Some("android-key") => {
+            require(map.len() == 3 && algorithm(statement)? == key.algorithm())?;
+            let chain = certs(statement)?;
+            let (cert, trust) = trusted(ctx, data, &chain, false)?;
+            certificate::verify(&cert, key.algorithm(), &signed, bytes(statement, "sig")?)?;
+            require(key.matches_spki(cert.tbs_certificate().subject_public_key_info())?)?;
+            // A later certificate must not extend a key-attestation chain and forge
+            // another key description. Only the leaf may contain this extension.
+            for parent in chain.iter().skip(1) {
+                let parent = certificate::parse(parent)?;
+                require(
+                    !parent
+                        .tbs_certificate()
+                        .extensions()
+                        .into_iter()
+                        .flatten()
+                        .any(|e| e.extn_id.to_string() == "1.3.6.1.4.1.11129.2.1.17"),
+                )?;
+            }
+            android::verify(&cert, &hash)?;
+            ("android-key", "trusted", Some(trust))
+        }
         Some("tpm") => {
             require(map.len() == 6 && text_field(statement, "ver")?.as_text() == Some("2.0"))?;
             let chain = certs(statement)?;
@@ -280,6 +302,7 @@ pub(super) fn verify(
         trust,
     })
 }
+pub(crate) mod android;
 mod tpm;
 
 /// Untrusted lookup hint; register() independently matches the authenticated metadata.
