@@ -2310,6 +2310,7 @@ async fn authorization_interaction_response(
 
 /// RFC 8252 loopback registration uses port 0 as the exact registered
 /// template. Only the port may vary in the authorization request.
+#[cfg(target_arch = "wasm32")]
 fn loopback_redirect_template(actual: &str) -> Option<String> {
     let mut url = url::Url::parse(actual).ok()?;
     if url.scheme() != "http"

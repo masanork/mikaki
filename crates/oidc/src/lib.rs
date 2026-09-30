@@ -96,6 +96,12 @@ impl PreparedAuthorizationCode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAuthorization;
 
+enum AuthorizationProfile {
+    Core,
+    Fapi,
+    Vault,
+}
+
 impl Authorization {
     pub fn validate(
         &self,
@@ -121,8 +127,7 @@ impl Authorization {
             state_limit,
             nonce_limit,
             allow_missing_pkce,
-            false,
-            false,
+            AuthorizationProfile::Core,
         )
     }
 
@@ -139,8 +144,7 @@ impl Authorization {
             state_limit,
             nonce_limit,
             false,
-            true,
-            false,
+            AuthorizationProfile::Fapi,
         )
     }
 
@@ -160,8 +164,7 @@ impl Authorization {
             state_limit,
             nonce_limit,
             false,
-            false,
-            true,
+            AuthorizationProfile::Vault,
         )
     }
 
@@ -172,8 +175,7 @@ impl Authorization {
         state_limit: usize,
         nonce_limit: usize,
         allow_missing_pkce: bool,
-        fapi: bool,
-        vault: bool,
+        profile: AuthorizationProfile,
     ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
         let challenge = B64
             .decode(&self.code_challenge)
@@ -187,7 +189,7 @@ impl Authorization {
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
-            || !(if vault {
+            || !(if matches!(profile, AuthorizationProfile::Vault) {
                 matches!(
                     self.scope.as_str(),
                     "openid vault.read" | "vault.read openid"
@@ -198,7 +200,7 @@ impl Authorization {
                     "openid" | "openid profile" | "profile openid"
                 )
             })
-            || (!fapi && self.state.is_empty())
+            || (!matches!(profile, AuthorizationProfile::Fapi) && self.state.is_empty())
             || self.state.len() > state_limit
             || self
                 .nonce
