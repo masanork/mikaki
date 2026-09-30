@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandMark from './BrandMark.svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import type { Locale } from './paraglide/runtime.js';
@@ -12,9 +13,7 @@
 <header class="product-header">
   <div class="product-header-inner">
     <a class="auth-brand product-brand" href="/" aria-label="mikaki">
-      <span class="auth-mark" aria-hidden="true"
-        ><span></span><span></span><span></span><span></span></span
-      >
+      <BrandMark />
       mikaki
     </a>
     <span class="product-brand-tag">PRIVATE BY DESIGN</span>

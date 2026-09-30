@@ -30,7 +30,7 @@ export async function startNativeUiServer() {
     readFileSync(new URL('../src-tauri/tauri.conf.json', directory), 'utf8'),
   );
   const assets = new Map(
-    ['index.html', 'style.css', 'app.js'].map((name) => [
+    ['index.html', 'style.css', 'app.js', 'brand-icon.svg'].map((name) => [
       name,
       readFileSync(new URL(name, directory)),
     ]),
@@ -48,7 +48,9 @@ export async function startNativeUiServer() {
         ? 'text/javascript'
         : name.endsWith('.css')
           ? 'text/css'
-          : 'text/html',
+          : name.endsWith('.svg')
+            ? 'image/svg+xml'
+            : 'text/html',
       'Content-Security-Policy': config.app.security.csp,
     });
     response.end(data);

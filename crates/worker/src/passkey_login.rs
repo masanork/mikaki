@@ -231,7 +231,7 @@ pub(super) async fn get(
             .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
     };
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         owner_login = if login.owner_login == 1 {
             "true"
         } else {
@@ -257,7 +257,7 @@ pub(super) async fn get(
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header(
             "Content-Security-Policy",
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .from_html(html)
 }

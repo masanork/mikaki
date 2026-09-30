@@ -18,6 +18,19 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
+    for (const [path, contentType] of [
+      ['/favicon.svg', 'image/svg+xml'],
+      ['/favicon.ico', 'image/x-icon'],
+      ['/favicon-32x32.png', 'image/png'],
+    ]) {
+      const asset = await worker.fetch(`https://mikaki.test${path}`);
+      assert.equal(asset.status, 200);
+      assert.equal(asset.headers.get('Content-Type'), contentType);
+      assert.equal(asset.headers.get('X-Content-Type-Options'), 'nosniff');
+      assert.ok((await asset.arrayBuffer()).byteLength > 0);
+      const callbackHost = await worker.fetch(`https://mikaki-native.tossa.app${path}`);
+      assert.equal(callbackHost.status, 404, 'branding must not expand callback-host routes');
+    }
     const versionResponse = await worker.fetch('https://mikaki.test/version');
     assert.equal(versionResponse.status, 200);
     assert.equal(versionResponse.headers.get('Cache-Control'), 'no-store');

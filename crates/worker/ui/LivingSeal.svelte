@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import mark from '../../../branding/mikaki-mark.svg?raw';
+  const markBody = mark.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
   import { createSealLight } from './seal-light.js';
 
   let {
@@ -86,12 +88,9 @@
     </g>
     <circle class="auth-seal-boundary" cx="200" cy="200" r="72" />
     <circle class="auth-seal-orbit" cx="200" cy="200" r="80" pathLength="100" />
-    <g class="auth-seal-mark" transform="translate(200 200) rotate(-12)">
-      <rect x="-38" y="-38" width="33" height="33" rx="6" />
-      <rect x="5" y="-38" width="33" height="33" rx="6" />
-      <rect x="-38" y="5" width="33" height="33" rx="6" />
-      <rect x="5" y="5" width="33" height="33" rx="6" />
-    </g>
+    <svg class="auth-seal-mark" x="130" y="130" width="140" height="140" viewBox="0 0 1024 1024">
+      {@html markBody}
+    </svg>
   </svg>
   <span class="auth-art-label auth-art-label-top">MIKAKI / PASSKEY</span>
   <span class="auth-art-label auth-art-label-bottom">FIDO2 / WebAuthn</span>

@@ -16,6 +16,18 @@ test('native mobile UI keeps authentication and navigation consistent', async (t
       async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url);
         try {
+          assert.equal(
+            await page
+              .locator('img.brand-mark')
+              .evaluateAll((images) =>
+                images.every(
+                  (image) =>
+                    image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+                ),
+              ),
+            true,
+            'header and welcome logos must load',
+          );
           await page.locator('#login').click();
           await page.locator('#waiting').waitFor({ state: 'visible' });
           await page.evaluate(() => window.__nativeUiTest.complete());

@@ -97,25 +97,10 @@ a {
   letter-spacing: -0.07em;
 }
 .brand-mark {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  width: 24px;
-  height: 24px;
-  gap: 3px;
-  transform: rotate(-12deg);
-}
-.brand-mark span {
-  background: var(--accent);
-  border-radius: 3px;
-}
-.brand-mark span:nth-child(2) {
-  opacity: 0.7;
-}
-.brand-mark span:nth-child(3) {
-  opacity: 0.5;
-}
-.brand-mark span:nth-child(4) {
-  opacity: 0.85;
+  display: block;
+  flex: none;
+  width: 32px;
+  height: 32px;
 }
 .icon-button {
   display: grid;
@@ -210,12 +195,8 @@ h1 {
   margin: 0 auto 35px;
 }
 .welcome-art .brand-mark {
-  width: 62px;
-  height: 62px;
-  gap: 8px;
-}
-.welcome-art .brand-mark span {
-  border-radius: 9px;
+  width: 72px;
+  height: 72px;
 }
 .welcome-orbit {
   position: absolute;

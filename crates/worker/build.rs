@@ -3,6 +3,8 @@ use std::{env, fs, path::PathBuf, process::Command};
 fn main() {
     println!("cargo:rerun-if-env-changed=GITHUB_SHA");
     println!("cargo:rerun-if-changed=migrations");
+    println!("cargo:rerun-if-changed=../../branding");
+    println!("cargo:rerun-if-changed=ui/BrandMark.svelte");
     println!("cargo:rerun-if-changed=ui/login.ts");
     println!("cargo:rerun-if-changed=ui/auth.css");
     println!("cargo:rerun-if-changed=ui/product.css");
