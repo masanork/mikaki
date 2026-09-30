@@ -58,8 +58,38 @@ The recorded deployment has one administrator and an active narashi registration
 
 ## Local changes awaiting activation
 
-The 2026-09-29 [Vault and account UI](product-ui-preview.md), additional Passkey/typed-note flows, agent/OAuth endpoints, and optional DPoP/PAR work have local evidence only. This documentation review does not deploy them or apply migrations `0014`–`0022`. Validate schema, preserved secrets/service bindings, intended-device PRF, and RP callback/logout behavior as separate activation gates in [product quality](product-quality.md).
+The 2026-09-29 [Vault and account UI](product-ui-preview.md), additional Passkey/typed-note flows, agent/OAuth endpoints, and optional DPoP/PAR work originally had local evidence only. The 2026-09-30 native-client activation below deployed the committed OP code and applied migrations `0014`–`0029`. Intended-device PRF, completed RP callback/logout, agent user flows and native Vault unlock still require their separate qualification gates in [product quality](product-quality.md). Native Vault OAuth remains disabled.
 
 The new [release inventory and recovery rehearsal](release-and-recovery.md) checks local archive/migration bytes and documents activation records, backup boundaries and historical authority reconciliation. It does not promote CI-built bytes, create a production backup or execute a restore. Keep actual Worker versions, preserved bindings and RP/device results tied to a reviewed activation record.
 
 For a future attested release, use the [prepared upload directory](release-and-recovery.md) from the reusable build after trusted attestation verification. It contains both verified archives' pinned Wrangler dry-run bundles; verify that directory immediately before a reviewed `versions upload --no-bundle`. Record the returned version IDs and all bindings, then activate only the qualified versions. This path has local dry-run evidence only and has not changed the deployed Workers.
+
+## Native public client activation, 2026-09-30
+
+Following user approval, a clean checkout of commit
+`193264893675098ffea9c9f1737c1f7c8e485de0` supplied OP version
+`eeea96e0-12f6-4d14-993a-9b73e562e0e4` and Claim Worker version
+`381f73cf-94b2-4b1c-b7e7-28a35560cea3`, both activated at 100% after
+non-activating upload and binding inspection. A pre-update D1 Time Travel
+bookmark was recorded; migrations 0014–0029 were applied and verified.
+Account, credential, existing client and Vault-head counts were preserved,
+with no foreign-key violations. Runtime policy generation 2 was preserved.
+The signing secret was retained, and the new readiness token was provisioned
+both to the OP version and GitHub Actions. The Claim Worker update supplies
+the new OP's readiness dependency and retains its recipient Secret Store
+binding. See [native activation](native-client-activation.md) for versions,
+build hashes, public certificate and mobile registration audit operation.
+
+`mikaki-native.tossa.app` is now a deployed Custom Domain. It publishes
+Android association for the dedicated local device-verification signing
+certificate. It does not serve OP endpoints or a browser fallback callback.
+Apple association remains unconfigured. The mobile public client is active
+with PKCE mandatory, no client secret and its exact HTTPS callback.
+[Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36683839335)
+passed health, Discovery, JWKS, clean source/version identity, readiness 204
+and Android association/callback-host isolation. No installed-app Passkey
+completion, native app return or Vault ciphertext read is established by this
+activation. [Post-registration smoke](https://github.com/masanork/mikaki/actions/runs/36684240729)
+also confirmed that this mobile client reaches the OP's browser login using
+S256 PKCE, without completing authentication or token exchange.
+`MIKAKI_NATIVE_VAULT_OAUTH` remains unset.

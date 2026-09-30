@@ -43,8 +43,8 @@ second login, and process restart on each target desktop OS before release.
 
 The [activation checkpoint](../../docs/native-client-activation.md) records
 the inspected production state, prepared public registration, Android signing
-configuration and deployment prerequisites. The checked-in registration is
-not yet applied to production.
+configuration and deployment evidence. The checked-in registration is now
+applied to production; installed-app login still needs device qualification.
 
 Register a separate public mobile client with sector `mikaki-native.tossa.app` and
 exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.
@@ -59,10 +59,10 @@ fingerprint of the Android distribution signing certificate). Each
 `/.well-known/` association response is 404 until its corresponding valid
 value is configured. It must be publicly reachable over HTTPS on
 `mikaki-native.tossa.app`; redirects or a mismatched signing identity will prevent
-the OS from delivering the callback. The production Wrangler config includes
-that hostname as a second Custom Domain, but it has not been deployed; DNS
-currently returns NXDOMAIN. Register the new exact callback on the OP before
-building with its client ID. The callback host serves only the Apple and Android
+the OS from delivering the callback. That hostname was deployed as a second
+Custom Domain on 2026-09-30. Its Android association uses the dedicated local
+verification certificate; Apple association still awaits a Team ID. The mobile
+client registration is active. The callback host serves only the Apple and Android
 association documents; all other requests, including a browser fallback to
 the callback path, return 404 without cache or referrer disclosure.
 
