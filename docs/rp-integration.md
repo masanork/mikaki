@@ -1,6 +1,6 @@
 # Integrate a relying party
 
-This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. No production RP is registered yet. A Mikaki operator performs registration.
+This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. One RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A Mikaki operator registers each RP.
 
 ## 1. Register the RP
 
@@ -51,6 +51,6 @@ Recheck status when a protected request arrives after the lease deadline. A fail
 
 ## Current limits and acceptance checks
 
-Production Discovery advertises `end_session_endpoint` and `backchannel_logout_supported` / `backchannel_logout_session_supported`. The OP implements RP-Initiated Logout, exact logout-target registration, signed `logout+jwt` delivery, and minute-level outbox retry. The managed `/session/check` lease remains the revocation bound when an RP has no registered `backchannel_logout_uri`, or until a successful notification arrives. No production RP is registered yet, so deployed end-to-end Back-Channel verification is still open (see Issues #4 and #6). Recorded OP logout conformance notes live in [oidc-logout-conformance.md](oidc-logout-conformance.md).
+Production Discovery advertises `end_session_endpoint` and `backchannel_logout_supported` / `backchannel_logout_session_supported`. The OP implements RP-Initiated Logout, exact logout-target registration, signed `logout+jwt` delivery, and minute-level outbox retry. The managed `/session/check` lease remains the revocation bound when an RP has no registered `backchannel_logout_uri`, or until a successful notification arrives. End-to-end Back-Channel delivery and revocation with a production RP remain unverified (see Issues #4 and #6). Recorded OP logout conformance notes live in [oidc-logout-conformance.md](oidc-logout-conformance.md).
 
 Before connecting an RP, test login at the registered redirect, first approval, SSO reuse, rejection of invalid state/nonce/PKCE/signature/issuer/audience, code and assertion replay, another client's sid, revocation and expiry boundaries, temporary OP outage, multiple tabs, and delayed callbacks. See the [login transaction](oidc-login-flow.md), [session lifecycle](session-lifecycle.md), and [token and UserInfo contract](oidc-access-token-and-userinfo.md) for deeper design details.

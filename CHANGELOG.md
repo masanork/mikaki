@@ -31,7 +31,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Documentation
 
-- Recorded the current production deployment limits: no registered production account or RP, and no verified production Vault write or PRF unlock.
+- Updated the deployment runbook and status to reflect the production administrator, verified PRF-backed Vault write and unlock, one registered RP, and the remaining end-to-end checks. Distinguished the deployed Worker from newer code on `main`.
 - Kept conformance results separate from formal FIDO or OIDF certification claims.
 - Marked implemented behavior separately from design proposals and historical acceptance gates throughout the topic guides.
 
