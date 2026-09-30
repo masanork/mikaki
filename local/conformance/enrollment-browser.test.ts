@@ -181,7 +181,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.getByRole('button', { name: '招待で登録する' }).waitFor();
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor),
-      'rgb(244, 246, 248)',
+      'rgb(248, 249, 251)',
     );
     await page.getByLabel('招待コード').fill(invitation);
     await page.getByRole('button', { name: '招待で登録する' }).click();
@@ -273,7 +273,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       await page
         .locator('.auth-primary')
         .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(21, 92, 165)',
+      'rgb(23, 89, 173)',
     );
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('alert').waitFor();
@@ -345,6 +345,8 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       },
     ]);
     await page.goto(requiredHeader(afterLostResponse, 'location'));
+    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('alert').waitFor();
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.deepEqual(errors, []);
