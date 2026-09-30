@@ -227,6 +227,11 @@ async fn start_mobile_authorization(
             Nonce::new_random,
         )
         .set_pkce_challenge(challenge);
+    // Installed-device qualification can request fresh OP authentication using
+    // the standard OIDC parameter. Normal builds retain browser SSO behavior.
+    if option_env!("MIKAKI_MOBILE_LOGIN_PROMPT") == Some("login") {
+        authorization = authorization.add_extra_param("prompt", "login");
+    }
     if let Some(attribute) = vault_attribute.as_deref() {
         authorization = authorization
             .add_scope(Scope::new("vault.read".into()))

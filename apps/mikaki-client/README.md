@@ -75,6 +75,14 @@ delivery, Passkey authentication in the external browser, cancellation,
 wrong and duplicate callback parameters, and app restart on signed Android
 and iPhone builds. Compilation alone does not qualify this flow.
 
+For physical-device qualification, compile with
+`MIKAKI_MOBILE_LOGIN_PROMPT=login` to request fresh OP authentication using
+the standard [OIDC `prompt=login` parameter](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
+This also makes cancellation and pending-transaction expiry observable when
+the browser already has an SSO session. It does not select an authenticator
+or bypass user verification. Leave the variable unset in normal builds to
+retain browser SSO. The flag applies to mobile authorization requests only.
+
 The generated iOS entitlement contains `applinks:mikaki-native.tossa.app`. A signed
 physical-device build also needs an Apple development team and an association
 response containing that team's app identifier. This checkout has neither a
