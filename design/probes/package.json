@@ -12,6 +12,6 @@
     "@noble/post-quantum": "0.7.1",
     "cborg": "6.1.2",
     "jose": "6.2.12",
-    "wrangler": "4.136.2"
+    "wrangler": "4.144.0"
   }
 }
