@@ -22,7 +22,7 @@
         {
           "identifier": "local-main",
           "windows": ["main"],
-          "permissions": ["core:default"]
+          "permissions": ["core:default", "core:app:allow-set-app-theme"]
         }
       ],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'"

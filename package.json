@@ -47,7 +47,9 @@
     "release:inventory": "node scripts/release-inventory.ts create",
     "release:verify": "node scripts/release-inventory.ts verify",
     "release:prepare-upload": "node scripts/prepare-release-upload.ts create",
-    "release:verify-upload": "node scripts/prepare-release-upload.ts verify"
+    "release:verify-upload": "node scripts/prepare-release-upload.ts verify",
+    "test:mobile-ui": "node --test local/conformance/mobile-client-ui.test.ts",
+    "preview:mobile-ui": "node docs/mobile-ui-preview/capture.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.1",
