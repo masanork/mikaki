@@ -10,6 +10,7 @@
     "build:ui": "vite build --config local/ui/vite.config.ts",
     "build": "npm run build:policy && npm run build:wasm && npm run build:helpdesk && npm run build:ui",
     "test:e2e": "node --test --test-concurrency=1 local/test/*.test.ts",
+    "test:worker-browser": "node --test --test-concurrency=1 local/conformance/worker-ui.test.ts local/conformance/vault-share-browser.test.ts local/conformance/enrollment-browser.test.ts",
     "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json",
     "check:helpdesk": "node_modules/@typescript/native/bin/tsc --project crates/helpdesk-rp/tsconfig.json",
     "check:ui": "svelte-check --tsconfig local/ui/tsconfig.json --tsgo --fail-on-warnings",
