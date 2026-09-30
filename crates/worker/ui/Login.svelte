@@ -4,6 +4,7 @@
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import SessionCue from './SessionCue.svelte';
+  import LivingSeal from './LivingSeal.svelte';
   import type { Locale } from './paraglide/runtime.js';
 
   let {
@@ -26,6 +27,8 @@
     locale: Locale;
   } = $props();
   let busy = $state(false);
+  let sealSeed = $state('');
+  let passkeyPending = $state(false);
   let errorKind = $state<'required' | 'operation' | null>(null);
   let invitation = $state('');
   let authentication: AbortController | null = null;
@@ -54,6 +57,7 @@
     authentication?.abort();
     const controller = new AbortController();
     authentication = controller;
+    passkeyPending = true;
     if (!automatic) busy = true;
     errorKind = null;
     try {
@@ -67,6 +71,7 @@
         },
       });
       if (authentication !== controller) return;
+      passkeyPending = false;
       busy = true;
       if (
         !(credential instanceof PublicKeyCredential) ||
@@ -100,6 +105,7 @@
       location.assign(body.location);
     } catch {
       if (authentication !== controller) return;
+      passkeyPending = false;
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
       busy = false;
@@ -110,6 +116,7 @@
     if (busy || enrollment || ownerLogin) return;
     authentication?.abort();
     authentication = null;
+    passkeyPending = false;
     busy = true;
     errorKind = null;
     try {
@@ -142,6 +149,7 @@
     }
     authentication?.abort();
     authentication = null;
+    passkeyPending = false;
     busy = true;
     errorKind = null;
     try {
@@ -238,26 +246,17 @@
         pageLabel={m.authOriginLabel()}
         rpLabel={m.authRpOriginLabel()}
         hint={m.authOriginHint()}
+        onSeed={(value) => {
+          if (!busy && !passkeyPending) sealSeed = value;
+        }}
       />
     </div>
-    <div class="auth-art" aria-hidden="true">
-      <div class="auth-art-ring auth-art-ring-outer"></div>
-      <div class="auth-art-ring auth-art-ring-inner"></div>
-      <div class="auth-art-core">
-        <svg viewBox="0 0 64 64" fill="none">
-          <circle cx="27" cy="27" r="11" stroke="currentColor" stroke-width="4" />
-          <path
-            d="M35 35 52 52m-7-7 5-5m-1 9 5-5"
-            stroke="currentColor"
-            stroke-width="4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </div>
-      <span class="auth-art-label auth-art-label-top">PASSKEY</span>
-      <span class="auth-art-label auth-art-label-bottom">FIDO2 / WebAuthn</span>
-    </div>
+    <LivingSeal
+      seed={sealSeed || tx}
+      pageOrigin={location.origin}
+      rpOrigin={new URL(rpUri).origin}
+      paused={busy || passkeyPending}
+    />
     <p class="auth-story-footer">MIKAKI <span aria-hidden="true">/</span> PASSKEY IDENTITY</p>
   </section>
 

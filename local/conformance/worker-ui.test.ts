@@ -47,6 +47,28 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     let cueRequests = 0;
     let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      if (location.search.includes('pending-passkey')) {
+        Object.defineProperty(navigator.credentials, 'get', {
+          value({ signal }: { signal?: AbortSignal }) {
+            return new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener(
+                'abort',
+                () => reject(new DOMException('Aborted', 'AbortError')),
+                { once: true },
+              );
+            });
+          },
+        });
+      }
+      if (!location.search.includes('no-webgl')) return;
+      const original = HTMLCanvasElement.prototype.getContext;
+      Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+        value(this: HTMLCanvasElement, kind: string, ...args: unknown[]) {
+          return kind === 'webgl' ? null : Reflect.apply(original, this, [kind, ...args]);
+        },
+      });
+    });
     await page.route('https://mikaki.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (scripts.has(url.pathname)) {
@@ -116,6 +138,13 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       firstPattern,
     );
     assert.ok(cueRequests >= 2);
+    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
+    // A lost GPU context must leave the SVG and login controls available.
+    await page.locator('.auth-seal-light').evaluate((canvas) => {
+      canvas.dispatchEvent(new Event('webglcontextlost'));
+    });
+    await page.locator('.auth-seal[data-renderer="svg"]').waitFor();
+    assert.equal(await page.locator('#passkey').isEnabled(), true);
     const firstStyle = await page.locator('.auth-session-cue').getAttribute('style');
     await page.goto('https://mikaki.test/login?other-rp=1');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
@@ -128,6 +157,21 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         .evaluate((node) => getComputedStyle(node).backgroundColor),
       'rgb(23, 89, 173)',
     );
+    await page.goto('https://mikaki.test/login?pending-passkey=1');
+    await page.locator('.auth-seal-paused').waitFor();
+    assert.equal(
+      await page
+        .locator('.auth-seal-weave')
+        .evaluate((node) => getComputedStyle(node).animationPlayState),
+      'paused',
+    );
+    await page.locator('#passkey').click();
+    assert.equal(await page.locator('#passkey').isDisabled(), true);
+    assert.equal(await page.locator('.auth-seal-paused').count(), 1);
+    await page.goto('https://mikaki.test/login?no-webgl=1');
+    await page.locator('.auth-session-cue[data-cue-live="true"]').waitFor();
+    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
+    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
     assert.equal(await page.getByLabel('招待コード').getAttribute('aria-invalid'), 'true');
@@ -148,9 +192,17 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     );
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
     assert.equal(await page.locator('.auth-session-cue').getAttribute('data-cue-live'), 'false');
+    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
+    assert.equal(
+      await page
+        .locator('.auth-seal-weave')
+        .evaluate((node) => getComputedStyle(node).animationName),
+      'none',
+    );
     assert.equal(
       await page
         .locator('.auth-session-tile')
