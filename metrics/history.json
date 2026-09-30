@@ -610,15 +610,15 @@
   },
   {
     "date": "2026-09-30",
-    "commit": "f9d96f7",
+    "commit": "dbaa449",
     "code": {
-      "implementationLines": 14850,
+      "implementationLines": 14877,
       "testLines": 3499,
       "implementationFiles": 65,
       "testFiles": 10,
       "byLanguage": {
         "rust": {
-          "implementationLines": 9748,
+          "implementationLines": 9775,
           "testLines": 1617
         },
         "typescript": {
