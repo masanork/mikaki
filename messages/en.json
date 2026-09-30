@@ -89,5 +89,18 @@
   "enrollCompleteTitle": "mikaki registration complete",
   "enrollCompleteHeading": "Registration complete",
   "enrollCompleteBody": "You can now sign in to mikaki with your passkey.",
-  "enrollAdminLink": "Manage invitations"
+  "enrollAdminLink": "Manage invitations",
+  "logoutTitle": "Log out",
+  "logoutBody": "Log out of Mikaki and connected apps in this browser.",
+  "logoutCompleteTitle": "Logout complete",
+  "logoutCompleteHeading": "You have logged out",
+  "logoutInvalidRequest": "This logout request is invalid. Please start logout again.",
+  "productVaultLink": "Open Vault",
+  "productLogoutCompleteBody": "Your session in this browser has ended. To use mikaki again, sign in from a connected app.",
+  "productLogoutCancel": "Cancel logout",
+  "productHomeLink": "Back to mikaki",
+  "productAdminEyebrow": "ACCOUNT ADMINISTRATION",
+  "productReadyEyebrow": "READY TO GO",
+  "productSessionControl": "SESSION CONTROL",
+  "productSessionClosed": "SESSION CLOSED"
 }

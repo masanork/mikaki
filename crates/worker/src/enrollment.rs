@@ -128,7 +128,7 @@ pub async fn complete(
     let Some(row) = row else { return reject(401) };
     let strings = i18n::catalog(i18n::select(&request, None)?);
     let html = format!(
-        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title></head><body><div id=\"app\" data-admin=\"{}\"></div><script type=\"module\" src=\"/enroll/complete.js\"></script></body></html>",
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/ui/product.css\"></head><body><div id=\"app\" data-admin=\"{}\"></div><script type=\"module\" src=\"/enroll/complete.js\"></script></body></html>",
         strings.locale,
         i18n::html_escape(strings.message("enrollCompleteTitle")),
         if row.is_admin == 1 { "true" } else { "false" }
@@ -136,7 +136,7 @@ pub async fn complete(
     worker::Response::builder()
         .with_header("Cache-Control","no-store")?
         .with_header("Referrer-Policy","no-referrer")?
-        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
+        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
         .from_html(html)
 }
 

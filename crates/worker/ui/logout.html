@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{locale}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <link rel="stylesheet" href="/ui/product.css" />
+  </head>
+  <body data-session-state="{{session_state}}">
+    <header class="product-header">
+      <div class="product-header-inner">
+        <span class="auth-brand product-brand"
+          ><span class="auth-mark" aria-hidden="true"
+            ><span></span><span></span><span></span><span></span></span
+          >mikaki</span
+        >
+        <span class="product-brand-tag">PRIVATE BY DESIGN</span>
+        {{language}}
+      </div>
+    </header>
+    <main class="product-result-shell">
+      <div class="product-result">
+        <div class="product-result-icon {{icon_class}}" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            {{icon}}
+          </svg>
+        </div>
+        <span class="product-eyebrow">{{phase}}</span>
+        <h1>{{heading}}</h1>
+        <p>{{body}}</p>
+        {{action}}
+        <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
+      </div>
+    </main>
+  </body>
+</html>

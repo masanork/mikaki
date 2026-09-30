@@ -16,12 +16,19 @@ struct TransactionRow {
     state: String,
 }
 
-fn invalid() -> worker::Result<worker::Response> {
+fn invalid(request: &worker::Request) -> worker::Result<worker::Response> {
+    let ui_locales = request
+        .url()?
+        .query_pairs()
+        .find(|(key, _)| key == "ui_locales")
+        .map(|(_, value)| value.into_owned());
+    let strings = i18n::catalog(i18n::select(request, ui_locales.as_deref())?);
     Ok(worker::Response::builder()
         .with_status(400)
         .with_header("Cache-Control", "no-store")?
         .with_header("Content-Type", "text/plain; charset=utf-8")?
-        .fixed("Invalid logout request".as_bytes().to_vec()))
+        .with_header("Content-Language", strings.locale)?
+        .fixed(strings.message("logoutInvalidRequest").as_bytes().to_vec()))
 }
 
 fn optional_parameters(
@@ -45,14 +52,20 @@ pub(super) async fn get(
     let policy = WorkerRuntimePolicy::from_db(&db).await?;
     let url = request.url()?;
     if url.as_str().len() > policy.request_target_bytes() {
-        return invalid();
+        return invalid(&request);
     }
     let Some(params) = optional_parameters(
         url.query_pairs()
             .map(|(key, value)| (key.into_owned(), value.into_owned())),
-        &["id_token_hint", "post_logout_redirect_uri", "state"],
+        &[
+            "id_token_hint",
+            "post_logout_redirect_uri",
+            "state",
+            "ui_locales",
+            "lang",
+        ],
     ) else {
-        return invalid();
+        return invalid(&request);
     };
     let hint = params.get("id_token_hint").map(String::as_str);
     let redirect = params.get("post_logout_redirect_uri").map(String::as_str);
@@ -63,21 +76,21 @@ pub(super) async fn get(
             .is_some_and(|value| value.is_empty() || value.len() > policy.state_bytes().min(2048))
         || (redirect.is_some() && hint.is_none())
     {
-        return invalid();
+        return invalid(&request);
     }
     let redirect_origin = if let Some(redirect) = redirect {
         let Ok(redirect_url) = url::Url::parse(redirect) else {
-            return invalid();
+            return invalid(&request);
         };
         if redirect_url.scheme() != "https" || redirect_url.host().is_none() {
-            return invalid();
+            return invalid(&request);
         }
         redirect_url.origin().ascii_serialization()
     } else {
         String::new()
     };
     let Some(cookie) = browser_cookie(&request, "__Host-op-sso")? else {
-        return invalid();
+        return invalid(&request);
     };
     let cookie_hash = passkey_login::hash(&cookie);
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
@@ -128,7 +141,7 @@ pub(super) async fn get(
             .await?
     };
     let Some(matched) = matched else {
-        return invalid();
+        return invalid(&request);
     };
     let mut random = WorkersCryptoRandom;
     let csrf = passkey_login::random_secret(&mut random)?;
@@ -146,10 +159,46 @@ pub(super) async fn get(
     ])?
     .run()
     .await?;
-    let html = format!(
-        "<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><title>ログアウト</title><main><h1>ログアウト</h1><p>このブラウザーのMikakiと連携アプリからログアウトします。</p><form method=\"post\" action=\"/logout\"><input type=\"hidden\" name=\"csrf\" value=\"{csrf}\"><button type=\"submit\">ログアウト</button></form></main></html>"
+    let strings = i18n::catalog(i18n::select(
+        &request,
+        params.get("ui_locales").map(String::as_str),
+    )?);
+    let message = |key| i18n::html_escape(strings.message(key));
+    let other_locale = if strings.locale == "ja" { "en" } else { "ja" };
+    let other_label = if strings.locale == "ja" {
+        "English"
+    } else {
+        "日本語"
+    };
+    let mut language_url = url.clone();
+    language_url.set_query(None);
+    language_url
+        .query_pairs_mut()
+        .extend_pairs(params.iter().filter(|(key, _)| key.as_str() != "lang"))
+        .append_pair("lang", other_locale);
+    let language_path = format!(
+        "{}?{}",
+        language_url.path(),
+        language_url.query().unwrap_or_default()
     );
-    worker::Response::builder()
+    let language = format!(
+        "<nav class=\"product-toolbar\"><a href=\"{}\" class=\"product-signout\" lang=\"{}\" aria-label=\"{}\">{}</a></nav>",
+        i18n::html_escape(&language_path),
+        other_locale,
+        message("language"),
+        other_label,
+    );
+    let action = format!(
+        "<form method=\"post\" action=\"/logout?lang={}\"><input type=\"hidden\" name=\"csrf\" value=\"{}\"><button class=\"product-button product-primary\" type=\"submit\">{}</button></form><a class=\"product-button\" href=\"/vault?lang={}\">{}</a>",
+        strings.locale,
+        csrf,
+        message("logoutTitle"),
+        strings.locale,
+        message("productLogoutCancel"),
+    );
+    let html = render_page(&strings, false, &language, &action);
+    let mut response = worker::Response::builder()
+        .with_header("Content-Language", strings.locale)?
         .with_header("Content-Type", "text/html; charset=utf-8")?
         .with_header("Cache-Control", "no-store")?
         .with_header("Referrer-Policy", "origin")?
@@ -157,7 +206,7 @@ pub(super) async fn get(
         .with_header(
             "Content-Security-Policy",
             &format!(
-                "default-src 'none'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
+                "default-src 'none'; style-src 'self'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
             ),
         )?
         .with_header(
@@ -166,7 +215,15 @@ pub(super) async fn get(
                 "__Host-op-logout={csrf}; Max-Age={CONFIRM_TTL_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax"
             ),
         )?
-        .from_html(html)
+        .from_html(html)?;
+    response.headers_mut().append(
+        "Set-Cookie",
+        &format!(
+            "__Host-op-locale={}; Max-Age=31536000; Path=/; Secure; SameSite=Lax",
+            strings.locale
+        ),
+    )?;
+    Ok(response)
 }
 
 pub(super) async fn post(
@@ -174,14 +231,14 @@ pub(super) async fn post(
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
     let Some(content_type) = request.headers().get("content-type")? else {
-        return invalid();
+        return invalid(&request);
     };
     if !content_type.split(';').next().is_some_and(|value| {
         value
             .trim()
             .eq_ignore_ascii_case("application/x-www-form-urlencoded")
     }) {
-        return invalid();
+        return invalid(&request);
     }
     let db = context.env.d1("DB")?;
     let policy = WorkerRuntimePolicy::from_db(&db).await?;
@@ -189,30 +246,34 @@ pub(super) async fn post(
     let Some(values) = optional_parameters(
         url::form_urlencoded::parse(body.as_bytes())
             .map(|(key, value)| (key.into_owned(), value.into_owned())),
-        &["csrf", "id_token_hint", "post_logout_redirect_uri", "state"],
+        &[
+            "csrf",
+            "id_token_hint",
+            "post_logout_redirect_uri",
+            "state",
+            "ui_locales",
+        ],
     ) else {
-        return invalid();
+        return invalid(&request);
     };
     if values.contains_key("csrf") {
         if values.len() != 1 || !vault_attributes::same_origin(&request)? {
-            return invalid();
+            return invalid(&request);
         }
         return confirm(request, context, &db, &values["csrf"]).await;
     }
     // A top-level cross-site POST does not carry the Lax SSO cookie. Convert
     // the validated form to a same-site GET before showing the confirmation.
     if request.url()?.query().is_some() {
-        return invalid();
+        return invalid(&request);
     }
     let mut destination = request.url()?;
     destination.set_query(None);
     if !values.is_empty() {
-        destination
-            .query_pairs_mut()
-            .extend_pairs(values.iter().map(|(key, value)| (key, value)));
+        destination.query_pairs_mut().extend_pairs(values.iter());
     }
     if destination.as_str().len() > policy.request_target_bytes() {
-        return invalid();
+        return invalid(&request);
     }
     Ok(worker::Response::builder()
         .with_status(303)
@@ -229,16 +290,16 @@ async fn confirm(
     csrf: &str,
 ) -> worker::Result<worker::Response> {
     if !passkey_login::valid_tx(csrf) {
-        return invalid();
+        return invalid(&request);
     }
     let (Some(csrf_cookie), Some(sso_cookie)) = (
         browser_cookie(&request, "__Host-op-logout")?,
         browser_cookie(&request, "__Host-op-sso")?,
     ) else {
-        return invalid();
+        return invalid(&request);
     };
     if !bool::from(csrf.as_bytes().ct_eq(csrf_cookie.as_bytes())) {
-        return invalid();
+        return invalid(&request);
     }
     let csrf_hash = passkey_login::hash(csrf);
     let cookie_hash = passkey_login::hash(&sso_cookie);
@@ -257,7 +318,7 @@ async fn confirm(
         .first::<TransactionRow>(None)
         .await?;
     let Some(transaction) = transaction else {
-        return invalid();
+        return invalid(&request);
     };
     let mut random = WorkersCryptoRandom;
     let event_id = passkey_login::random_secret(&mut random)?;
@@ -316,18 +377,32 @@ async fn confirm(
         ])
         .await;
     if result.is_err() {
-        return invalid();
+        return invalid(&request);
     }
     // The SSO is already revoked. A failed notification remains leased or
     // pending in the outbox and the minute cron retries it.
     let _ = logout_delivery::run_event(&context.env, &event_id).await;
     let mut response = if transaction.redirect_uri.is_empty() {
+        let strings = i18n::catalog(i18n::select(&request, None)?);
         worker::Response::builder()
+            .with_header("Content-Language", strings.locale)?
             .with_header("Content-Type", "text/html; charset=utf-8")?
             .with_header("Cache-Control", "no-store")?
             .with_header("Referrer-Policy", "no-referrer")?
-            .with_header("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'")?
-            .from_html("<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><title>ログアウト完了</title><main><h1>ログアウトしました</h1></main></html>")?
+            .with_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            )?
+            .from_html(render_page(
+                &strings,
+                true,
+                "",
+                &format!(
+                    "<a class=\"product-button\" href=\"/?lang={}\">{}</a>",
+                    strings.locale,
+                    i18n::html_escape(strings.message("productHomeLink")),
+                ),
+            ))?
     } else {
         let mut destination = url::Url::parse(&transaction.redirect_uri)
             .map_err(|_| worker::Error::RustError("invalid registered redirect".into()))?;
@@ -352,4 +427,82 @@ async fn confirm(
         "__Host-op-logout=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax",
     )?;
     Ok(response)
+}
+
+fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: &str) -> String {
+    let message = |key| i18n::html_escape(strings.message(key));
+    let template = include_str!("../ui/logout.html");
+    let values = [
+        (
+            "{{session_state}}",
+            if complete { "ended" } else { "confirm" }.to_owned(),
+        ),
+        ("{{locale}}", strings.locale.to_owned()),
+        (
+            "{{title}}",
+            message(if complete {
+                "logoutCompleteTitle"
+            } else {
+                "logoutTitle"
+            }),
+        ),
+        (
+            "{{heading}}",
+            message(if complete {
+                "logoutCompleteHeading"
+            } else {
+                "logoutTitle"
+            }),
+        ),
+        (
+            "{{body}}",
+            message(if complete {
+                "productLogoutCompleteBody"
+            } else {
+                "logoutBody"
+            }),
+        ),
+        (
+            "{{phase}}",
+            message(if complete {
+                "productSessionClosed"
+            } else {
+                "productSessionControl"
+            }),
+        ),
+        (
+            "{{icon_class}}",
+            if complete { "is-success" } else { "" }.to_owned(),
+        ),
+        (
+            "{{icon}}",
+            if complete {
+                "<path d=\"m5 12 4 4L19 6\"/>"
+            } else {
+                "<path d=\"M9 5H5v14h4M13 8l4 4-4 4M8 12h13\"/>"
+            }
+            .to_owned(),
+        ),
+        ("{{language}}", language.to_owned()),
+        ("{{action}}", action.to_owned()),
+    ];
+    let mut html = String::with_capacity(template.len() + 512);
+    let mut remainder = template;
+    while let Some(start) = remainder.find("{{") {
+        html.push_str(&remainder[..start]);
+        let tail = &remainder[start..];
+        let Some(end) = tail.find("}}") else {
+            html.push_str(tail);
+            return html;
+        };
+        let marker = &tail[..end + 2];
+        if let Some((_, value)) = values.iter().find(|(key, _)| *key == marker) {
+            html.push_str(value);
+        } else {
+            html.push_str(marker);
+        }
+        remainder = &tail[end + 2..];
+    }
+    html.push_str(remainder);
+    html
 }

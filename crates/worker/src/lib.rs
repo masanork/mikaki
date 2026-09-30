@@ -2416,6 +2416,7 @@ pub async fn main(
         .get_async("/login/cue", passkey_login::cue)
         .get_async("/login/login.js", passkey_login::script)
         .get_async("/login/login.css", passkey_login::stylesheet)
+        .get_async("/ui/product.css", passkey_login::product_stylesheet)
         .post_async("/login/finish", passkey_login::finish)
         .post_async("/register/start", enrollment::start)
         .post_async("/register/finish", enrollment::finish)
