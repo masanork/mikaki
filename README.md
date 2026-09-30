@@ -2,7 +2,7 @@
 
 Mikaki is an experimental passkey identity service built primarily in Rust. It combines a portable WebAuthn verifier with a shared account and OpenID Connect login for applications. Encrypted personal data and user-controlled sharing are being developed separately.
 
-> **Development prototype:** The OP Worker and one administrator account are deployed, and one production relying party is registered. Its complete sign-in, callback, session, and logout flow has not been verified in production. Do not use Mikaki to protect real user accounts. See [project status](docs/status.md) for verified behavior and release gaps.
+> **Development prototype:** The OP Worker and one administrator account are deployed. One web RP and one native public client are registered, but neither has a verified production sign-in and callback. Do not use Mikaki to protect real user accounts. See [project status](docs/status.md) for verified behavior and release gaps.
 
 ## Start here
 

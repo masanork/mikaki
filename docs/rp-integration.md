@@ -1,6 +1,6 @@
 # Integrate a relying party
 
-This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. One RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A Mikaki operator registers each RP.
+This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. One web RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A separate native public client is also registered; its client authentication and callback rules differ from this server-side guide. A Mikaki operator registers each RP.
 
 ## 1. Register the RP
 

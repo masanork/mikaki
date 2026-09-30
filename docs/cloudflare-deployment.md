@@ -26,19 +26,24 @@ Later on 2026-09-27, a narashi RP login exposed three pending production D1 migr
 
 ## Current production snapshot (checked 2026-09-30)
 
-The latest observed production OP Worker deployment is version `4046b879-ae02-4b7d-9600-b5dc01827ddf` from 2026-09-27. The checked `main` commit is `50d33c708456b50c85ebaeaca9339207c028f860`; it includes the account-page and Vault UI changes from PRs [#27](https://github.com/masanork/mikaki/pull/27) and [#29](https://github.com/masanork/mikaki/pull/29), which have **not** been deployed. The [main CI run](https://github.com/masanork/mikaki/actions/runs/36674749225) passed. The [manual production smoke run](https://github.com/masanork/mikaki/actions/runs/36676769445) passed health, Discovery, and JWKS checks against the running deployment; it does not verify an authenticated flow or identify the running source commit.
+The active production OP Worker is version `eeea96e0-12f6-4d14-993a-9b73e562e0e4`, activated on 2026-09-30 from clean source commit `193264893675098ffea9c9f1737c1f7c8e485de0` on draft PR [#28](https://github.com/masanork/mikaki/pull/28). The UserInfo Claim Worker was also updated to `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. The active OP source descends from the account-page and Vault UI changes in PRs [#27](https://github.com/masanork/mikaki/pull/27) and [#29](https://github.com/masanork/mikaki/pull/29), so those changes are deployed. The [version-aware public smoke](https://github.com/masanork/mikaki/actions/runs/36683839335) checked the exact Worker version and source commit, health, Discovery, JWKS, authenticated readiness, and Android association. A [post-registration smoke](https://github.com/masanork/mikaki/actions/runs/36684240729) passed after the native client was added. These checks do not complete a Passkey login or RP callback.
 
-Production D1 reported no pending repository migrations through `0013`. It has one active managed RP; the other active `client` row is the internal enrollment client and must not be counted as an RP. The `OP_PRIVATE_JWK` secret binding was listed, and an ignored, mode-0600 local secrets file was available for a dry run from the checked commit. A dry run built the bundle and listed `DB`, `VAULT_BLOBS`, `USERINFO_CLAIMS`, `MIKAKI_ISSUER`, and `OP_PRIVATE_JWK`. It did not deploy or prove that the secret value and authenticated paths work. The local-network TLS reset still prevents an owner-browser production check from here.
+Production D1 has no pending migrations through `0029` in the native-enabled source. A read-only count found one active web RP and one active native public client, excluding the internal enrollment client. The OP secret list contains `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN`. Android App Links were verified on a signed Pixel test install, but external-browser Passkey completion and app return remain unverified. Native Vault OAuth is disabled. The [main CI run](https://github.com/masanork/mikaki/actions/runs/36680537354) passed, but current `main` does not contain the native Worker code, production config, or migrations `0014`–`0029`.
+
+**Do not deploy current `main` to production.** Its older config would replace the native-enabled Worker, remove the callback Custom Domain and readiness binding, and leave a code/schema mismatch. Reconcile and qualify the native source on `main` before a new deployment. A migration list run from an old checkout only compares that checkout's migration files; “no migrations to apply” there does not mean its code matches the newer production schema.
 
 Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md).
 
 ## Deploy a reviewed commit
 
-Run the following from the repository root, using the exact reviewed commit in a clean checkout. Record that commit and the current Worker version before changing production. The commands below use the repository-pinned Wrangler and the production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists and is mode 0600. Never commit or print the file or its values.
+Run the following from the repository root, using an exact reviewed commit in a clean checkout that preserves the active native capabilities and schema. Record that commit and the current Worker version before changing production. The guards below must pass; they intentionally fail on current `main`. The commands use the repository-pinned Wrangler and production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists, contains both required secret names, and is mode 0600. Never commit or print the file or its values.
 
 ```sh
 git status --short
 git rev-parse HEAD
+test -f crates/worker/migrations/0029_native_vault_token_context.sql
+rg -q 'MIKAKI_READY_TOKEN' crates/worker/wrangler.production.jsonc
+rg -q 'mikaki-native.tossa.app' crates/worker/wrangler.production.jsonc
 MIKAKI_SECRETS_FILE=local/generated/mikaki-production-secrets.json
 test -f "$MIKAKI_SECRETS_FILE"
 npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
@@ -54,7 +59,7 @@ npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.produ
 npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
 ```
 
-Build and run a dry run from that same commit. Confirm the output lists the expected D1, R2, service, issuer, and `OP_PRIVATE_JWK` bindings. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
+Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
 
 ```sh
 design/probes/workers-rs/target/tools/bin/worker-build --release crates/worker
@@ -62,7 +67,7 @@ npx wrangler deploy --dry-run --config crates/worker/wrangler.production.jsonc \
   --secrets-file "$MIKAKI_SECRETS_FILE"
 ```
 
-Deploy the same bundle with the private JWK included in the **same** Worker version. Cloudflare documents [`--secrets-file`](https://developers.cloudflare.com/workers/configuration/secrets/) for uploading secrets alongside code. An earlier deployment without this flag omitted `OP_PRIVATE_JWK`; confirm the binding appears in the deploy output and record the new version ID.
+Deploy the same bundle with both secrets included in the **same** Worker version. Cloudflare documents [`--secrets-file`](https://developers.cloudflare.com/workers/configuration/secrets/) for uploading secrets alongside code. An earlier deployment without this flag omitted `OP_PRIVATE_JWK`; confirm both secret bindings appear in the deploy output and record the new version ID. Preserve the Claim Worker compatibility and callback-domain routing. Follow the native activation record on draft PR [#28](https://github.com/masanork/mikaki/pull/28) for version-matched readiness checks before activating another native-enabled version.
 
 ```sh
 npx wrangler deploy --config crates/worker/wrangler.production.jsonc \
@@ -82,4 +87,4 @@ Before calling the rollout complete, run an owner-browser check on the intended 
 
 If the Worker fails, inspect the deployment and use the [Worker rollback procedure](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) with a version compatible with the current D1 schema. A Worker rollback does not restore D1. A D1 Time Travel restore overwrites the database in place; assess data loss and coordinate it separately before using the recorded bookmark. Neither rollback substitutes for checking the RP and Vault after recovery.
 
-This deployment has no tested recovery path or fully verified production RP flow. Do not treat its availability as a user-ready launch or an OIDF certification result.
+This deployment has no tested recovery path or fully verified production web or native RP flow. Do not treat its availability as a user-ready launch or an OIDF certification result.
