@@ -13,7 +13,7 @@
   import { fetchVerifiedUserInfoRecipient } from './recipient-directory.js';
   import { sealUserInfoDataKey } from './vault-recipient-envelope.js';
   import * as m from './paraglide/messages.js';
-  import { switchLocale } from './locale.js';
+  import ProductHeader from './ProductHeader.svelte';
   import type { Locale } from './paraglide/runtime.js';
 
   type RecordResponse = SealedAttribute & { revision: number };
@@ -72,9 +72,11 @@
   let pendingRelease: PendingRelease | null = null;
   let opened = $state(false);
   let loading = $state(true);
+  let loadFailed = $state(false);
   let pending: Pending | null = null;
   let name = $state('');
   let status = $state(m.vaultLoading());
+  let activeSection = $state(location.hash === '#connections' ? 'connections' : 'profile');
 
   function message(value: string): void {
     status = value;
@@ -182,6 +184,7 @@
 
   async function load(): Promise<void> {
     loading = true;
+    loadFailed = false;
     opened = false;
     current = null;
     currentRevision = 0;
@@ -333,7 +336,21 @@
       await load();
       message(method === 'PUT' ? m.vaultSaved() : m.vaultDeleted());
     } catch (error) {
+      if (loading) {
+        loading = false;
+        loadFailed = true;
+      }
       message(error instanceof Error ? error.message : m.vaultOperationFailed());
+    }
+  }
+
+  async function reload(): Promise<void> {
+    try {
+      await load();
+    } catch (error) {
+      loading = false;
+      loadFailed = true;
+      message(error instanceof Error ? error.message : m.vaultLoadFailed());
     }
   }
 
@@ -465,94 +482,140 @@
   }
 
   onMount(() => {
-    void load().catch((error: unknown) => {
-      message(error instanceof Error ? error.message : m.vaultLoadFailed());
-    });
+    void reload();
   });
 </script>
 
-<main>
-  <label
-    >{m.language()}
-    <select
-      aria-label={m.language()}
-      value={locale}
-      onchange={(event) => switchLocale(event.currentTarget.value)}
-    >
-      <option value="ja">日本語</option>
-      <option value="en">English</option>
-    </select>
-  </label>
-  <h1>{m.vaultHeading()}</h1>
-  <p>{m.vaultIntro()}</p>
-  <label for="name">{m.vaultName()}</label>
-  <input
-    id="name"
-    type="text"
-    maxlength="256"
-    autocomplete="name"
-    disabled={!opened}
-    bind:value={name}
-  />
-  <button id="unlock" type="button" disabled={opened || loading} onclick={unlock}
-    >{m.vaultUnlock()}</button
-  >
-  <button id="save" type="button" disabled={!opened} onclick={() => mutate('PUT')}
-    >{m.vaultSave()}</button
-  >
-  <button
-    id="delete"
-    type="button"
-    disabled={!opened || current === null}
-    onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
-  >
-  {#if sharing?.enabled && current}
-    <p>
-      {m.vaultShareExplanation({
-        expiry: new Date(
-          sharing.active && sharing.expires_at
-            ? sharing.expires_at * 1000
-            : Date.now() + sharing.grant_ttl_seconds * 1000,
-        ).toLocaleString(locale),
-      })}
-    </p>
-    {#if sharing.active}
-      <p>{m.vaultShareActive()}</p>
-      <button type="button" disabled={!opened} onclick={() => changeShare('DELETE')}
-        >{m.vaultShareRevoke()}</button
+<svelte:window
+  onhashchange={() => {
+    activeSection = location.hash === '#connections' ? 'connections' : 'profile';
+  }}
+/>
+<ProductHeader {locale} />
+<main class="product-main">
+  <div class="product-heading">
+    <span class="product-eyebrow">{m.productVaultEyebrow()}</span>
+    <h1>{m.vaultHeading()}</h1>
+    <p>{m.productVaultHint()}</p>
+  </div>
+  <div class="product-workspace">
+    <nav class="product-nav" aria-label={m.vaultHeading()}>
+      <a href="#profile" aria-current={activeSection === 'profile' ? 'location' : undefined}
+        ><span aria-hidden="true">01</span>{m.productProfile()}</a
       >
-    {:else}
-      <button type="button" disabled={!opened} onclick={() => changeShare('POST')}
-        >{m.vaultShare()}</button
+      <a href="#connections" aria-current={activeSection === 'connections' ? 'location' : undefined}
+        ><span aria-hidden="true">02</span>{m.productConnections()}</a
       >
-    {/if}
-  {/if}
-  {#if releases?.enabled && releases.clients.length > 0}
-    <section aria-label={m.vaultReleaseHeading()}>
-      <h2>{m.vaultReleaseHeading()}</h2>
-      <p>{m.vaultReleaseExplanation()}</p>
-      {#each releases.clients as client (client.client_id)}
-        <div>
-          <p>{client.sector_identifier} ({client.client_id})</p>
-          {#if client.release_active}
+    </nav>
+    <div class="product-content">
+      <section id="profile" aria-labelledby="profile-heading" aria-busy={loading}>
+        <div class="product-section-top">
+          <h2 id="profile-heading">{m.productProfile()}</h2>
+          <span class="product-lock-state" class:is-open={opened}
+            >{opened ? m.productUnlocked() : m.productLocked()}</span
+          >
+        </div>
+        <p>{m.vaultIntro()}</p>
+        <label for="name">{m.vaultName()}</label>
+        <input
+          id="name"
+          type="text"
+          maxlength="256"
+          autocomplete="name"
+          disabled={!opened}
+          aria-describedby="status"
+          bind:value={name}
+        />
+        <div class="product-actions">
+          <button
+            id="unlock"
+            class="product-primary"
+            type="button"
+            disabled={opened || loading || loadFailed}
+            onclick={unlock}>{m.vaultUnlock()}</button
+          >
+          <button
+            id="save"
+            class="product-primary"
+            type="button"
+            disabled={!opened}
+            onclick={() => mutate('PUT')}>{m.vaultSave()}</button
+          >
+          <button
+            id="delete"
+            class="product-danger"
+            type="button"
+            disabled={!opened || current === null}
+            onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
+          >
+          {#if loadFailed}<button type="button" onclick={reload}>{m.productReload()}</button>{/if}
+        </div>
+        <p id="status" role="status" aria-live="polite">{status}</p>
+      </section>
+      <section id="connections" aria-labelledby="connections-heading">
+        <h2 id="connections-heading">{m.productConnections()}</h2>
+        {#if sharing?.enabled && current}
+          <section aria-label={m.productNameSharing()}>
+            <h3>{m.productNameSharing()}</h3>
             <p>
-              {m.vaultReleaseUntil({
-                expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
+              {m.vaultShareExplanation({
+                expiry: new Date(
+                  sharing.active && sharing.expires_at
+                    ? sharing.expires_at * 1000
+                    : Date.now() + sharing.grant_ttl_seconds * 1000,
+                ).toLocaleString(locale),
               })}
             </p>
-            <button type="button" disabled={!opened} onclick={() => changeRelease(client, 'DELETE')}
-              >{m.vaultReleaseRevoke()}</button
-            >
-          {:else}
-            <button
-              type="button"
-              disabled={!opened || !releases.share_active}
-              onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
-            >
-          {/if}
-        </div>
-      {/each}
-    </section>
-  {/if}
-  <p id="status" role="status">{status}</p>
+            {#if sharing.active}
+              <p role="status">{m.vaultShareActive()}</p>
+              <button type="button" disabled={!opened} onclick={() => changeShare('DELETE')}
+                >{m.vaultShareRevoke()}</button
+              >
+            {:else}
+              <button type="button" disabled={!opened} onclick={() => changeShare('POST')}
+                >{m.vaultShare()}</button
+              >
+            {/if}
+          </section>
+        {/if}
+        {#if releases?.enabled && releases.clients.length > 0}
+          <section aria-label={m.vaultReleaseHeading()}>
+            <h3>{m.vaultReleaseHeading()}</h3>
+            <p>{m.vaultReleaseExplanation()}</p>
+            {#each releases.clients as client (client.client_id)}
+              <div class="product-release-client">
+                <p>{client.sector_identifier} ({client.client_id})</p>
+                {#if client.release_active}
+                  <p>
+                    {m.vaultReleaseUntil({
+                      expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
+                    })}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!opened}
+                    onclick={() => changeRelease(client, 'DELETE')}>{m.vaultReleaseRevoke()}</button
+                  >
+                {:else}
+                  <button
+                    type="button"
+                    disabled={!opened || !releases.share_active}
+                    onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
+                  >
+                {/if}
+              </div>
+            {/each}
+          </section>
+        {/if}
+        {#if loading}
+          <p>{m.vaultLoading()}</p>
+        {:else if loadFailed}
+          <p>{m.vaultLoadFailed()}</p>
+        {:else if !(sharing?.enabled && current) && !(releases?.enabled && releases.clients.length > 0)}
+          <p>{m.productConnectionsEmpty()}</p>
+        {/if}
+      </section>
+    </div>
+  </div>
+  <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
 </main>

@@ -32,16 +32,16 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await DB.batch([
       DB.prepare("INSERT INTO account_security(account_id,epoch,active) VALUES('account',1,1)"),
       DB.prepare(
-        "INSERT INTO credential(credential_id,account_id,active) VALUES('credential','account',1)",
+        "INSERT INTO credential(credential_id,account_id,active) VALUES('Y3JlZGVudGlhbA','account',1)",
       ),
       DB.prepare(
-        "INSERT INTO passkey_credential(credential_id,public_key,user_handle,counter,backup_eligible,backup_state,revision) VALUES('credential','public-key','user-handle',0,0,0,1)",
+        "INSERT INTO passkey_credential(credential_id,public_key,user_handle,counter,backup_eligible,backup_state,revision) VALUES('Y3JlZGVudGlhbA','public-key','user-handle',0,0,0,1)",
       ),
       DB.prepare("INSERT INTO account_role(account_id,role,active) VALUES('account','admin',1)"),
       DB.prepare('INSERT INTO sso_session VALUES(?,?,?,?,?,0)').bind(
         'session',
         'account',
-        'credential',
+        'Y3JlZGVudGlhbA',
         1,
         now + 3600,
       ),
@@ -93,6 +93,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         ['/admin?lang=ja', '招待を発行'],
         ['/enroll/complete?lang=en', 'Registration complete'],
         ['/logout?lang=ja', 'ログアウト'],
+        ['/vault?lang=en', 'Vault'],
       ]) {
         await page.goto(`${issuer}${path}`);
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();

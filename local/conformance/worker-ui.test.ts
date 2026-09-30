@@ -15,7 +15,12 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     const scripts = new Map();
-    for (const path of ['/login/login.js', '/login/login.css', '/vault/vault.js']) {
+    for (const path of [
+      '/login/login.js',
+      '/login/login.css',
+      '/ui/product.css',
+      '/vault/vault.js',
+    ]) {
       const response = await worker.fetch(`https://mikaki.test${path}`);
       assert.equal(response.status, 200);
       scripts.set(path, await response.text());
@@ -24,6 +29,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     const page = await browser.newPage();
     const errors: string[] = [];
     let cueRequests = 0;
+    let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.route('https://mikaki.test/**', async (route) => {
       const url = new URL(route.request().url());
@@ -45,6 +51,11 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         return;
       }
       if (url.pathname === '/vault/session') {
+        if (vaultSessionFailures > 0) {
+          vaultSessionFailures -= 1;
+          await route.fulfill({ status: 503, body: '' });
+          return;
+        }
         await route.fulfill({ json: { credential_id: 'Y3JlZGVudGlhbA', account_id: 'owner' } });
         return;
       }
@@ -63,7 +74,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       if (url.pathname === '/vault') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><html lang="${locale}"><head><title>mikaki Vault</title></head><body><div id="app"></div><script type="module" src="/vault/vault.js"></script></body></html>`,
+          body: `<!doctype html><html lang="${locale}"><head><title>mikaki Vault</title><link rel="stylesheet" href="/ui/product.css"></head><body><div id="app"></div><script type="module" src="/vault/vault.js"></script></body></html>`,
         });
         return;
       }
@@ -130,8 +141,41 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/vault');
     await page.getByRole('button', { name: 'Passkeyで開く' }).waitFor();
     await page.getByText('表示名は未登録です。Passkeyで開いて登録できます。').waitFor();
+    assert.equal(await page.locator('.product-header').count(), 1);
+    assert.equal(await page.locator('.product-nav a').count(), 2);
+    assert.equal(
+      await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+      'rgb(246, 248, 251)',
+    );
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('button', { name: 'Unlock with passkey' }).waitFor();
+    await page.getByRole('link', { name: 'Connections' }).click();
+    assert.match(page.url(), /#connections$/);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('a[href="#connections"]')?.getAttribute('aria-current') ===
+        'location',
+    );
+    assert.equal(
+      await page.getByRole('link', { name: 'Connections' }).getAttribute('aria-current'),
+      'location',
+    );
+    vaultSessionFailures = 1;
+    await page.goto('https://mikaki.test/vault?lang=en');
+    await page.getByRole('button', { name: 'Retry loading' }).waitFor();
+    assert.equal(
+      await page.getByRole('button', { name: 'Unlock with passkey' }).isDisabled(),
+      true,
+    );
+    await page.getByRole('button', { name: 'Retry loading' }).click();
+    await page
+      .getByText('No display name is saved. Unlock with your passkey to add one.')
+      .waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Unlock with passkey' }).isEnabled(), true);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

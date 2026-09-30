@@ -7,6 +7,7 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 ### Changed
 
 - Refreshed the invitation administration, registration completion, and logout screens with the login visual language; localized logout in Japanese and English and added real-Worker browser checks for responsive layout and language switching.
+- Refreshed the Vault profile and connections layout with the shared product navigation, responsive cards, and visible lock state in both supported languages.
 - Migrated Python policy generation, design checks, CBOM output, product-source checks, FIDO metadata extraction, and SQLite contract tests to TypeScript 7; retained the independent Python attestation fixture generator for interoperability verification.
 - Enabled `noImplicitAny` for the entire Node TypeScript project and removed the temporary per-file strict gate after typing the conformance harness.
 - Extended the strict Node TypeScript gate to the D1 atomicity design probe.
