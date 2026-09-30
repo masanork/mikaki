@@ -610,56 +610,59 @@
   },
   {
     "date": "2026-09-30",
-    "commit": "8e1d5fd",
+    "commit": "10e79ec",
     "code": {
-      "implementationLines": 15149,
-      "testLines": 3499,
-      "implementationFiles": 66,
-      "testFiles": 10,
+      "implementationLines": 26180,
+      "testLines": 4432,
+      "implementationFiles": 106,
+      "testFiles": 13,
       "byLanguage": {
-        "rust": {
-          "implementationLines": 9947,
-          "testLines": 1617
-        },
         "typescript": {
-          "implementationLines": 3768,
-          "testLines": 1882
+          "implementationLines": 7607,
+          "testLines": 2292
+        },
+        "rust": {
+          "implementationLines": 14637,
+          "testLines": 2140
         },
         "svelte": {
-          "implementationLines": 1434,
+          "implementationLines": 3936,
           "testLines": 0
         }
       }
     },
     "dependencies": {
       "npm": {
-        "runtime": 3,
-        "dev": 15
+        "runtime": 5,
+        "dev": 16
       },
       "rust": {
-        "runtime": 25,
+        "runtime": 27,
         "build": 0,
-        "dev": 8
+        "dev": 9
       },
       "sourceLines": {
-        "npmRuntime": 139454,
-        "rustRuntime": 1061904,
-        "total": 1201358
+        "npmRuntime": 306571,
+        "rustRuntime": 1075075,
+        "total": 1381646
       },
       "sourcePackages": {
-        "npmRuntime": 23,
-        "rustRuntime": 154
+        "npmRuntime": 116,
+        "rustRuntime": 156
       },
       "names": {
         "npmRuntime": [
+          "@modelcontextprotocol/sdk",
           "@noble/post-quantum",
           "jose",
-          "svelte"
+          "svelte",
+          "zod"
         ],
         "npmDev": [
           "@cloudflare/workers-types",
           "@inlang/paraglide-js",
           "@inlang/plugin-message-format",
+          "@jridgewell/trace-mapping",
           "@playwright/test",
           "@sveltejs/vite-plugin-svelte",
           "@types/node",
@@ -682,9 +685,11 @@
           "futures-util",
           "hpke",
           "js-sys",
+          "k256",
           "ml-kem",
           "p256",
           "p384",
+          "p521",
           "rsa",
           "serde",
           "serde_json",
@@ -707,6 +712,7 @@
           "p256",
           "rusqlite",
           "serde_json",
+          "serde_urlencoded",
           "sha2",
           "tiny_http",
           "wasm-bindgen-test"
@@ -715,19 +721,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 2168,
-        "count": 2830,
-        "percent": 76.60777385159011
+        "covered": 3028,
+        "count": 3482,
+        "percent": 86.96151636990236
       },
       "regions": {
-        "covered": 3813,
-        "count": 5049,
-        "percent": 75.51990493166963
+        "covered": 5117,
+        "count": 6147,
+        "percent": 83.2438587929071
       },
       "functions": {
-        "covered": 201,
-        "count": 284,
-        "percent": 70.77464788732394
+        "covered": 283,
+        "count": 336,
+        "percent": 84.22619047619048
       }
     }
   }
