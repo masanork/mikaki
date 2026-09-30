@@ -98,6 +98,34 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  worker-browser:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - run: npm ci
+      - run: cargo install worker-build --version 0.8.6 --locked
+      - name: Build Worker and run passkey preflight
+        run: |
+          npm run build:policy
+          worker-build --release crates/worker
+          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
+      - name: Verify Worker Svelte screens in Chromium
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:worker-browser
+
   record-metrics:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: verify
