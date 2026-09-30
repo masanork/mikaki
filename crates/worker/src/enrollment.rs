@@ -41,6 +41,11 @@ struct CompletionRow {
 }
 
 #[derive(Deserialize)]
+struct RegistrationCompletionState {
+    completed: i64,
+}
+
+#[derive(Deserialize)]
 struct EnrollmentPolicy {
     registration_ttl_seconds: u64,
 }
@@ -354,7 +359,29 @@ pub async fn finish(
                 .bind(&[JsValue::from_str(&guard("bootstrap"))])?,
         );
     }
-    db.batch(statements).await?;
+    if let Err(error) = db.batch(statements).await {
+        // A concurrent finish can consume the registration after our initial read.
+        // Only classify the failed batch as a replay when the committed state confirms it.
+        let completed = db
+            .prepare(
+                "SELECT CASE WHEN r.consumed=1 OR i.consumed_at IS NOT NULL THEN 1 ELSE 0 END AS completed \
+                 FROM registration_transaction r JOIN enrollment_invite i ON i.invite_hash=r.invite_hash \
+                 WHERE r.tx_id=?1 AND r.browser_hash=?2",
+            )
+            .bind(&[
+                JsValue::from_str(&input.tx),
+                JsValue::from_str(&browser_hash),
+            ])?
+            .first::<RegistrationCompletionState>(None)
+            .await;
+        if matches!(
+            completed,
+            Ok(Some(RegistrationCompletionState { completed: 1 }))
+        ) {
+            return reject(400);
+        }
+        return Err(error);
+    }
     worker::Response::builder()
         .with_header(
             "Set-Cookie",
