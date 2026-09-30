@@ -8,8 +8,19 @@ use x509_cert::{
         name::{DistributionPointName, GeneralName},
     },
 };
+/// Selected by the caller's trusted configuration, never inferred from a BLOB.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum MdsProfile {
+    #[default]
+    #[serde(rename = "mds3.1.1")]
+    Mds311,
+    #[serde(rename = "mds3.0")]
+    Mds30,
+}
 #[derive(Deserialize)]
 pub struct MdsInput {
+    #[serde(default)]
+    pub profile: MdsProfile,
     pub jwt: String,
     pub anchor_spki: String,
     pub now: u64,
@@ -18,7 +29,8 @@ pub struct MdsInput {
 #[derive(Serialize)]
 pub struct VerifiedMds {
     pub number: u64,
-    pub issued_at: u64,
+    pub issued_at: Option<u64>,
+    pub profile: MdsProfile,
     pub next_update: Option<u64>,
     pub entries: Vec<Metadata>,
 }
@@ -27,21 +39,23 @@ struct Header {
     alg: String,
     x5c: Vec<String>,
     x5u: Option<String>,
-    iat: u64,
+    #[serde(default, deserialize_with = "issued_at")]
+    iat: Option<u64>,
     crit: Option<Vec<String>>,
 }
-fn header(jwt: &str) -> Result<(Header, &str, &str)> {
+fn issued_at<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<u64>, D::Error> {
+    u64::deserialize(d).map(Some)
+}
+fn header(jwt: &str, profile: MdsProfile) -> Result<(Header, &str, &str)> {
     ensure(jwt.len() <= 4_194_304, Invalid::Limit)?;
     let (signed, sig) = jwt.rsplit_once('.').ok_or(Invalid::Metadata)?;
     let (h, _) = signed.split_once('.').ok_or(Invalid::Metadata)?;
     let bytes = decode(h, 131072)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Invalid::Metadata)?;
     strict_json(text, 131072, 8)?;
-    Ok((
-        serde_json::from_str(text).map_err(|_| Invalid::Metadata)?,
-        signed,
-        sig,
-    ))
+    let h: Header = serde_json::from_str(text).map_err(|_| Invalid::Metadata)?;
+    require(profile == MdsProfile::Mds30 || h.iat.is_some())?;
+    Ok((h, signed, sig))
 }
 fn chain(header: &Header) -> Result<Vec<x509_cert::Certificate>> {
     require(!header.x5c.is_empty() && header.x5c.len() <= 6)?;
@@ -56,7 +70,10 @@ fn chain(header: &Header) -> Result<Vec<x509_cert::Certificate>> {
 }
 /// URLs are untrusted hints. The transport must enforce an independent destination allow-list.
 pub fn mds_crl_urls(jwt: &str) -> Result<Vec<String>> {
-    let (h, _, _) = header(jwt)?;
+    mds_crl_urls_with_profile(jwt, MdsProfile::Mds311)
+}
+pub fn mds_crl_urls_with_profile(jwt: &str, profile: MdsProfile) -> Result<Vec<String>> {
+    let (h, _, _) = header(jwt, profile)?;
     require(h.x5u.is_none())?;
     let mut urls = vec![];
     for cert in chain(&h)? {
@@ -81,8 +98,12 @@ pub fn mds_crl_urls(jwt: &str) -> Result<Vec<String>> {
     Ok(urls)
 }
 pub fn verify_mds(input: MdsInput) -> Result<VerifiedMds> {
-    let (h, signed, sig) = header(&input.jwt)?;
-    require(h.crit.as_ref().is_none_or(Vec::is_empty) && h.alg == "ES256" && h.x5u.is_none())?;
+    let (h, signed, sig) = header(&input.jwt, input.profile)?;
+    require(
+        h.crit.as_ref().is_none_or(Vec::is_empty)
+            && matches!(h.alg.as_str(), "ES256" | "RS256")
+            && h.x5u.is_none(),
+    )?;
     let certs = chain(&h)?;
     let anchor =
         x509_cert::spki::SubjectPublicKeyInfoOwned::from_der(&decode(&input.anchor_spki, 2048)?)
@@ -172,8 +193,14 @@ pub fn verify_mds(input: MdsInput) -> Result<VerifiedMds> {
         }
         ensure(found, Invalid::Crl)?;
     }
-    let sig = Signature::from_slice(&decode(sig, 64)?).map_err(|_| Invalid::Metadata)?;
-    certificate::verify(&certs[0], -7, signed.as_bytes(), sig.to_der().as_bytes())?;
+    match h.alg.as_str() {
+        "ES256" => {
+            let sig = Signature::from_slice(&decode(sig, 64)?).map_err(|_| Invalid::Signature)?;
+            certificate::verify(&certs[0], -7, signed.as_bytes(), sig.to_der().as_bytes())?;
+        }
+        "RS256" => certificate::verify(&certs[0], -257, signed.as_bytes(), &decode(sig, 512)?)?,
+        _ => return Err(Invalid::Metadata),
+    }
     let (_, payload) = signed.split_once('.').ok_or(Invalid::Metadata)?;
     let bytes = decode(payload, 3_145_728)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Invalid::Metadata)?;
@@ -187,6 +214,10 @@ pub fn verify_mds(input: MdsInput) -> Result<VerifiedMds> {
                 .as_secs(),
         ),
     };
+    if input.profile == MdsProfile::Mds30 {
+        // Legacy BLOBs have no issued-at timestamp. Require the signed refresh deadline.
+        require(next_update.is_some_and(|deadline| input.now <= deadline))?;
+    }
     let number = payload["no"].as_u64().ok_or(Invalid::Metadata)?;
     let list = payload["entries"].as_array().ok_or(Invalid::Metadata)?;
     require(list.len() <= 10000)?;
@@ -319,6 +350,7 @@ pub fn verify_mds(input: MdsInput) -> Result<VerifiedMds> {
     Ok(VerifiedMds {
         number,
         issued_at: h.iat,
+        profile: input.profile,
         next_update,
         entries,
     })
@@ -339,4 +371,38 @@ fn parse_date(date: &str) -> Result<x509_cert::der::DateTime> {
 
 fn require(ok: bool) -> Result<()> {
     ensure(ok, Invalid::Metadata)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn header_profile_does_not_accept_malformed_or_synthesize_issued_at() {
+        let mut value = serde_json::json!({"alg":"ES256", "x5c":[]});
+        let jwt = |v: &serde_json::Value| format!("{}.e30.AAAA", B64.encode(v.to_string()));
+        assert_eq!(
+            header(&jwt(&value), MdsProfile::Mds311).err(),
+            Some(Invalid::Metadata)
+        );
+        assert_eq!(header(&jwt(&value), MdsProfile::Mds30).unwrap().0.iat, None);
+        value["iat"] = serde_json::json!(123);
+        for profile in [MdsProfile::Mds311, MdsProfile::Mds30] {
+            assert_eq!(header(&jwt(&value), profile).unwrap().0.iat, Some(123));
+            for malformed in [
+                serde_json::Value::Null,
+                serde_json::json!(-1),
+                serde_json::json!("123"),
+                serde_json::json!(1.5),
+            ] {
+                let mut invalid = value.clone();
+                invalid["iat"] = malformed;
+                assert_eq!(
+                    header(&jwt(&invalid), profile).err(),
+                    Some(Invalid::Metadata)
+                );
+            }
+        }
+    }
 }

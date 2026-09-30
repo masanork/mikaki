@@ -109,6 +109,7 @@ pub(crate) async fn owner(request: &Request, db: &D1Database) -> worker::Result<
 
 #[derive(Serialize)]
 struct SessionResponse<'a> {
+    session_tag: String,
     credential_id: &'a str,
     account_id: &'a str,
 }
@@ -211,6 +212,10 @@ pub async fn session(request: Request, context: RouteContext<()>) -> worker::Res
     Response::builder()
         .with_header("Cache-Control", "no-store")?
         .from_json(&SessionResponse {
+            session_tag: crate::passkey_login::hash(&format!(
+                "vault-session-v1:{}",
+                owner.secret_hash
+            )),
             credential_id: &owner.credential_id,
             account_id: &owner.account_id,
         })
@@ -222,6 +227,13 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     }
     let db = context.env.d1("DB")?;
     if owner(&request, &db).await?.is_none() {
+        if request
+            .url()?
+            .query_pairs()
+            .any(|(key, _)| key == "agent_oauth_request")
+        {
+            return crate::passkey_login::start_owner(&request, &context, &db).await;
+        }
         return error(401, "authentication_required");
     }
     let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
@@ -362,15 +374,23 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     {
         return error(403, "access_denied");
     }
+    read_ciphertext(&context.env, &db, &owner.account_id, attribute).await
+}
+
+/// Read the authoritative encrypted snapshot after the caller has separately
+/// established its authority for this account and exact attribute.
+pub(crate) async fn read_ciphertext(
+    env: &worker::Env,
+    db: &D1Database,
+    account_id: &str,
+    attribute: &str,
+) -> worker::Result<Response> {
     let head = db
         .prepare(
             "SELECT revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted \
              FROM vault_attribute_head WHERE account_id=?1 AND attribute_id=?2",
         )
-        .bind(&[
-            JsValue::from_str(&owner.account_id),
-            JsValue::from_str(attribute),
-        ])?
+        .bind(&[JsValue::from_str(account_id), JsValue::from_str(attribute)])?
         .first::<Head>(None)
         .await?;
     let Some(head) = head else {
@@ -389,7 +409,7 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     else {
         return error(503, "storage_unavailable");
     };
-    let bucket = context.env.bucket("VAULT_BLOBS")?;
+    let bucket = env.bucket("VAULT_BLOBS")?;
     let Some(object) = bucket.get(object_key).execute().await? else {
         return error(503, "storage_unavailable");
     };
@@ -415,17 +435,27 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
 }
 
 pub async fn put(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    write(&mut request, &context, false).await
+    write(&mut request, &context, false, false, false).await
 }
 
 pub async fn delete(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    write(&mut request, &context, true).await
+    write(&mut request, &context, true, false, false).await
+}
+
+pub async fn transfer(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    write(&mut request, &context, false, true, false).await
+}
+
+pub async fn approved(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    write(&mut request, &context, false, false, true).await
 }
 
 async fn write(
     request: &mut Request,
     context: &RouteContext<()>,
     deleted: bool,
+    transfer: bool,
+    approved: bool,
 ) -> worker::Result<Response> {
     if context.env.bucket("VAULT_BLOBS").is_err() {
         return error(404, "not_found");
@@ -433,13 +463,24 @@ async fn write(
     let Some(attribute) = attribute_id(context) else {
         return error(400, "invalid_attribute");
     };
+    let approval = if approved {
+        if attribute != "owner_note" {
+            return error(400, "invalid_approved_target");
+        }
+        let Some(approval) = crate::vault_approved::Approval::read(request)? else {
+            return error(400, "approval_required");
+        };
+        Some(approval)
+    } else {
+        None
+    };
     if !same_origin(request)? {
         return error(403, "origin_required");
     }
     let Some(expected) = expected_revision(request)? else {
         return error(428, "precondition_required");
     };
-    if deleted && expected == -1 {
+    if (deleted || transfer) && expected == -1 {
         return error(428, "precondition_required");
     }
     let Some(operation) = operation_id(request)? else {
@@ -468,14 +509,47 @@ async fn write(
             Err(_) => return error(413, "body_too_large_or_invalid"),
         }
     };
+    let method = approval.as_ref().map(|value| value.method());
     let hash = request_hash(
-        if deleted { "DELETE" } else { "PUT" },
+        if let Some(method) = &method {
+            method
+        } else if transfer {
+            "TRANSFER"
+        } else if deleted {
+            "DELETE"
+        } else {
+            "PUT"
+        },
         attribute,
         expected,
         body.as_bytes(),
     );
     if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
         return mutation_response(previous, attribute, &hash, deleted);
+    }
+    let candidate_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(body.as_bytes()));
+    let origin = request.url()?.origin().ascii_serialization();
+    let revision = if expected == -1 { 1 } else { expected + 1 };
+    let commit = approval
+        .as_ref()
+        .map(|approval| crate::vault_approved::Commit {
+            approval,
+            account: &owner.account_id,
+            session_hash: &owner.secret_hash,
+            operation: &operation,
+            candidate_hash: &candidate_hash,
+            origin: &origin,
+            base_revision: if expected == -1 { 0 } else { expected },
+            result_revision: revision,
+            mutation_hash: &hash,
+        });
+    if let Some(commit) = &commit
+        && !commit.ready(&db).await?
+    {
+        if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
+            return mutation_response(previous, attribute, &hash, false);
+        }
+        return error(409, "approval_unavailable");
     }
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))? as i64;
     let limits = db
@@ -496,6 +570,9 @@ async fn write(
     if (expected == -1 && limits.revision.is_some())
         || (expected > 0 && limits.revision != Some(expected))
     {
+        if approved && let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
+            return mutation_response(previous, attribute, &hash, false);
+        }
         return error(409, "revision_conflict");
     }
     if limits.recent >= 20 {
@@ -504,6 +581,7 @@ async fn write(
     if expected == -1 && limits.slots >= 32 {
         return error(409, "attribute_limit_exceeded");
     }
+    let mut target_credential = None;
     let (object_key, digest, envelope) = if deleted {
         (None, None, None)
     } else {
@@ -528,6 +606,53 @@ async fn write(
         {
             return error(400, "invalid_body");
         }
+        if transfer || approved {
+            // Transfer uses the existing V1 frame, but validates its exact credential binding.
+            let Some(length) = wrap
+                .get(1..3)
+                .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]) as usize)
+            else {
+                return error(400, "invalid_owner_envelope");
+            };
+            if wrap[0] != 1
+                || !(1..=512).contains(&length)
+                || wrap.len() != 3 + length + 64 + 12 + 48
+            {
+                return error(400, "invalid_owner_envelope");
+            }
+            let target = URL_SAFE_NO_PAD.encode(&wrap[3..3 + length]);
+            let valid = db.prepare("SELECT credential_id FROM credential WHERE credential_id=?1 AND account_id=?2 AND active=1")
+                .bind(&[JsValue::from_str(&target),JsValue::from_str(&owner.account_id)])?.first::<String>(Some("credential_id")).await?;
+            if valid.is_none() {
+                return error(403, "invalid_transfer_target");
+            }
+            if transfer {
+                let live = db.prepare("SELECT owner_envelope FROM vault_attribute_head WHERE account_id=?1 AND attribute_id=?2 AND deleted=0 AND revision=?3")
+                .bind(&[JsValue::from_str(&owner.account_id),JsValue::from_str(attribute),JsValue::from_f64(expected as f64)])?.first::<String>(Some("owner_envelope")).await?;
+                let Some(live) = live else {
+                    return error(409, "revision_conflict");
+                };
+                let Ok(source) = URL_SAFE_NO_PAD.decode(live) else {
+                    return error(503, "invalid_source_envelope");
+                };
+                let Some(source_length) = source
+                    .get(1..3)
+                    .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]) as usize)
+                else {
+                    return error(503, "invalid_source_envelope");
+                };
+                if source[0] != 1
+                    || !(1..=512).contains(&source_length)
+                    || source.len() != 3 + source_length + 64 + 12 + 48
+                {
+                    return error(503, "invalid_source_envelope");
+                }
+                if URL_SAFE_NO_PAD.encode(&source[3..3 + source_length]) == target {
+                    return error(400, "same_transfer_target");
+                }
+            }
+            target_credential = Some(target);
+        }
         let digest = URL_SAFE_NO_PAD.encode(Sha256::digest(&ciphertext));
         let mut random = [0u8; 32];
         let mut rng = WorkersCryptoRandom;
@@ -542,7 +667,6 @@ async fn write(
             .await?;
         (Some(key), Some(digest), Some(value.owner_envelope))
     };
-    let revision = if expected == -1 { 1 } else { expected + 1 };
     let values = [
         JsValue::from_str(&owner.account_id),
         JsValue::from_str(attribute),
@@ -556,6 +680,19 @@ async fn write(
         JsValue::from_f64(now as f64),
         JsValue::from_f64(expected as f64),
         JsValue::from_str(&owner.secret_hash),
+        target_credential
+            .as_deref()
+            .map_or(JsValue::NULL, JsValue::from_str),
+        JsValue::from_f64(i64::from(approved) as f64),
+        approval
+            .as_ref()
+            .map_or(JsValue::NULL, |a| JsValue::from_str(&a.proposal_id)),
+        approval
+            .as_ref()
+            .map_or(JsValue::NULL, |a| JsValue::from_str(&a.request_hash)),
+        JsValue::from_str(&operation),
+        JsValue::from_str(&candidate_hash),
+        JsValue::from_str(&origin),
     ];
     let statement = db.prepare(
         "INSERT INTO vault_attribute_head(account_id,attribute_id,revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted,updated_at) \
@@ -567,6 +704,11 @@ async fn write(
            JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
          WHERE sx.secret_hash=?10 AND ss.account_id=?1 AND ss.revoked=0 AND ss.expires_at>?8 \
            AND a.active=1 AND a.epoch=ss.epoch AND c.active=1) \
+         AND (?11 IS NULL OR (EXISTS(SELECT 1 FROM credential WHERE credential_id=?11 AND account_id=?1 AND active=1) \
+           AND (?12=1 OR EXISTS(SELECT 1 FROM vault_attribute_head WHERE account_id=?1 AND attribute_id=?2 AND revision=?9 AND deleted=0)))) \
+         AND (?13 IS NULL OR EXISTS(SELECT 1 FROM agent_attribute_proposal p JOIN agent_attribute_commit ac ON ac.proposal_id=p.proposal_id \
+           WHERE p.proposal_id=?13 AND p.request_hash=?14 AND p.state='committed' AND ac.account_id=?1 \
+           AND ac.operation_id=?15 AND ac.candidate_sha256=?16 AND ac.origin=?17)) \
          AND (SELECT COUNT(*) FROM vault_attribute_mutation WHERE account_id=?1 AND created_at>?8-60)<20 \
          AND (?9>0 OR (SELECT COUNT(*) FROM vault_attribute_head WHERE account_id=?1)<32) \
          ON CONFLICT(account_id,attribute_id) DO UPDATE SET \
@@ -586,7 +728,19 @@ async fn write(
         JsValue::from_f64(i64::from(deleted) as f64),
         JsValue::from_f64(now as f64),
     ])?;
-    if db.batch(vec![statement, ledger]).await.is_err() {
+    let mut statements = Vec::new();
+    if let Some(commit) = &commit {
+        statements.push(commit.consume(&db)?);
+    }
+    statements.extend([statement, ledger]);
+    if transfer && let Some(target) = target_credential {
+        statements.push(db.prepare("INSERT INTO vault_passkey_transfer_audit(account_id,operation_id,attribute_id,result_revision,target_credential_id,created_at) SELECT ?1,?2,?3,?4,?5,?6 WHERE changes()=1")
+          .bind(&[JsValue::from_str(&owner.account_id),JsValue::from_str(&operation),JsValue::from_str(attribute),JsValue::from_f64(revision as f64),JsValue::from_str(&target),JsValue::from_f64(now as f64)])?);
+    }
+    if let Some(commit) = &commit {
+        statements.extend(commit.finish(&db)?);
+    }
+    if db.batch(statements).await.is_err() {
         if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
             return mutation_response(previous, attribute, &hash, deleted);
         }

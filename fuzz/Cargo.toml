@@ -8,7 +8,9 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
-mikaki-webauthn = { path = "../crates/webauthn" }
+mikaki-webauthn = { path = "../crates/webauthn", features = ["fuzzing"] }
+ciborium = "=0.2.2"
+x509-cert = { version = "=0.3.0", default-features = false }
 libfuzzer-sys = "=0.4.13"
 base64 = "=0.23.1"
 serde_json = "=1.0.151"
@@ -35,6 +37,13 @@ bench = false
 [[bin]]
 name = "metadata"
 path = "fuzz_targets/metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "android"
+path = "fuzz_targets/android.rs"
 test = false
 doc = false
 bench = false

@@ -55,6 +55,9 @@ async function download(url: string, options: RequestInit = {}, remaining = 3): 
   }
   return Buffer.concat(chunks);
 }
+const profile = process.env.FIDO_MDS_PROFILE ?? 'mds3.1.1';
+if (!['mds3.1.1', 'mds3.0'].includes(profile)) throw Error('Invalid FIDO_MDS_PROFILE');
+console.log(`MDS profile: ${profile}`);
 const endpoint = `http://localhost:${process.env.FIDO_PORT ?? 8080}`;
 const endpoints = JSON.parse(
   (
@@ -74,7 +77,7 @@ let accepted = 0;
 for (const [i, jwt] of blobs.entries()) {
   let crls: string[] = [];
   try {
-    const urls = JSON.parse(wasm.mds_crl_urls(jwt)) as string[];
+    const urls = JSON.parse(wasm.mds_crl_urls_with_profile(jwt, profile)) as string[];
     crls = await Promise.all(
       urls.map((url) => {
         if (!cache.has(url))
@@ -85,17 +88,17 @@ for (const [i, jwt] of blobs.entries()) {
         return cache.get(url)!;
       }),
     );
-  } catch {
-    console.log(`MDS ${i}: CRL transport rejected`);
+  } catch (error) {
+    console.log(`MDS ${i}: CRL discovery/download rejected: ${String(error)}`);
   }
-  const input = { jwt, anchor_spki, now: Math.floor(Date.now() / 1000), crls };
+  const input = { profile, jwt, anchor_spki, now: Math.floor(Date.now() / 1000), crls };
   writeFileSync(new URL(`${i}.json`, directory), JSON.stringify(input));
   try {
     const verified = JSON.parse(wasm.verify_mds(JSON.stringify(input)));
     console.log(`MDS ${i}: verified BLOB ${verified.number}, ${verified.entries.length} entries`);
     accepted++;
-  } catch {
-    console.log(`MDS ${i}: rejected by verifier`);
+  } catch (error) {
+    console.log(`MDS ${i}: rejected by verifier (${profile}): ${String(error)}`);
   }
 }
 if (!accepted) throw Error('No valid MDS BLOB verified');

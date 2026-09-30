@@ -29,12 +29,15 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview --target wasm32-unknown-unknown
           cargo install wasm-pack --version 0.15.0 --locked
+          cargo install worker-build --version 0.8.6 --locked
           cargo install cargo-llvm-cov --version 0.9.1 --locked
       - run: npm ci
       - name: Design and formatting
         run: |
           node scripts/check_design.ts
           npm run test:sql
+          npm run test:release
+          npm run test:agent-preparation
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown
@@ -42,14 +45,17 @@ jobs:
           npm run format:check
           npm run check:ui
           npm run check:worker-ui
-          node --test local/conformance/recipient-directory-browser.test.ts
+          npm run check:agent-worker
           npm run check:product-sources
           npm run check:i18n
+          npm run check:docs
       - name: Native tests and measured coverage
         run: |
           cargo test --locked --workspace
           mkdir -p artifacts
           cargo llvm-cov --locked --workspace --exclude mikaki-browser-wasm --exclude mikaki-worker --ignore-filename-regex '/tests\.rs$' --json --summary-only --output-path artifacts/native-coverage.json
+          cargo llvm-cov report --locked --ignore-filename-regex '/tests\.rs$' --html --output-dir artifacts/native-coverage
+          cargo llvm-cov report --locked --ignore-filename-regex '/tests\.rs$' --lcov --output-path artifacts/native-coverage.lcov
       - name: Shared WebAuthn tests on Wasm
         run: wasm-pack test --node crates/webauthn --locked
       - name: Isolated PQC feasibility probe
@@ -68,18 +74,48 @@ jobs:
           node design/probes/pqc/hpke-interop.ts
           node --test design/probes/pqc/product-envelope.test.ts
           wasm-pack build design/probes/pqc --target web --release --out-dir pkg-web -- --locked
+      - name: Isolated credential-presentation probe
+        run: npm run test:oid4vp --prefix design/probes
+      - name: Isolated credential receipt and presentation
+        run: npm run test:oid4vci --prefix design/probes
+      - name: Isolated DPoP and HTTPS credential receipt
+        run: |
+          npm run test:dpop --prefix design/probes
+          npm run test:dpop-network --prefix design/probes
       - name: Build Wasm and UI
-        run: npm run build
+        env:
+          MIKAKI_UI_COVERAGE: '1'
+        run: |
+          npm run build
+          worker-build --release crates/worker
+          worker-build --release crates/userinfo-claim-worker
+          worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
       - name: Check Node TypeScript sources
         run: |
           npm run check:node
           npm run check:helpdesk
+      - name: Frontend TypeScript coverage and selected-module regression gate
+        run: npm run test:frontend-coverage
+      - name: Product Worker contracts
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:worker-contracts
+      - name: MDS durable operation regressions
+        run: node --test local/conformance/mds-operation.test.ts
       - name: Project size, coverage, and dependency trends
         run: node scripts/metrics.ts --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
       - name: Wasm and browser integration
+        env:
+          MIKAKI_BROWSER_SOURCE_COVERAGE: '1'
         run: |
-          npx playwright install --with-deps chromium
           node design/probes/pqc/browser.ts
+          npm run test:worker-browser
+          npm run test:agent-integration
+          npm run test:vault-transfer
+          npm run test:vault-notes
+          npm run test:attribute-proposals
+          npm run test:attribute-commit
+          npm run test:agent-oauth
           npm run test:e2e
           npm run health
           cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"

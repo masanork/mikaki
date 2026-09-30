@@ -27,3 +27,7 @@ The 2026-09-22 selected versions were `ed25519-dalek 3.0.0`, `sha1 0.11.0`, and 
 `cargo audit` reported [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html), a private-key timing advisory with no fixed version recorded at the time. The narrow verification-only exception is documented in `.cargo/audit.toml`; it is not a clean audit. Introducing RSA signing, decryption, or key generation requires re-evaluating that exception, generally deferring private-key operations until the advisory is resolved. Other advisories are not excluded.
 
 The design follows the [WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/) and [FIDO MDS 3.1.1 Proposed Standard](https://fidoalliance.org/specs/mds/fido-metadata-service-v3.1.1-ps-20260105.html).
+
+## MDS 3.0 compatibility, 2026-09-28
+
+The default remains MDS 3.1.1 with required header `iat`. An explicitly configured `mds3.0` profile supports the official conformance service's BLOBs without that field. It preserves cryptographic and revocation verification and additionally requires a signed, unexpired `nextUpdate` (using UTC midnight conservatively). No profile is inferred from the BLOB; cached input does not override server configuration. Missing issuance time is represented as `None`/JSON `null`. Results identify the selected profile, and compatibility runs do not establish MDS 3.1.1 conformance. See the [profile investigation and startup instructions](../../local/conformance/README.md#mds-version-profiles).

@@ -36,3 +36,7 @@ The size chart tracks only code maintained in this repository. Runtime dependenc
   package/crate counts. It does not represent final bundled or linked binary size.
 - History is one snapshot per calendar day. A successful `main` CI run replaces
   that day's row with the latest commit and refreshes the charts.
+
+## Local and frontend evidence
+
+The dated [product test record](../docs/test-quality.md) documents the latest working-tree native baseline separately from main chart history. CI now exports native HTML/LCOV as well as summary JSON. `npm run test:frontend-coverage` exports `artifacts/frontend-coverage.lcov` and JSON for handwritten Worker UI TypeScript, including unloaded modules and excluding Svelte components/config/generated sources. Its source hashes identify measured bytes; it is not whole-product or browser coverage and is not added to the native chart.

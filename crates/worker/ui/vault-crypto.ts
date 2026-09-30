@@ -275,3 +275,94 @@ export async function openAttribute(
     async (plaintext) => plaintext,
   );
 }
+
+// Verification of a newly created candidate using only its one-revision data key.
+// Never supply a saved attribute's key to the agent service.
+export async function openAttributeDataKey(
+  sealed: SealedAttribute,
+  dek: Uint8Array<ArrayBuffer>,
+  origin: string,
+  attribute: string,
+  revision: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (sealed.format_version !== 1 || dek.length !== KEY_BYTES) throw new Error('Invalid candidate');
+  const body = decodeBase64Url(sealed.ciphertext);
+  if (
+    body[0] !== VERSION ||
+    body.length < 1 + NONCE_BYTES + TAG_BYTES ||
+    body.length > MAX_CIPHERTEXT_BYTES
+  )
+    throw new Error('Invalid candidate');
+  const key = await crypto.subtle.importKey('raw', dek, 'AES-GCM', false, ['decrypt']);
+  return new Uint8Array(
+    await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: body.slice(1, 1 + NONCE_BYTES),
+        additionalData: contentAad(origin, attribute, revision),
+      },
+      key,
+      body.slice(1 + NONCE_BYTES),
+    ),
+  );
+}
+
+// Re-encrypt the saved value at a new revision; never carry unsaved UI edits.
+// Both PRF outputs are supplied only by owner-present WebAuthn operations.
+export async function transferAttribute(
+  saved: SealedAttribute,
+  sourceOutput: Uint8Array<ArrayBuffer>,
+  targetOutput: Uint8Array<ArrayBuffer>,
+  targetCredential: Uint8Array<ArrayBuffer>,
+  targetInput: Uint8Array<ArrayBuffer>,
+  origin: string,
+  attribute: string,
+  revision: number,
+  validate?: (plaintext: Uint8Array<ArrayBuffer>) => void,
+): Promise<SealedAttribute> {
+  const source = parseOwnerEnvelope(saved.owner_envelope);
+  if (encodeBase64Url(source.credentialId) === encodeBase64Url(targetCredential))
+    throw new Error('transfer requires a different credential');
+  return withOpenedAttribute(
+    saved,
+    sourceOutput,
+    source.credentialId,
+    origin,
+    attribute,
+    revision,
+    async (plaintext) => {
+      try {
+        validate?.(plaintext);
+        const sealed = await sealAttribute(
+          plaintext,
+          targetOutput,
+          targetCredential,
+          targetInput,
+          origin,
+          attribute,
+          revision + 1,
+        );
+        const restored = await openAttribute(
+          sealed,
+          targetOutput,
+          targetCredential,
+          origin,
+          attribute,
+          revision + 1,
+        );
+        try {
+          if (
+            restored.length !== plaintext.length ||
+            restored.some((byte, index) => byte !== plaintext[index])
+          )
+            throw new Error('transfer verification failed');
+        } finally {
+          restored.fill(0);
+        }
+        return sealed;
+      } finally {
+        plaintext.fill(0);
+      }
+    },
+  );
+}

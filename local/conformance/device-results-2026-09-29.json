@@ -1,0 +1,77 @@
+{
+  "rp": "localhost",
+  "adapter": "wasm HTTP loopback 8083",
+  "platform": "Mac / Chrome 154 / Google Password Manager; Touch ID continuation observed",
+  "records": [
+    {
+      "time": "2026-09-28T22:12:36.933Z",
+      "status": "ready",
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "secureContext": true
+    },
+    {
+      "time": "2026-09-28T22:13:01.681Z",
+      "kind": "register",
+      "status": "server verified",
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "attachment": "platform",
+      "algorithm": -7,
+      "transports": ["hybrid", "internal"],
+      "uv": "required",
+      "residentKey": "required",
+      "duration_ms": 5166
+    },
+    {
+      "time": "2026-09-28T22:13:10.969Z",
+      "kind": "authenticate",
+      "status": "failed",
+      "error": "Error: Request rejected by mikaki profile or verifier"
+    },
+    {
+      "time": "2026-09-28T22:16:20.679Z",
+      "status": "ready",
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "secureContext": true
+    },
+    {
+      "time": "2026-09-28T22:18:04.300Z",
+      "kind": "authenticate",
+      "mode": "identified",
+      "status": "server verified",
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "attachment": "platform",
+      "algorithm": null,
+      "transports": [],
+      "uv": "required",
+      "residentKey": "required",
+      "duration_ms": 4389
+    },
+    {
+      "time": "2026-09-28T22:18:13.105Z",
+      "kind": "authenticate",
+      "mode": "discoverable",
+      "status": "failed",
+      "error": "Error: Request rejected by mikaki profile or verifier"
+    },
+    {
+      "time": "2026-09-28T22:21:35.523Z",
+      "status": "ready",
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "secureContext": true
+    },
+    {
+      "time": "2026-09-28T22:21:54.982Z",
+      "kind": "authenticate",
+      "mode": "discoverable",
+      "status": "server verified",
+      "selected_registered_credential": true,
+      "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "attachment": "platform",
+      "algorithm": null,
+      "transports": [],
+      "uv": "required",
+      "residentKey": "required",
+      "duration_ms": 13147
+    }
+  ]
+}

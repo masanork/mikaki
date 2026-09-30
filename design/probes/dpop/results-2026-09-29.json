@@ -1,0 +1,326 @@
+{
+  "generated_at": "2026-09-29T13:58:41.621Z",
+  "scope": "Synthetic DPoP component and loopback HTTPS receipt qualification",
+  "protocol": "RFC 9449; FAPI 2.0 Final clock-skew subset only",
+  "profile": {
+    "algorithm": "ES256",
+    "libraryVersion": "0.6.0",
+    "maxAgeSeconds": 60,
+    "clockSkewSeconds": 10,
+    "replayCapacity": 1000
+  },
+  "installed_versions": {
+    "@openid4vc/oauth2": "0.6.0",
+    "@openid4vc/openid4vci": "0.6.0",
+    "@openeudi/openid4vp": "0.12.0",
+    "jose": "6.2.12"
+  },
+  "dependency_lock_sha256": "6tZljHLkMP3KidAztA2Udiu83b9_6DRWyhQ_kn0n0lA",
+  "implementation_sha256": "4PgShgCggCTAfWLgC7Y9uYSn6I_T0Mr7LJzOB4xvFNY",
+  "network_source_sha256": "WmEWzR6IW5Ay5PbuTPEj5ngszT0bsJYRXXciEkBlFvY",
+  "verifier": "OWF OAuth2 0.6.0 DPoP protocol verification; JOSE signature callback; post-verification bounded in-memory replay gate",
+  "issuance": "DPoP-required wrapper over the anonymous pre-authorized issuer fixture; not client authentication or a FAPI AS",
+  "transport": "Loopback TCP routing for fixed https://issuer.mikaki.test authority; certificate trust and hostname checks enabled; no redirects",
+  "storage": "Disposable sender key, separate credential holder key, original encrypted artifact and holder envelope in memory",
+  "exclusions": [
+    "Product activation",
+    "Persistent multi-isolate replay storage",
+    "PAR",
+    "Confidential client authentication",
+    "Complete FAPI 2.0 conformance",
+    "Independent issuer/wallet applications",
+    "DPoP nonce rotation and persistent retry recovery",
+    "Device keys, holder transfer and recovery",
+    "Real issuer trust/status"
+  ],
+  "environment": {
+    "node": "v26.10.0",
+    "platform": "darwin",
+    "release": "27.0.0",
+    "arch": "arm64"
+  },
+  "devices": [],
+  "results": [
+    {
+      "id": "wrong-method",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-origin",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-path",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "query-in-htu",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "missing-nonce",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-nonce",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "missing-ath",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-ath",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "missing-iat",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "fractional-iat",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "missing-jti",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "empty-jti",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "control-jti",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "independently-signed-resource-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "owf-generated-token-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "symmetric-algorithm",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "unsigned-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "query-not-signed",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-typ",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "private-jwk",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "unsupported-critical-header",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "bad-signature",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset--71",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset--70",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset--10",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset-10",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset-11",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "iat-offset-61",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "bearer-downgrade",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "token-case-change",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "duplicate-authorization",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "duplicate-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "missing-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "oversized-proof",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "http-transport",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "scheme-case-insensitivity",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "wrong-token-or-key-binding",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "authorization-code-key-binding",
+      "layer": "protocol-and-gate",
+      "passed": true
+    },
+    {
+      "id": "one-winner-concurrent-replay",
+      "layer": "replay-policy",
+      "passed": true
+    },
+    {
+      "id": "forged-signature-does-not-poison-jti",
+      "layer": "replay-policy",
+      "passed": true
+    },
+    {
+      "id": "same-jti-different-key",
+      "layer": "replay-policy",
+      "passed": true
+    },
+    {
+      "id": "ledger-capacity-and-expiry",
+      "layer": "replay-policy",
+      "passed": true
+    },
+    {
+      "id": "dpop-receipt-encrypted-import-and-presentation",
+      "layer": "issuance",
+      "passed": true
+    },
+    {
+      "id": "metadata-downgrade",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "token-type-downgrade",
+      "layer": "wallet",
+      "passed": true
+    },
+    {
+      "id": "tls-receipt-to-presentation",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "untrusted-certificate",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "wrong-certificate-hostname",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "foreign-issuer-before-connect",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-cancellation-no-connect",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-bearer-downgrade",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-missing-proof",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-other-sender",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-wrong-ath",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-credential-proof-role-confusion",
+      "layer": "network",
+      "passed": true
+    },
+    {
+      "id": "network-replay",
+      "layer": "network",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

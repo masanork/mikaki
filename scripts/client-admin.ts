@@ -8,6 +8,7 @@ import {
   disableClient,
   listClients,
   registerClient,
+  registerNativeClient,
   retireRedirect,
   retirePostLogoutRedirect,
   retireBackchannelLogout,
@@ -18,6 +19,7 @@ import {
   validateRedirect,
   validateKey,
   validateRegistration,
+  validateNativeRegistration,
 } from './client-admin-store.ts';
 
 const options: Record<string, string> = {};
@@ -45,6 +47,7 @@ if (
   !['yes', 'no'].includes(options['--remote']) ||
   ![
     'register',
+    'register-native',
     'add-key',
     'retire-key',
     'add-redirect',
@@ -59,7 +62,7 @@ if (
   !['yes', 'no'].includes(options['--apply'])
 ) {
   throw new Error(
-    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|add-key|retire-key|add-redirect|retire-redirect|add-post-logout-redirect|retire-post-logout-redirect|set-backchannel-logout|retire-backchannel-logout|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
+    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|register-native|add-key|retire-key|add-redirect|retire-redirect|add-post-logout-redirect|retire-post-logout-redirect|set-backchannel-logout|retire-backchannel-logout|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
   );
 }
 const remote = options['--remote'] === 'yes';
@@ -74,6 +77,7 @@ const input = options['--input']
   ? JSON.parse(await readFile(resolve(options['--input']), 'utf8'))
   : null;
 if (action === 'register') validateRegistration(input);
+if (action === 'register-native') validateNativeRegistration(input);
 if (action === 'add-key') validateKey(input);
 if (action === 'add-redirect' || action === 'retire-redirect') validateRedirect(input);
 if (action === 'add-post-logout-redirect' || action === 'retire-post-logout-redirect')
@@ -111,6 +115,8 @@ try {
   let result;
   if (action === 'register')
     result = await registerClient(db, input, options['--actor'], options['--reason']);
+  else if (action === 'register-native')
+    result = await registerNativeClient(db, input, options['--actor'], options['--reason']);
   else if (action === 'add-key')
     result = await addKey(db, options['--client'], input, options['--actor'], options['--reason']);
   else if (action === 'retire-key')

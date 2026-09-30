@@ -13,7 +13,11 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Operate the Worker | [Cloudflare deployment](cloudflare-deployment.md) and [runtime configuration](runtime-configuration.md) |
 | Review conformance evidence | [WebAuthn](../local/conformance/README.md) and [OIDC](oidc-core-conformance.md) |
 | Review build evidence | [Supply chain](supply-chain.md) and [metrics](../metrics/README.md) |
+| Prepare release or recovery | [Release inventory, migration rehearsal and recovery gates](release-and-recovery.md) |
+| Review UI and product quality | [Login preview](login-ui-preview.md), [product screens](product-ui-preview.md), and [quality gates](product-quality.md) |
+| Review tests and coverage | [Product test coverage and CI evidence](test-quality.md) |
 | Work on the code | [Development guide](contributing.md) |
+| Connect an AI agent and review remaining work | [Agent integration and local MCP](agent-integration.md) |
 
 ## Understand the system
 
@@ -22,10 +26,20 @@ Start with [architecture](architecture.md) for responsibilities and trust bounda
 | Topic | Contract and evidence |
 | --- | --- |
 | WebAuthn | [Ceremonies](webauthn-ceremony-contract.md), [attestation](webauthn-attestation.md), [extensions](webauthn-extensions.md), [diagnostics](webauthn-errors.md), [MDS operation](webauthn-mds-operation.md) |
-| WebAuthn quality | [Fuzzing](webauthn-fuzzing.md), [device compatibility](webauthn-device-compatibility.md), [fit/gap backlog](webauthn-fit-gap-todo.md), [external review brief](webauthn-security-review.md) |
+| WebAuthn quality | [Fuzzing](webauthn-fuzzing.md), [device compatibility](webauthn-device-compatibility.md), [fit/gap backlog](webauthn-fit-gap-todo.md), [external review brief](webauthn-security-review.md), [certification preparation](webauthn-certification-readiness.md) |
 | OIDC | [Login UX](oidc-login.md), [transaction](oidc-login-flow.md), [identity and keys](oidc-identity-and-keys.md), [Access Token and UserInfo](oidc-access-token-and-userinfo.md), [store operations](oidc-store-contract.md), [operations](oidc-operations.md) |
 | Account and policy | [Sessions and logout](session-lifecycle.md), [identifier policy](identifier-policy.md), [runtime configuration](runtime-configuration.md), [policy example](../config/runtime-policy.example.toml) |
 | Vault | [Personal vault](personal-vault.md), [UserInfo claim-sharing proposal](vault-claim-sharing.md), [recipient-key lifecycle](vault-recipient-key-lifecycle.md) |
+| Vault protocol choices | [Storage, credential presentation, files, and AI adapters](vault-protocol-review.md), [ADR 0012](adr/0012-vault-protocol-boundaries.md) |
+| Native client and Vault OAuth | [Tauri authentication boundaries](tauri-client-auth.md), [ciphertext-read OAuth contract](native-vault-oauth.md) |
+| Credential evidence | [Synthetic OID4VP presentation](oid4vp-probe.md), [OID4VCI receipt and presentation](oid4vci-probe.md), [OIDF HTTPS evidence](oidf-conformance-2026-09-29.md), independent components and adoption gates |
+| FAPI readiness | [FAPI 2.0 fit/gap and DPoP HTTPS receipt](fapi2-readiness.md), persistent authority/PAR and certification gates |
+| Vault implementation gaps | [Fit/gap matrix, dependencies, and acceptance backlog](vault-fit-gap.md) |
+| Connect a remote MCP client through OAuth | [Preregistered public-client profile, consent and qualification gates](agent-oauth.md) |
+| Save an approved AI suggestion | [Verified encrypted commit, atomicity and retry/recovery](vault-approved-commit.md) |
+| Typed attribute proposals | [Explicit capability, exact review and domain authority](vault-attribute-proposals.md), [ADR 0013](adr/0013-agent-proposal-authority.md) |
+| Typed owner data | [Encrypted note schema, validation, import/export and provenance](vault-typed-attributes.md) |
+| Move saved data to another Passkey | [Owner passkey addition and Vault transfer](vault-passkey-transfer.md) |
 
 ## Planned work and earlier design
 
@@ -40,6 +54,8 @@ The [implementation spec](implementation-spec.md) preserves the cross-cutting ac
 - **Accepted decision** records intended architecture or product policy; it does not imply implementation.
 - **Proposal** and **future** describe work that has not passed a product activation gate.
 
-The active versioned D1 policy is authoritative for deployed runtime values. The [TOML example](../config/runtime-policy.example.toml) is an editing/input example. SQL models and Python checks under `design/` and `scripts/` validate designs unless identified as production migrations or loaders.
+The active versioned D1 policy is authoritative for deployed runtime values. The [TOML example](../config/runtime-policy.example.toml) is an editing/input example. SQL models and TypeScript checks under `design/` and `scripts/` validate designs unless identified as production migrations or loaders.
 
-Repository Markdown documentation is in English. The product UI still supports Japanese and English. Historical ADRs retain their sequence; topic documents present the current contract or a clearly marked proposal.
+`npm run check:docs` checks repository-owned Markdown file/image destinations and Markdown heading fragments without network access; it does not verify external URLs or deployment claims. Repository Markdown documentation is in English. The product UI still supports Japanese and English. Historical ADRs retain their sequence; topic documents present the current contract or a clearly marked proposal.
+
+[Grok Bot integration](grok-bot-integration.md) tracks the new hosted-plugin product, account-wide authorization and current qualification gates.

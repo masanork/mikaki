@@ -20,8 +20,13 @@ function seededDb() {
     '0001_oidc_initial.sql',
     '0003_client_administration.sql',
     '0004_client_redirect_lifecycle.sql',
+    '0023_oidc_profile_scope.sql',
+    '0026_native_loopback_redirect.sql',
   ])
     db.exec(migration(name));
+  // This fixture has only the tables needed by authorization issuance; mirror
+  // the public-client discriminator introduced by migration 0025.
+  db.exec("ALTER TABLE client ADD COLUMN client_type TEXT NOT NULL DEFAULT 'web'");
   const now = Math.floor(Date.now() / 1000);
   db.exec("INSERT INTO account_security VALUES('account',0,1)");
   db.exec("INSERT INTO credential VALUES('cred','account',1)");
@@ -68,9 +73,9 @@ function runBatch(db: DatabaseSync, options: Options = {}) {
     ],
     [
       'insert-authorization-code.sql',
-      [codeHash, 'client', sid, revision, redirect, 'P'.repeat(43), now + 60, now],
+      [codeHash, 'client', sid, revision, redirect, 'P'.repeat(43), now + 60, now, ''],
     ],
-    ['insert-authorization-code-context.sql', [codeHash, nonce]],
+    ['insert-authorization-code-context.sql', [codeHash, nonce, 'openid']],
     ['guard-authorization-code.sql', [codeHash, 'client', redirect, nonce, now]],
     ['delete-authorization-code-guard.sql', [codeHash]],
   ];

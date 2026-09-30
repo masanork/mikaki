@@ -123,7 +123,7 @@ pub async fn complete(
     let Some(row) = row else { return reject(401) };
     let strings = i18n::catalog(i18n::select(&request, None)?);
     let html = format!(
-        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title></head><body><div id=\"app\" data-admin=\"{}\"></div><script type=\"module\" src=\"/enroll/complete.js\"></script></body></html>",
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/ui/product.css\"></head><body><div id=\"app\" data-admin=\"{}\"></div><script type=\"module\" src=\"/enroll/complete.js\"></script></body></html>",
         strings.locale,
         i18n::html_escape(strings.message("enrollCompleteTitle")),
         if row.is_admin == 1 { "true" } else { "false" }
@@ -131,7 +131,7 @@ pub async fn complete(
     worker::Response::builder()
         .with_header("Cache-Control","no-store")?
         .with_header("Referrer-Policy","no-referrer")?
-        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
+        .with_header("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?
         .from_html(html)
 }
 
@@ -354,7 +354,27 @@ pub async fn finish(
                 .bind(&[JsValue::from_str(&guard("bootstrap"))])?,
         );
     }
-    db.batch(statements).await?;
+    if let Err(error) = db.batch(statements).await {
+        // A competing finish can consume the invitation after our verification.
+        // The guard rolls this entire batch back; only confirmed consumption is
+        // a client replay. Unrelated database failures remain server errors.
+        let consumed = db
+            .prepare(
+                "SELECT 1 AS used FROM registration_transaction r JOIN enrollment_invite i \
+             ON i.invite_hash=r.invite_hash WHERE r.tx_id=?1 AND r.browser_hash=?2 \
+             AND (r.consumed=1 OR i.consumed_at IS NOT NULL)",
+            )
+            .bind(&[
+                JsValue::from_str(&input.tx),
+                JsValue::from_str(&browser_hash),
+            ])?
+            .first::<i64>(Some("used"))
+            .await?;
+        if consumed == Some(1) {
+            return reject(400);
+        }
+        return Err(error);
+    }
     worker::Response::builder()
         .with_header(
             "Set-Cookie",

@@ -41,10 +41,10 @@ async function seed(expiry: number, gcAfter: number) {
     query(db, "INSERT INTO client_session VALUES(?,'sid','s','a','sub',1,0)", [CLIENT]),
     query(
       db,
-      "INSERT INTO authorization_code VALUES('code',?,'sid',1,'redirect','challenge',1,'issue',1)",
+      "INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) VALUES('code',?,'sid',1,'redirect','challenge',1,'issue',1)",
       [CLIENT],
     ),
-    query(db, "INSERT INTO code_context VALUES('code','nonce')"),
+    query(db, "INSERT INTO code_context(code_hash,nonce) VALUES('code','nonce')"),
     query(db, "INSERT INTO token_issue VALUES('code','issue','access',1,'local-op-1',1,0)"),
   ]);
 }

@@ -2,6 +2,10 @@
 
 #[cfg(target_arch = "wasm32")]
 mod admin_invitations;
+#[cfg(any(target_arch = "wasm32", test))]
+mod app_association;
+#[cfg(target_arch = "wasm32")]
+mod dpop;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;
 #[cfg(target_arch = "wasm32")]
@@ -10,6 +14,8 @@ mod home;
 mod logout;
 #[cfg(target_arch = "wasm32")]
 mod logout_delivery;
+#[cfg(target_arch = "wasm32")]
+mod par;
 #[cfg(target_arch = "wasm32")]
 mod passkey_login;
 #[cfg(target_arch = "wasm32")]
@@ -21,11 +27,21 @@ mod i18n;
 mod vault_authzen;
 
 #[cfg(target_arch = "wasm32")]
+mod agent_access;
+#[cfg(target_arch = "wasm32")]
+mod owner_passkeys;
+#[cfg(target_arch = "wasm32")]
+mod vault_approved;
+#[cfg(target_arch = "wasm32")]
 mod vault_attributes;
 #[cfg(target_arch = "wasm32")]
 mod vault_claim_releases;
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 mod vault_gc;
+#[cfg(target_arch = "wasm32")]
+mod vault_oauth_consent;
+#[cfg(target_arch = "wasm32")]
+mod vault_oauth_resource;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -68,6 +84,7 @@ pub struct AuthenticatedTokenRequest {
     credential_revision: u64,
     reservation_id: String,
     retain_until: u64,
+    requested_resource: Option<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -111,6 +128,12 @@ struct ClientSecretRow {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
+struct NativeClientTokenRow {
+    client_revision: u64,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SecretTokenForm {
     grant_type: String,
@@ -125,14 +148,35 @@ struct SecretTokenForm {
 #[derive(Deserialize)]
 struct AuthorizationCodeContextRow {
     client_id: String,
+    dpop_jkt: Option<String>,
     sid: String,
     sub: String,
     nonce: Option<String>,
+    scope: String,
     auth_time: i64,
     parent_expires_at: i64,
     signing_generation: i64,
     signing_algorithm: String,
     public_jwk: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct VaultCodeGrantRow {
+    grant_id: String,
+    grant_version: i64,
+    resource: String,
+    attribute_id: String,
+    expires_at: i64,
+}
+
+#[cfg(target_arch = "wasm32")]
+struct VaultCodeGrant {
+    grant_id: String,
+    grant_version: i64,
+    resource: String,
+    attribute_id: String,
+    expires_at: u64,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -155,6 +199,25 @@ struct UserInfoRow {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
+struct UserInfoScopeRow {
+    scope: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UserInfoNameRow {
+    name: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct TokenBindingRow {
+    dpop_jkt: Option<String>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
 struct AuthorizationContextRow {
     client_revision: i64,
     sector_identifier: String,
@@ -170,6 +233,8 @@ struct ClientRegistrationRow {
     client_revision: i64,
     sector_identifier: String,
     allow_missing_pkce: i64,
+    client_type: String,
+    auth_method: String,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -180,6 +245,7 @@ struct LoginTransactionRow {
     challenge: String,
     expires_at: i64,
     failures: u32,
+    owner_login: i64,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -220,6 +286,8 @@ struct JwksResponse {
 #[derive(Serialize)]
 struct UserInfoResponse {
     sub: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -228,6 +296,10 @@ struct DiscoveryResponse {
     issuer: String,
     authorization_endpoint: String,
     token_endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pushed_authorization_request_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    require_pushed_authorization_requests: Option<bool>,
     jwks_uri: String,
     userinfo_endpoint: String,
     end_session_endpoint: String,
@@ -238,11 +310,12 @@ struct DiscoveryResponse {
     grant_types_supported: [&'static str; 1],
     subject_types_supported: [&'static str; 1],
     id_token_signing_alg_values_supported: [&'static str; 2],
-    scopes_supported: [&'static str; 1],
-    claims_supported: [&'static str; 9],
+    scopes_supported: Vec<&'static str>,
+    claims_supported: Vec<&'static str>,
     acr_values_supported: [&'static str; 1],
     token_endpoint_auth_methods_supported: Vec<&'static str>,
     token_endpoint_auth_signing_alg_values_supported: [&'static str; 1],
+    dpop_signing_alg_values_supported: [&'static str; 1],
     code_challenge_methods_supported: [&'static str; 1],
     authorization_response_iss_parameter_supported: bool,
     request_parameter_supported: bool,
@@ -257,15 +330,18 @@ struct DiscoveryResponse {
 #[must_use = "use this snapshot only to prepare tokens for a conditional D1 exchange"]
 pub struct AuthorizationCodeContext {
     client_id: String,
+    dpop_jkt: Option<String>,
     sid: String,
     sub: String,
     nonce: Option<String>,
+    scope: &'static str,
     auth_time: u64,
     parent_expires_at: u64,
     signing_kid: String,
     signing_algorithm: String,
     signing_generation: u64,
     public_jwk: String,
+    vault: Option<VaultCodeGrant>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -497,6 +573,8 @@ struct TokenEndpointSuccess {
     expires_in: u64,
     scope: &'static str,
     id_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authorization_details: Option<serde_json::Value>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -738,17 +816,24 @@ impl WorkerRuntimePolicy {
 pub fn parse_token_endpoint_form(
     body: &str,
     policy: &WorkerRuntimePolicy,
+    fapi: bool,
 ) -> worker::Result<mikaki_oidc::ValidatedTokenEndpointInput> {
     if body.len() > policy.form_body_bytes {
         return Err(worker::Error::RustError("invalid_request".into()));
     }
     let input: mikaki_oidc::TokenEndpointInput = serde_urlencoded::from_str(body)
         .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
-    input.validate(policy.jwt_bytes).map_err(|error| {
+    (if fapi {
+        input.validate_for_fapi(policy.jwt_bytes)
+    } else {
+        input.validate(policy.jwt_bytes)
+    })
+    .map_err(|error| {
         let code = match error {
             mikaki_oidc::TokenEndpointInputError::UnsupportedGrantType => "unsupported_grant_type",
             mikaki_oidc::TokenEndpointInputError::InvalidClient => "invalid_client",
             mikaki_oidc::TokenEndpointInputError::InvalidRequest => "invalid_request",
+            mikaki_oidc::TokenEndpointInputError::InvalidGrant => "invalid_grant",
         };
         worker::Error::RustError(code.into())
     })
@@ -953,6 +1038,7 @@ async fn authenticate_secret_token_request(
         credential_revision: row.secret_revision,
         reservation_id,
         retain_until: retain_until as u64,
+        requested_resource: None,
     })
 }
 
@@ -978,12 +1064,13 @@ impl mikaki_oidc::CryptographicRandom for WorkersCryptoRandom {
 async fn accept_client_assertion(
     db: &worker::d1::D1Database,
     assertion: &mikaki_oidc::VerifiedClientAssertion,
+    audience: &str,
     endpoint: &str,
     random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<String> {
     use wasm_bindgen::JsValue;
 
-    if endpoint.is_empty() || assertion.audience() != endpoint {
+    if endpoint.is_empty() || assertion.audience() != audience {
         return Err(worker::Error::RustError(
             "client assertion endpoint mismatch".into(),
         ));
@@ -1056,6 +1143,7 @@ async fn verify_and_accept_client_assertion(
     compact: &str,
     audience: &str,
     endpoint: &str,
+    fapi: bool,
     now: u64,
     policy: &WorkerRuntimePolicy,
     random: &mut impl mikaki_oidc::CryptographicRandom,
@@ -1097,10 +1185,14 @@ async fn verify_and_accept_client_assertion(
         true,
         row.public_key_sec1,
     );
-    let assertion = key
-        .verify_private_key_jwt(compact, audience, now, policy.assertion, policy.jwt_bytes)
-        .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
-    let reservation_id = accept_client_assertion(db, &assertion, endpoint, random).await?;
+    let assertion = if fapi {
+        key.verify_fapi_private_key_jwt(compact, audience, now, policy.jwt_bytes)
+    } else {
+        key.verify_private_key_jwt(compact, audience, now, policy.assertion, policy.jwt_bytes)
+    }
+    .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
+    let reservation_id =
+        accept_client_assertion(db, &assertion, audience, endpoint, random).await?;
     Ok((assertion, reservation_id))
 }
 
@@ -1109,6 +1201,8 @@ pub async fn authenticate_token_request(
     db: &worker::d1::D1Database,
     input: mikaki_oidc::ValidatedTokenEndpointInput,
     token_endpoint: &str,
+    issuer: &str,
+    fapi: bool,
     now: u64,
     policy: &WorkerRuntimePolicy,
     random: &mut impl mikaki_oidc::CryptographicRandom,
@@ -1117,26 +1211,138 @@ pub async fn authenticate_token_request(
         db,
         input.client_id(),
         input.assertion().as_str(),
+        if fapi { issuer } else { token_endpoint },
         token_endpoint,
-        token_endpoint,
+        fapi,
         now,
         policy,
         random,
     )
     .await?;
     let request = input
-        .authenticate(assertion, token_endpoint)
+        .authenticate(assertion, if fapi { issuer } else { token_endpoint })
         .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     Ok(AuthenticatedTokenRequest {
         client_id: request.client_id().to_owned(),
         exchange: request.exchange().clone(),
         client_revision: request.assertion().client_revision(),
         method: "private_key_jwt",
-        endpoint: request.assertion().audience().to_owned(),
+        endpoint: token_endpoint.to_owned(),
         credential_id: request.assertion().key_id().to_owned(),
         credential_revision: request.assertion().key_revision(),
         reservation_id: assertion_reservation_id,
         retain_until: request.assertion().retain_until(),
+        requested_resource: None,
+    })
+}
+
+/// A public native request proves possession of the PKCE verifier, not a
+/// shared application secret. Registration and the one-use code are checked
+/// before recording a short-lived exchange receipt.
+#[cfg(target_arch = "wasm32")]
+async fn accept_native_token_request(
+    db: &worker::d1::D1Database,
+    body: &str,
+    token_endpoint: &str,
+    now: u64,
+    random: &mut impl mikaki_oidc::CryptographicRandom,
+) -> worker::Result<AuthenticatedTokenRequest> {
+    use wasm_bindgen::JsValue;
+
+    let form: mikaki_oidc::PublicTokenEndpointInput = serde_urlencoded::from_str(body)
+        .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
+    let input = form.validate().map_err(|error| {
+        let code = match error {
+            mikaki_oidc::TokenEndpointInputError::UnsupportedGrantType => "unsupported_grant_type",
+            mikaki_oidc::TokenEndpointInputError::InvalidClient => "invalid_client",
+            _ => "invalid_request",
+        };
+        worker::Error::RustError(code.into())
+    })?;
+    let exchange = input.exchange();
+    let loopback_template = loopback_redirect_template(exchange.redirect_uri());
+    let registered_redirect_uri = loopback_template
+        .as_deref()
+        .unwrap_or(exchange.redirect_uri());
+    if exchange.redirect_uri().starts_with("http:") && loopback_template.is_none() {
+        return Err(worker::Error::RustError("invalid_grant".into()));
+    }
+    let row = db
+        .prepare(
+            "SELECT c.revision AS client_revision FROM client c \
+             JOIN client_redirect_uri r ON r.client_id=c.client_id \
+             JOIN authorization_code ac ON ac.client_id=c.client_id \
+             WHERE c.client_id=?1 AND c.client_type='native' AND c.auth_method='none' \
+             AND c.active=1 AND r.redirect_uri=?5 AND r.active=1 \
+             AND ac.code_hash=?3 AND ac.redirect_uri=?5 \
+             AND ac.redirect_uri_actual=CASE WHEN ?2=?5 THEN '' ELSE ?2 END \
+             AND ac.pkce_challenge=?4 AND ac.client_revision=c.revision \
+             AND ac.expires_at>CAST(strftime('%s','now') AS INTEGER) \
+             LIMIT 1",
+        )
+        .bind(&[
+            JsValue::from_str(input.client_id()),
+            JsValue::from_str(exchange.redirect_uri()),
+            JsValue::from_str(exchange.code_digest()),
+            JsValue::from_str(exchange.pkce_challenge()),
+            JsValue::from_str(registered_redirect_uri),
+        ])?
+        .first::<NativeClientTokenRow>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?;
+    let mut receipt = [0u8; 32];
+    random
+        .fill(&mut receipt)
+        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+    let receipt = URL_SAFE_NO_PAD.encode(receipt);
+    let retain_until = now.saturating_add(60);
+    let values = [
+        JsValue::from_str(&receipt),
+        JsValue::from_str(input.client_id()),
+        JsValue::from_str(token_endpoint),
+        JsValue::from_str(&row.client_revision.to_string()),
+        JsValue::from_str(&retain_until.to_string()),
+        JsValue::from_str(exchange.code_digest()),
+        JsValue::from_str(exchange.redirect_uri()),
+        JsValue::from_str(exchange.pkce_challenge()),
+        JsValue::from_str(registered_redirect_uri),
+    ];
+    db.batch(vec![
+        db.prepare(
+            "INSERT INTO client_auth_use(accepted_by,client_id,method,endpoint,credential_id,client_revision,credential_revision,retain_until) \
+             SELECT ?1,c.client_id,'none',?3,'',c.revision,0,?5 FROM client c \
+             JOIN client_redirect_uri r ON r.client_id=c.client_id AND r.redirect_uri=?9 \
+             JOIN authorization_code ac ON ac.client_id=c.client_id AND ac.code_hash=?6 \
+             WHERE c.client_id=?2 AND c.client_type='native' AND c.auth_method='none' \
+             AND c.active=1 AND c.revision=?4 AND r.active=1 \
+             AND ac.redirect_uri=?9 AND ac.redirect_uri_actual=CASE WHEN ?7=?9 THEN '' ELSE ?7 END \
+             AND ac.pkce_challenge=?8 AND ac.client_revision=c.revision \
+             AND ac.expires_at>CAST(strftime('%s','now') AS INTEGER) \
+             AND ?5>CAST(strftime('%s','now') AS INTEGER)",
+        )
+        .bind(&values)?,
+        db.prepare(
+            "INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN EXISTS ( \
+             SELECT 1 FROM client_auth_use WHERE accepted_by=?1 AND client_id=?2 \
+             AND method='none' AND client_revision=?4 AND endpoint=?3 AND retain_until=?5 \
+             ) THEN 1 ELSE 0 END)",
+        )
+        .bind(&values[..5])?,
+        db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
+            .bind(&values[..1])?,
+    ])
+    .await?;
+    Ok(AuthenticatedTokenRequest {
+        client_id: input.client_id().to_owned(),
+        exchange: exchange.clone(),
+        client_revision: row.client_revision,
+        method: "none",
+        endpoint: token_endpoint.to_owned(),
+        credential_id: String::new(),
+        credential_revision: 0,
+        reservation_id: receipt,
+        retain_until,
+        requested_resource: input.resource().map(str::to_owned),
     })
 }
 
@@ -1147,6 +1353,8 @@ async fn load_authorization_code_context(
     db: &worker::d1::D1Database,
     input: &AuthenticatedTokenRequest,
     signer: &WorkerTokenSigner,
+    fapi: bool,
+    vault_preview: bool,
     random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<AuthorizationCodeContext> {
     use wasm_bindgen::JsValue;
@@ -1166,10 +1374,11 @@ async fn load_authorization_code_context(
         JsValue::from_str(&input.retain_until.to_string()),
         JsValue::from_str(signer.kid()),
         JsValue::from_str(signer.algorithm()),
+        JsValue::from_f64(if fapi { 1.0 } else { 0.0 }),
     ];
     let row = db
         .prepare(
-            "SELECT ac.client_id, cs.sid, v.sub, cc.nonce, sx.auth_time, \
+            "SELECT ac.client_id, ac.dpop_jkt, cs.sid, v.sub, cc.nonce, cc.scope, sx.auth_time, \
              v.expires_at AS parent_expires_at, sk.generation AS signing_generation, \
              sk.algorithm AS signing_algorithm, \
              sk.public_jwk AS public_jwk \
@@ -1183,7 +1392,10 @@ async fn load_authorization_code_context(
              JOIN signing_key sk ON sk.kid=?12 \
              WHERE c.client_id=?1 AND c.active=1 AND c.revision=?5 \
              AND ac.code_hash=?2 AND ac.client_id=?1 AND ac.consumed_by IS NULL \
-             AND ac.redirect_uri=?3 AND ac.pkce_challenge=?4 \
+             AND (?14=0 OR EXISTS (SELECT 1 FROM par_request p \
+               WHERE p.consumed_by=ac.code_hash AND p.client_id=ac.client_id)) \
+             AND (CASE WHEN ac.redirect_uri_actual='' THEN ac.redirect_uri ELSE ac.redirect_uri_actual END)=?3 \
+             AND ac.pkce_challenge=?4 \
              AND ac.expires_at > CAST(strftime('%s','now') AS INTEGER) \
              AND c.auth_method=?8 \
              AND au.method=?8 AND au.credential_id=?6 AND au.client_revision=?5 \
@@ -1192,7 +1404,8 @@ async fn load_authorization_code_context(
              AND ((?8='private_key_jwt' AND EXISTS (SELECT 1 FROM client_key ck WHERE ck.client_id=c.client_id \
                AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1)) \
                OR (?8 IN ('client_secret_basic','client_secret_post') AND EXISTS (SELECT 1 FROM client_secret s \
-               WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1))) \
+               WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1)) \
+               OR (?8='none' AND c.client_type='native' AND ?6='' AND CAST(?7 AS INTEGER)=0)) \
              AND sk.active=1 AND sk.algorithm=?13 LIMIT 1",
         )
         .bind(&values)?
@@ -1211,17 +1424,63 @@ async fn load_authorization_code_context(
         .map_err(|_| worker::Error::RustError("invalid_grant".into()))?;
     let signing_generation = u64::try_from(row.signing_generation)
         .map_err(|_| worker::Error::RustError("invalid_grant".into()))?;
+    let scope = match row.scope.as_str() {
+        "openid" => "openid",
+        "openid profile" | "profile openid" => "openid profile",
+        "openid vault.read" | "vault.read openid" if vault_preview => "openid vault.read",
+        _ => return Err(worker::Error::RustError("invalid_grant".into())),
+    };
+    let vault = if scope == "openid vault.read" {
+        if input.requested_resource.as_deref() != Some(mikaki_oidc::VAULT_RESOURCE) {
+            return Err(worker::Error::RustError("invalid_target".into()));
+        }
+        let grant = db
+            .prepare(
+                "SELECT g.grant_id,g.version AS grant_version,g.resource,g.attribute_id,g.expires_at \
+                 FROM vault_oauth_code_context vc \
+                 JOIN vault_oauth_grant g ON g.grant_id=vc.grant_id \
+                 JOIN authorization_code ac ON ac.code_hash=vc.code_hash \
+                 JOIN eligible_client_session s ON s.client_id=ac.client_id AND s.sid=ac.sid \
+                 JOIN client c ON c.client_id=ac.client_id \
+                 WHERE vc.code_hash=?1 AND vc.grant_version=g.version \
+                 AND vc.resource=g.resource AND vc.attribute_id=g.attribute_id \
+                 AND g.account_id=s.account_id AND g.client_id=ac.client_id \
+                 AND g.client_revision=ac.client_revision AND g.revoked=0 \
+                 AND g.expires_at>unixepoch() AND c.client_type='native' \
+                 AND c.auth_method='none' AND c.active=1 AND c.revision=ac.client_revision",
+            )
+            .bind(&[JsValue::from_str(exchange.code_digest())])?
+            .first::<VaultCodeGrantRow>(None)
+            .await?
+            .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?;
+        Some(VaultCodeGrant {
+            grant_id: grant.grant_id,
+            grant_version: grant.grant_version,
+            resource: grant.resource,
+            attribute_id: grant.attribute_id,
+            expires_at: u64::try_from(grant.expires_at)
+                .map_err(|_| worker::Error::RustError("invalid_grant".into()))?,
+        })
+    } else {
+        if input.requested_resource.is_some() {
+            return Err(worker::Error::RustError("invalid_target".into()));
+        }
+        None
+    };
     Ok(AuthorizationCodeContext {
         client_id: row.client_id,
+        dpop_jkt: row.dpop_jkt,
         sid: row.sid,
         sub: row.sub,
         nonce: row.nonce,
+        scope,
         auth_time,
         parent_expires_at,
         signing_kid: signer.kid().to_owned(),
         signing_algorithm: row.signing_algorithm,
         signing_generation,
         public_jwk: row.public_jwk,
+        vault,
     })
 }
 
@@ -1259,7 +1518,8 @@ async fn revoke_reused_code(
              AND EXISTS (SELECT 1 FROM authorization_code ac \
                JOIN client c ON c.client_id=ac.client_id \
                JOIN client_auth_use au ON au.client_id=c.client_id \
-               WHERE ac.code_hash=?1 AND ac.client_id=?2 AND ac.redirect_uri=?3 \
+               WHERE ac.code_hash=?1 AND ac.client_id=?2 \
+                 AND (CASE WHEN ac.redirect_uri_actual='' THEN ac.redirect_uri ELSE ac.redirect_uri_actual END)=?3 \
                  AND ac.pkce_challenge=?4 AND ac.consumed_by IS NOT NULL \
                  AND c.active=1 AND c.revision=?5 AND c.auth_method=?8 \
                  AND au.method=?8 AND au.credential_id=?6 AND au.credential_revision=?7 \
@@ -1267,7 +1527,8 @@ async fn revoke_reused_code(
                  AND ((?8='private_key_jwt' AND EXISTS (SELECT 1 FROM client_key ck WHERE ck.client_id=c.client_id \
                    AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1)) \
                    OR (?8 IN ('client_secret_basic','client_secret_post') AND EXISTS (SELECT 1 FROM client_secret s \
-                   WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1))) \
+                   WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1)) \
+                   OR (?8='none' AND c.client_type='native' AND ?6='' AND CAST(?7 AS INTEGER)=0)) \
                  AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER))",
         )
         .bind(&values[..11])?,
@@ -1278,14 +1539,16 @@ async fn revoke_reused_code(
              JOIN client c ON c.client_id=ac.client_id \
              JOIN client_auth_use au ON au.client_id=c.client_id \
              WHERE ti.code_hash=?1 AND ti.revoked=0 AND ac.client_id=?2 \
-               AND ac.redirect_uri=?3 AND ac.pkce_challenge=?4 \
+               AND (CASE WHEN ac.redirect_uri_actual='' THEN ac.redirect_uri ELSE ac.redirect_uri_actual END)=?3 \
+               AND ac.pkce_challenge=?4 \
                AND ac.consumed_by IS NOT NULL AND c.active=1 AND c.revision=?5 AND c.auth_method=?8 \
                AND au.method=?8 AND au.credential_id=?6 AND au.credential_revision=?7 \
                AND au.client_revision=?5 AND au.endpoint=?9 AND au.accepted_by=?10 \
                AND ((?8='private_key_jwt' AND EXISTS (SELECT 1 FROM client_key ck WHERE ck.client_id=c.client_id \
                  AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1)) \
                  OR (?8 IN ('client_secret_basic','client_secret_post') AND EXISTS (SELECT 1 FROM client_secret s \
-                 WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1))) \
+                 WHERE s.client_id=c.client_id AND s.revision=?7 AND s.active=1)) \
+                 OR (?8='none' AND c.client_type='native' AND ?6='' AND CAST(?7 AS INTEGER)=0)) \
                AND au.retain_until=?11 AND au.retain_until > CAST(strftime('%s','now') AS INTEGER) \
              ) THEN 1 ELSE 0 END)",
         )
@@ -1311,12 +1574,19 @@ async fn commit_authorization_code_exchange(
     id_token_ttl_seconds: u64,
     response_bytes: usize,
     random: &mut impl mikaki_oidc::CryptographicRandom,
+    dpop_proof: Option<(&mikaki_oidc::VerifiedDpopProof, &str)>,
+    fapi: bool,
 ) -> worker::Result<TokenEndpointSuccess> {
     use wasm_bindgen::JsValue;
 
     if context.client_id() != input.client_id()
         || context.signing_kid() != signer.kid()
         || context.signing_algorithm != signer.algorithm()
+        || context
+            .dpop_jkt
+            .as_deref()
+            .is_some_and(|jkt| dpop_proof.is_none_or(|(proof, _)| proof.thumbprint() != jkt))
+        || (context.vault.is_some() && dpop_proof.is_none())
         || now > i64::MAX as u64
     {
         return Err(worker::Error::RustError("invalid_grant".into()));
@@ -1324,7 +1594,13 @@ async fn commit_authorization_code_exchange(
     let access_expires_at = now
         .checked_add(access_ttl_seconds)
         .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?
-        .min(context.parent_expires_at());
+        .min(context.parent_expires_at())
+        .min(
+            context
+                .vault
+                .as_ref()
+                .map_or(u64::MAX, |grant| grant.expires_at),
+        );
     let id_token_expires_at = now
         .checked_add(id_token_ttl_seconds)
         .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?
@@ -1359,10 +1635,22 @@ async fn commit_authorization_code_exchange(
     let operation_id = URL_SAFE_NO_PAD.encode(operation);
     let response = TokenEndpointSuccess {
         access_token,
-        token_type: "Bearer",
+        token_type: if dpop_proof.is_some() {
+            "DPoP"
+        } else {
+            "Bearer"
+        },
         expires_in: access_expires_at - now,
-        scope: "openid",
+        scope: context.scope,
         id_token,
+        authorization_details: context.vault.as_ref().map(|grant| {
+            serde_json::json!([{
+                "type": mikaki_oidc::VAULT_READ_DETAIL_TYPE,
+                "locations": [grant.resource],
+                "actions": ["read_ciphertext"],
+                "attribute": grant.attribute_id,
+            }])
+        }),
     };
     let id_token_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(response.id_token.as_bytes()));
     if serde_json::to_vec(&response)
@@ -1402,15 +1690,31 @@ async fn commit_authorization_code_exchange(
         JsValue::from_str(&access_hash),
         JsValue::from_str(&context.public_jwk),
         JsValue::from_str(&context.signing_algorithm),
+        dpop_proof
+            .map(|(proof, _)| JsValue::from_str(proof.thumbprint()))
+            .unwrap_or(JsValue::NULL),
+        dpop_proof
+            .map(|(proof, _)| JsValue::from_str(proof.jti_hash()))
+            .unwrap_or(JsValue::NULL),
+        dpop_proof
+            .map(|(_, receipt)| JsValue::from_str(receipt))
+            .unwrap_or(JsValue::NULL),
+        JsValue::from_f64(if fapi { 1.0 } else { 0.0 }),
+        JsValue::from_str(context.scope),
     ];
     let mut issue_values = values[..22].to_vec();
     issue_values.push(JsValue::from_str(&id_token_hash));
-    let commit = db.batch(vec![
+    issue_values.push(values[24].clone());
+    let mut statements = vec![
         db.prepare(
             "UPDATE authorization_code SET consumed_by=?19, \
              consumed_at=CAST(strftime('%s','now') AS INTEGER) \
-             WHERE code_hash=?1 AND client_id=?2 AND redirect_uri=?3 \
+             WHERE code_hash=?1 AND client_id=?2 \
+             AND (CASE WHEN redirect_uri_actual='' THEN redirect_uri ELSE redirect_uri_actual END)=?3 \
              AND pkce_challenge=?4 AND consumed_by IS NULL \
+             AND (?28=0 OR EXISTS (SELECT 1 FROM par_request p \
+               WHERE p.consumed_by=authorization_code.code_hash AND p.client_id=?2)) \
+             AND (dpop_jkt IS NULL OR dpop_jkt=?25) \
              AND expires_at > CAST(strftime('%s','now') AS INTEGER) \
              AND EXISTS (SELECT 1 FROM client c WHERE c.client_id=?2 \
                AND c.active=1 AND c.revision=?5 AND c.auth_method=?8) \
@@ -1419,7 +1723,12 @@ async fn commit_authorization_code_exchange(
              AND EXISTS (SELECT 1 FROM client_session cs \
                JOIN sso_context sx ON sx.sso_id=cs.sso_id \
                JOIN code_context cc ON cc.code_hash=?1 \
-               WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce IS ?16) \
+               WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce IS ?16 \
+               AND (cc.scope=?29 OR (?29='openid profile' AND cc.scope='profile openid') \
+                 OR (?29='openid vault.read' AND cc.scope='vault.read openid'))) \
+             AND ((?29='openid vault.read' AND EXISTS (SELECT 1 FROM vault_oauth_code_context vc \
+               WHERE vc.code_hash=?1)) OR (?29!='openid vault.read' AND NOT EXISTS ( \
+               SELECT 1 FROM vault_oauth_code_context vc WHERE vc.code_hash=?1))) \
              AND EXISTS (SELECT 1 FROM client_auth_use au WHERE au.client_id=?2 \
                AND au.method=?8 AND au.credential_id=?6 AND au.client_revision=?5 \
                AND au.credential_revision=?7 AND au.endpoint=?9 AND au.accepted_by=?10 \
@@ -1427,21 +1736,26 @@ async fn commit_authorization_code_exchange(
              AND ((?8='private_key_jwt' AND EXISTS (SELECT 1 FROM client_key ck WHERE ck.client_id=?2 \
                AND ck.kid=?6 AND ck.revision=?7 AND ck.active=1)) \
                OR (?8 IN ('client_secret_basic','client_secret_post') AND EXISTS (SELECT 1 FROM client_secret s \
-               WHERE s.client_id=?2 AND s.revision=?7 AND s.active=1))) \
+               WHERE s.client_id=?2 AND s.revision=?7 AND s.active=1)) \
+               OR (?8='none' AND ?6='' AND CAST(?7 AS INTEGER)=0 AND EXISTS (SELECT 1 FROM client nc \
+                 WHERE nc.client_id=?2 AND nc.client_type='native' AND nc.auth_method='none'))) \
              AND EXISTS (SELECT 1 FROM signing_key sk WHERE sk.kid=?12 \
                AND sk.generation=?13 AND sk.active=1 AND sk.public_jwk=?23 \
                AND sk.algorithm=?24) \
-             AND ?20 > CAST(strftime('%s','now') AS INTEGER) AND ?20 <= ?18 \
-             AND ?21 > CAST(strftime('%s','now') AS INTEGER) AND ?21 <= ?18",
+             AND (?25 IS NULL OR EXISTS (SELECT 1 FROM dpop_proof_use p \
+               WHERE p.jkt=?25 AND p.jti_hash=?26 AND p.accepted_by=?27 \
+               AND p.retain_until>=CAST(strftime('%s','now') AS INTEGER))) \
+             AND CAST(?20 AS INTEGER) > CAST(strftime('%s','now') AS INTEGER) AND CAST(?20 AS INTEGER) <= CAST(?18 AS INTEGER) \
+             AND CAST(?21 AS INTEGER) > CAST(strftime('%s','now') AS INTEGER) AND CAST(?21 AS INTEGER) <= CAST(?18 AS INTEGER)",
         )
         .bind(&values)?,
         db.prepare(
-            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked,id_token_hash) \
-             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0,?23 \
+            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked,id_token_hash,dpop_jkt) \
+             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0,?23,?24 \
              FROM authorization_code ac JOIN eligible_client_session v \
                ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.consumed_by=?19 \
-               AND ?20 > CAST(strftime('%s','now') AS INTEGER)",
+               AND CAST(?20 AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)",
         )
         .bind(&issue_values)?,
         db.prepare(
@@ -1450,15 +1764,59 @@ async fn commit_authorization_code_exchange(
              JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.client_id=?2 AND ac.sid=?14 \
                AND ac.consumed_by=?19 AND ti.operation_id=?19 AND ti.access_hash=?22 \
+               AND (ac.dpop_jkt IS NULL OR ac.dpop_jkt=?24) \
                AND ti.id_token_hash=?23 \
+               AND ti.dpop_jkt IS ?24 \
                AND ti.access_expires_at=?20 AND ac.expires_at > CAST(strftime('%s','now') AS INTEGER) \
-               AND ?21 > CAST(strftime('%s','now') AS INTEGER) AND ?21 <= ?18 \
+               AND CAST(?21 AS INTEGER) > CAST(strftime('%s','now') AS INTEGER) AND CAST(?21 AS INTEGER) <= CAST(?18 AS INTEGER) \
              ) THEN 1 ELSE 0 END)",
         )
         .bind(&issue_values)?,
-        db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19").bind(&values[..19])?,
-    ])
-    .await;
+    ];
+    if let Some(vault) = &context.vault {
+        let vault_values = [
+            JsValue::from_str(&access_hash),
+            JsValue::from_str(&vault.grant_id),
+            JsValue::from_f64(vault.grant_version as f64),
+            JsValue::from_str(&vault.resource),
+            JsValue::from_str(&vault.attribute_id),
+            JsValue::from_str(exchange.code_digest()),
+        ];
+        statements.push(
+            db.prepare(
+                "INSERT INTO vault_oauth_token_context \
+                 (access_hash,grant_id,grant_version,resource,attribute_id) \
+                 SELECT ?1,?2,?3,?4,?5 FROM token_issue ti \
+                 JOIN vault_oauth_code_context vc ON vc.code_hash=ti.code_hash \
+                 JOIN vault_oauth_grant g ON g.grant_id=vc.grant_id \
+                 WHERE ti.access_hash=?1 AND ti.code_hash=?6 AND ti.revoked=0 \
+                 AND ti.dpop_jkt IS NOT NULL AND vc.grant_id=?2 \
+                 AND vc.grant_version=?3 AND vc.resource=?4 AND vc.attribute_id=?5 \
+                 AND g.version=?3 AND g.revoked=0 AND g.expires_at>=ti.access_expires_at",
+            )
+            .bind(&vault_values)?,
+        );
+        statements.push(
+            db.prepare(
+                "INSERT INTO atomic_guard(operation_id,passed) \
+                 VALUES(?1,CASE WHEN EXISTS (SELECT 1 FROM vault_oauth_token_context \
+                 WHERE access_hash=?1 AND grant_id=?2 AND grant_version=?3 \
+                 AND resource=?4 AND attribute_id=?5) THEN 1 ELSE 0 END)",
+            )
+            .bind(&vault_values[..5])?,
+        );
+    }
+    statements.push(
+        db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19")
+            .bind(&values[..19])?,
+    );
+    if context.vault.is_some() {
+        statements.push(
+            db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
+                .bind(&[JsValue::from_str(&access_hash)])?,
+        );
+    }
+    let commit = db.batch(statements).await;
     if let Err(error) = commit {
         let consumed = db
             .prepare("SELECT consumed_by FROM authorization_code WHERE code_hash=?1")
@@ -1528,6 +1886,11 @@ fn oauth_error_from_worker(error: worker::Error) -> (&'static str, u16) {
         }
         worker::Error::RustError(code) if code == "invalid_client" => ("invalid_client", 401),
         worker::Error::RustError(code) if code == "invalid_grant" => ("invalid_grant", 400),
+        worker::Error::RustError(code) if code == "invalid_target" => ("invalid_target", 400),
+        worker::Error::RustError(code) if code == "invalid_dpop_proof" => {
+            ("invalid_dpop_proof", 400)
+        }
+        worker::Error::RustError(code) if code == "use_dpop_nonce" => ("use_dpop_nonce", 400),
         _ => ("server_error", 500),
     }
 }
@@ -1558,11 +1921,56 @@ fn conformance_deployment(env: &worker::Env) -> worker::Result<bool> {
     match env.var("MIKAKI_DEPLOYMENT_PROFILE") {
         Err(_) => Ok(false),
         Ok(value) if value.to_string() == "normal" => Ok(false),
+        Ok(value) if value.to_string() == "fapi2" => Ok(false),
         Ok(value) if value.to_string() == "conformance" => Ok(true),
         _ => Err(worker::Error::RustError(
             "invalid deployment profile".into(),
         )),
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn fapi2_deployment(env: &worker::Env) -> worker::Result<bool> {
+    match env.var("MIKAKI_DEPLOYMENT_PROFILE") {
+        Err(_) => Ok(false),
+        Ok(value) if value.to_string() == "normal" || value.to_string() == "conformance" => {
+            Ok(false)
+        }
+        Ok(value) if value.to_string() == "fapi2" => Ok(true),
+        _ => Err(worker::Error::RustError(
+            "invalid deployment profile".into(),
+        )),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn dpop_nonce_required(env: &worker::Env) -> worker::Result<bool> {
+    if fapi2_deployment(env)? {
+        return Ok(true);
+    }
+    match env.var("MIKAKI_DPOP_NONCE_MODE") {
+        Err(_) => Ok(false),
+        Ok(value) if value.to_string() == "off" => Ok(false),
+        Ok(value) if value.to_string() == "required" => Ok(true),
+        _ => Err(worker::Error::RustError("invalid DPoP nonce mode".into())),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn dpop_nonce_error_response(nonce: &str, resource: bool) -> worker::Result<worker::Response> {
+    let builder = worker::Response::builder()
+        .with_status(if resource { 401 } else { 400 })
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Pragma", "no-cache")?
+        .with_header("DPoP-Nonce", nonce)?;
+    let builder = if resource {
+        builder.with_header("WWW-Authenticate", "DPoP error=\"use_dpop_nonce\"")?
+    } else {
+        builder
+    };
+    builder.from_json(&TokenEndpointErrorBody {
+        error: "use_dpop_nonce".into(),
+    })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1596,12 +2004,38 @@ async fn issue_token_response(
     let body = read_bounded_body(request, policy.form_body_bytes).await?;
     let authorization = request.headers().get("authorization")?;
     let conformance = conformance_deployment(env)?;
+    let fapi = fapi2_deployment(env)?;
     let now_ms = js_sys::Date::now();
     if !now_ms.is_finite() || now_ms < 0.0 {
         return Err(worker::Error::RustError("server_error".into()));
     }
     let now = (now_ms / 1000.0).floor() as u64;
     let mut random = WorkersCryptoRandom;
+    let dpop_proof = request
+        .headers()
+        .get("dpop")?
+        .map(|compact| {
+            mikaki_oidc::verify_dpop_proof(
+                &compact,
+                "POST",
+                &token_endpoint,
+                mikaki_oidc::DpopTarget::Token,
+                now,
+            )
+            .map_err(|_| worker::Error::RustError("invalid_dpop_proof".into()))
+        })
+        .transpose()?;
+    if fapi && dpop_proof.is_none() {
+        return Err(worker::Error::RustError("invalid_dpop_proof".into()));
+    }
+    let require_nonce = dpop_nonce_required(env)?;
+    if require_nonce && let Some(proof) = &dpop_proof {
+        let _ =
+            dpop::current_nonce(&db, dpop::NonceScope::AuthorizationServer, &mut random).await?;
+        if !dpop::accepts_nonce(&db, dpop::NonceScope::AuthorizationServer, proof.nonce()).await? {
+            return Err(worker::Error::RustError("use_dpop_nonce".into()));
+        }
+    }
     let authenticated = if let Some(header) = authorization.as_deref() {
         if !conformance {
             return Err(worker::Error::RustError("invalid_client".into()));
@@ -1630,17 +2064,56 @@ async fn issue_token_response(
             &mut random,
         )
         .await?
+    } else if !conformance
+        && !fapi
+        && serde_urlencoded::from_str::<mikaki_oidc::PublicTokenEndpointInput>(&body).is_ok()
+    {
+        accept_native_token_request(&db, &body, &token_endpoint, now, &mut random).await?
     } else {
-        let input = parse_token_endpoint_form(&body, &policy)?;
-        authenticate_token_request(&db, input, &token_endpoint, now, &policy, &mut random).await?
+        let input = parse_token_endpoint_form(&body, &policy, fapi)?;
+        authenticate_token_request(
+            &db,
+            input,
+            &token_endpoint,
+            &issuer,
+            fapi,
+            now,
+            &policy,
+            &mut random,
+        )
+        .await?
+    };
+    let dpop_receipt = if let Some(proof) = &dpop_proof {
+        let mut receipt = [0u8; 32];
+        mikaki_oidc::CryptographicRandom::fill(&mut random, &mut receipt)
+            .map_err(|_| worker::Error::RustError("server_error".into()))?;
+        let receipt = URL_SAFE_NO_PAD.encode(receipt);
+        dpop::accept_token_proof(&db, proof, &receipt, require_nonce).await?;
+        Some(receipt)
+    } else {
+        None
     };
     let private_jwk = env
         .secret("OP_PRIVATE_JWK")
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
     let signer = WorkerTokenSigner::from_secret(&private_jwk).await?;
-    let context =
-        load_authorization_code_context(&db, &authenticated, &signer, &mut random).await?;
+    let vault_preview = env
+        .var("MIKAKI_NATIVE_VAULT_OAUTH")
+        .ok()
+        .is_some_and(|value| value.to_string() == "preview");
+    let context = load_authorization_code_context(
+        &db,
+        &authenticated,
+        &signer,
+        fapi,
+        vault_preview,
+        &mut random,
+    )
+    .await?;
+    if context.vault.is_some() && dpop_proof.is_none() {
+        return Err(worker::Error::RustError("invalid_dpop_proof".into()));
+    }
     let response = commit_authorization_code_exchange(
         &db,
         &authenticated,
@@ -1652,6 +2125,8 @@ async fn issue_token_response(
         policy.id_token_ttl_seconds(),
         policy.response_bytes(),
         &mut random,
+        dpop_proof.as_ref().zip(dpop_receipt.as_deref()),
+        fapi,
     )
     .await?;
     Ok(response)
@@ -1674,6 +2149,16 @@ async fn token_route(
             .from_json(&body),
         Err(error) => {
             let (code, status) = oauth_error_from_worker(error);
+            if code == "use_dpop_nonce" {
+                let db = context.env.d1("DB")?;
+                let nonce = dpop::current_nonce(
+                    &db,
+                    dpop::NonceScope::AuthorizationServer,
+                    &mut WorkersCryptoRandom,
+                )
+                .await?;
+                return dpop_nonce_error_response(&nonce, false);
+            }
             oauth_error_response(code, status, basic_challenge)
         }
     }
@@ -1718,6 +2203,18 @@ fn parse_authorization_parameters(
 }
 
 #[cfg(target_arch = "wasm32")]
+fn authorization_url_without_vault_receipt(url: &url::Url) -> url::Url {
+    let fields = url
+        .query_pairs()
+        .filter(|(name, _)| name != "vault_consent")
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    let mut clean = url.clone();
+    clean.query_pairs_mut().clear().extend_pairs(fields);
+    clean
+}
+
+#[cfg(target_arch = "wasm32")]
 fn authorization_error_response(
     redirect_uri: &str,
     state: Option<&str>,
@@ -1741,6 +2238,32 @@ fn authorization_error_response(
         .with_header("Pragma", "no-cache")?
         .with_header("Referrer-Policy", "no-referrer")?
         .empty())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn authorization_par_error_page(
+    request: &worker::Request,
+    missing_reference: bool,
+) -> worker::Result<worker::Response> {
+    let strings = i18n::catalog(i18n::select(request, None)?);
+    let title = i18n::html_escape(strings.message("parInvalidTitle"));
+    let body = i18n::html_escape(strings.message(if missing_reference {
+        "parMissingBody"
+    } else {
+        "parInvalidBody"
+    }));
+    let html = format!(
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{title}</title></head><body><main><h1>{title}</h1><p>{body}</p></main></body></html>",
+        strings.locale,
+    );
+    worker::Response::builder()
+        .with_status(400)
+        .with_header("Cache-Control", "no-store")?
+        .with_header(
+            "Content-Security-Policy",
+            "default-src 'none'; frame-ancestors 'none'",
+        )?
+        .from_html(html)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1781,8 +2304,32 @@ async fn authorization_interaction_response(
     if prompt_none {
         authorization_error_response(redirect_uri, state, issuer, error)
     } else {
-        passkey_login::start(request, db, issuer, client_id).await
+        passkey_login::start(request, db, issuer, client_id, redirect_uri, state).await
     }
+}
+
+/// RFC 8252 loopback registration uses port 0 as the exact registered
+/// template. Only the port may vary in the authorization request.
+fn loopback_redirect_template(actual: &str) -> Option<String> {
+    let mut url = url::Url::parse(actual).ok()?;
+    if url.scheme() != "http"
+        || url.as_str() != actual
+        || url.username() != ""
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() == "/"
+        || !matches!(
+            url.host(),
+            Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
+                | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
+        )
+        || url.port().is_none_or(|port| port == 0)
+    {
+        return None;
+    }
+    url.set_port(Some(0)).ok()?;
+    Some(url.into())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1794,7 +2341,43 @@ async fn authorize_route(
 
     let db = context.env.d1("DB")?;
     let policy = WorkerRuntimePolicy::from_db(&db).await?;
-    let request_url = request.url()?;
+    let mut request_url = request.url()?;
+    let pushed = if par::required(&context.env)? {
+        if policy.authorization_code_ttl_seconds() > 60 {
+            return Err(worker::Error::RustError(
+                "PAR code lifetime exceeds 60 seconds".into(),
+            ));
+        }
+        let Some(reference) = parse_authorization_parameters(
+            &request_url,
+            policy.request_target_bytes(),
+            policy.parameter_count(),
+        ) else {
+            return oauth_error_response("invalid_request", 400, false);
+        };
+        // RFC 9101 makes the authenticated pushed request authoritative. Query
+        // duplicates may be present for compatibility, but never override it.
+        if reference.too_many
+            || reference.duplicates.contains("client_id")
+            || reference.duplicates.contains("request_uri")
+            || reference.values.contains_key("request")
+        {
+            return oauth_error_response("invalid_request", 400, false);
+        }
+        let (Some(client_id), Some(request_uri)) = (
+            reference.values.get("client_id"),
+            reference.values.get("request_uri"),
+        ) else {
+            return authorization_par_error_page(&request, true);
+        };
+        let Some(pushed) = par::load(&db, client_id, request_uri).await? else {
+            return authorization_par_error_page(&request, false);
+        };
+        request_url.set_query(Some(&pushed.request_query));
+        Some(pushed)
+    } else {
+        None
+    };
     let Some(parsed) = parse_authorization_parameters(
         &request_url,
         policy.request_target_bytes(),
@@ -1840,6 +2423,16 @@ async fn authorize_route(
                 error: "invalid_request".into(),
             });
     }
+    let loopback_template = loopback_redirect_template(redirect_uri);
+    let registered_redirect_uri = loopback_template.as_deref().unwrap_or(redirect_uri);
+    if redirect_uri.starts_with("http:") && loopback_template.is_none() {
+        return worker::Response::builder()
+            .with_status(400)
+            .with_header("Cache-Control", "no-store")?
+            .from_json(&TokenEndpointErrorBody {
+                error: "invalid_request".into(),
+            });
+    }
 
     let issuer = context
         .env
@@ -1848,6 +2441,7 @@ async fn authorize_route(
         .to_string();
     let issuer = configured_issuer(&issuer)
         .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let fapi = fapi2_deployment(&context.env)?;
     let authorization_endpoint = format!("{issuer}/authorize");
     if request_url.as_str().split('?').next() != Some(authorization_endpoint.as_str()) {
         return Err(worker::Error::RustError("invalid_request".into()));
@@ -1855,13 +2449,22 @@ async fn authorize_route(
 
     let registration = db
         .prepare(
-            "SELECT c.revision AS client_revision,c.sector_identifier,c.allow_missing_pkce \
+            "SELECT c.revision AS client_revision,c.sector_identifier,c.allow_missing_pkce, \
+             c.client_type,c.auth_method \
              FROM client c JOIN client_redirect_uri r ON r.client_id=c.client_id \
-             WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2 AND r.active=1",
+             WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2 AND r.active=1 \
+             AND (?3=0 OR c.client_type='web') \
+             AND (?4=0 OR (c.client_type='native' AND c.auth_method='none'))",
         )
         .bind(&[
             JsValue::from_str(client_id),
-            JsValue::from_str(redirect_uri),
+            JsValue::from_str(registered_redirect_uri),
+            JsValue::from_f64(if fapi { 1.0 } else { 0.0 }),
+            JsValue::from_f64(if loopback_template.is_some() {
+                1.0
+            } else {
+                0.0
+            }),
         ])?
         .first::<ClientRegistrationRow>(None)
         .await?;
@@ -1892,6 +2495,36 @@ async fn authorize_route(
     } else {
         parameters.get("state").map(String::as_str)
     };
+    let vault_scope = parameters
+        .get("scope")
+        .is_some_and(|value| matches!(value.as_str(), "openid vault.read" | "vault.read openid"));
+    let vault_preview = context
+        .env
+        .var("MIKAKI_NATIVE_VAULT_OAUTH")
+        .ok()
+        .is_some_and(|value| value.to_string() == "preview");
+    let vault_request = if vault_scope
+        && vault_preview
+        && !fapi
+        && pushed.is_none()
+        && registration.client_type == "native"
+        && registration.auth_method == "none"
+        && loopback_template.is_none()
+    {
+        parameters
+            .get("resource")
+            .zip(parameters.get("authorization_details"))
+            .and_then(|(resource, details)| {
+                mikaki_oidc::VaultReadRequest::parse(
+                    parameters["scope"].as_str(),
+                    resource,
+                    details,
+                )
+                .ok()
+            })
+    } else {
+        None
+    };
     let allow_missing_pkce =
         conformance_deployment(&context.env)? && registration.allow_missing_pkce == 1;
     let has_pkce = parameters.contains_key("code_challenge")
@@ -1905,23 +2538,28 @@ async fn authorize_route(
         .is_some_and(|value| value != "code")
     {
         Some("unsupported_response_type")
-    } else if parameters
-        .get("scope")
-        .is_some_and(|value| value != "openid")
-    {
+    } else if parameters.contains_key("resource") && vault_request.is_none() {
+        // No Vault-audience issuance path is connected yet. Never silently
+        // turn a resource request into a UserInfo token.
+        Some("invalid_target")
+    } else if parameters.contains_key("authorization_details") && vault_request.is_none() {
+        Some("invalid_request")
+    } else if parameters.contains_key("vault_consent") && vault_request.is_none() {
+        Some("invalid_request")
+    } else if parameters.get("scope").is_some_and(|value| {
+        !matches!(
+            value.as_str(),
+            "openid" | "openid profile" | "profile openid"
+        ) && vault_request.is_none()
+    }) {
         Some("invalid_scope")
     } else if parameters
         .get("response_mode")
         .is_some_and(|value| value != "query")
-        || [
-            "client_id",
-            "redirect_uri",
-            "response_type",
-            "scope",
-            "state",
-        ]
-        .iter()
-        .any(|name| !parameters.contains_key(*name))
+        || ["client_id", "redirect_uri", "response_type", "scope"]
+            .iter()
+            .any(|name| !parameters.contains_key(*name))
+        || (!fapi && !parameters.contains_key("state"))
         || (!has_pkce && !allow_missing_pkce)
     {
         Some("invalid_request")
@@ -1937,7 +2575,7 @@ async fn authorize_route(
         redirect_uri: redirect_uri.clone(),
         response_type: parameters["response_type"].clone(),
         scope: parameters["scope"].clone(),
-        state: parameters["state"].clone(),
+        state: parameters.get("state").cloned().unwrap_or_default(),
         nonce: parameters.get("nonce").cloned(),
         code_challenge: parameters
             .get("code_challenge")
@@ -1948,13 +2586,29 @@ async fn authorize_route(
             .cloned()
             .unwrap_or_default(),
     };
-    let validated = match raw.validate_with_optional_pkce(
-        client_id,
-        redirect_uri,
-        policy.state_bytes(),
-        policy.nonce_bytes(),
-        allow_missing_pkce,
-    ) {
+    let validated = match if vault_request.is_some() {
+        raw.validate_for_vault(
+            client_id,
+            redirect_uri,
+            policy.state_bytes(),
+            policy.nonce_bytes(),
+        )
+    } else if fapi {
+        raw.validate_for_fapi(
+            client_id,
+            redirect_uri,
+            policy.state_bytes(),
+            policy.nonce_bytes(),
+        )
+    } else {
+        raw.validate_with_optional_pkce(
+            client_id,
+            redirect_uri,
+            policy.state_bytes(),
+            policy.nonce_bytes(),
+            allow_missing_pkce,
+        )
+    } {
         Ok(validated) => validated,
         Err(_) => {
             return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
@@ -1993,7 +2647,7 @@ async fn authorize_route(
         )
         .await;
     }
-    if prompts.contains(&"consent") {
+    if prompts.contains(&"consent") && vault_request.is_none() {
         return authorization_interaction_response(
             &request,
             &db,
@@ -2054,7 +2708,7 @@ async fn authorize_route(
         .bind(&[
             sso_values[0].clone(),
             JsValue::from_str(client_id),
-            JsValue::from_str(redirect_uri),
+            JsValue::from_str(registered_redirect_uri),
             JsValue::from_f64(now as f64),
         ])?
         .first::<AuthorizationContextRow>(None)
@@ -2102,6 +2756,104 @@ async fn authorize_route(
     }
 
     let mut random = WorkersCryptoRandom;
+    let vault_consent = if let Some(vault) = &vault_request {
+        let clean_url = authorization_url_without_vault_receipt(&request_url).to_string();
+        if let Some(tx) = parameters.get("vault_consent") {
+            if !passkey_login::valid_tx(tx) {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "invalid_request",
+                );
+            }
+            let approved = db
+                .prepare(
+                    "SELECT 1 AS approved FROM vault_oauth_consent vc \
+                     WHERE vc.tx_id=?1 AND vc.sso_secret_hash=?2 AND vc.sso_id=?3 \
+                     AND vc.account_id=?4 AND vc.client_id=?5 AND vc.client_revision=?6 \
+                     AND vc.authorization_url=?7 AND vc.redirect_uri=?8 AND vc.state=?9 \
+                     AND vc.attribute_id=?10 AND vc.resource=?11 \
+                     AND vc.decision='approved' AND vc.expires_at>unixepoch()",
+                )
+                .bind(&[
+                    JsValue::from_str(tx),
+                    JsValue::from_str(&cookie_hash),
+                    JsValue::from_str(&sso.sso_id),
+                    JsValue::from_str(&sso.account_id),
+                    JsValue::from_str(client_id),
+                    JsValue::from_f64(sso.client_revision as f64),
+                    JsValue::from_str(&clean_url),
+                    JsValue::from_str(redirect_uri),
+                    JsValue::from_str(validated.state()),
+                    JsValue::from_str(vault.attribute()),
+                    JsValue::from_str(vault.resource()),
+                ])?
+                .first::<i64>(Some("approved"))
+                .await?;
+            if approved.is_none() {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "invalid_request",
+                );
+            }
+            Some(tx.clone())
+        } else {
+            if prompts.contains(&"none") {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "consent_required",
+                );
+            }
+            let tx = passkey_login::random_secret(&mut random)?;
+            let consent_expires = (now + 300).min(sso.parent_expires_at as u64);
+            let inserted = db
+                .prepare(
+                    "INSERT INTO vault_oauth_consent \
+                     (tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision, \
+                      authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at) \
+                     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                )
+                .bind(&[
+                    JsValue::from_str(&tx),
+                    JsValue::from_str(&cookie_hash),
+                    JsValue::from_str(&sso.sso_id),
+                    JsValue::from_str(&sso.account_id),
+                    JsValue::from_str(client_id),
+                    JsValue::from_f64(sso.client_revision as f64),
+                    JsValue::from_str(&clean_url),
+                    JsValue::from_str(redirect_uri),
+                    JsValue::from_str(validated.state()),
+                    JsValue::from_str(vault.attribute()),
+                    JsValue::from_str(vault.resource()),
+                    JsValue::from_f64(consent_expires as f64),
+                    JsValue::from_f64(now as f64),
+                ])?
+                .run()
+                .await;
+            if inserted.is_err() {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "temporarily_unavailable",
+                );
+            }
+            let target = format!("{issuer}/vault/oauth/consent?tx={tx}");
+            return Ok(worker::Response::builder()
+                .with_status(302)
+                .with_header("Location", &target)?
+                .with_header("Cache-Control", "no-store")?
+                .with_header("Referrer-Policy", "no-referrer")?
+                .empty());
+        }
+    } else {
+        None
+    };
     let prepared = validated
         .prepare_code(
             &mut random,
@@ -2133,7 +2885,7 @@ async fn authorize_route(
         JsValue::from_str(&cookie_hash),
         JsValue::from_str(client_id),
         JsValue::from_str(&sso.client_revision.to_string()),
-        JsValue::from_str(redirect_uri),
+        JsValue::from_str(registered_redirect_uri),
         JsValue::from_str(&now.to_string()),
     ];
     let code_values = [
@@ -2141,10 +2893,15 @@ async fn authorize_route(
         JsValue::from_str(client_id),
         JsValue::from_str(&sid),
         JsValue::from_str(&sso.client_revision.to_string()),
-        JsValue::from_str(redirect_uri),
+        JsValue::from_str(registered_redirect_uri),
         JsValue::from_str(validated.code_challenge()),
         JsValue::from_str(&expires_at.to_string()),
         JsValue::from_str(&now.to_string()),
+        JsValue::from_str(if loopback_template.is_some() {
+            redirect_uri
+        } else {
+            ""
+        }),
     ];
     let guard_values = [
         JsValue::from_str(code_hash),
@@ -2155,7 +2912,7 @@ async fn authorize_route(
             .map(JsValue::from_str)
             .unwrap_or(JsValue::NULL),
     ];
-    db.batch(vec![
+    let mut statements = vec![
         db.prepare(include_str!("../sql/insert-pairwise-subject.sql"))
             .bind(&pairwise_values)?,
         db.prepare(include_str!(
@@ -2171,7 +2928,106 @@ async fn authorize_route(
                     .nonce()
                     .map(JsValue::from_str)
                     .unwrap_or(JsValue::NULL),
+                JsValue::from_str(parameters["scope"].as_str()),
             ])?,
+    ];
+    if let (Some(tx), Some(vault)) = (vault_consent.as_deref(), vault_request.as_ref()) {
+        let grant_id = passkey_login::random_secret(&mut random)?;
+        let grant_expires = (now + 600).min(sso.parent_expires_at as u64);
+        let clean_url = authorization_url_without_vault_receipt(&request_url).to_string();
+        statements.push(
+            db.prepare(
+                "UPDATE vault_oauth_consent SET decision='consumed' \
+                 WHERE tx_id=?1 AND sso_secret_hash=?2 AND sso_id=?3 \
+                 AND account_id=?4 AND client_id=?5 AND client_revision=?6 \
+                 AND authorization_url=?7 AND redirect_uri=?8 AND state=?9 \
+                 AND attribute_id=?10 AND resource=?11 \
+                 AND decision='approved' AND expires_at>unixepoch()",
+            )
+            .bind(&[
+                JsValue::from_str(tx),
+                JsValue::from_str(&cookie_hash),
+                JsValue::from_str(&sso.sso_id),
+                JsValue::from_str(&sso.account_id),
+                JsValue::from_str(client_id),
+                JsValue::from_f64(sso.client_revision as f64),
+                JsValue::from_str(&clean_url),
+                JsValue::from_str(redirect_uri),
+                JsValue::from_str(validated.state()),
+                JsValue::from_str(vault.attribute()),
+                JsValue::from_str(vault.resource()),
+            ])?,
+        );
+        statements.push(
+            db.prepare(
+                "INSERT INTO vault_oauth_grant \
+                 (grant_id,consent_tx_id,account_id,client_id,client_revision,attribute_id, \
+                  resource,action,version,expires_at,created_at) \
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,'read_ciphertext',1,?8,?9)",
+            )
+            .bind(&[
+                JsValue::from_str(&grant_id),
+                JsValue::from_str(tx),
+                JsValue::from_str(&sso.account_id),
+                JsValue::from_str(client_id),
+                JsValue::from_f64(sso.client_revision as f64),
+                JsValue::from_str(vault.attribute()),
+                JsValue::from_str(vault.resource()),
+                JsValue::from_f64(grant_expires as f64),
+                JsValue::from_f64(now as f64),
+            ])?,
+        );
+        statements.push(
+            db.prepare(
+                "INSERT INTO vault_oauth_code_context \
+                 (code_hash,grant_id,grant_version,resource,attribute_id) \
+                 VALUES(?1,?2,1,?3,?4)",
+            )
+            .bind(&[
+                JsValue::from_str(code_hash),
+                JsValue::from_str(&grant_id),
+                JsValue::from_str(vault.resource()),
+                JsValue::from_str(vault.attribute()),
+            ])?,
+        );
+    }
+    if let Some(pushed) = &pushed {
+        statements.push(
+            db.prepare(
+                "UPDATE authorization_code SET dpop_jkt=?2 \
+            WHERE code_hash=?1 AND dpop_jkt IS NULL",
+            )
+            .bind(&[
+                JsValue::from_str(code_hash),
+                pushed
+                    .dpop_jkt
+                    .as_deref()
+                    .map(JsValue::from_str)
+                    .unwrap_or(JsValue::NULL),
+            ])?,
+        );
+        statements.push(
+            db.prepare(
+                "UPDATE par_request SET consumed_by=?1 \
+            WHERE request_uri=?2 AND client_id=?3 AND client_revision=?4 \
+            AND key_id=?5 AND key_revision=?6 AND consumed_by IS NULL \
+            AND expires_at>CAST(strftime('%s','now') AS INTEGER) \
+            AND EXISTS (SELECT 1 FROM client c JOIN client_key k \
+                ON k.client_id=c.client_id AND k.kid=?5 \
+                WHERE c.client_id=?3 AND c.active=1 AND c.revision=?4 \
+                AND k.active=1 AND k.revision=?6)",
+            )
+            .bind(&[
+                JsValue::from_str(code_hash),
+                JsValue::from_str(&pushed.request_uri),
+                JsValue::from_str(client_id),
+                JsValue::from_str(&pushed.client_revision.to_string()),
+                JsValue::from_str(&pushed.key_id),
+                JsValue::from_str(&pushed.key_revision.to_string()),
+            ])?,
+        );
+    }
+    statements.push(
         db.prepare(include_str!("../sql/guard-authorization-code.sql"))
             .bind(&[
                 guard_values[0].clone(),
@@ -2180,17 +3036,67 @@ async fn authorize_route(
                 guard_values[3].clone(),
                 JsValue::from_str(&now.to_string()),
             ])?,
+    );
+    if let Some(pushed) = &pushed {
+        statements.push(
+            db.prepare(
+                "UPDATE atomic_guard SET passed=CASE WHEN EXISTS ( \
+            SELECT 1 FROM par_request p JOIN authorization_code ac ON ac.code_hash=p.consumed_by \
+            WHERE p.request_uri=?2 AND p.consumed_by=?1 AND p.client_id=?3 \
+            AND p.client_revision=?4 AND p.key_id=?5 AND p.key_revision=?6 \
+            AND p.expires_at>CAST(strftime('%s','now') AS INTEGER) \
+            AND ac.client_id=?3 AND ac.dpop_jkt IS p.dpop_jkt \
+            ) THEN 1 ELSE 0 END WHERE operation_id=?1",
+            )
+            .bind(&[
+                JsValue::from_str(code_hash),
+                JsValue::from_str(&pushed.request_uri),
+                JsValue::from_str(client_id),
+                JsValue::from_str(&pushed.client_revision.to_string()),
+                JsValue::from_str(&pushed.key_id),
+                JsValue::from_str(&pushed.key_revision.to_string()),
+            ])?,
+        );
+    }
+    statements.push(
         db.prepare(include_str!("../sql/delete-authorization-code-guard.sql"))
             .bind(&[guard_values[0].clone()])?,
-    ])
-    .await?;
+    );
+    if let Err(error) = db.batch(statements).await {
+        if vault_consent.is_some() {
+            return authorization_error_response(
+                redirect_uri,
+                state,
+                &issuer,
+                "temporarily_unavailable",
+            );
+        }
+        if let Some(pushed) = &pushed {
+            let consumed = db
+                .prepare("SELECT consumed_by FROM par_request WHERE request_uri=?1")
+                .bind(&[JsValue::from_str(&pushed.request_uri)])?
+                .first::<ConsumedCodeRow>(None)
+                .await;
+            if consumed
+                .ok()
+                .flatten()
+                .and_then(|row| row.consumed_by)
+                .is_some_and(|winner| winner != code_hash)
+            {
+                return authorization_par_error_page(&request, false);
+            }
+        }
+        return Err(error);
+    }
 
     let mut target = url::Url::parse(validated.redirect_uri())
         .map_err(|_| worker::Error::RustError("invalid registered redirect".into()))?;
     {
         let mut query = target.query_pairs_mut();
         query.append_pair("code", presented_code.as_str());
-        query.append_pair("state", validated.state());
+        if !validated.state().is_empty() {
+            query.append_pair("state", validated.state());
+        }
         query.append_pair("iss", &issuer);
     }
     Ok(worker::Response::builder()
@@ -2253,11 +3159,31 @@ async fn discovery_route(
         .to_string();
     let issuer = configured_issuer(&issuer)
         .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let name_release_available = if context.env.service("USERINFO_CLAIMS").is_ok()
+        && context.env.bucket("VAULT_BLOBS").is_ok()
+    {
+        context
+            .env
+            .d1("DB")?
+            .prepare(
+                "SELECT 1 AS active FROM vault_claim_release_policy rp \
+             JOIN vault_share_policy sp ON sp.id=rp.id \
+             WHERE rp.id=1 AND rp.enabled=1 AND sp.enabled=1",
+            )
+            .first::<i64>(Some("active"))
+            .await?
+            .is_some()
+    } else {
+        false
+    };
     worker::Response::builder()
         .with_header("Cache-Control", "public, max-age=300")?
         .from_json(&DiscoveryResponse {
             authorization_endpoint: format!("{issuer}/authorize"),
             token_endpoint: format!("{issuer}/token"),
+            pushed_authorization_request_endpoint: par::required(&context.env)?
+                .then(|| format!("{issuer}/par")),
+            require_pushed_authorization_requests: par::required(&context.env)?.then_some(true),
             jwks_uri: format!("{issuer}/jwks"),
             userinfo_endpoint: format!("{issuer}/userinfo"),
             end_session_endpoint: format!("{issuer}/logout"),
@@ -2269,18 +3195,24 @@ async fn discovery_route(
             grant_types_supported: ["authorization_code"],
             subject_types_supported: ["pairwise"],
             id_token_signing_alg_values_supported: ["ES256", "RS256"],
-            scopes_supported: ["openid"],
-            claims_supported: [
-                "iss",
-                "sub",
-                "aud",
-                "exp",
-                "iat",
-                "nonce",
-                "auth_time",
-                "sid",
-                "acr",
-            ],
+            scopes_supported: vec!["openid", "profile"],
+            claims_supported: {
+                let mut claims = vec![
+                    "iss",
+                    "sub",
+                    "aud",
+                    "exp",
+                    "iat",
+                    "nonce",
+                    "auth_time",
+                    "sid",
+                    "acr",
+                ];
+                if name_release_available {
+                    claims.push("name");
+                }
+                claims
+            },
             acr_values_supported: [mikaki_oidc::PASSKEY_UV_ACR],
             token_endpoint_auth_methods_supported: if conformance_deployment(&context.env)? {
                 vec![
@@ -2288,33 +3220,230 @@ async fn discovery_route(
                     "client_secret_basic",
                     "client_secret_post",
                 ]
-            } else {
+            } else if fapi2_deployment(&context.env)? {
                 vec!["private_key_jwt"]
+            } else {
+                vec!["private_key_jwt", "none"]
             },
             token_endpoint_auth_signing_alg_values_supported: ["ES256"],
+            dpop_signing_alg_values_supported: ["ES256"],
             code_challenge_methods_supported: ["S256"],
             authorization_response_iss_parameter_supported: true,
             request_parameter_supported: false,
-            request_uri_parameter_supported: false,
+            request_uri_parameter_supported: par::required(&context.env)?,
             claims_parameter_supported: false,
         })
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct LatestMigrationRow {
+    name: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn ready_token_bytes(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 43 {
+        return None;
+    }
+    let decoded = URL_SAFE_NO_PAD.decode(value).ok()?;
+    let bytes: [u8; 32] = decoded.try_into().ok()?;
+    (URL_SAFE_NO_PAD.encode(bytes) == value).then_some(bytes)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn authorized_ready(request: &worker::Request, env: &worker::Env) -> bool {
+    let Ok(secret) = env.secret("MIKAKI_READY_TOKEN") else {
+        return false;
+    };
+    let Some(expected) = ready_token_bytes(&secret.to_string()) else {
+        return false;
+    };
+    let Ok(Some(header)) = request.headers().get("authorization") else {
+        return false;
+    };
+    let Some(actual) = header.strip_prefix("Bearer ").and_then(ready_token_bytes) else {
+        return false;
+    };
+    expected.ct_eq(&actual).unwrap_u8() == 1
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn ready_route(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    if !authorized_ready(&request, &context.env) {
+        return Ok(worker::Response::builder()
+            .with_status(404)
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
+    let ready = async {
+        let version = context
+            .env
+            .get_binding::<worker::WorkerVersionMetadata>("CF_VERSION_METADATA")?;
+        if version.id().is_empty() {
+            return Err(worker::Error::RustError("missing Worker version".into()));
+        }
+        context.env.bucket("VAULT_BLOBS")?;
+        let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
+        if configured_issuer(&issuer).is_none() {
+            return Err(worker::Error::RustError("invalid issuer".into()));
+        }
+        let private_jwk = context.env.secret("OP_PRIVATE_JWK")?.to_string();
+        let signer = WorkerTokenSigner::from_secret(&private_jwk).await?;
+        let db = context.env.d1("DB")?;
+        WorkerRuntimePolicy::from_db(&db).await?;
+        let migration = db
+            .prepare("SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1")
+            .first::<LatestMigrationRow>(None)
+            .await?;
+        if migration.as_ref().map(|row| row.name.as_str()) != Some(env!("MIKAKI_LATEST_MIGRATION"))
+        {
+            return Err(worker::Error::RustError(
+                "Worker migrations are incomplete".into(),
+            ));
+        }
+        let signing_key = db
+            .prepare("SELECT public_jwk FROM signing_key WHERE active=1 AND kid=?1 AND algorithm=?2 LIMIT 1")
+            .bind(&[
+                wasm_bindgen::JsValue::from_str(signer.kid()),
+                wasm_bindgen::JsValue::from_str(signer.algorithm()),
+            ])?
+            .first::<SigningPublicKeyRow>(None)
+            .await?;
+        if !signing_key.is_some_and(|row| signer.matches_public_jwk(&row.public_jwk)) {
+            return Err(worker::Error::RustError("signing key is unavailable".into()));
+        }
+        let response = context
+            .env
+            .service("USERINFO_CLAIMS")?
+            .fetch("https://userinfo.internal/internal/ready", None)
+            .await?;
+        if response.status_code() != 204 {
+            return Err(worker::Error::RustError(
+                "claim Worker is unavailable".into(),
+            ));
+        }
+        Ok::<(), worker::Error>(())
+    }
+    .await;
+    if ready.is_err() {
+        worker::console_warn!("readiness unavailable");
+    }
+    Ok(worker::Response::builder()
+        .with_status(if ready.is_ok() { 204 } else { 503 })
+        .with_header("Cache-Control", "no-store")?
+        .empty())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn userinfo_name(
+    env: &worker::Env,
+    db: &worker::d1::D1Database,
+    token_hash: &str,
+) -> worker::Result<Option<String>> {
+    use wasm_bindgen::JsValue;
+
+    let scope = db
+        .prepare(
+            "SELECT cc.scope FROM token_issue ti \
+         JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
+         JOIN code_context cc ON cc.code_hash=ac.code_hash \
+         JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
+         WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>unixepoch()",
+        )
+        .bind(&[JsValue::from_str(token_hash)])?
+        .first::<UserInfoScopeRow>(None)
+        .await?;
+    let Some(scope) = scope else {
+        return Err(worker::Error::RustError("invalid_token".into()));
+    };
+    if scope.scope == "openid" {
+        return Ok(None);
+    }
+    if !matches!(scope.scope.as_str(), "openid profile" | "profile openid") {
+        return Err(worker::Error::RustError("invalid_token".into()));
+    }
+    let body = serde_json::json!({"access_hash": token_hash}).to_string();
+    let mut init = worker::RequestInit::new();
+    init.with_method(worker::Method::Post)
+        .with_body(Some(JsValue::from_str(&body)));
+    init.headers.set("Content-Type", "application/json")?;
+    let mut response = env
+        .service("USERINFO_CLAIMS")?
+        .fetch("https://userinfo.internal/internal/claims/name", Some(init))
+        .await?;
+    if response.status_code() == 204 {
+        return Ok(None);
+    }
+    if response.status_code() != 200 {
+        return Err(worker::Error::RustError("claim release unavailable".into()));
+    }
+    let bytes = response.bytes().await?;
+    if bytes.len() > 2048 {
+        return Err(worker::Error::RustError("claim release unavailable".into()));
+    }
+    let value: UserInfoNameRow = serde_json::from_slice(&bytes)
+        .map_err(|_| worker::Error::RustError("claim release unavailable".into()))?;
+    if value.name.is_empty() || value.name.len() > 1024 {
+        return Err(worker::Error::RustError("claim release unavailable".into()));
+    }
+    Ok(Some(value.name))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn userinfo_unavailable() -> worker::Result<worker::Response> {
+    Ok(worker::Response::builder()
+        .with_status(503)
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Pragma", "no-cache")?
+        .with_header("Retry-After", "5")?
+        .empty())
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn userinfo_route(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    match userinfo_route_inner(request, context).await {
+        Ok(response) => Ok(response),
+        Err(_) => userinfo_unavailable(),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn userinfo_route_inner(
     mut request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
+    let header = request.headers().get("authorization")?;
+    let requested_dpop = header
+        .as_deref()
+        .and_then(|value| value.split_once(' '))
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("DPoP"));
     let unauthorized = || {
         worker::Response::builder()
             .with_status(401)
             .with_header("Cache-Control", "no-store")?
             .with_header("Pragma", "no-cache")?
-            .with_header("WWW-Authenticate", "Bearer error=\"invalid_token\"")?
+            .with_header(
+                "WWW-Authenticate",
+                if requested_dpop {
+                    "DPoP error=\"invalid_token\", algs=\"ES256\""
+                } else {
+                    "Bearer error=\"invalid_token\""
+                },
+            )?
             .from_json(&TokenEndpointErrorBody {
                 error: "invalid_token".into(),
             })
     };
+    if fapi2_deployment(&context.env)? && !requested_dpop {
+        return unauthorized();
+    }
     if request.url()?.query_pairs().next().is_some() {
         return worker::Response::builder()
             .with_status(400)
@@ -2323,7 +3452,6 @@ async fn userinfo_route(
                 error: "invalid_request".into(),
             });
     }
-    let header = request.headers().get("authorization")?;
     let token = if let Some(header) = header {
         if request.method() == worker::Method::Post {
             let db = context.env.d1("DB")?;
@@ -2338,7 +3466,7 @@ async fn userinfo_route(
         let Some((scheme, token)) = header.split_once(' ') else {
             return unauthorized();
         };
-        if !scheme.eq_ignore_ascii_case("Bearer") {
+        if !scheme.eq_ignore_ascii_case("Bearer") && !scheme.eq_ignore_ascii_case("DPoP") {
             return unauthorized();
         }
         token.to_owned()
@@ -2378,12 +3506,114 @@ async fn userinfo_route(
     }
     let now = (now_ms / 1000.0).floor() as i64;
     let db = context.env.d1("DB")?;
+    if requested_dpop {
+        let invalid_proof = || {
+            worker::Response::builder()
+                .with_status(401)
+                .with_header("Cache-Control", "no-store")?
+                .with_header("Pragma", "no-cache")?
+                .with_header(
+                    "WWW-Authenticate",
+                    "DPoP error=\"invalid_dpop_proof\", algs=\"ES256\"",
+                )?
+                .from_json(&TokenEndpointErrorBody {
+                    error: "invalid_dpop_proof".into(),
+                })
+        };
+        let issuer = configured_issuer(&context.env.var("MIKAKI_ISSUER")?.to_string())
+            .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+        let endpoint = format!("{issuer}/userinfo");
+        if request.url()?.to_string() != endpoint {
+            return unauthorized();
+        }
+        let binding = db
+            .prepare(
+                "SELECT ti.dpop_jkt FROM token_issue ti \
+                JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
+                JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
+                WHERE ti.access_hash=?1 AND ti.revoked=0 \
+                AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash) \
+                AND ti.access_expires_at>CAST(strftime('%s','now') AS INTEGER)",
+            )
+            .bind(&[wasm_bindgen::JsValue::from_str(&token_hash)])?
+            .first::<TokenBindingRow>(None)
+            .await?;
+        let Some(jkt) = binding.and_then(|row| row.dpop_jkt) else {
+            return unauthorized();
+        };
+        let require_nonce = dpop_nonce_required(&context.env)?;
+        let challenge = if require_nonce {
+            Some(
+                dpop::current_nonce(
+                    &db,
+                    dpop::NonceScope::ResourceServer,
+                    &mut WorkersCryptoRandom,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let Some(compact) = request.headers().get("dpop")? else {
+            if let Some(nonce) = challenge.as_deref() {
+                return dpop_nonce_error_response(nonce, true);
+            }
+            return invalid_proof();
+        };
+        let method = match request.method() {
+            worker::Method::Get => "GET",
+            worker::Method::Post => "POST",
+            _ => return unauthorized(),
+        };
+        let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+            &compact,
+            method,
+            &endpoint,
+            mikaki_oidc::DpopTarget::Resource {
+                access_token: &token,
+                thumbprint: &jkt,
+            },
+            now as u64,
+        ) else {
+            return invalid_proof();
+        };
+        if require_nonce
+            && !dpop::accepts_nonce(&db, dpop::NonceScope::ResourceServer, proof.nonce()).await?
+        {
+            return dpop_nonce_error_response(
+                challenge
+                    .as_deref()
+                    .expect("required nonce has a challenge"),
+                true,
+            );
+        }
+        let mut receipt = [0u8; 32];
+        mikaki_oidc::CryptographicRandom::fill(&mut WorkersCryptoRandom, &mut receipt)
+            .map_err(|_| worker::Error::RustError("server_error".into()))?;
+        let Some(sub) = dpop::authorize_resource(
+            &db,
+            &proof,
+            &URL_SAFE_NO_PAD.encode(receipt),
+            &token_hash,
+            require_nonce,
+        )
+        .await?
+        else {
+            return invalid_proof();
+        };
+        let name = userinfo_name(&context.env, &db, &token_hash).await?;
+        return worker::Response::builder()
+            .with_header("Cache-Control", "no-store")?
+            .with_header("Pragma", "no-cache")?
+            .from_json(&UserInfoResponse { sub, name });
+    }
     let subject = db
         .prepare(
             "SELECT v.sub FROM token_issue ti \
              JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
              JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
-             WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>?2",
+             WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>?2 AND ti.dpop_jkt IS NULL \
+             AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash)",
         )
         .bind(&[
             wasm_bindgen::JsValue::from_str(&token_hash),
@@ -2394,10 +3624,14 @@ async fn userinfo_route(
     let Some(subject) = subject else {
         return unauthorized();
     };
+    let name = userinfo_name(&context.env, &db, &token_hash).await?;
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Pragma", "no-cache")?
-        .from_json(&UserInfoResponse { sub: subject.sub })
+        .from_json(&UserInfoResponse {
+            sub: subject.sub,
+            name,
+        })
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
@@ -2410,13 +3644,40 @@ pub async fn main(
     worker::Router::with_data(())
         .get_async("/", home::get)
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
+        .get_async("/ready", ready_route)
+        .get_async("/version", |_req, ctx| async move {
+            let version = match ctx
+                .env
+                .get_binding::<worker::WorkerVersionMetadata>("CF_VERSION_METADATA")
+            {
+                Ok(version) => version,
+                Err(_) => return worker::Response::error("version metadata unavailable", 503),
+            };
+            let commit = env!("MIKAKI_SOURCE_COMMIT");
+            worker::Response::builder()
+                .with_header("Cache-Control", "no-store")?
+                .from_json(&serde_json::json!({
+                    "worker": "mikaki-op",
+                    "version_id": version.id(),
+                    "source_commit": if commit.is_empty() { None } else { Some(commit) },
+                    "source_clean": env!("MIKAKI_SOURCE_CLEAN") == "true",
+                }))
+        })
         .get_async("/.well-known/openid-configuration", discovery_route)
+        .get_async(
+            "/.well-known/apple-app-site-association",
+            app_association::apple,
+        )
+        .get_async("/.well-known/assetlinks.json", app_association::android)
         .get_async("/authorize", authorize_route)
         .get_async("/login", passkey_login::get)
         .get_async("/login/cue", passkey_login::cue)
         .get_async("/login/login.js", passkey_login::script)
         .get_async("/login/login.css", passkey_login::stylesheet)
+        .get_async("/ui/product.css", passkey_login::product_stylesheet)
+        .get_async("/ui/session-events.js", logout::script)
         .post_async("/login/finish", passkey_login::finish)
+        .post_async("/login/deny", passkey_login::deny)
         .post_async("/register/start", enrollment::start)
         .post_async("/register/finish", enrollment::finish)
         .get_async("/enroll", enrollment::entry)
@@ -2433,8 +3694,16 @@ pub async fn main(
         .get_async("/userinfo", userinfo_route)
         .post_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
+        .post_async("/par", par::route)
         .get_async("/vault", vault_attributes::page)
+        .get_async("/vault/oauth/consent", vault_oauth_consent::get)
+        .post_async("/vault/oauth/consent", vault_oauth_consent::post)
         .get_async("/vault/session", vault_attributes::session)
+        .get_async("/vault/passkeys", owner_passkeys::list)
+        .post_async("/vault/passkeys/start", owner_passkeys::start)
+        .post_async("/vault/passkeys/finish", owner_passkeys::finish)
+        .get_async("/vault/agents/:operation", agent_access::route)
+        .post_async("/vault/agents/:operation", agent_access::route)
         .get_async(
             "/vault/recipient-keys/userinfo",
             vault_attributes::recipient_key,
@@ -2453,7 +3722,19 @@ pub async fn main(
         .delete_async("/vault/releases/name", vault_claim_releases::revoke)
         .get_async("/vault/vault.js", vault_attributes::script)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
+        .get_async(
+            "/vault-api/attributes/:attribute",
+            vault_oauth_resource::get,
+        )
         .put_async("/vault/attributes/:attribute", vault_attributes::put)
+        .post_async(
+            "/vault/attributes/:attribute/transfer",
+            vault_attributes::transfer,
+        )
+        .post_async(
+            "/vault/attributes/:attribute/approved",
+            vault_attributes::approved,
+        )
         .delete_async("/vault/attributes/:attribute", vault_attributes::delete)
         .run(req, env)
         .await

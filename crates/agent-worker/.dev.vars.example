@@ -1,0 +1,2 @@
+# Placeholder only; valid recipient keys must be provisioned separately.
+AGENT_PRIVATE_JWK="{}"

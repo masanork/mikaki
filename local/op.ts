@@ -175,7 +175,7 @@ async function issueCode(
     ]),
     query(
       db,
-      `INSERT INTO authorization_code SELECT ?,?,?,c.revision,?,?,MIN(?,v.expires_at),NULL,NULL FROM client c JOIN eligible_client_session v ON v.client_id=c.client_id WHERE c.client_id=? AND v.sid=?`,
+      `INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) SELECT ?,?,?,c.revision,?,?,MIN(?,v.expires_at),NULL,NULL FROM client c JOIN eligible_client_session v ON v.client_id=c.client_id WHERE c.client_id=? AND v.sid=?`,
       [
         codeHash,
         CLIENT,
@@ -187,7 +187,7 @@ async function issueCode(
         sid,
       ],
     ),
-    query(db, 'INSERT INTO code_context VALUES(?,?)', [codeHash, request.nonce]),
+    query(db, 'INSERT INTO code_context(code_hash,nonce) VALUES(?,?)', [codeHash, request.nonce]),
     query(db, 'UPDATE op_login SET consumed=1 WHERE id=?', [l.id]),
     query(db, 'UPDATE sso_session SET gc_after=MAX(gc_after,?) WHERE sso_id=?', [
       retained(now() + p('retention.audit_ttl')),
@@ -206,6 +206,14 @@ async function issueCode(
 }
 async function beginAuthorization(db: any, req: Request, url: URL) {
   const params = uniqueParams(url.searchParams);
+  // Presentation preferences are handled by the adapter, outside protocol validation.
+  const uiLocales = params.ui_locales;
+  delete params.ui_locales;
+  const locale = uiLocales
+    ?.split(/\s+/)
+    .filter((tag) => /^[A-Za-z]+(?:-[A-Za-z0-9]+)*$/.test(tag))
+    .map((tag) => tag.split('-')[0].toLowerCase())
+    .find((tag) => tag === 'ja' || tag === 'en');
   check(
     authorize(
       JSON.stringify(params),
@@ -254,7 +262,7 @@ async function beginAuthorization(db: any, req: Request, url: URL) {
     const result = await issueCode(db, l, s);
     return redirect(result.location);
   }
-  return redirect(`${OP}/login?tx=${l.id}`, {
+  return redirect(`${OP}/login?tx=${l.id}${locale ? `&lang=${locale}` : ''}`, {
     'Set-Cookie': setCookie(BROWSER, browser, p('session.sso_absolute_ttl')),
   });
 }

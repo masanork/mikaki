@@ -18,6 +18,11 @@ use key::PublicKey;
 mod error;
 pub use error::Invalid;
 use error::ensure;
+/// Algorithms implemented by the portable credential verifier. Selection remains server policy.
+pub const SUPPORTED_ALGORITHMS: &[i32] = &[
+    -7, -8, -257, -65535, -37, -38, -39, -258, -259, -35, -36, -47,
+];
+
 type Result<T> = std::result::Result<T, Invalid>;
 
 #[derive(Deserialize)]
@@ -54,7 +59,7 @@ impl Context {
                 && self.rp_id == self.rp_id.trim()
                 && !self.algorithms.is_empty()
                 && self.algorithms.iter().enumerate().all(|(i, algorithm)| {
-                    matches!(algorithm, -7 | -8 | -257 | -65535)
+                    SUPPORTED_ALGORITHMS.contains(algorithm)
                         && !self.algorithms[..i].contains(algorithm)
                 }),
             Invalid::Configuration,
@@ -505,4 +510,11 @@ pub fn authenticate(
         backup_state,
         user_verified: data[32] & 4 != 0,
     })
+}
+
+/// Parser-only fuzz hook. Never returns verified attestation evidence.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_android_extension(bytes: &[u8], hash: &[u8]) -> bool {
+    attestation::android::validate_extension(bytes, hash).is_ok()
 }

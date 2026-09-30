@@ -5,7 +5,7 @@ import './auth.css';
 
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid login page');
-const { tx, challenge, rpId, rpUri, client, enrollment } = target.dataset;
+const { tx, challenge, rpId, rpUri, client, enrollment, ownerLogin } = target.dataset;
 if (!tx || !challenge || !rpId || !rpUri || !client) throw new Error('Invalid login transaction');
 
 mount(Login, {
@@ -17,6 +17,7 @@ mount(Login, {
     rpUri,
     client,
     enrollment: enrollment === 'true',
+    ownerLogin: ownerLogin === 'true',
     locale: initializeLocale(),
   },
 });

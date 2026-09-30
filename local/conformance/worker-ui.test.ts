@@ -1,7 +1,9 @@
+import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
+import { execFileSync } from 'node:child_process';
 
 test('Worker login and Vault mount their Svelte screens in both locales', async () => {
   const harness = createTestHarness({
@@ -11,9 +13,22 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     ],
   });
   let browser;
+  let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
+  let failure: unknown;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
+    const versionResponse = await worker.fetch('https://mikaki.test/version');
+    assert.equal(versionResponse.status, 200);
+    assert.equal(versionResponse.headers.get('Cache-Control'), 'no-store');
+    const version = (await versionResponse.json()) as Record<string, unknown>;
+    assert.equal(version.worker, 'mikaki-op');
+    assert.match(String(version.version_id), /^[0-9a-f-]{36}$/i);
+    assert.equal(
+      version.source_commit,
+      execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    );
+    assert.equal(typeof version.source_clean, 'boolean');
     const scripts = new Map();
     for (const path of ['/login/login.js', '/login/login.css', '/vault/vault.js']) {
       const response = await worker.fetch(`https://mikaki.test${path}`);
@@ -22,6 +37,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     }
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
+    evidence = await startBrowserEvidence(page.context(), 'worker-ui');
     const errors: string[] = [];
     let cueRequests = 0;
     page.on('pageerror', (error) => errors.push(error.message));
@@ -45,7 +61,13 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         return;
       }
       if (url.pathname === '/vault/session') {
-        await route.fulfill({ json: { credential_id: 'Y3JlZGVudGlhbA', account_id: 'owner' } });
+        await route.fulfill({
+          json: {
+            credential_id: 'Y3JlZGVudGlhbA',
+            account_id: 'owner',
+            session_tag: 's'.repeat(43),
+          },
+        });
         return;
       }
       if (url.pathname === '/vault/attributes/name') {
@@ -133,7 +155,11 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('button', { name: 'Unlock with passkey' }).waitFor();
     assert.deepEqual(errors, []);
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    await evidence?.finish(failure);
     await browser?.close();
     await harness.close();
   }

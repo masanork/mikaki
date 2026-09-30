@@ -4,6 +4,8 @@ The reusable [Worker build workflow](../.github/workflows/supply-chain-build.yml
 
 | Evidence | Scope | Generator |
 | --- | --- | --- |
+| `release-manifest.json` | Clean source commit, both archive/member digests and ordered migration digests | [`release-inventory.ts`](../scripts/release-inventory.ts); separately attested |
+| `promotion-*/upload-manifest.json` | Verified archive/configuration digests and exact local Wrangler upload-bundle digests for both Workers | [`prepare-release-upload.ts`](../scripts/prepare-release-upload.ts); separately attested |
 | `worker-rust.cdx.json` | Rust packages selected for `wasm32-unknown-unknown` | `cargo-cyclonedx` 0.5.9, CycloneDX 1.5 |
 | `npm-build.cdx.json` | npm dependencies used by the local build | `npm sbom`, CycloneDX 1.5 |
 | `worker-crypto.cdx.json` | Reviewed cryptographic algorithms and key-storage classes in the Worker source | [`build_cbom.ts`](../scripts/build_cbom.ts), CycloneDX 1.7 |
@@ -25,3 +27,9 @@ gh attestation verify artifacts/mikaki-worker.tar.gz -R masanork/mikaki \
 ```
 
 The expected builder identity and source revision must also match the intended release. A successful cryptographic verification alone does not authorize deployment.
+
+Before promotion, verify the inventory provenance and both archives against the independently selected commit, then run `npm run release:verify` in its clean checkout. The verifier compares bytes without filesystem extraction and does not authenticate a manifest by itself. See [the release and recovery runbook](release-and-recovery.md). This workflow change has local verifier/rehearsal evidence; no new remote attestation or runtime-byte mapping is claimed.
+
+The OP now has a `/version` response backed by Cloudflare Worker version metadata and an embedded clean-checkout source commit. The version-aware [production smoke workflow](../.github/workflows/production-smoke.yml) can compare those with an independently reviewed activation record and retain a result. This source/version comparison is only one part of promotion: an operator still must establish which verified archive bytes produced that Cloudflare version. It has not been exercised on the production issuer.
+
+The attested build now runs the offline [upload preparer](../scripts/prepare-release-upload.ts) and verifier after the archive inventory. It closes the local archive-to-Wrangler-input segment: it extracts verified members, dry-run bundles both Workers with their production configs, records bundle digests and rechecks all files before upload. `--no-bundle` can consume those outputs without a second build. The prepared inventory is attested and distributed with the archives. Its local dirty-mode rehearsal is not a production promotion or remote byte attestation. The version IDs and bindings returned by a future Cloudflare upload must be added to the activation record.

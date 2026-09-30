@@ -17,6 +17,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "rootDir": ".",
     "outDir": "../../../target/login-js"
   },
@@ -27,8 +28,12 @@
     "complete.ts",
     "locale.ts",
     "vault-crypto.ts",
+    "vault-note.ts",
+    "attribute-commit.ts",
+    "agent-crypto.ts",
     "recipient-directory.ts",
     "vault-recipient-envelope.ts",
-    "*.svelte"
+    "*.svelte",
+    "logout.ts"
   ]
 }

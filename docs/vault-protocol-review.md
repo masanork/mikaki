@@ -1,0 +1,76 @@
+# Vault, credentials, files, and agent protocol review
+
+**Reviewed:** 2026-09-28. The responsibility boundary is recorded in [ADR 0012](adr/0012-vault-protocol-boundaries.md). Protocol profiles below are recommendations and adoption gates, not new endpoints or interoperability claims.
+
+Remote MCP remains useful for AI clients. It should be an adapter over explicit domain operations, rather than the canonical Vault storage, synchronization, or attribute-proof protocol. Choose a protocol from the intended operation and recipient: retrieving editable personal data, proving a claim, synchronizing files, and delegating an AI action have different contracts.
+
+## Recommended division
+
+| Need | Candidate interface | Mikaki decision and current limit |
+| --- | --- | --- |
+| Save, restore, update, or delete owner attributes | Authenticated HTTP ciphertext API with conditional writes | Keep the implemented `/vault/attributes/{attribute}` contract. Its encryption/envelope and attribute schema are Mikaki-specific; it is not a standard wallet API. Add device recovery before broadening write access. |
+| Release ordinary profile data to an already connected RP | OIDC UserInfo | Complete the existing separate RP consent and system-recipient path when needed. Current production login uses `openid` and UserInfo returns `sub`; `name` release remains disabled/incomplete. |
+| Present issuer-backed credentials or selected credential claims | OpenID4VP 1.0, with a chosen credential format | Preferred candidate for a wallet/verifier use case. The [2026-09-29 synthetic component probe](oid4vp-probe.md) has independent verifier-library evidence; product issuer trust, holder recovery and full wallet/network qualification remain open. |
+| Receive an issued credential | OpenID4VCI 1.0 | The [synthetic receipt probe](oid4vci-probe.md) now qualifies one Final Pre-Authorized Code profile with an independent issuer protocol library and encrypted import. Product trust, full issuer/wallet/network and holder recovery remain open. |
+| Query and synchronize a file tree and blobs | JMAP core plus a pinned FileNode profile | Continue the FileNode investigation, resolve its authorization mismatch first, and exercise a non-Mikaki client before adoption. Nothing is implemented yet. |
+| Read selected data or propose a bounded action from an AI client | Local or remote MCP adapter | Retain the local verified implementation. Remote reads expose explicitly selected copies to a decrypting recipient. Draft execution currently writes outside the owner Vault. |
+| Obtain API authority for a client/agent | OAuth resource-bound grants; optionally Rich Authorization Requests | Separate client authorization from attribute presentation and storage. No OAuth onboarding for the current MCP bearer service has been implemented. |
+
+[OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo) defines profile claims and UserInfo retrieval. [OpenID4VCI 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html) defines credential issuance. Neither establishes Mikaki's owner encryption or recovery scheme.
+
+## OpenID4VP: where it helps
+
+[OpenID4VP 1.0 Final](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html) is a credential-presentation protocol. DCQL selects credentials and claims; a transaction nonce and format-specific verification bind a response to a verifier request. It is format-independent and supports flows over redirects/HTTPS and the Digital Credentials API. It does not specify Vault CRUD, file sync, or a general ongoing agent grant.
+
+Use it when a verifier needs evidence such as a membership or issuer-certified age claim, rather than an unrestricted profile record. A stored self-entered `name` has no trusted third-party issuer. Putting that value in a credential does not turn it into a verified legal name. A self-issued credential can be useful only under an explicitly agreed trust model. Conversely, do not reduce an imported issuer-signed credential to an editable text field: preserve the signed artifact, disclosures, format, issuer, validity/status information, and holder binding separately from any local annotation.
+
+The candidate first credential format is SD-JWT VC, subject to library and external-wallet interoperability evidence. [SD-JWT RFC 9901](https://www.rfc-editor.org/rfc/rfc9901.html) provides selective disclosure and optional key binding, while the [SD-JWT VC profile](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/) is separately an active Internet-Draft, revision 19 at review time. They are not the same maturity claim. SD-JWT disclosure is not encryption and is not a generic zero-knowledge predicate engine: disclose an issuer-provided age-over-threshold claim if available, rather than assuming a birth date can prove a threshold without revealing it.
+
+For Mikaki's first presentation probe, choose one credential type, one trusted test issuer, and one independent verifier. Select a format/version, verifier identity/request authentication profile, holder binding, response mode, and status policy explicitly. Prefer an owner-present wallet path that unlocks only the requested credential and holder key on the device. A remote wallet is possible, but it adds a separately disclosed key-custody/decryption boundary. Neither a presentation protocol nor an OAuth token supplies PRF output or makes lost keys recoverable.
+
+Define a separate holder-signing key and its backup/transfer policy. Do not assume an existing WebAuthn credential can sign an arbitrary credential-presentation JWT, or that its PRF output is a signing key. PRF may protect a properly defined holder-key envelope, but login, envelope unlock, and presentation proof remain separate operations.
+
+The [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/) is a browser mediation surface, not a backend storage API. Its 2026-09-04 publication is a Working Draft. Probe the intended devices and wallets and keep a separately evaluated redirect/cross-device option; a finalized OpenID protocol does not imply universal browser support.
+
+After presentation, an application may make its own authorization decision or start a separate OAuth consent flow. Do not treat `vp_token` as a Mikaki API access token, turn presentation consent into continuing agent access, or reuse credential-holder keys as Vault/agent-recipient keys. Presentation replay prevention, credential expiry/status, grant revocation, and deletion of a stored copy are separate operations. Already disclosed claims cannot be recalled.
+
+## FileNode: keep the model, resolve wire and rights
+
+[JMAP RFC 8620](https://www.rfc-editor.org/rfc/rfc8620.html) provides JSON object operations, state-based synchronization, and binary upload/download. The [FileNode extension](https://datatracker.ietf.org/doc/draft-ietf-jmap-filenode-14) remains an active Internet-Draft, revision 14 dated 2026-05-15. It is a promising model for named files and directories, not a schema for personal attributes or credentials.
+
+A material mismatch in the earlier [storage proposal](storage-api.md) is now explicit: FileNode draft 14 has inherited `shareWith` rights, derived `myRights`, and ancestor discoverability. Mikaki's proposed metadata-listing permission separate from content-read permission is not automatically that model. Using AuthZEN as a PDP does not resolve this semantic difference.
+
+Choose between two profiles before implementing a public wire API:
+
+1. **JMAP-compatible file service:** implement the applicable FileNode rights, discovery, change reporting, and blob-access rules consistently. A single authoritative grant/policy store can feed both the JMAP rights projection and AuthZEN evaluation; do not keep two independently editable ACLs. Owner-only testing may start without shared editing, but does not demonstrate shared-client compatibility.
+2. **Mikaki encrypted object service with a FileNode-inspired tree:** keep finer operations, opaque ciphertext, envelopes, and application-specific synchronization, and document those extensions under an appropriate vendor capability or an independent HTTP contract. Do not advertise the standard FileNode capability for conflicting semantics. An ordinary file client will not decrypt Mikaki ciphertext without an encryption-aware adapter.
+
+Recommendation: retain the current owner ciphertext API; probe profile 1 for ordinary server-readable files first. Evaluate profile 2 separately if encrypted file sync is a concrete requirement. Do not force editable attributes or credential presentation through a filesystem merely to share R2 blobs.
+
+| Alternative | When it merits a probe | Why it is not selected by this review |
+| --- | --- | --- |
+| [WebDAV, RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) | Existing desktop file clients are the primary requirement; HTTP collections, properties, and authoring are useful. | A Mikaki encryption/envelope and sync profile would still be needed; do not claim a generic client can unlock Vault data. Reconsider if named target clients outperform the JMAP candidate. |
+| [Solid Protocol](https://solidproject.org/TR/protocol) | Cross-provider personal data pods and linked-data applications are the product goal. | Adopting its resource, identity, and access-control ecosystem is a wider choice than a file adapter. The cited protocol is a Community Group report, not a W3C Standard. Keep it a comparison candidate until there are target applications. |
+| S3-compatible API | Internal blob-provider portability | Bucket/object transport does not supply the public attribute, file-tree, consent, or presentation contract. Keep storage credentials internal. |
+
+## Writes and delegation across adapters
+
+Use one domain authorization/state-transition authority for each operation. MCP, HTTP/JMAP, and a future wallet UI must not acquire separate editable versions of the same grant or head revision. Sharing policy evaluation infrastructure is useful; it does not mean an owner ciphertext grant, a claim release, a FileNode share, and an agent snapshot grant have identical rights.
+
+For owner attributes, a future agent write should first create a proposal binding owner, attribute, base revision, exact value/schema, destination, and deadline. An authorized owner device reviews it, unlocks the owner envelope, produces ciphertext for a fresh revision, and commits conditionally through the same storage operation. Reject stale approval or conflicting retry payloads. Do not turn the existing private-draft tool into a plaintext overwrite of the encrypted Vault. An unattended write is a separate product capability: define write-recipient keys, validation, and owner recovery explicitly, or accept only ciphertext under a qualified client profile. Editing a credential's signed payload invalidates its proof; request reissuance or store an annotation instead.
+
+[OAuth Rich Authorization Requests, RFC 9396](https://www.rfc-editor.org/rfc/rfc9396.html) is a candidate for structured requested rights. A Mikaki authorization-details type would still be an application profile requiring client support, explicit consent, and live server-side checks. Broad scopes alone are insufficient for exact target/revision/purpose. [AuthZEN 1.0](https://openid.net/specs/authorization-api-1_0.html) standardizes the PEP/PDP decision interface; it does not issue a token, manage consent, define decryption authority, or supply a storage protocol.
+
+For remote MCP onboarding, implement the selected [MCP authorization profile](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), including resource/audience validation and supported client discovery, instead of repurposing an ID Token or a presentation. Current grants are out-of-band opaque bearer credentials. [DPoP, RFC 9449](https://www.rfc-editor.org/rfc/rfc9449.html) can bind future tokens to a client key where both sides support it; it does not isolate bots sharing the same computer/key store, prevent a compromised client from reading authorized data, or encrypt tool results. Check actual client support before requiring it.
+
+## Work sequence and acceptance evidence
+
+The source-based [fit/gap backlog](vault-fit-gap.md) identifies existing fit, concrete gaps, dependencies, and completion conditions as VG-01 through VG-08. It distinguishes the common foundation from consumer-dependent credential, file, profile, and remote-connector tracks.
+
+1. **Owner data integrity and recovery:** demonstrate a real second-device restore, rewrap, stale conditional write, delete/offline replay, and failed-decrypt behavior. Document attribute schemas and provenance independently of transport.
+2. **Credential presentation probe:** import a synthetic issuer-produced credential, preserve its proof, select a minimal DCQL request, unlock on the owner device, and present to an independent verifier. Test untrusted issuer, wrong verifier/nonce/holder key, replay, expired/status-invalid credentials, excessive claim requests, and user cancellation. This is a wallet/verifier probe, not production identity assurance.
+3. **File client probe:** pin FileNode revision 14 or a deliberately newer reviewed version; select one external client; document rights/capability mapping. Test rights inheritance and visibility loss, metadata/content authorization, conditional changes, blob access after revocation, retries, and stale cursor resync before selecting the wire profile.
+4. **Agent domain adapters:** keep the verified MCP snapshot/private-draft slice. Factor reusable domain operations before adding an independent HTTP client, JMAP write tool, or Vault proposal/import tool. Share contract cases across adapters; do not duplicate permanent state machines.
+5. **Remote activation:** test OAuth interoperability, recipient recovery/rotation, real-device consent, and the intended bot/provider boundary before production activation. Choose owner-present disclosure when it meets the use case; remote unattended reads remain explicit selected-copy disclosures.
+
+The original 2026-09-28 review changed documentation and the intended responsibility boundary. Subsequent [OID4VP presentation](oid4vp-probe.md) and [OID4VCI receipt](oid4vci-probe.md) probes add isolated component evidence for the same synthetic credential. They do not activate a wallet/issuer service or complete the product adoption gates.

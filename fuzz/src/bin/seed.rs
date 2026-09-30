@@ -1,4 +1,4 @@
-use mikaki_fuzz::{assertion_seed, decode, fixtures};
+use mikaki_fuzz::{assertion_cases, decode, metadata_cases, registration_cases};
 use std::{fs, path::Path};
 fn write(target: &str, name: &str, prefix: &[u8], bytes: &[u8], expected: Option<bool>) {
     let directory = Path::new("fuzz/corpus").join(target);
@@ -10,24 +10,23 @@ fn write(target: &str, name: &str, prefix: &[u8], bytes: &[u8], expected: Option
             let actual = mikaki_fuzz::registration(&data);
             assert_eq!(Some(actual), expected, "{name}");
         }
-        "assertion" => mikaki_fuzz::assertion(&data),
+        "assertion" => {
+            assert_eq!(Some(mikaki_fuzz::assertion(&data)), expected, "{name}");
+        }
         "metadata" => {
             let actual = mikaki_fuzz::metadata(&data);
             if let Some(expected) = expected {
                 assert_eq!(actual, expected, "{name}");
             }
         }
-        _ => mikaki_fuzz::assertion(&data),
+        _ => {
+            let _ = mikaki_fuzz::assertion(&data);
+        }
     }
     fs::write(directory.join(name), data).unwrap();
 }
 fn main() {
-    for (i, case) in fixtures()["registrations"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .enumerate()
-    {
+    for (i, case) in registration_cases().iter().enumerate() {
         for (mode, field) in ["attestation", "client_data"].iter().enumerate() {
             write(
                 "registration",
@@ -38,24 +37,31 @@ fn main() {
             );
         }
     }
-    for (mode, field) in [
-        "authenticator_data",
-        "public_key",
-        "signature",
-        "client_data",
-    ]
-    .iter()
-    .enumerate()
-    {
-        write(
-            "assertion",
-            field,
-            &[mode as u8],
-            &decode(&assertion_seed()[field]),
-            None,
-        );
+    for (i, case) in assertion_cases().iter().enumerate() {
+        for (mode, field) in [
+            "authenticator_data",
+            "public_key",
+            "signature",
+            "client_data",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let source = if *field == "public_key" {
+                &case["stored"]
+            } else {
+                &case["response"]
+            };
+            write(
+                "assertion",
+                &format!("{i}-{field}"),
+                &[i as u8, mode as u8],
+                &decode(&source[field]),
+                Some(case["ok"].as_bool().unwrap()),
+            );
+        }
     }
-    for (i, case) in fixtures()["mds"].as_array().unwrap().iter().enumerate() {
+    for (i, case) in metadata_cases().iter().enumerate() {
         let jwt = case["input"]["jwt"].as_str().unwrap();
         write(
             "metadata",
@@ -87,6 +93,47 @@ fn main() {
             &serde_json::to_vec(&case["input"]).unwrap(),
             Some(case["ok"].as_bool().unwrap()),
         );
+    }
+    for (i, case) in mikaki_fuzz::optional()["registrations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+    {
+        use sha2::{Digest, Sha256};
+        use x509_cert::der::Decode;
+        let object: ciborium::Value =
+            ciborium::de::from_reader(decode(&case["response"]["attestation"]).as_slice()).unwrap();
+        let field = |v: &ciborium::Value, name: &str| {
+            v.as_map()
+                .unwrap()
+                .iter()
+                .find(|(k, _)| k.as_text() == Some(name))
+                .map(|(_, v)| v.clone())
+        };
+        if field(&object, "fmt").unwrap().as_text() != Some("android-key") {
+            continue;
+        }
+        let cert = field(&field(&object, "attStmt").unwrap(), "x5c")
+            .unwrap()
+            .as_array()
+            .unwrap()[0]
+            .as_bytes()
+            .unwrap()
+            .clone();
+        let Ok(cert) = x509_cert::Certificate::from_der(&cert) else {
+            continue;
+        };
+        for ext in cert.tbs_certificate().extensions().into_iter().flatten() {
+            if ext.extn_id.to_string() == "1.3.6.1.4.1.11129.2.1.17" {
+                let hash = Sha256::digest(decode(&case["response"]["client_data"]));
+                let data = [hash.as_slice(), ext.extn_value.as_bytes()].concat();
+                let _ = mikaki_webauthn::fuzz_android_extension(ext.extn_value.as_bytes(), &hash);
+                let dir = Path::new("fuzz/corpus/android");
+                fs::create_dir_all(dir).unwrap();
+                fs::write(dir.join(format!("{i}-extension")), data).unwrap();
+            }
+        }
     }
     println!("Replayed and wrote registration, assertion and metadata seeds");
 }

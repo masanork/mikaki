@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from './paraglide/messages.js';
-  import { switchLocale } from './locale.js';
+  import ProductHeader from './ProductHeader.svelte';
   import type { Locale } from './paraglide/runtime.js';
 
   let { locale }: { locale: Locale } = $props();
@@ -95,32 +95,30 @@
   }
 </script>
 
-<main>
-  <label
-    >{m.language()}
-    <select
-      aria-label={m.language()}
-      value={locale}
-      onchange={(event) => switchLocale(event.currentTarget.value)}
+<ProductHeader {locale} />
+<main class="product-main product-admin">
+  <div class="product-heading">
+    <span class="product-eyebrow">ACCOUNT ADMINISTRATION</span>
+    <h1>{m.adminHeading()}</h1>
+    <p>{m.adminIntro()}</p>
+  </div>
+  <section class="product-card" aria-label={m.adminHeading()}>
+    <button class="product-primary" type="button" disabled={busy} onclick={issue}
+      >{m.adminIssue()}</button
     >
-      <option value="ja">日本語</option>
-      <option value="en">English</option>
-    </select>
-  </label>
-  <h1>{m.adminHeading()}</h1>
-  <p>{m.adminIntro()}</p>
-  <button type="button" disabled={busy} onclick={issue}>{m.adminIssue()}</button>
-  {#if failed}<p role="alert">{m.adminError()}</p>{/if}
-  {#if invitation}
-    <p role="status">{m.adminReady()}</p>
-    <p>{m.adminInvitation()}: <code>{invitation}</code></p>
-    <p>
-      {m.adminExpires()}:
-      <time datetime={new Date(expiresAt * 1000).toISOString()}
-        >{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-          expiresAt * 1000,
-        )}</time
-      >
-    </p>
-  {/if}
+    {#if failed}<p role="alert">{m.adminError()}</p>{/if}
+    {#if invitation}
+      <p role="status">{m.adminReady()}</p>
+      <p>{m.adminInvitation()}: <code>{invitation}</code></p>
+      <p>
+        {m.adminExpires()}:
+        <time datetime={new Date(expiresAt * 1000).toISOString()}
+          >{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+            expiresAt * 1000,
+          )}</time
+        >
+      </p>
+    {/if}
+  </section>
+  <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
 </main>

@@ -1,8 +1,8 @@
 # Mikaki
 
-Mikaki is an experimental passkey identity service built primarily in Rust. It combines a portable WebAuthn verifier with a shared account and OpenID Connect login for applications. Encrypted personal data and user-controlled sharing are being developed separately.
+Mikaki is an experimental passkey identity service built primarily in Rust. It combines a portable WebAuthn verifier with a shared account and OpenID Connect login for applications. Its owner Vault supports encrypted names and typed notes, with separately consented AI exports and sharing. Newer Vault and agent flows have local test evidence; deployment and recovery gates remain. Vault screens include unsaved-edit protection, deletion confirmation, a local idle/absolute display lock, and session checks on tab return; see the [session lifecycle and its limits](docs/session-lifecycle.md).
 
-> **Development prototype:** The OP Worker and one administrator account are deployed, but no production relying party is registered. Do not use Mikaki to protect real user accounts. See [project status](docs/status.md) for verified behavior and release gaps.
+> **Development prototype:** The OP Worker, one administrator account, and a narashi RP registration are recorded in the deployment history. A completed production RP login/callback flow has not been verified. Do not use Mikaki to protect real user accounts. See [project status](docs/status.md) for verified behavior and release gaps.
 
 ## Start here
 
@@ -10,6 +10,9 @@ Mikaki is an experimental passkey identity service built primarily in Rust. It c
 | --- | --- |
 | Run locally | [Getting started](docs/getting-started.md) |
 | Integrate an application | [RP integration](docs/rp-integration.md) |
+| Review the product UI | [Login preview](docs/login-ui-preview.md), [Vault and account screens](docs/product-ui-preview.md), and [product quality gates](docs/product-quality.md) |
+| Review test coverage and CI | [Product test evidence and limits](docs/test-quality.md) |
+| Prepare release or recovery | [Verified Worker upload inputs, migration rehearsal and operating gates](docs/release-and-recovery.md) |
 | Understand the design | [Architecture](docs/architecture.md) and [decisions](docs/adr/README.md) |
 | Operate a deployment | [Cloudflare deployment](docs/cloudflare-deployment.md) |
 | Browse current and proposed work | [Documentation](docs/README.md) and [roadmap](docs/roadmap.md) |

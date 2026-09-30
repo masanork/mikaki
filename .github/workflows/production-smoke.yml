@@ -1,6 +1,15 @@
 name: production-smoke
 on:
   workflow_dispatch:
+    inputs:
+      expected_version_id:
+        description: Cloudflare OP Worker version ID to verify
+        required: false
+        type: string
+      expected_source_commit:
+        description: Attested source commit to verify (40 hex characters)
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -16,10 +25,31 @@ jobs:
           node-version-file: .node-version
       - name: Check public issuer endpoints
         shell: bash
+        env:
+          MIKAKI_EXPECTED_VERSION_ID: ${{ inputs.expected_version_id }}
+          MIKAKI_EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+          MIKAKI_READY_TOKEN: ${{ secrets.MIKAKI_READY_TOKEN }}
         run: |
           set -euo pipefail
           issuer=https://mikaki.tossa.app
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/health" -o health.txt
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/.well-known/openid-configuration" -o discovery.json
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/jwks" -o jwks.json
+          if [[ -n "$MIKAKI_EXPECTED_VERSION_ID" && -n "$MIKAKI_EXPECTED_SOURCE_COMMIT" ]]; then
+            if [[ ! "$MIKAKI_READY_TOKEN" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
+              echo 'MIKAKI_READY_TOKEN GitHub Actions secret is missing or invalid' >&2
+              exit 1
+            fi
+            curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/version" -o version.json
+            printf 'header = "Authorization: Bearer %s"\n' "$MIKAKI_READY_TOKEN" |
+              curl --config - -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$issuer/ready" > ready-status.txt
+          fi
           node scripts/check-production-smoke.ts
+      - name: Retain version-matched smoke evidence
+        if: ${{ inputs.expected_version_id != '' && inputs.expected_source_commit != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-smoke-${{ github.run_id }}
+          path: artifacts/production-smoke.json
+          if-no-files-found: error
+          retention-days: 30

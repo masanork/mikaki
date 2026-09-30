@@ -1,0 +1,468 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01114C1CDD46AE2B2DAF53C6 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 53B792757CD52D7AE9703DB1 /* CoreGraphics.framework */; };
+		0D3C46F377DC5DBBED33B3CA /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E11AACA28D542F8526913F7C /* MetalKit.framework */; };
+		1A2D1BB6DF52DE13F42A7B52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2C86F8160BCFE1749C57D6FF /* Assets.xcassets */; };
+		49FABCEF4B0BF94A51F9F411 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AA678B92C1CAD867D1045819 /* libapp.a */; };
+		6174289CB9D76412809FBF51 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 58A6921B6DE0055C3E02A4A5 /* assets */; };
+		8AE467D66BBB47D7EF1CAA38 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4199CCD41FAE7568E22F7D2 /* Security.framework */; };
+		96BD0435347F88FBDE22CBD5 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 64FFDADD78905A1F27BA97A4 /* LaunchScreen.storyboard */; };
+		976C60C93812A2A3A94F135C /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A052B1B5C0AA50056211F6BF /* Metal.framework */; };
+		BF6992E4886538B0F81230D3 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1A26423058AB8E1AA17BBCA7 /* main.mm */; };
+		C1C403A727563ED96333E99B /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 257F610085C757F1DE9C15A1 /* QuartzCore.framework */; };
+		CE79FAB2A43DB77A44DD1874 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D38438C8A2E2B37D4284370 /* UIKit.framework */; };
+		E65FA15B3452E7D35698AECE /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F579340A7D07197D647E4E5D /* WebKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0B8348873CDE070E66FD8632 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		0D38438C8A2E2B37D4284370 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		0F7A8F88E1AB875229353A3A /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		1A26423058AB8E1AA17BBCA7 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		257F610085C757F1DE9C15A1 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		2C86F8160BCFE1749C57D6FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4BB2B44438AA1243C82A3043 /* native_oidc.rs */ = {isa = PBXFileReference; path = native_oidc.rs; sourceTree = "<group>"; };
+		53B792757CD52D7AE9703DB1 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		58A6921B6DE0055C3E02A4A5 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		5CFBC0F7618AA3D0FF9885AE /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		63F9F6A92E2E39F9C924C51F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		64FFDADD78905A1F27BA97A4 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		9D0C5E17E1A05A41F22521DF /* mobile_vault.rs */ = {isa = PBXFileReference; path = mobile_vault.rs; sourceTree = "<group>"; };
+		A052B1B5C0AA50056211F6BF /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		A9A0F539AEEDF0EE50FB047B /* vault_dpop.rs */ = {isa = PBXFileReference; path = vault_dpop.rs; sourceTree = "<group>"; };
+		AA678B92C1CAD867D1045819 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		CB105164A43E7055700BFB5C /* mikaki-client_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "mikaki-client_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CCC30B55395B8FDF66EDFB79 /* mobile_oidc.rs */ = {isa = PBXFileReference; path = mobile_oidc.rs; sourceTree = "<group>"; };
+		DB3C5C83527A8C3FA998BBCB /* mikaki-client_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "mikaki-client_iOS.entitlements"; sourceTree = "<group>"; };
+		E11AACA28D542F8526913F7C /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		F4199CCD41FAE7568E22F7D2 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		F579340A7D07197D647E4E5D /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FABBF46C1FA265F1E5FF94A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				49FABCEF4B0BF94A51F9F411 /* libapp.a in Frameworks */,
+				01114C1CDD46AE2B2DAF53C6 /* CoreGraphics.framework in Frameworks */,
+				976C60C93812A2A3A94F135C /* Metal.framework in Frameworks */,
+				0D3C46F377DC5DBBED33B3CA /* MetalKit.framework in Frameworks */,
+				C1C403A727563ED96333E99B /* QuartzCore.framework in Frameworks */,
+				8AE467D66BBB47D7EF1CAA38 /* Security.framework in Frameworks */,
+				CE79FAB2A43DB77A44DD1874 /* UIKit.framework in Frameworks */,
+				E65FA15B3452E7D35698AECE /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		025AD64F817F5961D0BE88D2 /* mikaki-client */ = {
+			isa = PBXGroup;
+			children = (
+				1A26423058AB8E1AA17BBCA7 /* main.mm */,
+				C928121E2DF95F8AEB060875 /* bindings */,
+			);
+			path = "mikaki-client";
+			sourceTree = "<group>";
+		};
+		1193C326278E50747581307A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				53B792757CD52D7AE9703DB1 /* CoreGraphics.framework */,
+				AA678B92C1CAD867D1045819 /* libapp.a */,
+				A052B1B5C0AA50056211F6BF /* Metal.framework */,
+				E11AACA28D542F8526913F7C /* MetalKit.framework */,
+				257F610085C757F1DE9C15A1 /* QuartzCore.framework */,
+				F4199CCD41FAE7568E22F7D2 /* Security.framework */,
+				0D38438C8A2E2B37D4284370 /* UIKit.framework */,
+				F579340A7D07197D647E4E5D /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		35B6CA3BF650AF14037A6B5D /* mikaki-client_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				63F9F6A92E2E39F9C924C51F /* Info.plist */,
+				DB3C5C83527A8C3FA998BBCB /* mikaki-client_iOS.entitlements */,
+			);
+			path = "mikaki-client_iOS";
+			sourceTree = "<group>";
+		};
+		498F903443F1407FC692DEAB /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		4EC1F42CE2C72E0335CFE9C7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CB105164A43E7055700BFB5C /* mikaki-client_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C928121E2DF95F8AEB060875 /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				0F7A8F88E1AB875229353A3A /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		F854D4A5D989EDDFF3466B2E /* src */ = {
+			isa = PBXGroup;
+			children = (
+				5CFBC0F7618AA3D0FF9885AE /* lib.rs */,
+				0B8348873CDE070E66FD8632 /* main.rs */,
+				CCC30B55395B8FDF66EDFB79 /* mobile_oidc.rs */,
+				9D0C5E17E1A05A41F22521DF /* mobile_vault.rs */,
+				4BB2B44438AA1243C82A3043 /* native_oidc.rs */,
+				A9A0F539AEEDF0EE50FB047B /* vault_dpop.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		FB630B835DE936CA352B99A1 = {
+			isa = PBXGroup;
+			children = (
+				58A6921B6DE0055C3E02A4A5 /* assets */,
+				2C86F8160BCFE1749C57D6FF /* Assets.xcassets */,
+				64FFDADD78905A1F27BA97A4 /* LaunchScreen.storyboard */,
+				498F903443F1407FC692DEAB /* Externals */,
+				35B6CA3BF650AF14037A6B5D /* mikaki-client_iOS */,
+				FD249BC1A502978A864941AD /* Sources */,
+				F854D4A5D989EDDFF3466B2E /* src */,
+				1193C326278E50747581307A /* Frameworks */,
+				4EC1F42CE2C72E0335CFE9C7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FD249BC1A502978A864941AD /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				025AD64F817F5961D0BE88D2 /* mikaki-client */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BE2B9F3B002303CA34E59E62 /* mikaki-client_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF714B1AF047ABF4B03DDF37 /* Build configuration list for PBXNativeTarget "mikaki-client_iOS" */;
+			buildPhases = (
+				7AD2909A23DE8C32B775D43E /* Build Rust Code */,
+				165F69464E74C3544358AA0C /* Sources */,
+				7F0B459FC016513E45B1818C /* Resources */,
+				FABBF46C1FA265F1E5FF94A5 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "mikaki-client_iOS";
+			packageProductDependencies = (
+			);
+			productName = "mikaki-client_iOS";
+			productReference = CB105164A43E7055700BFB5C /* mikaki-client_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CA3A5A7836567825E056929D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 29AF266830B56CD4832AE58C /* Build configuration list for PBXProject "mikaki-client" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = FB630B835DE936CA352B99A1;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4EC1F42CE2C72E0335CFE9C7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BE2B9F3B002303CA34E59E62 /* mikaki-client_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7F0B459FC016513E45B1818C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A2D1BB6DF52DE13F42A7B52 /* Assets.xcassets in Resources */,
+				96BD0435347F88FBDE22CBD5 /* LaunchScreen.storyboard in Resources */,
+				6174289CB9D76412809FBF51 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7AD2909A23DE8C32B775D43E /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "npm run -- tauri ios xcode-script -v --platform \"${PLATFORM_DISPLAY_NAME:?}\" --sdk-root \"${SDKROOT:?}\" --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration \"${CONFIGURATION:?}\" ${FORCE_COLOR} ${ARCHS:?}\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		165F69464E74C3544358AA0C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF6992E4886538B0F81230D3 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0211A5508DC220ED51771F37 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "mikaki-client_iOS/mikaki-client_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "mikaki-client_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = app.tossa.mikaki;
+				PRODUCT_NAME = "Mikaki";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		3826BB5EFDF910AC9CD9050F /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		D5AF3CD8EB9B54DA27C29BCF /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "mikaki-client_iOS/mikaki-client_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "mikaki-client_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = app.tossa.mikaki;
+				PRODUCT_NAME = "Mikaki";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		D657365D69413DE1FE911413 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		29AF266830B56CD4832AE58C /* Build configuration list for PBXProject "mikaki-client" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D657365D69413DE1FE911413 /* debug */,
+				3826BB5EFDF910AC9CD9050F /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		FF714B1AF047ABF4B03DDF37 /* Build configuration list for PBXNativeTarget "mikaki-client_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D5AF3CD8EB9B54DA27C29BCF /* debug */,
+				0211A5508DC220ED51771F37 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CA3A5A7836567825E056929D /* Project object */;
+}

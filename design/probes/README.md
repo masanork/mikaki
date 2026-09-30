@@ -2,6 +2,16 @@
 
 These are isolated technical probes, not product code. The ES256 private key comes from a public RFC test vector; account, client, and token values are synthetic. Statements about work “not implemented” in the original 2026-09-22 probe applied to the probe at that time, not the later [Rust Worker](../../docs/status.md). ML-KEM and ML-DSA experiments live separately in [`pqc/`](pqc/).
 
+The [UserInfo service-binding timeout probe](../../docs/userinfo-timeout-review.md) demonstrates in local Miniflare that caller abort does not stop downstream work. Run `node design/probes/userinfo-service-timeout.mjs` from the repository root; it has no production binding or Vault data.
+
+The separate [OID4VP synthetic membership probe](../../docs/oid4vp-probe.md) uses a pinned independent verifier library and dedicated disposable holder keys. Run `npm run test:oid4vp --prefix design/probes` from the root after installing the probe dependencies; `npm run probe:oid4vp --prefix design/probes` regenerates the content-free dated report. It has no product endpoint or real-wallet/device claim.
+
+The [OID4VCI receipt probe](../../docs/oid4vci-probe.md) receives that membership using a pinned independent issuer protocol library and presents it through the OID4VP path. Run `npm run test:oid4vci --prefix design/probes`; `npm run probe:oid4vci --prefix design/probes` regenerates its content-free report. Code/token/nonce ledgers and signing are synthetic Mikaki fixtures, and no external application or TLS connection is qualified.
+
+The separate [OIDF HTTPS adapters and current OP run](../../docs/oidf-conformance-2026-09-29.md) exercise credential metadata and nine verifier-component modules against OIDF Suite 5.3.1. Run `probe:oidf-metadata` and `probe:oidf-verifier` serially against the local suite; both bind port 8793 and need the ignored local TLS fixture. They do not qualify receipt/issuance or a real wallet application. `oidf/report.ts` exports content-free results; review, warning and skipped verdicts remain distinct.
+
+The [DPoP receipt/FAPI readiness slice](../../docs/fapi2-readiness.md) adds 45 component/policy and 11 real loopback HTTPS cases. Run `npm run test:dpop --prefix design/probes`, `npm run test:dpop-network --prefix design/probes` and `npm run probe:dpop --prefix design/probes`. The network harness generates a private synthetic certificate and keeps certificate/hostname validation enabled. An anonymous pre-authorized issuer with sender-bound tokens is qualified; confidential client authentication, PAR, persistent replay state, FAPI conformance and actual wallet applications remain open.
+
 ## workers-rs adapter probe
 
 [`workers-rs/`](workers-rs/) is a Rust Worker proof of concept using `worker 0.8.6`. Under local Wrangler/workerd it exercised async fetch, D1 batch rollback and `FirstPrimary` reads, one-winner concurrent code exchange, Workers WebCrypto CSPRNG feeding Rust OIDC code preparation, and async ES256 signing.

@@ -12,7 +12,10 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 #[cfg(target_arch = "wasm32")]
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
 
 #[cfg(any(test, target_arch = "wasm32"))]
 const SECRET_PREFIX: &str = "VAULT_USERINFO_MLKEM_";
@@ -72,6 +75,182 @@ struct EnvelopeValidation {
     revision: u64,
     ciphertext: String,
     frame: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NameRequest {
+    access_hash: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+struct NameRelease {
+    account_id: String,
+    client_id: String,
+    revision: i64,
+    release_version: i64,
+    object_key: String,
+    ciphertext_sha256: String,
+    frame: Vec<u8>,
+    key_id: String,
+    public_key: Vec<u8>,
+    secret_ref: String,
+    generation: i64,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct NameResponse<'a> {
+    name: &'a str,
+}
+
+// This query is the release authority at both the decrypt preflight and the
+// conditional disclosure-audit write. The caller supplies only a token hash.
+#[cfg(target_arch = "wasm32")]
+const ACTIVE_NAME_RELEASE: &str = include_str!("active_name_release.sql");
+
+#[cfg(target_arch = "wasm32")]
+const AUDIT_NAME_RELEASE: &str = include_str!("audit_name_release.sql");
+
+#[cfg(target_arch = "wasm32")]
+async fn release_name(
+    mut request: worker::Request,
+    env: &worker::Env,
+) -> worker::Result<worker::Response> {
+    let unavailable = || -> worker::Result<worker::Response> {
+        Ok(worker::Response::builder()
+            .with_status(503)
+            .with_header("Cache-Control", "no-store")?
+            .empty())
+    };
+    let body = request.bytes().await?;
+    if body.len() > 256 {
+        return unavailable();
+    }
+    let Ok(input) = serde_json::from_slice::<NameRequest>(&body) else {
+        return unavailable();
+    };
+    if input.access_hash.len() != 43
+        || !input
+            .access_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return unavailable();
+    }
+    let db = env.d1("DB")?;
+    let query = format!(
+        "SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version, \
+      h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation {ACTIVE_NAME_RELEASE}"
+    );
+    let row = db
+        .prepare(&query)
+        .bind(&[JsValue::from_str(&input.access_hash)])?
+        .first::<NameRelease>(None)
+        .await?;
+    let Some(row) = row else {
+        return Ok(worker::Response::builder()
+            .with_status(204)
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    };
+    let issuer = env.var("MIKAKI_ISSUER")?.to_string();
+    if !issuer.starts_with("https://")
+        || issuer.ends_with('/')
+        || row.revision <= 0
+        || row.release_version <= 0
+        || row.generation <= 0
+        || !valid_binding(&row.secret_ref)
+        || row.object_key.is_empty()
+    {
+        return unavailable();
+    }
+    let Some(object) = env
+        .bucket("VAULT_BLOBS")?
+        .get(&row.object_key)
+        .execute()
+        .await?
+    else {
+        return unavailable();
+    };
+    let Some(blob) = object.body() else {
+        return unavailable();
+    };
+    let ciphertext = blob.bytes().await?;
+    if ciphertext.len() > 24 * 1024
+        || URL_SAFE_NO_PAD.encode(Sha256::digest(&ciphertext)) != row.ciphertext_sha256
+    {
+        return unavailable();
+    }
+    let Some(secret) = env.secret_store(&row.secret_ref)?.get().await? else {
+        return unavailable();
+    };
+    let secret = Zeroizing::new(secret);
+    let Some(seed) = decode_seed(&secret) else {
+        return unavailable();
+    };
+    if !public_key_matches(&row.key_id, &row.public_key, &secret) {
+        return unavailable();
+    }
+    let binding = envelope::UserInfoBinding {
+        origin: &issuer,
+        account_id: &row.account_id,
+        revision: row.revision as u64,
+        ciphertext: &ciphertext,
+    };
+    let Some(data_key) = envelope::open_userinfo_data_key(
+        &seed,
+        &row.public_key,
+        &row.key_id,
+        row.generation as u64,
+        &row.frame,
+        &binding,
+    ) else {
+        return unavailable();
+    };
+    let Some(name) =
+        envelope::decrypt_name_ciphertext(&data_key, &issuer, row.revision as u64, &ciphertext)
+    else {
+        return unavailable();
+    };
+
+    // Compiled only into the local conformance artifact, never the release Worker.
+    #[cfg(feature = "conformance-gate")]
+    {
+        let gate = env.service("CONFORMANCE_GATE")?;
+        let request = worker::Request::new(
+            "https://conformance.internal/after-decrypt",
+            worker::Method::Get,
+        )?;
+        if gate.fetch_request(request).await?.status_code() != 200 {
+            return unavailable();
+        }
+    }
+
+    // The audit insert re-runs every live grant predicate immediately before
+    // disclosure. A concurrent revoke before this point prevents a result.
+    let audit = AUDIT_NAME_RELEASE.replace("{ACTIVE_NAME_RELEASE}", ACTIVE_NAME_RELEASE);
+    let accepted = db
+        .prepare(&audit)
+        .bind(&[
+            JsValue::from_str(&input.access_hash),
+            JsValue::from_str(&row.account_id),
+            JsValue::from_str(&row.client_id),
+            JsValue::from_f64(row.revision as f64),
+            JsValue::from_f64(row.release_version as f64),
+            JsValue::from_str(&row.ciphertext_sha256),
+            JsValue::from_str(&row.key_id),
+        ])?
+        .first::<i64>(Some("id"))
+        .await?;
+    if accepted.is_none() {
+        return unavailable();
+    }
+    worker::Response::builder()
+        .with_header("Cache-Control", "no-store")?
+        .from_json(&NameResponse { name: &name })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -232,6 +411,32 @@ pub async fn main(
     _context: worker::Context,
 ) -> worker::Result<worker::Response> {
     let path = request.url()?.path().to_owned();
+    if request.method() == worker::Method::Post && path == "/internal/claims/name" {
+        return match release_name(request, &env).await {
+            Ok(response) => Ok(response),
+            Err(_) => Ok(worker::Response::builder()
+                .with_status(503)
+                .with_header("Cache-Control", "no-store")?
+                .empty()),
+        };
+    }
+    if request.method() == worker::Method::Get && path == "/internal/ready" {
+        let ready = async {
+            let db = env.d1("DB")?;
+            db.prepare("SELECT key_id FROM vault_recipient_key LIMIT 1")
+                .first::<serde_json::Value>(None)
+                .await?;
+            Ok::<(), worker::Error>(())
+        }
+        .await;
+        if ready.is_err() {
+            worker::console_warn!("claim readiness unavailable");
+        }
+        return Ok(worker::Response::builder()
+            .with_status(if ready.is_ok() { 204 } else { 503 })
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
     let validation_key_id = path
         .strip_prefix("/internal/recipient-keys/")
         .and_then(|part| part.strip_suffix("/validate-envelope"));

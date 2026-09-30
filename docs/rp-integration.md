@@ -1,6 +1,6 @@
 # Integrate a relying party
 
-This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. No production RP is registered yet. A Mikaki operator performs registration.
+This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. Narashi's production registration is recorded in the [deployment guide](cloudflare-deployment.md); an owner-completed production login remains unverified. A Mikaki operator performs registration.
 
 ## 1. Register the RP
 
@@ -29,7 +29,7 @@ Protect the RP's login initiation against CSRF. For every transaction, generate 
 | `nonce` | Fresh random value, strongly recommended for the RP |
 | `code_challenge`, `code_challenge_method` | Derived challenge, `S256` |
 
-`request`, `request_uri`, dynamic registration, and `profile` or `email` scopes are outside the current integration. Mikaki handles the passkey screen and first connection approval. The RP never receives the passkey or Mikaki's SSO cookie.
+`request`, `request_uri`, dynamic registration, and `email` scope are outside the current integration. A local `openid profile` implementation can release an owner-approved Vault `name`, but both sharing and RP-release policies default to disabled and this path is not qualified for production RPs. Keep production login at `openid` until that gate is complete. Mikaki handles the passkey screen and first connection approval. The RP never receives the passkey or Mikaki's SSO cookie.
 
 ## 3. Handle the callback and exchange the code
 
@@ -39,7 +39,7 @@ POST `application/x-www-form-urlencoded` to the discovered `token_endpoint` from
 
 The assertion is an ES256 JWT signed by the registered private key. Its header carries that key's `kid`; `iss` and `sub` equal `client_id`; `aud` equals the **exact discovered token endpoint URL**; `jti` is unique per request; and `iat` and `exp` are present. Keep its lifetime within the configured limit. Never replay an assertion or code. After a lost response, restart with a new login transaction.
 
-Validate the ID Token's signature and `alg` against JWKS, then check `iss`, `aud`, `exp`, `iat`, the sent `nonce`, and `auth_time` where required. Use `sub` as the external identity mapped to an RP-local subject, and `sid` for session status. The pairwise `sub` is neither an email address nor Mikaki's common `AccountId`. The opaque `access_token` is only for UserInfo; it is not an RP API authorization token or a session lease. If calling UserInfo, match its `sub` to the verified ID Token. Current UserInfo returns only `sub`.
+Validate the ID Token's signature and `alg` against JWKS, then check `iss`, `aud`, `exp`, `iat`, the sent `nonce`, and `auth_time` where required. Use `sub` as the external identity mapped to an RP-local subject, and `sid` for session status. The pairwise `sub` is neither an email address nor Mikaki's common `AccountId`. The opaque `access_token` is only for UserInfo; it is not an RP API authorization token or a session lease. If calling UserInfo, match its `sub` to the verified ID Token. The production `openid` integration returns only `sub`; the gated local `openid profile` path may also return the consented `name` and can omit it again after withdrawal.
 
 ## 4. Establish an application session
 
@@ -51,6 +51,6 @@ Recheck status when a protected request arrives after the lease deadline. A fail
 
 ## Current limits and acceptance checks
 
-The production Worker does not yet provide `/logout`, Back-Channel Logout delivery, or logout-target registration, and Discovery does not advertise logout metadata. RPs must rely on the session-check lease for revocation. Do not promise immediate RP logout propagation before notification integration is tested.
+The Worker source implements `/logout`, registered logout targets, Back-Channel Logout outbox/delivery, and Discovery metadata, with [local conformance evidence](oidc-logout-conformance.md). Verify the deployed version, registered targets, and production receiver before relying on notifications. RPs must retain the session-check lease as a bound when delivery fails. Do not promise immediate RP logout propagation before production notification integration is tested.
 
 Before connecting an RP, test login at the registered redirect, first approval, SSO reuse, rejection of invalid state/nonce/PKCE/signature/issuer/audience, code and assertion replay, another client's sid, revocation and expiry boundaries, temporary OP outage, multiple tabs, and delayed callbacks. See the [login transaction](oidc-login-flow.md), [session lifecycle](session-lifecycle.md), and [token and UserInfo contract](oidc-access-token-and-userinfo.md) for deeper design details.

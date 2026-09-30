@@ -132,7 +132,7 @@ impl State {
         if registration {
             output.as_object_mut().unwrap().extend(json!({
                 "rp":{"id":"localhost", "name":"mikaki conformance"}, "user":user,
-                "pubKeyCredParams": ([-7,-8,-257,-65535].map(|alg|json!({"type":"public-key", "alg":alg}))),
+                "pubKeyCredParams": (webauthn::SUPPORTED_ALGORITHMS.iter().map(|alg|json!({"type":"public-key", "alg":alg})).collect::<Vec<_>>()),
                 "excludeCredentials":list, "attestation":data["attestation"].as_str().unwrap_or("none"),
                 "authenticatorSelection":{"userVerification":uv,"residentKey":resident,"requireResidentKey":resident=="required"}
             }).as_object().unwrap().clone());
@@ -206,7 +206,7 @@ impl State {
             "expires_at":tx.expires,"failures":0,"consumed":false,
             "context":{"challenge":tx.challenge,"origin":format!("http://localhost:{}",self.port),
                 "rp_id":"localhost","max_bytes":65536,"max_depth":8,"user_verification":tx.uv,
-                "algorithms":[-7,-8,-257,-65535],"attestation":{"now":now(),"entries":selected},
+                "algorithms":webauthn::SUPPORTED_ALGORITHMS,"attestation":{"now":now(),"entries":selected},
                 "authentication": if let Some(user) = tx.user.as_ref().filter(|_| !registration) {
                     json!({"mode":"identified","user_handle":user["id"],"allowed_credentials":tx.allowed})
                 } else {json!({"mode":"discoverable"})}}
@@ -332,7 +332,7 @@ fn header<'a>(req: &'a Request, name: &str) -> Option<&'a str> {
         .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
         .map(|h| h.value.as_str())
 }
-fn metadata() -> Result<Vec<Metadata>> {
+fn metadata(profile: webauthn::metadata::MdsProfile) -> Result<Vec<Metadata>> {
     let mut entries = Vec::new();
     let mut files = fs::read_dir("target/fido-metadata")?.collect::<std::io::Result<Vec<_>>>()?;
     files.sort_by_key(|f| f.file_name());
@@ -367,6 +367,7 @@ fn metadata() -> Result<Vec<Metadata>> {
             time_of_last_status_change: None,
         });
     }
+    let mut valid_blobs = 0;
     let mut files = fs::read_dir("target/fido-mds")?.collect::<std::io::Result<Vec<_>>>()?;
     files.sort_by_key(|f| f.file_name());
     for file in files
@@ -376,8 +377,10 @@ fn metadata() -> Result<Vec<Metadata>> {
         let mut input: webauthn::metadata::MdsInput =
             serde_json::from_reader(File::open(file.path())?)?;
         input.now = now();
+        input.profile = profile;
         match webauthn::metadata::verify_mds(input) {
             Ok(verified) => {
+                valid_blobs += 1;
                 eprintln!(
                     "MDS {}: verified {} entries (native)",
                     file.file_name().to_string_lossy(),
@@ -397,6 +400,11 @@ fn metadata() -> Result<Vec<Metadata>> {
             ),
         }
     }
+    if valid_blobs == 0 {
+        return Err(
+            "No valid MDS BLOB verified for the selected profile; re-run preparation".into(),
+        );
+    }
     Ok(entries)
 }
 fn schema(db: &Connection) -> Result<()> {
@@ -412,7 +420,11 @@ pub fn run() -> Result<()> {
     let port = std::env::var("FIDO_PORT")
         .unwrap_or("8080".into())
         .parse()?;
-    let entries = metadata()?;
+    let profile: webauthn::metadata::MdsProfile = serde_json::from_value(json!(
+        std::env::var("FIDO_MDS_PROFILE").unwrap_or("mds3.1.1".into())
+    ))?;
+    eprintln!("MDS profile: {profile:?}");
+    let entries = metadata(profile)?;
     let mut random = File::open("/dev/urandom")?;
     let mut bytes = [0u8; 16];
     random.read_exact(&mut bytes)?;

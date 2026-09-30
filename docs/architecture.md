@@ -44,6 +44,8 @@ Passkey authentication does not prove that a user can decrypt vault data. A WebA
 
 Vault storage is outside the authentication core. Login permission, vault read/write permission, and RP claim disclosure are separate decisions. Removing a credential cannot retract plaintext or keys already obtained by a device. [Claim sharing](vault-claim-sharing.md) remains a proposal; [recipient-key management](vault-recipient-key-lifecycle.md) has local components but is not activated or connected to UserInfo.
 
+[ADR 0012](adr/0012-vault-protocol-boundaries.md) also separates storage/synchronization, credential presentation, file operations, and AI access. MCP adapts domain operations; it does not own the Vault data model. OIDC profile release and proposed OpenID4VP credential presentation serve different relying-party needs. The [protocol review](vault-protocol-review.md) records current candidates and their adoption gates.
+
 ## Future boundaries
 
 Federated messaging, a conversation archive, and MCP access are outside the initial login scope. Federation must distinguish DID identity, device encryption keys, and server delivery. MCP access requires explicit, bounded delegation and does not follow automatically from message receipt or login. The [roadmap](roadmap.md) identifies their maturity and links to the corresponding proposals.

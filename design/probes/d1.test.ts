@@ -93,7 +93,7 @@ beforeEach(async () => {
     db.prepare("INSERT INTO client_session VALUES('c','sid','sso','a','sub',1,0)"),
     db
       .prepare(
-        "INSERT INTO authorization_code VALUES('codehash','c','sid',1,'https://app.example/cb','challenge',?,NULL,NULL)",
+        "INSERT INTO authorization_code(code_hash,client_id,sid,client_revision,redirect_uri,pkce_challenge,expires_at,consumed_by,consumed_at) VALUES('codehash','c','sid',1,'https://app.example/cb','challenge',?,NULL,NULL)",
       )
       .bind(expiry),
   ]);

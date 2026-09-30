@@ -54,6 +54,8 @@ struct Claims {
     aud: Audience,
     exp: u64,
     iat: u64,
+    #[serde(default)]
+    nbf: Option<u64>,
     jti: String,
 }
 
@@ -122,6 +124,44 @@ impl ClientAssertionKey {
         policy: ClientAssertionPolicy,
         max_assertion_bytes: usize,
     ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.verify_assertion(
+            compact,
+            expected_audience,
+            now,
+            policy,
+            max_assertion_bytes,
+            false,
+        )
+    }
+
+    /// FAPI 2.0 requires the issuer URL, as a single JSON string audience, and
+    /// accepts `iat`/`nbf` up to ten seconds ahead of the local clock.
+    pub fn verify_fapi_private_key_jwt(
+        &self,
+        compact: &str,
+        issuer: &str,
+        now: u64,
+        max_assertion_bytes: usize,
+    ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.verify_assertion(
+            compact,
+            issuer,
+            now,
+            ClientAssertionPolicy::from_seconds(60, 10)?,
+            max_assertion_bytes,
+            true,
+        )
+    }
+
+    fn verify_assertion(
+        &self,
+        compact: &str,
+        expected_audience: &str,
+        now: u64,
+        policy: ClientAssertionPolicy,
+        max_assertion_bytes: usize,
+        fapi: bool,
+    ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
         if !self.active
             || self.client_id.is_empty()
             || self.key_id.is_empty()
@@ -156,6 +196,12 @@ impl ClientAssertionKey {
             || claims.iss != self.client_id
             || claims.sub != self.client_id
             || !claims.aud.matches_exactly(expected_audience)
+            || (fapi && !matches!(&claims.aud, Audience::One(_)))
+            || (!fapi && claims.nbf.is_some())
+            || (fapi
+                && claims
+                    .nbf
+                    .is_some_and(|nbf| nbf > now.saturating_add(10) || nbf > claims.exp))
             || claims.jti.is_empty()
             || claims.jti.len() > 256
             || claims.jti.bytes().any(|byte| byte.is_ascii_control())
@@ -222,6 +268,66 @@ pub fn client_assertion_key_id(
         return Err(InvalidClientAssertion);
     }
     Ok(header.kid)
+}
+
+/// Read a bounded, untrusted audience solely to choose which registered AS
+/// identifier to verify against. It never authenticates the caller.
+pub fn client_assertion_audience(
+    compact: &str,
+    max_assertion_bytes: usize,
+) -> Result<String, InvalidClientAssertion> {
+    if compact.len() > max_assertion_bytes || max_assertion_bytes == 0 {
+        return Err(InvalidClientAssertion);
+    }
+    let mut parts = compact.split('.');
+    let (Some(h), Some(c), Some(s), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(InvalidClientAssertion);
+    };
+    if h.is_empty() || c.is_empty() || s.is_empty() {
+        return Err(InvalidClientAssertion);
+    }
+    let claims: Claims =
+        serde_json::from_slice(&decode_segment(c)?).map_err(|_| InvalidClientAssertion)?;
+    let audience = match claims.aud {
+        Audience::One(value) => value,
+        Audience::Many(mut values) if values.len() == 1 => values.remove(0),
+        Audience::Many(_) => return Err(InvalidClientAssertion),
+    };
+    if audience.is_empty() || audience.len() > 2048 {
+        return Err(InvalidClientAssertion);
+    }
+    Ok(audience)
+}
+
+/// Read a bounded, untrusted issuer only to select a registered client key.
+/// The returned value is not authenticated until signature verification.
+pub fn client_assertion_issuer(
+    compact: &str,
+    max_assertion_bytes: usize,
+) -> Result<String, InvalidClientAssertion> {
+    if max_assertion_bytes == 0 || compact.len() > max_assertion_bytes {
+        return Err(InvalidClientAssertion);
+    }
+    let mut parts = compact.split('.');
+    let (Some(header), Some(claims), Some(signature), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(InvalidClientAssertion);
+    };
+    if header.is_empty() || claims.is_empty() || signature.is_empty() {
+        return Err(InvalidClientAssertion);
+    }
+    let claims: Claims =
+        serde_json::from_slice(&decode_segment(claims)?).map_err(|_| InvalidClientAssertion)?;
+    if claims.iss.is_empty()
+        || claims.iss.len() > 128
+        || claims.iss.bytes().any(|byte| byte.is_ascii_control())
+    {
+        return Err(InvalidClientAssertion);
+    }
+    Ok(claims.iss)
 }
 
 fn decode_segment(segment: &str) -> Result<Vec<u8>, InvalidClientAssertion> {

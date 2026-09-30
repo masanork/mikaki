@@ -34,7 +34,7 @@ npx wrangler deploy --config crates/worker/wrangler.production.jsonc \
   --secrets-file local/generated/mikaki-production-secrets.json
 ```
 
-The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. Check the deploy output for that binding before considering the update complete.
+The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. The current production config declares both `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN` as required. Generate a separate 32-byte base64url monitoring token (`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`), place it alongside `OP_PRIVATE_JWK` in the ignored, mode-0600 secret JSON, and provision the identical value as the GitHub Actions repository secret `MIKAKI_READY_TOKEN` before using version-aware production smoke. Keep it out of `vars`, URLs, logs and release artifacts. Check the deployed binding inventory for both secret names before activation; if either value is missing or malformed, `/ready` fails closed. Rotate both copies together and rerun version-aware smoke.
 
 Before deploying code that uses new D1 columns or tables, list and apply pending production migrations with the same production config and `--remote`. Confirm the list is empty afterward; a healthy `/health` response does not prove the token exchange schema is current.
 
@@ -52,4 +52,14 @@ curl -fsS https://mikaki.tossa.app/.well-known/openid-configuration
 curl -fsS https://mikaki.tossa.app/jwks
 ```
 
-This deployment has no recovery or registered production clients. Do not treat its availability as a user-ready launch or an OIDF certification result.
+After activating a version with the `CF_VERSION_METADATA` binding, fetch `/version` and compare its Cloudflare version ID and clean source commit with the activation record and verified release manifest. Check authenticated `/ready` for 204 before functional qualification; missing or incorrect bearer credentials receive 404 before dependency checks. Readiness checks policy, migration, signing-key alignment and essential bindings but cannot replace an actual Vault/RP flow. The [manual production smoke workflow](../.github/workflows/production-smoke.yml) accepts both expected values and retains the version/readiness comparison result. A response from `/version` identifies the running source revision, not the digest of the uploaded Worker bytes; record that mapping separately as described in [release and recovery](release-and-recovery.md). The currently deployed version predates both endpoints.
+
+The recorded deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
+
+## Local changes awaiting activation
+
+The 2026-09-29 [Vault and account UI](product-ui-preview.md), additional Passkey/typed-note flows, agent/OAuth endpoints, and optional DPoP/PAR work have local evidence only. This documentation review does not deploy them or apply migrations `0014`–`0022`. Validate schema, preserved secrets/service bindings, intended-device PRF, and RP callback/logout behavior as separate activation gates in [product quality](product-quality.md).
+
+The new [release inventory and recovery rehearsal](release-and-recovery.md) checks local archive/migration bytes and documents activation records, backup boundaries and historical authority reconciliation. It does not promote CI-built bytes, create a production backup or execute a restore. Keep actual Worker versions, preserved bindings and RP/device results tied to a reviewed activation record.
+
+For a future attested release, use the [prepared upload directory](release-and-recovery.md) from the reusable build after trusted attestation verification. It contains both verified archives' pinned Wrangler dry-run bundles; verify that directory immediately before a reviewed `versions upload --no-bundle`. Record the returned version IDs and all bindings, then activate only the qualified versions. This path has local dry-run evidence only and has not changed the deployed Workers.
