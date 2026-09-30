@@ -107,3 +107,11 @@ Rust verified the signature against the public key returned by the plugin.
 The check succeeded again after force-stopping and restarting the app. It does
 not contact the OP or prove OAuth consent, App Link delivery, or hardware-backed
 key storage on a physical device.
+
+On 2026-09-30, a physical Pixel 10 Pro running Android 17 also passed the
+key check, including after force-stopping and restarting the app. This was a
+locally debug-signed preview APK, without a configured mobile client ID.
+The device reported the callback domain as unverified (code 1024), so this
+result establishes OS signing and Rust signature verification only. It does
+not establish hardware backing, release signing, browser login, App Link
+delivery, or Vault ciphertext access.
