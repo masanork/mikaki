@@ -112,7 +112,7 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
         )
     };
     let html = format!(
-        "<!doctype html><html lang=\"{locale}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title></head><body><main><h1>{title}</h1><p>{description}</p><dl><dt>Client ID</dt><dd>{}</dd><dt>Callback</dt><dd>{}</dd><dt>Attribute</dt><dd>{attribute}</dd><dt>Operation</dt><dd>read_ciphertext</dd></dl><form method=\"post\" action=\"/vault/oauth/consent\"><input type=\"hidden\" name=\"tx\" value=\"{}\"><button type=\"submit\" name=\"decision\" value=\"approve\">{approve}</button><button type=\"submit\" name=\"decision\" value=\"deny\">{deny}</button></form></main></body></html>",
+        "<!doctype html><html lang=\"{locale}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head><body><main><h1>{title}</h1><p>{description}</p><dl><dt>Client ID</dt><dd>{}</dd><dt>Callback</dt><dd>{}</dd><dt>Attribute</dt><dd>{attribute}</dd><dt>Operation</dt><dd>read_ciphertext</dd></dl><form method=\"post\" action=\"/vault/oauth/consent\"><input type=\"hidden\" name=\"tx\" value=\"{}\"><button type=\"submit\" name=\"decision\" value=\"approve\">{approve}</button><button type=\"submit\" name=\"decision\" value=\"deny\">{deny}</button></form></main></body></html>",
         i18n::html_escape(&row.client_id),
         i18n::html_escape(&row.redirect_uri),
         i18n::html_escape(tx),
@@ -123,7 +123,7 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header(
             "Content-Security-Policy",
-            "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .with_header("X-Content-Type-Options", "nosniff")?
         .from_html(html)

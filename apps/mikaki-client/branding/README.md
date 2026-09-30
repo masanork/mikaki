@@ -1,10 +1,9 @@
 # Native app icon
 
-The source SVGs retain the four tiles, -12 degree rotation and blue palette of
-`crates/worker/ui/auth.css`. A navy background provides contrast at launcher sizes.
-Android has separate adaptive background, foreground and monochrome layers.
-iOS icons are flattened onto navy; the OS applies its icon mask. Desktop assets
-include PNG, ICNS and ICO variants.
+The shared source is [`branding/mikaki-mark.svg`](../../../branding/mikaki-mark.svg).
+The woven fence motif refers to 御垣. Navy-backed icons use the established blue
+palette; Android has separate adaptive background, foreground and monochrome
+layers. iOS icons are flattened onto navy. Desktop assets include PNG, ICNS and ICO.
 
 Regenerate from `apps/mikaki-client` with the pinned Tauri CLI and Python Pillow
 (install Pillow into your development Python environment first):

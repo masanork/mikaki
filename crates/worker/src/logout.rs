@@ -206,7 +206,7 @@ pub(super) async fn get(
         .with_header(
             "Content-Security-Policy",
             &format!(
-                "default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
+                "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; form-action 'self' {redirect_origin}; base-uri 'none'; frame-ancestors 'none'"
             ),
         )?
         .with_header(
@@ -391,7 +391,7 @@ async fn confirm(
             .with_header("Referrer-Policy", "no-referrer")?
             .with_header(
                 "Content-Security-Policy",
-                "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
             )?
             .from_html(render_page(
                 &strings,
@@ -433,6 +433,10 @@ fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: 
     let message = |key| i18n::html_escape(strings.message(key));
     let template = include_str!("../ui/logout.html");
     let values = [
+        (
+            "{{brand_mark}}",
+            include_str!("../../../branding/mikaki-mark.svg").to_owned(),
+        ),
         (
             "{{session_state}}",
             if complete { "ended" } else { "confirm" }.to_owned(),

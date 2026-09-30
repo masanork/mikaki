@@ -38,3 +38,13 @@ button:disabled {
 #vault button {
   margin: 0 0.5rem 0.5rem 0;
 }
+
+.native-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.native-brand img {
+  display: block;
+  flex: none;
+}

@@ -5,6 +5,8 @@ mod admin_invitations;
 #[cfg(any(target_arch = "wasm32", test))]
 mod app_association;
 #[cfg(target_arch = "wasm32")]
+mod branding;
+#[cfg(target_arch = "wasm32")]
 mod dpop;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;
@@ -2253,7 +2255,7 @@ fn authorization_par_error_page(
         "parInvalidBody"
     }));
     let html = format!(
-        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{title}</title></head><body><main><h1>{title}</h1><p>{body}</p></main></body></html>",
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{title}</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head><body><main><h1>{title}</h1><p>{body}</p></main></body></html>",
         strings.locale,
     );
     worker::Response::builder()
@@ -2261,7 +2263,7 @@ fn authorization_par_error_page(
         .with_header("Cache-Control", "no-store")?
         .with_header(
             "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none'",
+            "default-src 'none'; img-src 'self'; frame-ancestors 'none'",
         )?
         .from_html(html)
 }
@@ -2475,7 +2477,7 @@ async fn authorize_route(
             parameters.get("ui_locales").map(String::as_str),
         )?);
         let html = format!(
-            "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{}</title></head><body><main><h1>{}</h1><p>{}</p></main></body></html>",
+            "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><title>{}</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head><body><main><h1>{}</h1><p>{}</p></main></body></html>",
             strings.locale,
             i18n::html_escape(strings.message("invalidRedirectTitle")),
             i18n::html_escape(strings.message("invalidRedirectTitle")),
@@ -2486,7 +2488,7 @@ async fn authorize_route(
             .with_header("Cache-Control", "no-store")?
             .with_header(
                 "Content-Security-Policy",
-                "default-src 'none'; frame-ancestors 'none'",
+                "default-src 'none'; img-src 'self'; frame-ancestors 'none'",
             )?
             .from_html(html);
     };
@@ -3661,6 +3663,9 @@ pub async fn main(
     }
     worker::Router::with_data(())
         .get_async("/", home::get)
+        .get_async("/favicon.svg", branding::get)
+        .get_async("/favicon.ico", branding::get)
+        .get_async("/favicon-32x32.png", branding::get)
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
         .get_async("/ready", ready_route)
         .get_async("/version", |_req, ctx| async move {

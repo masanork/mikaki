@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandMark from '../../../crates/worker/ui/BrandMark.svelte';
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { getLocale, setLocale, type Locale } from './paraglide/runtime.js';
@@ -109,9 +110,7 @@
 <div class="auth-shell">
   <header class="auth-header">
     <div class="auth-brand" aria-label="mikaki">
-      <span class="auth-mark" aria-hidden="true"
-        ><span></span><span></span><span></span><span></span></span
-      >
+      <BrandMark />
       mikaki
     </div>
     <label class="auth-language">

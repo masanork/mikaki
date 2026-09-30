@@ -87,15 +87,15 @@ pub fn callback_help() -> worker::Result<worker::Response> {
 <meta name="color-scheme" content="light dark"><title>アプリに戻れませんでした · mikaki</title>
 <style>
 :root{font-family:system-ui,-apple-system,sans-serif;color-scheme:light dark}
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f5f1;color:#18332e}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f5f1;color:#173c59}
 main{box-sizing:border-box;width:min(100%,32rem);padding:3rem 1.5rem}
-.brand{font-weight:750;font-size:1.5rem;letter-spacing:-.04em}
-.card{margin-top:2rem;padding:2rem;border:1px solid #d9e3dd;border-radius:1.25rem;background:#fff;box-shadow:0 12px 36px #18332e10}
-.eyebrow{color:#397263;font-size:.75rem;font-weight:750;letter-spacing:.12em}
+.brand{display:flex;align-items:center;gap:.65rem;font-weight:750;font-size:1.5rem;letter-spacing:-.04em}.brand-mark{display:block;width:2rem;height:2rem;border-radius:24%;background:linear-gradient(135deg,#173c59,#081b2d)}.brand-mark svg{display:block;width:100%;height:100%}
+.card{margin-top:2rem;padding:2rem;border:1px solid #dce5eb;border-radius:1.25rem;background:#fff;box-shadow:0 12px 36px #173c5910}
+.eyebrow{color:#357daf;font-size:.75rem;font-weight:750;letter-spacing:.12em}
 h1{font-size:clamp(1.75rem,6vw,2.25rem);line-height:1.3;letter-spacing:-.04em}
-p,li{line-height:1.7}ol{padding-left:1.4rem}.note{font-size:.9rem;color:#50645d}
-@media(prefers-color-scheme:dark){body{background:#101d1a;color:#e8f4ed}.card{background:#182a25;border-color:#355147;box-shadow:none}.eyebrow{color:#8bcfb3}.note{color:#b0c7bc}}
-</style></head><body><main><div class="brand">mikaki</div><div class="card">
+p,li{line-height:1.7}ol{padding-left:1.4rem}.note{font-size:.9rem;color:#526a7b}
+@media(prefers-color-scheme:dark){body{background:#081b2d;color:#e2f3ff}.card{background:#102d44;border-color:#315872;box-shadow:none}.eyebrow{color:#7ac8e9}.note{color:#b8d9e9}}
+</style></head><body><main><div class="brand"><span class="brand-mark">{{brand_mark}}</span>mikaki</div><div class="card">
 <p class="eyebrow">RETURN TO APP</p><h1>アプリに戻れませんでした</h1>
 <p>この認証はアプリに届いていません。ブラウザを閉じて、mikakiアプリの待機画面で「キャンセルして戻る」を選んでください。</p>
 <ol><li>Androidの設定で「アプリ」→「mikaki」→「デフォルトで開く」を開きます。</li>
@@ -113,7 +113,13 @@ p,li{line-height:1.7}ol{padding-left:1.4rem}.note{font-size:.9rem;color:#50645d}
             "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
         )?
         .with_header("X-Content-Type-Options", "nosniff")?
-        .fixed(PAGE.as_bytes().to_vec()))
+        .fixed(
+            PAGE.replace(
+                "{{brand_mark}}",
+                include_str!("../../../branding/mikaki-mark.svg"),
+            )
+            .into_bytes(),
+        ))
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ The access token stays in Rust process memory. It does not decrypt the owner
 envelope. Mobile callback
 and Android app association and ordinary OIDC return/token validation have
 been tested in a signed installed app; iPhone remains unqualified.
-Wallet, NFC and PDS remain unimplemented. The icon uses mikaki's four-tile mark; a distribution
+Wallet, NFC and PDS remain unimplemented. The icon uses mikaki's woven fence mark; a distribution
 signing identity has not been selected. Android release signing can use an
 ignored local keystore configuration described in the activation checkpoint.
 

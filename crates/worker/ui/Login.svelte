@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandMark from './BrandMark.svelte';
   import { publishVaultLock } from './session-events.js';
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
@@ -225,9 +226,7 @@
   <section class="auth-story" aria-labelledby="auth-title">
     <header class="auth-header">
       <div class="auth-brand" aria-label="mikaki">
-        <span class="auth-mark" aria-hidden="true"
-          ><span></span><span></span><span></span><span></span></span
-        >
+        <BrandMark />
         mikaki
       </div>
       <span class="auth-header-tag" aria-hidden="true">IDENTITY</span>
