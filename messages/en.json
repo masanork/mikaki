@@ -302,5 +302,9 @@
   "productTransferDiscard": "Moving saved content will discard unsaved edits in this editor. Continue?",
   "productDeleteFailed": "Deletion could not be confirmed. Retry the same deletion, or reload to check saved content.",
   "productUnfinishedOperation": "An operation is unfinished. Retry it, or reload to check saved content.",
-  "productNoteRefreshFailed": "Your change was applied, but the updated note could not be loaded. Reload to verify it."
+  "productNoteRefreshFailed": "Your change was applied, but the updated note could not be loaded. Reload to verify it.",
+  "productAdminEyebrow": "ACCOUNT ADMINISTRATION",
+  "productReadyEyebrow": "READY TO GO",
+  "productSessionControl": "SESSION CONTROL",
+  "productSessionClosed": "SESSION CLOSED"
 }

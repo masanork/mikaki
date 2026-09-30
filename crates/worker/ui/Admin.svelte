@@ -98,7 +98,7 @@
 <ProductHeader {locale} />
 <main class="product-main product-admin">
   <div class="product-heading">
-    <span class="product-eyebrow">ACCOUNT ADMINISTRATION</span>
+    <span class="product-eyebrow">{m.productAdminEyebrow()}</span>
     <h1>{m.adminHeading()}</h1>
     <p>{m.adminIntro()}</p>
   </div>

@@ -45,8 +45,12 @@ pub async fn apple(
     _request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    let document = context
-        .env
+    apple_for_env(&context.env)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn apple_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
+    let document = env
         .var("MIKAKI_IOS_TEAM_ID")
         .ok()
         .and_then(|value| apple_document(&value.to_string()));
@@ -58,8 +62,12 @@ pub async fn android(
     _request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    let document = context
-        .env
+    android_for_env(&context.env)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn android_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
+    let document = env
         .var("MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT")
         .ok()
         .and_then(|value| android_document(&value.to_string()));

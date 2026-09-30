@@ -47,9 +47,13 @@ test('product logout preserves locale through switching and confirmation, with C
         ),
       ]);
       const cookie = `__Host-op-sso=${secret}`;
-      const initial = await worker.fetch(`${issuer}/logout?ui_locales=${locale}-JP&state=kept`, {
-        headers: { Cookie: cookie, 'Accept-Language': locale === 'en' ? 'ja' : 'en' },
-      });
+      const state = 'kept{{action}}';
+      const initial = await worker.fetch(
+        `${issuer}/logout?ui_locales=${locale}-JP&state=${encodeURIComponent(state)}`,
+        {
+          headers: { Cookie: cookie, 'Accept-Language': locale === 'en' ? 'ja' : 'en' },
+        },
+      );
       assert.equal(initial.status, 200);
       assert.equal(initial.headers.get('content-language'), locale);
       const initialHtml = await initial.text();
@@ -57,7 +61,7 @@ test('product logout preserves locale through switching and confirmation, with C
       assert.match(initialHtml, locale === 'ja' ? /ログアウト/ : /Log out/);
       const switchPath = /<a href="([^"]+)"/.exec(initialHtml)![1].replaceAll('&amp;', '&');
       const switchUrl = new URL(switchPath, issuer);
-      assert.equal(switchUrl.searchParams.get('state'), 'kept');
+      assert.equal(switchUrl.searchParams.get('state'), state);
       assert.equal(switchUrl.searchParams.get('ui_locales'), `${locale}-JP`);
       const other = locale === 'ja' ? 'en' : 'ja';
       assert.equal(switchUrl.searchParams.get('lang'), other);

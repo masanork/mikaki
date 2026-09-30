@@ -23,7 +23,7 @@ The intended dependency direction is Worker → OIDC → auth → WebAuthn. Keep
 1. Check [status](status.md), the relevant topic document, and any [ADR](adr/) for the affected contract.
 2. Update the document that owns the behavior. Mark proposed, locally verified, and deployed claims separately.
 3. Add tests for meaningful failure and race conditions where the change affects identity or durable state. Keep test evidence tied to the environment actually exercised.
-4. Run the checks relevant to the changed code. The common local checks are `cargo test --workspace`, `npm run test:e2e`, `npm run check:node`, `npm run check:ui`, `npm run check:worker-ui`, `npm run check:i18n`, and `npm run check:docs`. After building the Rust Worker and installing Chromium, run `npm run test:product-ui` for shared screens and profile failure/retry behavior. CI and additional target-specific checks may apply.
+4. Run the checks relevant to the changed code. The common local checks are `cargo test --workspace`, `npm run test:e2e`, `npm run check:node`, `npm run check:ui`, `npm run check:worker-ui`, `npm run check:i18n`, and `npm run check:docs`. After building the Rust Worker and installing Chromium, run `npm run test:worker-browser` for account screens, profile failure/retry behavior, and product journeys. CI and additional target-specific checks may apply.
 5. Record limitations and migration or rollout steps when the change affects persisted data or a deployed Worker.
 
 For vulnerabilities, use the private route in [SECURITY.md](../SECURITY.md) instead of a public issue. External test data and dependency licenses remain subject to their own terms.

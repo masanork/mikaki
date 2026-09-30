@@ -9,6 +9,10 @@
     {
       "pattern": "mikaki.tossa.app",
       "custom_domain": true
+    },
+    {
+      "pattern": "mikaki-native.tossa.app",
+      "custom_domain": true
     }
   ],
   "vars": {

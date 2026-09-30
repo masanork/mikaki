@@ -37,7 +37,7 @@
       "mobile": [
         {
           "scheme": ["https"],
-          "host": "mikaki.tossa.app",
+          "host": "mikaki-native.tossa.app",
           "pathPrefix": ["/oidc/native/"],
           "appLink": true
         }

@@ -3641,6 +3641,25 @@ pub async fn main(
     env: worker::Env,
     _ctx: worker::Context,
 ) -> worker::Result<worker::Response> {
+    // The native callback host must not become a second OP origin. It only
+    // serves the OS association files; the authorization code URL is handled
+    // by the installed app and has no browser fallback endpoint.
+    let url = req.url()?;
+    if url.host_str() == Some("mikaki-native.tossa.app") {
+        return match native_host_route(req.method() == worker::Method::Get, url.path()) {
+            NativeHostRoute::Apple => {
+                app_association::apple_for_env(&env)
+            }
+            NativeHostRoute::Android => {
+                app_association::android_for_env(&env)
+            }
+            NativeHostRoute::NotFound => Ok(worker::Response::builder()
+                .with_status(404)
+                .with_header("Cache-Control", "no-store")?
+                .with_header("Referrer-Policy", "no-referrer")?
+                .fixed(b"not found".to_vec())),
+        };
+    }
     worker::Router::with_data(())
         .get_async("/", home::get)
         .get_async("/health", |_req, _ctx| async { worker::Response::ok("ok") })
@@ -3738,6 +3757,47 @@ pub async fn main(
         .delete_async("/vault/attributes/:attribute", vault_attributes::delete)
         .run(req, env)
         .await
+}
+
+#[cfg(any(test, all(target_arch = "wasm32", feature = "worker-entry")))]
+#[derive(Debug, PartialEq, Eq)]
+enum NativeHostRoute {
+    Apple,
+    Android,
+    NotFound,
+}
+
+#[cfg(any(test, all(target_arch = "wasm32", feature = "worker-entry")))]
+fn native_host_route(is_get: bool, path: &str) -> NativeHostRoute {
+    match (is_get, path) {
+        (true, "/.well-known/apple-app-site-association") => NativeHostRoute::Apple,
+        (true, "/.well-known/assetlinks.json") => NativeHostRoute::Android,
+        _ => NativeHostRoute::NotFound,
+    }
+}
+
+#[cfg(test)]
+mod native_host_tests {
+    use super::{native_host_route, NativeHostRoute};
+
+    #[test]
+    fn native_host_exposes_only_association_documents() {
+        assert_eq!(
+            native_host_route(true, "/.well-known/apple-app-site-association"),
+            NativeHostRoute::Apple
+        );
+        assert_eq!(
+            native_host_route(true, "/.well-known/assetlinks.json"),
+            NativeHostRoute::Android
+        );
+        for path in ["/authorize", "/token", "/jwks", "/oidc/native/callback"] {
+            assert_eq!(native_host_route(true, path), NativeHostRoute::NotFound);
+        }
+        assert_eq!(
+            native_host_route(false, "/.well-known/apple-app-site-association"),
+            NativeHostRoute::NotFound
+        );
+    }
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]

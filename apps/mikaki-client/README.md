@@ -40,8 +40,11 @@ second login, and process restart on each target desktop OS before release.
 
 ## Android and iPhone setup
 
-Register a separate public mobile client with sector `mikaki.tossa.app` and
-exact redirect URI `https://mikaki.tossa.app/oidc/native/callback`. Set its
+Register a separate public mobile client with sector `mikaki-native.tossa.app` and
+exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.
+The authorization server remains `https://mikaki.tossa.app`; the callback
+host is separate so Safari can open its Universal Link from the authorization
+site. Set its
 public ID as `MIKAKI_MOBILE_CLIENT_ID` **when compiling the Rust app**. The
 Tauri app identifier is `app.tossa.mikaki`. Configure the production Worker
 with `MIKAKI_IOS_TEAM_ID` (the ten-character Apple Developer Team ID) and
@@ -49,7 +52,7 @@ with `MIKAKI_IOS_TEAM_ID` (the ten-character Apple Developer Team ID) and
 fingerprint of the Android distribution signing certificate). Each
 `/.well-known/` association response is 404 until its corresponding valid
 value is configured. It must be publicly reachable over HTTPS on
-`mikaki.tossa.app`; redirects or a mismatched signing identity will prevent
+`mikaki-native.tossa.app`; redirects or a mismatched signing identity will prevent
 the OS from delivering the callback.
 
 The pending PKCE transaction lives only in app memory and expires after three
@@ -59,7 +62,7 @@ delivery, Passkey authentication in the external browser, cancellation,
 wrong and duplicate callback parameters, and app restart on signed Android
 and iPhone builds. Compilation alone does not qualify this flow.
 
-The generated iOS entitlement contains `applinks:mikaki.tossa.app`. A signed
+The generated iOS entitlement contains `applinks:mikaki-native.tossa.app`. A signed
 physical-device build also needs an Apple development team and an association
 response containing that team's app identifier. This checkout has neither a
 signing certificate nor a configured team ID. The iPhoneOS Rust/Swift target

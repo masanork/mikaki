@@ -431,7 +431,7 @@ async fn confirm(
 
 fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: &str) -> String {
     let message = |key| i18n::html_escape(strings.message(key));
-    let mut html = include_str!("../ui/logout.html").to_owned();
+    let template = include_str!("../ui/logout.html");
     let values = [
         (
             "{{session_state}}",
@@ -464,7 +464,11 @@ fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: 
         ),
         (
             "{{phase}}",
-            if complete { "CLOSED" } else { "CONTROL" }.to_owned(),
+            message(if complete {
+                "productSessionClosed"
+            } else {
+                "productSessionControl"
+            }),
         ),
         (
             "{{icon_class}}",
@@ -482,9 +486,24 @@ fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: 
         ("{{language}}", language.to_owned()),
         ("{{action}}", action.to_owned()),
     ];
-    for (key, value) in values {
-        html = html.replace(key, &value);
+    let mut html = String::with_capacity(template.len() + 512);
+    let mut remainder = template;
+    while let Some(start) = remainder.find("{{") {
+        html.push_str(&remainder[..start]);
+        let tail = &remainder[start..];
+        let Some(end) = tail.find("}}") else {
+            html.push_str(tail);
+            return html;
+        };
+        let marker = &tail[..end + 2];
+        if let Some((_, value)) = values.iter().find(|(key, _)| *key == marker) {
+            html.push_str(value);
+        } else {
+            html.push_str(marker);
+        }
+        remainder = &tail[end + 2..];
     }
+    html.push_str(remainder);
     html
 }
 

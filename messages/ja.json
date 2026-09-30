@@ -302,5 +302,9 @@
   "productTransferDiscard": "保存済みの内容を別のPasskeyに移すと、この編集欄の未保存の変更は破棄されます。続けますか？",
   "productDeleteFailed": "削除の結果を確認できませんでした。同じ削除操作を再試行するか、再読み込みして保存状態を確認してください。",
   "productUnfinishedOperation": "未完了の操作があります。再試行するか、再読み込みして保存状態を確認してください。",
-  "productNoteRefreshFailed": "変更は適用されましたが、更新後のメモを読み込めませんでした。再読み込みして確認してください。"
+  "productNoteRefreshFailed": "変更は適用されましたが、更新後のメモを読み込めませんでした。再読み込みして確認してください。",
+  "productAdminEyebrow": "アカウント管理",
+  "productReadyEyebrow": "準備完了",
+  "productSessionControl": "セッション管理",
+  "productSessionClosed": "セッション終了"
 }

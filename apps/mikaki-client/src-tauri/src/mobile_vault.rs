@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 
 use crate::vault_dpop::{self, DpopKey};
 
-const CALLBACK: &str = "https://mikaki.tossa.app/oidc/native/callback";
+const CALLBACK: &str = "https://mikaki-native.tossa.app/oidc/native/callback";
 const TOKEN_ENDPOINT: &str = "https://mikaki.tossa.app/token";
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 

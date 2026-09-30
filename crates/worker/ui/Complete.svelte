@@ -14,7 +14,7 @@
         ><path d="m5 12 4 4L19 6" /></svg
       >
     </div>
-    <span class="product-eyebrow">READY TO GO</span>
+    <span class="product-eyebrow">{m.productReadyEyebrow()}</span>
     <h1>{m.enrollCompleteHeading()}</h1>
     <p>{m.enrollCompleteBody()}</p>
     <a class="product-button product-primary" href="/vault?lang={locale}"
