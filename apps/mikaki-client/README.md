@@ -121,3 +121,11 @@ The device reported the callback domain as unverified (code 1024), so this
 result establishes OS signing and Rust signature verification only. It does
 not establish hardware backing, release signing, browser login, App Link
 delivery, or Vault ciphertext access.
+
+Later on 2026-09-30, the dedicated verification-signed release-mode APK with
+the registered mobile client ID replaced the Pixel's debug installation.
+Android reported the callback domain as `verified`; an implicit callback URL
+intent reached the app without a forced component or manually approved
+domain state. This confirms OS association and URL delivery. The phone was
+locked, so browser Passkey completion, token exchange and authenticated app
+return still await device interaction.

@@ -135,10 +135,10 @@ or publishing its fingerprint. If distributing through Play App Signing,
 use the certificate of the APK delivered to users for App Links.
 
 Use a dedicated signed verification APK or the intended distribution key
-for the callback association. The currently installed Pixel APK uses a local
-debug certificate; its fingerprint has not been published. A differently
-signed APK cannot update that install. Removing it would delete its local
-DPoP key; review that device transition before uninstalling.
+for the callback association. The previous Pixel APK used a local debug
+certificate whose fingerprint was not published. Following user approval,
+that installation and its local DPoP key were removed for the signed APK
+transition below.
 
 A dedicated verification keystore was created at the ignored
 `local/generated/mikaki-android-verification.jks`, with mode 0600. The ignored
@@ -160,9 +160,15 @@ It is 17,365,928 bytes, with SHA-256
 `6ee6a6db479c766e1a954a288b27163ed0e544a8a93b01a1da09d07b79f19210`.
 `apksigner verify --print-certs` passed with the certificate above; the APK
 manifest is not debuggable and the arm64 library contains the selected client
-ID. It has not been installed on the Pixel and does not establish working
-browser login or callback association. Release build mode here does not mean
-the experimental app is qualified for distribution.
+ID. It was subsequently installed on the Pixel after removing the differently
+signed debug installation. Android reported the domain as `verified` and
+listed this app as a verified owner. A normal implicit `ACTION_VIEW` request
+for the callback URL, without OAuth parameters or a forced component,
+delivered the intent to `app.tossa.mikaki/.MainActivity`. This qualifies OS
+association and URL delivery; it is not a completed browser OAuth callback.
+The Pixel remained locked, so external-browser Passkey completion and token
+exchange still await the owner's device interaction. Release build mode here
+does not mean the experimental app is qualified for distribution.
 
 ## Reviewed activation order
 
