@@ -610,15 +610,15 @@
   },
   {
     "date": "2026-09-30",
-    "commit": "8592b94",
+    "commit": "8f17626",
     "code": {
-      "implementationLines": 14877,
+      "implementationLines": 15086,
       "testLines": 3499,
-      "implementationFiles": 65,
+      "implementationFiles": 66,
       "testFiles": 10,
       "byLanguage": {
         "rust": {
-          "implementationLines": 9775,
+          "implementationLines": 9947,
           "testLines": 1617
         },
         "typescript": {
@@ -626,7 +626,7 @@
           "testLines": 1882
         },
         "svelte": {
-          "implementationLines": 1334,
+          "implementationLines": 1371,
           "testLines": 0
         }
       }
