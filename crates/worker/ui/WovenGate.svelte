@@ -8,11 +8,15 @@
     rpOrigin,
     paused,
     layout = 'gate',
+    sceneSelector = '.auth-shell',
+    tiltControl = true,
   }: {
     pageOrigin: string;
     rpOrigin: string;
     paused: boolean;
     layout?: 'gate' | 'fence';
+    sceneSelector?: string;
+    tiltControl?: boolean;
   } = $props();
   let canvas: HTMLCanvasElement;
   let renderer = $state<ReturnType<typeof createWovenGate>>(null);
@@ -30,7 +34,7 @@
     const page = pageOrigin,
       destination = rpOrigin;
     if (!active) return;
-    const scene = canvas.closest<HTMLElement>('.auth-shell');
+    const scene = canvas.closest<HTMLElement>(sceneSelector);
     if (!scene) return;
     const gate = createWovenGate(scene, canvas, page, destination, layout);
     renderer = gate;
@@ -104,7 +108,7 @@
   </div>
   <canvas bind:this={canvas}></canvas>
 </div>
-{#if supportsTilt}
+{#if supportsTilt && tiltControl}
   <button class="quiet" type="button" aria-pressed={tilted} disabled={paused} onclick={toggleTilt}
     >{m.authTilt()}</button
   >

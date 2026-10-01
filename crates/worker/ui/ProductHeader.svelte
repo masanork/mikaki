@@ -3,20 +3,57 @@
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import type { Locale } from './paraglide/runtime.js';
+  import { onMount } from 'svelte';
+  import WovenGate from './WovenGate.svelte';
+  import { weaveProfile } from './woven-gate.js';
   let {
     locale,
     session = true,
     onlock,
-  }: { locale: Locale; session?: boolean; onlock?: () => void } = $props();
+    material = false,
+    paused = false,
+  }: {
+    locale: Locale;
+    session?: boolean;
+    onlock?: () => void;
+    material?: boolean;
+    paused?: boolean;
+  } = $props();
+  const page = new URL(location.href);
+  let header: HTMLElement;
+  onMount(() => {
+    if (!material) return;
+    const profile = weaveProfile(page.origin);
+    const surface = header.closest<HTMLElement>('.vault-shell') ?? header;
+    // CSSOM properties work under the product's self-only style policy.
+    surface.style.setProperty('--page-hue', String(profile.hue));
+    surface.style.setProperty('--rp-hue', String(profile.hue));
+    surface.style.setProperty('--grain-step', `${profile.spacing / 2}px`);
+    surface.style.setProperty('--grain-angle', `${profile.grainAngle}deg`);
+  });
 </script>
 
-<header class="product-header">
+<header class="product-header" class:product-material={material} bind:this={header}>
+  {#if material}
+    <WovenGate
+      pageOrigin={page.origin}
+      rpOrigin={page.origin}
+      {paused}
+      layout="fence"
+      sceneSelector=".product-material"
+      tiltControl={false}
+    />
+  {/if}
   <div class="product-header-inner">
     <a class="auth-brand product-brand" href="/" aria-label="mikaki">
-      <BrandMark />
+      {#if !material}<BrandMark />{/if}
       mikaki
     </a>
-    <span class="product-brand-tag">PRIVATE BY DESIGN</span>
+    {#if material}
+      <div class="product-origin">
+        <span>{m.authOriginLabel()}</span><strong>{page.host}</strong>
+      </div>
+    {:else}<span class="product-brand-tag">PRIVATE BY DESIGN</span>{/if}
     <div class="product-toolbar">
       <label class="product-language"
         >{m.language()}

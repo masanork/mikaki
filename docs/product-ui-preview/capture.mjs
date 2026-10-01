@@ -151,9 +151,33 @@ try {
   );
   await capture('vault');
   await capture('vault-full', true);
+  await page.getByRole('link', { name: 'パスキー管理', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'パスキー管理', exact: true })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  await capture('vault-settings');
+  await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.setViewportSize({ width: 375, height: 812 });
   await capture('vault-mobile');
   await capture('vault-mobile-full', true);
+  await page.getByRole('link', { name: 'パスキー管理', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'パスキー管理', exact: true })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  await capture('vault-settings-mobile');
+  await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.locator('#name').fill('山田 太郎（編集中）');
   await expect(page.locator('[data-draft-state="profile"]')).toBeVisible();
   await capture('vault-draft-mobile', true);

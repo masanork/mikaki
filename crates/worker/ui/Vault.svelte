@@ -600,180 +600,183 @@
     activeSection = location.hash.slice(1) || 'profile';
   }}
 />
-<ProductHeader {locale} onlock={context.lock} />
-<main class="product-main">
-  <div class="product-heading">
-    <span class="product-eyebrow">{m.productVaultEyebrow()}</span>
-    <h1>{m.vaultHeading()}</h1>
-    <p>{m.productVaultHint()}</p>
-  </div>
-  <div class="product-workspace">
-    <nav class="product-nav" aria-label={m.vaultHeading()}>
-      <a href="#profile" aria-current={activeSection === 'profile' ? 'location' : undefined}
-        ><span aria-hidden="true">01</span>{m.productProfile()}</a
-      >
-      <a href="#notes" aria-current={activeSection === 'notes' ? 'location' : undefined}
-        ><span aria-hidden="true">02</span>{m.vaultNoteHeading()}</a
-      >
-      <a href="#connections" aria-current={activeSection === 'connections' ? 'location' : undefined}
-        ><span aria-hidden="true">03</span>{m.productSharing()}</a
-      >
-      <a href="#security" aria-current={activeSection === 'security' ? 'location' : undefined}
-        ><span aria-hidden="true">04</span>{m.productSecurity()}</a
-      >
-    </nav>
-    <div class="product-content">
-      <section id="profile" aria-labelledby="profile-heading" aria-busy={busy || loading}>
-        <div class="product-section-top">
-          <h2 id="profile-heading">{m.productProfile()}</h2>
-          <span class="product-lock-state" class:is-open={opened}
-            >{opened ? m.productUnlocked() : m.productLocked()}</span
-          >
+<div class="vault-shell">
+  <ProductHeader {locale} onlock={context.lock} material paused={busy || transferBusy || loading} />
+  <main class="product-main">
+    <div class="product-heading">
+      <h1>{m.vaultHeading()}</h1>
+      <p>{m.productVaultHint()}</p>
+    </div>
+    <div class="product-workspace">
+      <nav class="product-nav" aria-label={m.vaultHeading()}>
+        <a href="#profile" aria-current={activeSection === 'profile' ? 'location' : undefined}
+          >{m.productProfile()}</a
+        >
+        <a href="#notes" aria-current={activeSection === 'notes' ? 'location' : undefined}
+          >{m.vaultNoteHeading()}</a
+        >
+        <a
+          href="#connections"
+          aria-current={activeSection === 'connections' ? 'location' : undefined}
+          >{m.productSharing()}</a
+        >
+        <a href="#security" aria-current={activeSection === 'security' ? 'location' : undefined}
+          >{m.productSecurity()}</a
+        >
+      </nav>
+      <div class="product-content">
+        <section id="profile" aria-labelledby="profile-heading" aria-busy={busy || loading}>
+          <div class="product-section-top">
+            <h2 id="profile-heading">{m.productProfile()}</h2>
+            <span class="product-lock-state" class:is-open={opened}
+              >{opened ? m.productUnlocked() : m.productLocked()}</span
+            >
+          </div>
+          <p>{m.vaultIntro()}</p>
+          <label for="name">{m.vaultName()}</label>
+          <input
+            id="name"
+            type="text"
+            maxlength="256"
+            autocomplete="name"
+            disabled={!opened || busy || transferBusy || pending !== null}
+            aria-describedby="status"
+            bind:value={name}
+          />
+          <div class="product-actions">
+            <button
+              class="product-primary"
+              id="unlock"
+              type="button"
+              disabled={opened || loading || loadFailed || busy || transferBusy}
+              onclick={unlock}>{m.vaultUnlock()}</button
+            >
+            <button
+              class="product-primary"
+              id="save"
+              type="button"
+              disabled={!opened || busy || transferBusy || pending?.method === 'DELETE'}
+              onclick={() => mutate('PUT')}>{m.vaultSave()}</button
+            >
+            <button
+              class="product-danger"
+              id="delete"
+              type="button"
+              disabled={!opened ||
+                current === null ||
+                busy ||
+                transferBusy ||
+                pending?.method === 'PUT'}
+              onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
+            >
+            <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
+              >{m.productProfileReload()}</button
+            >
+          </div>
+          <p id="status" role="status" aria-live="polite">{status}</p>
+          {#if dirty}<p class="product-draft-status" data-draft-state="profile" aria-live="polite">
+              {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
+            </p>{/if}
+        </section>
+        <div id="notes" class="product-content">
+          <OwnerNote
+            credentialId={sessionCredential}
+            evaluatePrf={prf}
+            onSavedRevision={(revision) => {
+              noteRevision = revision;
+            }}
+          />
         </div>
-        <p>{m.vaultIntro()}</p>
-        <label for="name">{m.vaultName()}</label>
-        <input
-          id="name"
-          type="text"
-          maxlength="256"
-          autocomplete="name"
-          disabled={!opened || busy || transferBusy || pending !== null}
-          aria-describedby="status"
-          bind:value={name}
-        />
-        <div class="product-actions">
-          <button
-            class="product-primary"
-            id="unlock"
-            type="button"
-            disabled={opened || loading || loadFailed || busy || transferBusy}
-            onclick={unlock}>{m.vaultUnlock()}</button
-          >
-          <button
-            class="product-primary"
-            id="save"
-            type="button"
-            disabled={!opened || busy || transferBusy || pending?.method === 'DELETE'}
-            onclick={() => mutate('PUT')}>{m.vaultSave()}</button
-          >
-          <button
-            class="product-danger"
-            id="delete"
-            type="button"
-            disabled={!opened ||
-              current === null ||
-              busy ||
-              transferBusy ||
-              pending?.method === 'PUT'}
-            onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
-          >
-          <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
-            >{m.productProfileReload()}</button
-          >
+        <div id="connections" class="product-content">
+          {#if sharing?.enabled && current}
+            <section aria-label={m.productSharing()}>
+              <h2>{m.productSharing()}</h2>
+              <p>
+                {m.vaultShareExplanation({
+                  expiry: new Date(
+                    sharing.active && sharing.expires_at
+                      ? sharing.expires_at * 1000
+                      : Date.now() + sharing.grant_ttl_seconds * 1000,
+                  ).toLocaleString(locale),
+                })}
+              </p>
+              <p role="status">{shareStatus}</p>
+              {#if sharing.active}
+                <p>{m.vaultShareActive()}</p>
+                <button
+                  type="button"
+                  disabled={!opened || busy || transferBusy || pending !== null}
+                  onclick={() => changeShare('DELETE')}>{m.vaultShareRevoke()}</button
+                >
+              {:else}
+                <button
+                  type="button"
+                  disabled={!opened || busy || transferBusy || pending !== null}
+                  onclick={() => changeShare('POST')}>{m.vaultShare()}</button
+                >
+              {/if}
+            </section>
+          {/if}
+          <AgentPanel
+            {opened}
+            sourceRevision={current?.revision ?? 0}
+            ownerId={accountId}
+            loadName={exportSavedName}
+            {noteRevision}
+            {locale}
+            credentialId={sessionCredential}
+            evaluatePrf={prf}
+          />
+          {#if releases?.enabled && releases.clients.length > 0}
+            <section aria-label={m.vaultReleaseHeading()}>
+              <h2>{m.vaultReleaseHeading()}</h2>
+              <p>{m.vaultReleaseExplanation()}</p>
+              <p role="status">{releaseStatus}</p>
+              {#each releases.clients as client (client.client_id)}
+                <div class="product-release-client">
+                  <p>{client.sector_identifier} ({client.client_id})</p>
+                  {#if client.release_active}
+                    <p>
+                      {m.vaultReleaseUntil({
+                        expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!opened || busy || transferBusy || pending !== null}
+                      onclick={() => changeRelease(client, 'DELETE')}
+                      >{m.vaultReleaseRevoke()}</button
+                    >
+                  {:else}
+                    <button
+                      type="button"
+                      disabled={!opened ||
+                        busy ||
+                        transferBusy ||
+                        pending !== null ||
+                        !releases.share_active}
+                      onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
+                    >
+                  {/if}
+                </div>
+              {/each}
+            </section>
+          {/if}
         </div>
-        <p id="status" role="status" aria-live="polite">{status}</p>
-        {#if dirty}<p class="product-draft-status" data-draft-state="profile" aria-live="polite">
-            {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
-          </p>{/if}
-      </section>
-      <div id="notes" class="product-content">
-        <OwnerNote
-          credentialId={sessionCredential}
-          evaluatePrf={prf}
-          onSavedRevision={(revision) => {
-            noteRevision = revision;
-          }}
-        />
-      </div>
-      <div id="connections" class="product-content">
-        {#if sharing?.enabled && current}
-          <section aria-label={m.productSharing()}>
-            <h2>{m.productSharing()}</h2>
-            <p>
-              {m.vaultShareExplanation({
-                expiry: new Date(
-                  sharing.active && sharing.expires_at
-                    ? sharing.expires_at * 1000
-                    : Date.now() + sharing.grant_ttl_seconds * 1000,
-                ).toLocaleString(locale),
-              })}
-            </p>
-            <p role="status">{shareStatus}</p>
-            {#if sharing.active}
-              <p>{m.vaultShareActive()}</p>
-              <button
-                type="button"
-                disabled={!opened || busy || transferBusy || pending !== null}
-                onclick={() => changeShare('DELETE')}>{m.vaultShareRevoke()}</button
-              >
-            {:else}
-              <button
-                type="button"
-                disabled={!opened || busy || transferBusy || pending !== null}
-                onclick={() => changeShare('POST')}>{m.vaultShare()}</button
-              >
-            {/if}
-          </section>
-        {/if}
-        <AgentPanel
-          {opened}
-          sourceRevision={current?.revision ?? 0}
-          ownerId={accountId}
-          loadName={exportSavedName}
-          {noteRevision}
-          {locale}
-          credentialId={sessionCredential}
-          evaluatePrf={prf}
-        />
-        {#if releases?.enabled && releases.clients.length > 0}
-          <section aria-label={m.vaultReleaseHeading()}>
-            <h2>{m.vaultReleaseHeading()}</h2>
-            <p>{m.vaultReleaseExplanation()}</p>
-            <p role="status">{releaseStatus}</p>
-            {#each releases.clients as client (client.client_id)}
-              <div class="product-release-client">
-                <p>{client.sector_identifier} ({client.client_id})</p>
-                {#if client.release_active}
-                  <p>
-                    {m.vaultReleaseUntil({
-                      expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
-                    })}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!opened || busy || transferBusy || pending !== null}
-                    onclick={() => changeRelease(client, 'DELETE')}>{m.vaultReleaseRevoke()}</button
-                  >
-                {:else}
-                  <button
-                    type="button"
-                    disabled={!opened ||
-                      busy ||
-                      transferBusy ||
-                      pending !== null ||
-                      !releases.share_active}
-                    onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
-                  >
-                {/if}
-              </div>
-            {/each}
-          </section>
-        {/if}
-      </div>
-      <div id="security" class="product-content">
-        <PasskeyTransfer
-          saved={current}
-          {opened}
-          evaluatePrf={prf}
-          changed={load}
-          beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
-          disabled={busy || pending !== null}
-          onBusy={(value) => {
-            transferBusy = value;
-          }}
-        />
+        <div id="security" class="product-content">
+          <PasskeyTransfer
+            saved={current}
+            {opened}
+            evaluatePrf={prf}
+            changed={load}
+            beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
+            disabled={busy || pending !== null}
+            onBusy={(value) => {
+              transferBusy = value;
+            }}
+          />
+        </div>
       </div>
     </div>
-  </div>
-  <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
-</main>
+  </main>
+</div>

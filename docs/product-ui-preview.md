@@ -1,6 +1,6 @@
 # Product UI preview
 
-Vault, invitation management, registration completion, and logout share the login navy/blue palette, brand mark, typography, controls, focus treatment, and responsive layout. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
+Vault carries the login/home woven fence into a compact header, with the current host on a metal plaque. The origin determines the weave, color, and grain; pointer movement and ambient light animate the surface, respecting reduced motion. Light mineral panels keep the editors readable, and a metal navigation bar stays accessible on mobile. Invitation management, registration completion, and logout retain their existing navy/blue treatment. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
 
 | Vault | Logout |
 | --- | --- |
@@ -9,6 +9,8 @@ Vault, invitation management, registration completion, and logout share the logi
 [Mobile Vault](product-ui-preview/vault-mobile.png) · [Mobile logout](product-ui-preview/logout-mobile.png) · [English Vault](product-ui-preview/vault-en.png) · [Invitation management](product-ui-preview/admin.png) · [Registration complete](product-ui-preview/complete.png) · [Logout complete](product-ui-preview/logout-complete.png)
 
 [Full Vault](product-ui-preview/vault-full.png) · [Full mobile Vault](product-ui-preview/vault-mobile-full.png) · [Mobile session lock](product-ui-preview/vault-session-locked-mobile.png) · [Unsaved mobile editor](product-ui-preview/vault-draft-mobile.png)
+
+[Passkey settings](product-ui-preview/vault-settings.png) · [Mobile Passkey settings](product-ui-preview/vault-settings-mobile.png)
 
 Captured from the actual Worker and UI bundles with disposable synthetic accounts/data and mocked Passkey PRF. These screens have not been deployed as part of this change. They do not qualify intended devices or accessibility certification.
 
