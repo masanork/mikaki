@@ -1,23 +1,30 @@
 import { mount } from 'svelte';
 import Login from './Login.svelte';
+import Home from './Home.svelte';
 import { initializeLocale } from './locale.js';
 import './auth.css';
 
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid login page');
-const { tx, challenge, rpId, rpUri, client, enrollment, ownerLogin } = target.dataset;
-if (!tx || !challenge || !rpId || !rpUri || !client) throw new Error('Invalid login transaction');
+if (target.dataset['page'] === 'home') {
+  const locale = initializeLocale();
+  target.replaceChildren();
+  mount(Home, { target, props: { locale } });
+} else {
+  const { tx, challenge, rpId, rpUri, client, enrollment, ownerLogin } = target.dataset;
+  if (!tx || !challenge || !rpId || !rpUri || !client) throw new Error('Invalid login transaction');
 
-mount(Login, {
-  target,
-  props: {
-    tx,
-    challenge,
-    rpId,
-    rpUri,
-    client,
-    enrollment: enrollment === 'true',
-    ownerLogin: ownerLogin === 'true',
-    locale: initializeLocale(),
-  },
-});
+  mount(Login, {
+    target,
+    props: {
+      tx,
+      challenge,
+      rpId,
+      rpUri,
+      client,
+      enrollment: enrollment === 'true',
+      ownerLogin: ownerLogin === 'true',
+      locale: initializeLocale(),
+    },
+  });
+}

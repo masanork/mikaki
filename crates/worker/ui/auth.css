@@ -462,3 +462,54 @@ body {
 .auth-shell details.registration:not([open]) {
   width: auto;
 }
+
+.home-shell .home-plate {
+  grid-template-columns: auto 1fr;
+}
+.home-shell .home-name {
+  padding-inline: 30px;
+  font-size: 15px;
+  letter-spacing: 0.13em;
+  color: #c3d2da;
+  text-shadow: 0 1px 2px #000;
+}
+.home-shell .home-plate .origin {
+  border-left: 1px solid #b5cfdd1c;
+  border-top: 0;
+}
+.home-shell .home-entry h1 {
+  margin: 0;
+  max-width: 640px;
+  color: #e0e9ed;
+  font-size: clamp(24px, 3.2vw, 42px);
+  font-weight: 400;
+  letter-spacing: 0.055em;
+  line-height: 1.6;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow:
+    0 2px 18px #020810,
+    0 1px 3px #020810;
+}
+.home-shell .gate-fallback span {
+  border: 0;
+}
+.home-shell .home-enroll {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 44px;
+  text-decoration: none;
+}
+.home-shell .home-enroll:hover {
+  color: var(--ink);
+}
+@media (max-width: 600px) {
+  .home-shell .home-name {
+    padding-inline: 20px;
+    font-size: 13px;
+  }
+  .home-shell .home-entry h1 {
+    max-width: 280px;
+  }
+}

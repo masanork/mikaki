@@ -18,6 +18,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/session-events.ts");
     println!("cargo:rerun-if-changed=ui/logout.ts");
     println!("cargo:rerun-if-changed=ui/Login.svelte");
+    println!("cargo:rerun-if-changed=ui/Home.svelte");
     println!("cargo:rerun-if-changed=ui/WovenGate.svelte");
     println!("cargo:rerun-if-changed=ui/woven-gate.ts");
     println!("cargo:rerun-if-changed=ui/SessionCue.svelte");

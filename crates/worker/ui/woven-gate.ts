@@ -19,6 +19,7 @@ export function createWovenGate(
   canvas: HTMLCanvasElement,
   pageOrigin: string,
   rpOrigin: string,
+  layout: 'gate' | 'fence' = 'gate',
 ) {
   const context = canvas.getContext('2d');
   if (!context) return null;
@@ -59,14 +60,15 @@ export function createWovenGate(
     const lx = clamp(x + (animated ? Math.sin(orbit) * 0.13 * power : 0), 0.05, 0.95),
       ly = clamp(y + (animated ? Math.sin(orbit * 0.73) * 0.09 * power : 0), 0.05, 0.95);
     scene.style.setProperty('--light-x', `${lx * 100}%`);
-    const nextKey = JSON.stringify([canvas.width, canvas.height, [page, rp], 0.9, 14]);
+    const nextKey = JSON.stringify([canvas.width, canvas.height, [page, rp], layout, 0.9, 14]);
     if (nextKey !== materialKey) {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = '#02070e';
       ctx.fillRect(0, 0, w, h);
       const gap = Math.max(4, (clamp(0.9, 0.4, 2.2) / 100) * w),
         curvature = clamp(14, 0, 26) / 100;
-      for (let side = 0; side < 2; side++) {
+      const fence = layout === 'fence';
+      for (let side = 0; side < (fence ? 1 : 2); side++) {
         const colorHue = side ? rp.hue : page.hue;
         const profile = side ? rp : page;
         const spacing = side ? rp.spacing : page.spacing,
@@ -82,6 +84,10 @@ export function createWovenGate(
         }
         function leafPath(inset = 0) {
           ctx.beginPath();
+          if (fence) {
+            ctx.rect(-24, -20, w + 48, h + 40);
+            return;
+          }
           ctx.moveTo(outer, -20);
           ctx.lineTo(edge(0) + direction * inset, -20);
           for (let y = 0; y <= h; y += 8) ctx.lineTo(edge(y) + direction * inset, y);
@@ -101,9 +107,10 @@ export function createWovenGate(
         ctx.fillRect(0, 0, w, h);
         // Each leaf has its own plane and inner edge; overscan keeps the outer edges filled.
         function warp(a: number, b: number): [number, number] {
-          const u = a / (w * 0.5),
+          const u = a / (fence ? w : w * 0.5),
             bb = h * 0.5 + (b - h * 0.5) * profile.aspect,
             v = (bb - h * 0.5) / h;
+          if (fence) return [a, bb + Math.sin(u * Math.PI) * Math.cos(v * Math.PI) * h * 0.008];
           const yy =
             h * 0.5 +
             (bb - h * 0.5) * (1 - u * 0.08) +
@@ -180,12 +187,18 @@ export function createWovenGate(
             if (!over) continue;
             const cx = ((b - a) * spacing) / 2,
               cy = ((a + b) * spacing) / 2;
-            if (cx < -ribbonWidth || cx > w * 0.5 + ribbonWidth || cy < -h * 0.5 || cy > h * 1.5)
+            if (
+              cx < -ribbonWidth ||
+              cx > w * (fence ? 1 : 0.5) + ribbonWidth ||
+              cy < -h * 0.5 ||
+              cy > h * 1.5
+            )
               continue;
             const delta = ribbonWidth * 1.1;
             ribbon(cx - delta, cy - delta, cx + delta, cy + delta, 0);
           }
         ctx.restore();
+        if (fence) continue;
         // Continuous beveled meeting stiles make the two leaves legible behind the crossbar.
         const stileWidth = clamp(w * 0.013, 7, 15);
         ctx.save();

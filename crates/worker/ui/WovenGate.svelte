@@ -3,8 +3,17 @@
   import * as m from './paraglide/messages.js';
   import { createWovenGate } from './woven-gate.js';
 
-  let { pageOrigin, rpOrigin, paused }: { pageOrigin: string; rpOrigin: string; paused: boolean } =
-    $props();
+  let {
+    pageOrigin,
+    rpOrigin,
+    paused,
+    layout = 'gate',
+  }: {
+    pageOrigin: string;
+    rpOrigin: string;
+    paused: boolean;
+    layout?: 'gate' | 'fence';
+  } = $props();
   let canvas: HTMLCanvasElement;
   let renderer = $state<ReturnType<typeof createWovenGate>>(null);
   let tilted = $state(false);
@@ -23,7 +32,7 @@
     if (!active) return;
     const scene = canvas.closest<HTMLElement>('.auth-shell');
     if (!scene) return;
-    const gate = createWovenGate(scene, canvas, page, destination);
+    const gate = createWovenGate(scene, canvas, page, destination, layout);
     renderer = gate;
     return () => {
       gate?.destroy();
@@ -90,7 +99,9 @@
 </script>
 
 <div class="gate-background" data-renderer={renderer ? 'canvas' : 'css'} aria-hidden="true">
-  <div class="gate-fallback"><span></span><span></span></div>
+  <div class="gate-fallback">
+    <span></span>{#if layout === 'gate'}<span></span>{/if}
+  </div>
   <canvas bind:this={canvas}></canvas>
 </div>
 {#if supportsTilt}
