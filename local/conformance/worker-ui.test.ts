@@ -116,7 +116,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         },
       });
     });
-    await page.route('https://mikaki.test/**', async (route) => {
+    await page.route('https://*.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (scripts.has(url.pathname)) {
         await route.fulfill({
@@ -148,6 +148,15 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         return;
       }
       const locale = url.searchParams.get('lang') === 'en' ? 'en' : 'ja';
+      if (url.pathname === '/') {
+        const response = await worker.fetch(url.href);
+        await route.fulfill({
+          status: response.status,
+          headers: Object.fromEntries(response.headers),
+          body: await response.text(),
+        });
+        return;
+      }
       if (url.pathname === '/login') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
@@ -305,7 +314,76 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       .getByText('No display name is saved. Unlock with your passkey to add one.')
       .waitFor();
     assert.equal(await page.getByRole('button', { name: 'Unlock with passkey' }).isEnabled(), true);
+    await page.goto('https://mikaki.test/?lang=ja');
+    await page.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+    assert.equal(await page.locator('.gate-fallback span').count(), 1);
+    assert.equal(await page.locator('.bolt, #passkey').count(), 0);
+    assert.equal(await page.locator('.plate .origin strong').textContent(), 'mikaki.test');
+    assert.equal(
+      await page.getByRole('link', { name: '招待コードで登録' }).getAttribute('href'),
+      '/enroll?lang=ja',
+    );
+    const hue = await page
+      .locator('.auth-shell')
+      .evaluate((scene) => scene.style.getPropertyValue('--page-hue'));
+    const phase = await page.locator('.auth-shell').getAttribute('data-light-phase');
+    await page.waitForFunction(
+      (old) => document.querySelector('.auth-shell')?.getAttribute('data-light-phase') !== old,
+      phase,
+    );
+    await page.goto('https://other.test/?lang=en');
+    await page.getByRole('heading', { name: 'Sign in from your app' }).waitFor();
+    assert.equal(await page.locator('.plate .origin strong').textContent(), 'other.test');
+    assert.notEqual(
+      await page
+        .locator('.auth-shell')
+        .evaluate((scene) => scene.style.getPropertyValue('--page-hue')),
+      hue,
+    );
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForFunction(
+      () => document.querySelector('.auth-shell')?.getAttribute('data-light-phase') === 'still',
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await page.goto('https://mikaki.test/?no-canvas=1');
+    await page.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
+    assert.equal(await page.locator('.gate-fallback span').count(), 1);
     assert.deepEqual(errors, []);
+    const staticPage = await browser.newPage({
+      javaScriptEnabled: false,
+      viewport: { width: 390, height: 844 },
+    });
+    await staticPage.route('https://mikaki.test/**', async (route) => {
+      const response = await worker.fetch(route.request().url());
+      await route.fulfill({
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+        body: await response.text(),
+      });
+    });
+    await staticPage.goto('https://mikaki.test/');
+    await staticPage.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    assert.equal(await staticPage.locator('.gate-fallback span').count(), 1);
+    assert.equal(await staticPage.locator('#passkey, canvas').count(), 0);
+    await staticPage.getByRole('link', { name: 'English' }).click();
+    await staticPage.getByRole('heading', { name: 'Sign in from your app' }).waitFor();
+    assert.equal(
+      await staticPage
+        .getByRole('link', { name: 'Register with an invitation' })
+        .getAttribute('href'),
+      '/enroll?lang=en',
+    );
+    assert.equal(
+      await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await staticPage.close();
   } catch (error) {
     failure = error;
     throw error;

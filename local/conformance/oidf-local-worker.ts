@@ -199,11 +199,13 @@ try {
     assert.equal(home.headers.get('cache-control'), 'no-store');
     const homeHtml = await home.text();
     assert.match(homeHtml, /<html lang="ja">/);
-    assert.match(homeHtml, /href="\/enroll"/);
-    assert.match(homeHtml, /連携先アプリから始めてください/);
+    assert.match(homeHtml, /href="\/enroll\?lang=ja"/);
+    assert.match(homeHtml, /サインインはアプリから/);
     const englishHome = await worker.fetch(new URL('/?lang=en', issuer));
     assert.equal(englishHome.status, 200);
-    assert.match(await englishHome.text(), /Start sign-in from the app/);
+    const englishHomeHtml = await englishHome.text();
+    assert.match(englishHomeHtml, /Sign in from your app/);
+    assert.match(englishHomeHtml, /href="\/enroll\?lang=en"/);
     const authorizeUrl = new URL('/authorize', issuer);
     authorizeUrl.search = new URLSearchParams({
       client_id: 'mikaki-basic-one',

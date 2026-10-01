@@ -27,3 +27,5 @@ The seal was activated in production on 2026-09-30. [Public smoke](https://githu
 The shared woven-fence logo introduced by PR #34 remains in the native icons, favicon and other page marks, using [one SVG source](../branding/mikaki-mark.svg). The login gate has no separate brand header.
 
 Login-only rules are scoped to `.auth-shell`. Shared typography, box sizing and brand sizing live in `product.css`, so the Vault, completion and logout pages retain their layouts.
+
+The direct `/` entry uses the same material and lighting as a single fence; see [direct issuer preview](home-ui-preview.md).
