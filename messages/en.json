@@ -92,7 +92,7 @@
   "enrollIntro": "Enter your invitation code and register a passkey.",
   "enrollCompleteTitle": "mikaki registration complete",
   "enrollCompleteHeading": "Registration complete",
-  "enrollCompleteBody": "You can now sign in to mikaki with your passkey.",
+  "enrollCompleteBody": "You can now sign in to your app with your passkey.",
   "enrollAdminLink": "Manage invitations",
   "logoutTitle": "Log out",
   "logoutBody": "Log out of Mikaki and connected apps in this browser.",

@@ -95,30 +95,30 @@
   }
 </script>
 
-<ProductHeader {locale} />
-<main class="product-main product-admin">
-  <div class="product-heading">
-    <span class="product-eyebrow">{m.productAdminEyebrow()}</span>
-    <h1>{m.adminHeading()}</h1>
-    <p>{m.adminIntro()}</p>
-  </div>
-  <section class="product-card" aria-label={m.adminHeading()}>
-    <button class="product-primary" type="button" disabled={busy} onclick={issue}
-      >{m.adminIssue()}</button
-    >
-    {#if failed}<p role="alert">{m.adminError()}</p>{/if}
-    {#if invitation}
-      <p role="status">{m.adminReady()}</p>
-      <p>{m.adminInvitation()}: <code>{invitation}</code></p>
-      <p>
-        {m.adminExpires()}:
-        <time datetime={new Date(expiresAt * 1000).toISOString()}
-          >{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-            expiresAt * 1000,
-          )}</time
-        >
-      </p>
-    {/if}
-  </section>
-  <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
-</main>
+<div class="product-material-shell">
+  <ProductHeader {locale} material paused={busy} />
+  <main class="product-main product-admin">
+    <div class="product-heading">
+      <h1>{m.adminHeading()}</h1>
+      <p>{m.adminIntro()}</p>
+    </div>
+    <section class="product-card" aria-label={m.adminHeading()}>
+      <button class="product-primary" type="button" disabled={busy} onclick={issue}
+        >{m.adminIssue()}</button
+      >
+      {#if failed}<p role="alert">{m.adminError()}</p>{/if}
+      {#if invitation}
+        <p role="status">{m.adminReady()}</p>
+        <p>{m.adminInvitation()}: <code>{invitation}</code></p>
+        <p>
+          {m.adminExpires()}:
+          <time datetime={new Date(expiresAt * 1000).toISOString()}
+            >{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+              expiresAt * 1000,
+            )}</time
+          >
+        </p>
+      {/if}
+    </section>
+  </main>
+</div>

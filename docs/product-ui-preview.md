@@ -1,6 +1,6 @@
 # Product UI preview
 
-Vault carries the login/home woven fence into a compact header, with the current host on a metal plaque. The origin determines the weave, color, and grain; pointer movement and ambient light animate the surface, respecting reduced motion. Light mineral panels keep the editors readable, and a metal navigation bar stays accessible on mobile. Invitation management, registration completion, and logout retain their existing navy/blue treatment. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
+Vault, invitation management, and registration completion carry the login/home woven fence into a compact header, with the current host on a metal plaque. The origin determines the weave, color, and grain; pointer movement and ambient light animate the surface, respecting reduced motion. The CSS fallback also uses the origin's color and grain when Canvas is unavailable. Light mineral panels keep the editors readable, and a metal navigation bar stays accessible on mobile. Logout retains its existing navy/blue treatment. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
 
 | Vault | Logout |
 | --- | --- |
@@ -11,6 +11,8 @@ Vault carries the login/home woven fence into a compact header, with the current
 [Full Vault](product-ui-preview/vault-full.png) · [Full mobile Vault](product-ui-preview/vault-mobile-full.png) · [Mobile session lock](product-ui-preview/vault-session-locked-mobile.png) · [Unsaved mobile editor](product-ui-preview/vault-draft-mobile.png)
 
 [Passkey settings](product-ui-preview/vault-settings.png) · [Mobile Passkey settings](product-ui-preview/vault-settings-mobile.png)
+
+[Mobile invitation management](product-ui-preview/admin-mobile.png) · [Mobile registration complete](product-ui-preview/complete-mobile.png)
 
 Captured from the actual Worker and UI bundles with disposable synthetic accounts/data and mocked Passkey PRF. These screens have not been deployed as part of this change. They do not qualify intended devices or accessibility certification.
 

@@ -131,6 +131,8 @@ try {
     });
   });
   async function capture(name, fullPage = false) {
+    if (await page.locator('.product-material').count())
+      await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
     await page.evaluate(() => document.fonts.ready);
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth))
       throw new Error(`Horizontal overflow: ${name}`);
@@ -195,9 +197,15 @@ try {
   await page.goto(`${origin}/admin`);
   await expect(page.getByRole('button', { name: 'Passkeyで招待を発行' })).toBeVisible();
   await capture('admin');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await capture('admin-mobile');
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/enroll/complete`);
   await expect(page.getByRole('heading', { name: '登録が完了しました' })).toBeVisible();
   await capture('complete');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await capture('complete-mobile');
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/logout?lang=ja`);
   await expect(page.getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible();
   await capture('logout');
