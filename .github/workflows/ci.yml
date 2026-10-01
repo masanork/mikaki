@@ -9,7 +9,7 @@ permissions:
   contents: read
 concurrency:
   group: authentication-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -203,3 +203,25 @@ jobs:
       id-token: write
       attestations: write
     uses: ./.github/workflows/supply-chain-build.yml
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, supply-chain]
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    uses: ./.github/workflows/deploy-production.yml
+    secrets: inherit
+
+  production-smoke:
+    needs: deploy
+    if: needs.deploy.outputs.deployed == 'true'
+    uses: ./.github/workflows/production-smoke.yml
+    with:
+      expected_version_id: ${{ needs.deploy.outputs.version_id }}
+      expected_source_commit: ${{ needs.deploy.outputs.source_commit }}
+      expected_login_js_sha256: ${{ needs.deploy.outputs.login_js_sha256 }}
+      expected_login_css_sha256: ${{ needs.deploy.outputs.login_css_sha256 }}
+      expected_android_fingerprint: ${{ needs.deploy.outputs.android_fingerprint }}
+    secrets: inherit

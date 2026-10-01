@@ -71,6 +71,7 @@ jobs:
         run: |
           npm run release:inventory
           npm run release:verify
+          node scripts/export-login-assets.ts
       - name: Prepare reviewed upload bundles
         id: promotion
         run: npm run release:prepare-upload
@@ -82,6 +83,10 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: artifacts/release-manifest.json
+      - name: Attest login asset inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/login-assets.json
       - name: Attest upload inventory
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

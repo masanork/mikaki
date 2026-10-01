@@ -22,6 +22,26 @@ on:
         description: Optional SHA-256 of the reviewed login stylesheet
         required: false
         type: string
+  workflow_call:
+    inputs:
+      expected_version_id:
+        required: false
+        type: string
+      expected_source_commit:
+        required: false
+        type: string
+      expected_android_fingerprint:
+        required: false
+        type: string
+      expected_login_js_sha256:
+        required: false
+        type: string
+      expected_login_css_sha256:
+        required: false
+        type: string
+    secrets:
+      MIKAKI_READY_TOKEN:
+        required: true
 permissions:
   contents: read
 jobs:
