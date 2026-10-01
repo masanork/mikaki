@@ -189,6 +189,18 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
         await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
         assert.equal(await page.locator('html').getAttribute('lang'), locale);
         await expect(page.locator('.product-header')).toHaveCSS('color', 'rgb(255, 255, 255)');
+        if (path === '/vault') {
+          await expect(page.locator('.product-origin strong')).toHaveText('mikaki.test');
+          await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+          assert.match(
+            await page
+              .locator('.vault-shell')
+              .evaluate((node) => node.style.getPropertyValue('--page-hue')),
+            /^\d+$/,
+          );
+          assert.equal(await page.locator('.gate-fallback span').count(), 1);
+          assert.doesNotMatch(response!.headers()['content-security-policy']!, /unsafe-inline/);
+        }
         assert.equal(await page.locator('main').count(), 1);
         for (const width of [1440, 375]) {
           await page.setViewportSize({ width, height: 900 });

@@ -122,35 +122,36 @@
   </div>
 {/if}
 {#if reason || suspended || checking}
-  <ProductHeader {locale} />
-  <main class="product-result-shell">
-    <section class="product-result" aria-labelledby="vault-lock-title" aria-busy={checking}>
-      <div class="product-result-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-          ><rect x="5" y="10" width="14" height="11" rx="2" /><path
-            d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"
-          /></svg
-        >
-      </div>
-      <span class="product-eyebrow">PERSONAL VAULT</span>
-      <h1 id="vault-lock-title" tabindex="-1">
-        {checking || suspended ? m.vaultSessionChecking() : m.vaultSessionLocked()}
-      </h1>
-      <p role="status">
-        {checking || suspended
-          ? m.vaultSessionCheckingBody()
-          : reason === 'session'
-            ? m.vaultSessionChanged()
-            : reason === 'unconfirmed'
-              ? m.vaultSessionUnconfirmed()
-              : m.vaultSessionLockedBody()}
-      </p>
-      {#if reason && !checking}<button
-          class="product-button product-primary"
-          type="button"
-          onclick={reopen}>{m.vaultSessionReopen()}</button
-        >{/if}
-      <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
-    </section>
-  </main>
+  <div class="vault-shell">
+    <ProductHeader {locale} material paused={checking || suspended} />
+    <main class="product-result-shell">
+      <section class="product-result" aria-labelledby="vault-lock-title" aria-busy={checking}>
+        <div class="product-result-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+            ><rect x="5" y="10" width="14" height="11" rx="2" /><path
+              d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"
+            /></svg
+          >
+        </div>
+        <span class="product-eyebrow">PERSONAL VAULT</span>
+        <h1 id="vault-lock-title" tabindex="-1">
+          {checking || suspended ? m.vaultSessionChecking() : m.vaultSessionLocked()}
+        </h1>
+        <p role="status">
+          {checking || suspended
+            ? m.vaultSessionCheckingBody()
+            : reason === 'session'
+              ? m.vaultSessionChanged()
+              : reason === 'unconfirmed'
+                ? m.vaultSessionUnconfirmed()
+                : m.vaultSessionLockedBody()}
+        </p>
+        {#if reason && !checking}<button
+            class="product-button product-primary"
+            type="button"
+            onclick={reopen}>{m.vaultSessionReopen()}</button
+          >{/if}
+      </section>
+    </main>
+  </div>
 {/if}

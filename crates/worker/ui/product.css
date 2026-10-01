@@ -658,3 +658,295 @@ a {
     flex-wrap: wrap;
   }
 }
+
+/* Vault surfaces: a woven exterior and quiet, readable storage panels. */
+.vault-shell {
+  min-height: 100svh;
+  padding-bottom: 1px;
+  background: #eef0ee;
+  --product-ink: #22333d;
+  --product-muted: #58676e;
+  --product-line: #ccd4d5;
+  --product-blue: #28566b;
+  --page-hue: 210;
+}
+.vault-shell .product-material {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 170px;
+  padding: 24px 0 52px;
+  background: #07111c;
+}
+.product-material .gate-background {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+}
+.product-material .gate-background canvas {
+  width: 100%;
+  height: 100%;
+}
+.product-material .gate-fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 18px,
+      #264354 19px 24px,
+      #020811 25px 27px,
+      transparent 28px 38px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 18px,
+      #1b3344 19px 24px,
+      #020811 25px 27px,
+      transparent 28px 38px
+    ),
+    #07111c;
+}
+.product-material .gate-background[data-renderer='canvas'] .gate-fallback {
+  display: none;
+}
+.product-material::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, #07111c22, #07111c99);
+}
+.vault-shell .product-header-inner {
+  width: min(100% - 6rem, 1240px);
+  min-height: 72px;
+  padding: 12px 24px;
+  gap: 24px;
+  border: 1px solid #758c9466;
+  border-bottom: 3px solid #020810;
+  border-radius: 2px;
+  background:
+    radial-gradient(ellipse at var(--light-x, 25%) 0%, #c0d6df25, transparent 80%),
+    repeating-linear-gradient(1deg, transparent 0 4px, #dcebf207 5px, transparent 6px 17px),
+    linear-gradient(180deg, #344650, #1b2b35 8%, #172630 92%, #09131b);
+  box-shadow:
+    0 12px 24px #0008,
+    inset 0 1px #cfdee433;
+}
+.vault-shell .product-brand {
+  gap: 0;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  color: #c6d4dc;
+}
+.product-origin {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 24px;
+  border-left: 1px solid #b5cfdd26;
+  background: repeating-linear-gradient(
+    var(--grain-angle, 12deg),
+    hsl(var(--page-hue) 45% 65% / 0.06) 0 1px,
+    transparent 1px var(--grain-step, 22px)
+  );
+  box-shadow: inset 0 2px hsl(var(--page-hue) 45% 65% / 0.5);
+}
+.product-origin span {
+  font-size: 10px;
+  color: #a4b6c1;
+}
+.product-origin strong {
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #e1eaf0;
+  overflow-wrap: anywhere;
+}
+.vault-shell .product-toolbar {
+  gap: 16px;
+}
+.vault-shell .product-language {
+  font-size: 0;
+  gap: 0;
+}
+.vault-shell .product-language select {
+  font-size: 12px;
+  border-radius: 2px;
+  background: #101e28;
+}
+.vault-shell .product-lock-button {
+  border-radius: 2px;
+}
+.vault-shell .product-main {
+  margin-block: 32px 56px;
+}
+.vault-shell .product-heading {
+  margin-bottom: 28px;
+}
+.vault-shell .product-heading h1 {
+  margin-top: 0;
+  font-size: clamp(28px, 3vw, 36px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: #24353e;
+}
+.vault-shell .product-heading > p {
+  font-size: 13px;
+}
+.vault-shell .product-workspace {
+  gap: 28px;
+}
+.vault-shell .product-nav {
+  gap: 0;
+  padding: 8px;
+  border: 1px solid #5e717b;
+  border-bottom: 3px solid #07111c;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(
+      var(--grain-angle, 12deg),
+      #dcebf207 0 1px,
+      transparent 1px var(--grain-step, 22px)
+    ),
+    linear-gradient(160deg, #273943, #14222c);
+  box-shadow: 0 8px 16px #12222e18;
+}
+.vault-shell .product-nav a {
+  min-height: 48px;
+  border-radius: 2px;
+  border-left: 2px solid transparent;
+  color: #adbec7;
+  font-weight: 400;
+}
+.vault-shell .product-nav a[aria-current='location'],
+.vault-shell .product-nav a:hover {
+  color: #f0f5f7;
+  border-left-color: hsl(var(--page-hue) 45% 70%);
+  background: #cbdde51a;
+}
+.vault-shell .product-content > section {
+  padding: 28px;
+  border-radius: 4px;
+  border-top-color: #fff;
+  background: linear-gradient(165deg, #fff, #f8faf8);
+  box-shadow:
+    0 6px 18px #20343d08,
+    inset 0 1px #fff;
+}
+.vault-shell .product-content h2 {
+  color: #263e49;
+  font-weight: 550;
+}
+.vault-shell .product-content p {
+  font-size: 13px;
+  line-height: 1.85;
+}
+.vault-shell .product-content input:not([type='checkbox']),
+.vault-shell .product-content select,
+.vault-shell .product-content textarea {
+  border-color: #aebcc0;
+  border-radius: 3px;
+  background: #fcfdfc;
+  box-shadow: inset 0 2px 4px #21343e08;
+}
+.vault-shell .product-content button {
+  border-radius: 3px;
+  font-weight: 500;
+  color: #285469;
+  border-color: #afc0c7;
+}
+.vault-shell .product-content .product-primary {
+  border-color: #203d4d;
+  color: #f2f7f9;
+  background: linear-gradient(180deg, #3d6477, #264858);
+  box-shadow:
+    inset 0 1px #adc5cf44,
+    0 3px 8px #1c354e20;
+}
+.vault-shell .product-content .product-primary:hover {
+  background: #244454;
+}
+.vault-shell .product-content .product-danger {
+  color: #a22834;
+  border-color: #e6c7cb;
+}
+.vault-shell .product-content [role='status']:not(:empty) {
+  border-radius: 3px;
+  border-color: #ccdadd;
+  background: #edf3f3;
+  color: #365565;
+}
+.vault-shell .product-lock-state {
+  border-radius: 3px;
+  font-weight: 500;
+}
+.vault-shell .product-result-shell {
+  min-height: calc(100svh - 170px);
+  background: none;
+}
+.vault-shell .product-result {
+  border-radius: 4px;
+  box-shadow: 0 12px 40px #20343d12;
+}
+@media (max-width: 1000px) {
+  .vault-shell .product-header-inner {
+    width: calc(100% - 4rem);
+  }
+  .vault-shell .product-origin {
+    padding-inline: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .vault-shell .product-material {
+    min-height: 160px;
+    padding: 16px 0 30px;
+  }
+  .vault-shell .product-header-inner {
+    width: calc(100% - 2rem);
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .vault-shell .product-brand {
+    font-size: 13px;
+  }
+  .vault-shell .product-origin {
+    flex: 1;
+    padding-inline: 14px;
+  }
+  .vault-shell .product-toolbar {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 14px;
+  }
+  .vault-shell .product-main {
+    margin-top: 24px;
+  }
+  .vault-shell .product-nav {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 6px;
+    gap: 0;
+  }
+  .vault-shell .product-nav a {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .vault-shell .product-content > section {
+    padding: 20px;
+  }
+  .vault-shell .product-content > section,
+  .vault-shell .product-content > div.product-content {
+    scroll-margin-top: 140px;
+  }
+  .vault-shell .product-result-shell {
+    min-height: calc(100svh - 160px);
+  }
+}
