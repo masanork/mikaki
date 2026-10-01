@@ -35,6 +35,7 @@ export function createWovenGate(
     last = 0,
     animationTime = 0,
     busy = false,
+    destroyed = false,
     x = 0.24,
     y = 0.28,
     tx = x,
@@ -42,7 +43,14 @@ export function createWovenGate(
     materialKey = '';
   const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
   function draw(time: number) {
-    if (!width) return;
+    if (
+      destroyed ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    )
+      return;
     const w = width,
       h = height,
       animated = !reduced.matches && !busy && !document.hidden;
@@ -238,7 +246,7 @@ export function createWovenGate(
 
   function tick(time: number) {
     raf = 0;
-    if (document.hidden || busy || reduced.matches) return;
+    if (destroyed || document.hidden || busy || reduced.matches) return;
     if (time - last >= 42) {
       animationTime += Math.min(time - last, 100);
       x += (tx - x) * 0.2;
@@ -253,33 +261,56 @@ export function createWovenGate(
     raf = 0;
   }
   function start() {
-    if (!raf && !busy && !reduced.matches && !document.hidden) {
+    if (
+      !destroyed &&
+      width > 0 &&
+      height > 0 &&
+      !raf &&
+      !busy &&
+      !reduced.matches &&
+      !document.hidden
+    ) {
       last = performance.now();
       raf = requestAnimationFrame(tick);
     }
   }
   function refresh() {
+    if (destroyed) return;
     stop();
     draw(animationTime);
     start();
   }
   const observer = new ResizeObserver(() => {
+    if (destroyed) return;
     const rect = scene.getBoundingClientRect();
     width = rect.width;
     height = rect.height;
+    // Removed/collapsed scenes must not allocate or draw a zero-size canvas.
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      width = height = 0;
+      stop();
+      return;
+    }
     // Bound memory on high-density and very large displays.
     const dpr = Math.min(devicePixelRatio || 1, 1.25, 1800 / Math.max(width, height));
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw(animationTime);
+    start();
   });
   observer.observe(scene);
   function pointer(event: PointerEvent) {
-    if (event.pointerType !== 'mouse' || busy || reduced.matches) return;
+    if (destroyed || event.pointerType !== 'mouse' || busy || reduced.matches) return;
     const rect = scene.getBoundingClientRect();
-    tx = clamp((event.clientX - rect.left) / width, 0.05, 0.95);
-    ty = clamp((event.clientY - rect.top) / height, 0.05, 0.95);
+    // Pointer events can arrive before ResizeObserver delivers the backing size.
+    // Normalize with this event's measured bounds, never the uninitialized buffer.
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const horizontal = (event.clientX - rect.left) / rect.width;
+    const vertical = (event.clientY - rect.top) / rect.height;
+    if (!Number.isFinite(horizontal) || !Number.isFinite(vertical)) return;
+    tx = clamp(horizontal, 0.05, 0.95);
+    ty = clamp(vertical, 0.05, 0.95);
   }
   function leave() {
     tx = 0.24;
@@ -297,12 +328,19 @@ export function createWovenGate(
       refresh();
     },
     light(horizontal: number, vertical: number) {
-      if (!busy && !reduced.matches) {
+      if (
+        !destroyed &&
+        !busy &&
+        !reduced.matches &&
+        Number.isFinite(horizontal) &&
+        Number.isFinite(vertical)
+      ) {
         tx = clamp(horizontal, 0.05, 0.95);
         ty = clamp(vertical, 0.05, 0.95);
       }
     },
     destroy() {
+      destroyed = true;
       stop();
       observer.disconnect();
       scene.removeEventListener('pointermove', pointer);

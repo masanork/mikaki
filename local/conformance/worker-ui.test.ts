@@ -61,6 +61,40 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
+      if (location.search.includes('early-pointer')) {
+        // Deliver a pointer event before the renderer's first size notification.
+        // A zero-size callback also occurs when the login scene is removed quickly.
+        const Observer = ResizeObserver;
+        window.ResizeObserver = class extends Observer {
+          constructor(callback: ResizeObserverCallback) {
+            let first = true;
+            super((entries, observer) => {
+              const scene = entries[0]?.target as HTMLElement | undefined;
+              if (first && scene?.classList.contains('auth-shell')) {
+                first = false;
+                const rect = scene.getBoundingClientRect();
+                scene.dispatchEvent(
+                  new PointerEvent('pointermove', {
+                    pointerType: 'mouse',
+                    clientX: rect.left,
+                    clientY: rect.top,
+                  }),
+                );
+                if (location.search.includes('zero-height')) {
+                  const original = scene.getBoundingClientRect.bind(scene);
+                  scene.getBoundingClientRect = () => new DOMRect(rect.x, rect.y, rect.width, 0);
+                  try {
+                    callback(entries, observer);
+                  } finally {
+                    scene.getBoundingClientRect = original;
+                  }
+                }
+              }
+              callback(entries, observer);
+            });
+          }
+        };
+      }
       if (location.search.includes('pending-passkey')) {
         Object.defineProperty(navigator.credentials, 'get', {
           value({ signal }: { signal?: AbortSignal }) {
@@ -130,6 +164,24 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       }
       await route.fulfill({ status: 404, body: '' });
     });
+
+    await page.goto('https://mikaki.test/login?enroll=1&early-pointer=1');
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+    await page.waitForTimeout(200);
+    assert.deepEqual(errors, [], 'pre-layout input and zero-height resizes must not break light');
+    assert.equal(
+      await page
+        .locator('.auth-shell')
+        .evaluate((node) =>
+          Number.isFinite(parseFloat((node as HTMLElement).style.getPropertyValue('--light-x'))),
+        ),
+      true,
+    );
+
+    await page.goto('https://mikaki.test/login?enroll=1&early-pointer=1&zero-height=1');
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+    await page.waitForTimeout(200);
+    assert.deepEqual(errors, [], 'zero-height resize must not draw an empty material canvas');
 
     await page.goto('https://mikaki.test/login');
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
