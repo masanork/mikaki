@@ -161,7 +161,7 @@ function requiredService(config: {
   services?: Array<{ binding: string; service?: string; remote?: boolean }>;
 }) {
   const binding = config.services?.find((item) => item.binding === 'USERINFO_CLAIMS');
-  if (binding?.service !== 'mikaki-userinfo-claim-worker' || binding.remote !== true) {
+  if (binding?.service !== 'mikaki-auth-claims' || binding.remote !== true) {
     throw new Error('USERINFO_CLAIMS must remotely bind the dedicated claim Worker');
   }
 }

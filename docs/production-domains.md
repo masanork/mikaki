@@ -23,3 +23,18 @@ If the callback reaches a browser, the app Worker responds with a fixed 303 to `
 On main, authentication CI promotes its attested Worker bundles to the production configurations, and the website deployment job publishes the two independently configured public Workers after verification. Older source runs may deploy only when their descendants consist solely of metrics bot changes. Public smoke checks auth.mikaki.org and app.mikaki.org.
 
 Web RPs must change their issuer configuration to `https://auth.mikaki.org` and register on this new issuer. No external RP repository is modified by this deployment. The bootstrap invitation is kept in a private mode-0600 local file, never checked in or embedded in a public page.
+
+## Initial activation evidence, 2026-10-02 JST
+
+Clean source `d7e968ac986100471f586502c95a63463a5a2b2f` supplied the initial manually built deployment:
+
+| Worker | Version |
+| --- | --- |
+| mikaki-site | `1ae4a6c7-3eb8-4500-acbb-168acd4fd3b9` |
+| mikaki-app-links | `ee4329ce-35bf-4f0b-965b-6f67aadac399` |
+| mikaki-auth | `f68c01bc-8510-44e7-a258-04453df94cde` |
+| mikaki-auth-claims | `34089a0c-3f69-49a4-b413-2b5c13160120` |
+
+At 2026-10-01T22:24:48Z, public HTTPS checks passed exact clean source/version, configured bindings, readiness 204, Discovery/JWKS, both reviewed login asset digests, landing/app/recovery pages, Android association, query-free callback 303, OP isolation 404 and mobile S256-PKCE login entry. A published Cloudflare edge address was used to bypass the local resolver's cached NXDOMAIN for newly provisioned hosts. This is public-endpoint qualification, not a production Passkey ceremony or a signed-device completion test. Local tests passed all 15 Worker browser tests, Passkey preflight and the website/browser checks.
+
+Login JavaScript SHA-256: `a24faa61f0d0f5acf143b33d98b5e740146a872e13265a78beed6729d8d5b0e8`; CSS SHA-256: `445fa2134f1192ed82ee17564d560d6859282176d9fd89df5749b70eaa5c7966`.

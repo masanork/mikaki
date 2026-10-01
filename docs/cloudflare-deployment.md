@@ -24,7 +24,7 @@ OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer e
 
 Later on 2026-09-27, a narashi RP login exposed three pending production D1 migrations: `0011_issued_id_token_hash.sql`, `0012_client_logout_registration.sql`, and `0013_logout_outbox.sql`. The deployed token exchange writes `token_issue.id_token_hash`, so leaving `0011` unapplied could fail the code exchange. A D1 Time Travel bookmark was recorded before applying all three migrations. `wrangler d1 migrations list` then reported no pending migrations, and the client administration list confirmed narashi's active client, exact callback, and key. A fresh browser path reached the Mikaki login page from narashi; passkey completion and the RP callback still require an owner browser check.
 
-## Current production snapshot (checked 2026-10-01)
+## Previous tossa.app test snapshot (checked 2026-10-01)
 
 The latest OP version is `8fee7db9-d981-444f-881d-5b6c63e9437b`, following the woven-gate race fix below. The Claim Worker remains `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36805542337) passed readiness, Discovery/JWKS, login asset digests, Android association, the code-free callback fallback, callback-host authorization isolation and mobile authorization entry. These probes do not authenticate an owner.
 
@@ -43,11 +43,12 @@ git status --short
 git rev-parse HEAD
 test -f crates/worker/migrations/0029_native_vault_token_context.sql
 rg -q 'MIKAKI_READY_TOKEN' crates/worker/wrangler.production.jsonc
-rg -q 'mikaki-native.tossa.app' crates/worker/wrangler.production.jsonc
+rg -q 'auth.mikaki.org' crates/worker/wrangler.production.jsonc
+rg -q 'app.mikaki.org' website/wrangler.app.jsonc
 MIKAKI_SECRETS_FILE=local/generated/mikaki-production-secrets.json
 test -f "$MIKAKI_SECRETS_FILE"
 npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
-npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations list mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 ```
 
 The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. The current production config declares both `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN` as required. Generate a separate 32-byte base64url monitoring token (`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`), place it alongside `OP_PRIVATE_JWK` in the ignored, mode-0600 secret JSON, and provision the identical value as the GitHub Actions repository secret `MIKAKI_READY_TOKEN` before using version-aware production smoke. Keep it out of `vars`, URLs, logs and release artifacts. Check the deployed binding inventory for both secret names before activation; if either value is missing or malformed, `/ready` fails closed. Rotate both copies together and rerun version-aware smoke.
@@ -58,7 +59,7 @@ Review any pending migration against the code and active Worker. Take and record
 npx wrangler d1 time-travel info mikaki-op --config crates/worker/wrangler.production.jsonc
 # Only when the preceding list showed reviewed, pending migrations:
 npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.production.jsonc --remote
-npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations list mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 ```
 
 Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
