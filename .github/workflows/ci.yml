@@ -240,7 +240,7 @@ jobs:
     secrets: inherit
 
   production-smoke:
-    needs: deploy
+    needs: [deploy, deploy-website]
     if: needs.deploy.outputs.deployed == 'true'
     uses: ./.github/workflows/production-smoke.yml
     with:

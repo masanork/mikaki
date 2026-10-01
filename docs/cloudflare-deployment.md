@@ -56,13 +56,13 @@ The `--secrets-file` argument is required here. A deploy without it produced a v
 Review any pending migration against the code and active Worker. Take and record a fresh D1 [Time Travel bookmark](https://developers.cloudflare.com/d1/reference/time-travel/) immediately before a migration. Apply migrations with the production config and `--remote` **only if** the list shows pending files, then confirm it is empty. Migrations change production D1 independently of the Worker and can affect the old version before the deploy.
 
 ```sh
-npx wrangler d1 time-travel info mikaki-op --config crates/worker/wrangler.production.jsonc
+npx wrangler d1 time-travel info mikaki-auth --config crates/worker/wrangler.production.jsonc
 # Only when the preceding list showed reviewed, pending migrations:
-npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations apply mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 npx wrangler d1 migrations list mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 ```
 
-Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
+Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the auth Custom Domain; the separate website configuration owns the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
 
 ```sh
 design/probes/workers-rs/target/tools/bin/worker-build --release crates/worker
@@ -81,14 +81,14 @@ npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
 Check public endpoints from a network that can reach the issuer. From this local network, TLS connections have reset before the certificate arrived; use the [manual production smoke workflow](../.github/workflows/production-smoke.yml) and save its run URL if that recurs. A passed public smoke check does not establish that login works.
 
 ```sh
-curl -fsS https://mikaki.tossa.app/health
-curl -fsS https://mikaki.tossa.app/.well-known/openid-configuration
-curl -fsS https://mikaki.tossa.app/jwks
+curl -fsS https://auth.mikaki.org/health
+curl -fsS https://auth.mikaki.org/.well-known/openid-configuration
+curl -fsS https://auth.mikaki.org/jwks
 ```
 
 After activating a version with the `CF_VERSION_METADATA` binding, fetch `/version` and compare its Cloudflare version ID and clean source commit with the activation record and verified release manifest. Check authenticated `/ready` for 204 before functional qualification; missing or incorrect bearer credentials receive 404 before dependency checks. Readiness checks policy, migration, signing-key alignment and essential bindings but cannot replace an actual Vault/RP flow. The [manual production smoke workflow](../.github/workflows/production-smoke.yml) accepts both expected values and retains the version/readiness comparison result. A response from `/version` identifies the running source revision, not the digest of the uploaded Worker bytes; record that mapping separately as described in [release and recovery](release-and-recovery.md). The recorded native-enabled production version provides both endpoints.
 
-The recorded deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
+The retained tossa.app test deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
 ## Local changes awaiting activation
 
