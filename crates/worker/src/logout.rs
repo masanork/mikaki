@@ -196,7 +196,7 @@ pub(super) async fn get(
         strings.locale,
         message("productLogoutCancel"),
     );
-    let html = render_page(&strings, false, &language, &action);
+    let html = render_page(&strings, &url, false, &language, &action);
     let mut response = worker::Response::builder()
         .with_header("Content-Language", strings.locale)?
         .with_header("Content-Type", "text/html; charset=utf-8")?
@@ -395,6 +395,7 @@ async fn confirm(
             )?
             .from_html(render_page(
                 &strings,
+                &request.url()?,
                 true,
                 "",
                 &format!(
@@ -429,13 +430,23 @@ async fn confirm(
     Ok(response)
 }
 
-fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: &str) -> String {
+fn render_page(
+    strings: &i18n::Catalog,
+    page: &url::Url,
+    complete: bool,
+    language: &str,
+    action: &str,
+) -> String {
     let message = |key| i18n::html_escape(strings.message(key));
     let template = include_str!("../ui/logout.html");
     let values = [
+        ("{{origin_label}}", message("authOriginLabel")),
         (
-            "{{brand_mark}}",
-            include_str!("../../../branding/mikaki-mark.svg").to_owned(),
+            "{{page_host}}",
+            i18n::html_escape(&match page.port() {
+                Some(port) => format!("{}:{port}", page.host_str().unwrap_or_default()),
+                None => page.host_str().unwrap_or_default().to_owned(),
+            }),
         ),
         (
             "{{session_state}}",
@@ -464,14 +475,6 @@ fn render_page(strings: &i18n::Catalog, complete: bool, language: &str, action: 
                 "productLogoutCompleteBody"
             } else {
                 "logoutBody"
-            }),
-        ),
-        (
-            "{{phase}}",
-            message(if complete {
-                "productSessionClosed"
-            } else {
-                "productSessionControl"
             }),
         ),
         (

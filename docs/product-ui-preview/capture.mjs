@@ -215,6 +215,8 @@ try {
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'ログアウトしました' })).toBeVisible();
   await capture('logout-complete');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await capture('logout-complete-mobile');
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(
     'Product previews verified: ja/en, desktop/mobile, unlock, completion, logout; no page errors or horizontal overflow.',
