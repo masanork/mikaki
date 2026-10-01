@@ -16,7 +16,7 @@ node scripts/bootstrap-admin.ts \
   --apply yes
 ```
 
-The output contains `invitation` and `expiresAt`. Open `https://mikaki.tossa.app/enroll` on the intended administrator's device and enter the invitation before it expires. The invitation is shown only in the private output file. A new bootstrap invitation can be issued after an unused one expires; the closed gate cannot be reopened by this CLI. Delete the private file after use.
+The output contains `invitation` and `expiresAt`. Open `https://auth.mikaki.org/enroll` on the intended administrator's device and enter the invitation before it expires. The invitation is shown only in the private output file. A new bootstrap invitation can be issued after an unused one expires; the closed gate cannot be reopened by this CLI. Delete the private file after use.
 
 ## Further accounts
 

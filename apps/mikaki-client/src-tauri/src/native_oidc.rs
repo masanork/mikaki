@@ -21,7 +21,7 @@ use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 use zeroize::Zeroizing;
 
-const ISSUER: &str = "https://mikaki.tossa.app";
+const ISSUER: &str = "https://auth.mikaki.org";
 const CALLBACK_PATH: &str = "/oidc/callback";
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn callback_binds_state_issuer_host_path_and_single_code() {
-        let query = format!("code={CODE}&state=expected&iss=https%3A%2F%2Fmikaki.tossa.app");
+        let query = format!("code={CODE}&state=expected&iss=https%3A%2F%2Fauth.mikaki.org");
         assert_eq!(
             parse_callback(&request(&query, "127.0.0.1:43210"), 43210, "expected"),
             Ok(Some(CODE.to_owned()))
@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(
             parse_callback(
                 &request(
-                    "error=access_denied&state=expected&iss=https%3A%2F%2Fmikaki.tossa.app",
+                    "error=access_denied&state=expected&iss=https%3A%2F%2Fauth.mikaki.org",
                     "127.0.0.1:43210"
                 ),
                 43210,
@@ -401,7 +401,7 @@ mod tests {
             request(&query, "127.0.0.1:43211"),
             request(&query.replace("expected", "wrong"), "127.0.0.1:43210"),
             request(
-                &query.replace("mikaki.tossa.app", "attacker.example"),
+                &query.replace("auth.mikaki.org", "attacker.example"),
                 "127.0.0.1:43210",
             ),
             request(&format!("{query}&state=expected"), "127.0.0.1:43210"),

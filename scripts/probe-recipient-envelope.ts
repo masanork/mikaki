@@ -7,7 +7,7 @@ import type { UserInfoRecipient } from '../crates/worker/ui/recipient-directory.
 // Read-only production probe: use the active public key and internal service
 // binding with synthetic ciphertext. No Vault record or Grant is created.
 const CONFIG = 'crates/worker/wrangler.recipient-admin.jsonc';
-const ORIGIN = 'https://mikaki.tossa.app';
+const ORIGIN = 'https://auth.mikaki.org';
 
 function contentAad(revision: number): Uint8Array<ArrayBuffer> {
   const fields = ['mikaki-vault-attribute-content', '1', ORIGIN, 'name', String(revision)];

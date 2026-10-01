@@ -1,0 +1,16 @@
+{
+  "name": "mikaki-site",
+  "account_id": "4b749427a0c80c547e726a42aff4b6fc",
+  "compatibility_date": "2026-09-28",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "mikaki.org",
+      "custom_domain": true,
+    },
+  ],
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page",
+  },
+}

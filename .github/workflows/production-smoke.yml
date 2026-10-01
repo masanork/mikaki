@@ -65,7 +65,7 @@ jobs:
           MIKAKI_EXPECTED_LOGIN_CSS_SHA256: ${{ inputs.expected_login_css_sha256 }}
         run: |
           set -euo pipefail
-          issuer=https://mikaki.tossa.app
+          issuer=https://auth.mikaki.org
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/health" -o health.txt
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/.well-known/openid-configuration" -o discovery.json
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$issuer/jwks" -o jwks.json
@@ -97,7 +97,7 @@ jobs:
           MIKAKI_EXPECTED_ANDROID_FINGERPRINT: ${{ inputs.expected_android_fingerprint }}
         run: |
           set -euo pipefail
-          host=https://mikaki-native.tossa.app
+          host=https://app.mikaki.org
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$host/.well-known/assetlinks.json" -o assetlinks.json
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D native-callback-headers.txt -o /dev/null -w '%{http_code}' "$host/oidc/native/callback?code=smoke-code&state=smoke-state" > native-callback-status.txt
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$host/authorize" > native-authorize-status.txt

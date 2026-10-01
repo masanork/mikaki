@@ -1,32 +1,33 @@
 {
-  "name": "mikaki-op",
+  "name": "mikaki-auth",
   "main": "build/worker/shim.mjs",
   "account_id": "4b749427a0c80c547e726a42aff4b6fc",
   "compatibility_date": "2026-09-23",
   "workers_dev": false,
-  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "routes": [
     {
-      "pattern": "mikaki.tossa.app",
-      "custom_domain": true
-    },
-    {
-      "pattern": "mikaki-native.tossa.app",
+      "pattern": "auth.mikaki.org",
       "custom_domain": true
     }
   ],
   "vars": {
-    "MIKAKI_ISSUER": "https://mikaki.tossa.app",
+    "MIKAKI_ISSUER": "https://auth.mikaki.org",
     "MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT": "FC:51:38:FE:5C:6E:05:55:AD:08:5E:4D:68:DA:F9:DB:F6:76:93:63:1E:72:C9:41:A1:7D:17:80:0D:EB:00:66"
   },
   "secrets": {
-    "required": ["OP_PRIVATE_JWK", "MIKAKI_READY_TOKEN"]
+    "required": [
+      "OP_PRIVATE_JWK",
+      "MIKAKI_READY_TOKEN"
+    ]
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mikaki-op",
-      "database_id": "f84e650a-b4d9-42a1-9ccd-6d1b27ca74a1",
+      "database_name": "mikaki-auth",
+      "database_id": "f9299d62-2dbf-4bae-ae49-8b75674572d4",
       "migrations_dir": "migrations",
       "remote": true
     }
@@ -34,17 +35,20 @@
   "r2_buckets": [
     {
       "binding": "VAULT_BLOBS",
-      "bucket_name": "mikaki-vault"
+      "bucket_name": "mikaki-auth-vault"
     }
   ],
   "services": [
     {
       "binding": "USERINFO_CLAIMS",
-      "service": "mikaki-userinfo-claim-worker"
+      "service": "mikaki-auth-claims"
     }
   ],
   "triggers": {
-    "crons": ["* * * * *", "0 3 * * *"]
+    "crons": [
+      "* * * * *",
+      "0 3 * * *"
+    ]
   },
   "observability": {
     "enabled": true,

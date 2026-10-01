@@ -21,3 +21,8 @@
 /fuzz/corpus/
 /fuzz/artifacts/
 /fuzz/coverage/
+
+# Ignore linked development dependencies and generated packages as well.
+**/node_modules
+**/pkg
+**/pkg-web

@@ -100,7 +100,7 @@ async function main() {
     'd1',
     'migrations',
     'list',
-    'mikaki-op',
+    'mikaki-auth',
     '--remote',
     '--config',
     opConfig,

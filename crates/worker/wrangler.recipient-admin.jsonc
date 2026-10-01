@@ -8,8 +8,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mikaki-op",
-      "database_id": "f84e650a-b4d9-42a1-9ccd-6d1b27ca74a1",
+      "database_name": "mikaki-auth",
+      "database_id": "f9299d62-2dbf-4bae-ae49-8b75674572d4",
       "migrations_dir": "migrations",
       "remote": true
     }
@@ -17,7 +17,7 @@
   "services": [
     {
       "binding": "USERINFO_CLAIMS",
-      "service": "mikaki-userinfo-claim-worker",
+      "service": "mikaki-auth-claims",
       "remote": true
     }
   ]

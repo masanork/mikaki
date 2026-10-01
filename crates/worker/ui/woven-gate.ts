@@ -28,8 +28,9 @@ export function createWovenGate(
     rp = weaveProfile(rpOrigin);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const material = document.createElement('canvas');
-  const materialContext = material.getContext('2d');
-  if (!materialContext) return null;
+  const materialCanvasContext = material.getContext('2d');
+  if (!materialCanvasContext) return null;
+  const materialContext: CanvasRenderingContext2D = materialCanvasContext;
   let width = 0,
     height = 0,
     raf = 0,
@@ -254,7 +255,7 @@ export function createWovenGate(
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
-    scene.dataset.lightPhase = animated ? String(Math.round(time / 100)) : 'still';
+    scene.dataset['lightPhase'] = animated ? String(Math.round(time / 100)) : 'still';
   }
 
   function tick(time: number) {
