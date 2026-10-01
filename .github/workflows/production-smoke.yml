@@ -79,6 +79,6 @@ jobs:
           set -euo pipefail
           host=https://mikaki-native.tossa.app
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$host/.well-known/assetlinks.json" -o assetlinks.json
-          curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D native-callback-headers.txt -o /dev/null -w '%{http_code}' "$host/oidc/native/callback" > native-callback-status.txt
+          curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D native-callback-headers.txt -o /dev/null -w '%{http_code}' "$host/oidc/native/callback?code=smoke-code&state=smoke-state" > native-callback-status.txt
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$host/authorize" > native-authorize-status.txt
           node scripts/check-native-association.ts

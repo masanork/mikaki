@@ -24,19 +24,19 @@ OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer e
 
 Later on 2026-09-27, a narashi RP login exposed three pending production D1 migrations: `0011_issued_id_token_hash.sql`, `0012_client_logout_registration.sql`, and `0013_logout_outbox.sql`. The deployed token exchange writes `token_issue.id_token_hash`, so leaving `0011` unapplied could fail the code exchange. A D1 Time Travel bookmark was recorded before applying all three migrations. `wrangler d1 migrations list` then reported no pending migrations, and the client administration list confirmed narashi's active client, exact callback, and key. A fresh browser path reached the Mikaki login page from narashi; passkey completion and the RP callback still require an owner browser check.
 
-## Current production snapshot (checked 2026-09-30)
+## Current production snapshot (checked 2026-10-01)
 
-The latest recorded OP version is `118f7682-2857-46ec-a2ed-b0f9e5c98ab7`, following the native activation and login-seal activation below. The Claim Worker remains `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696) passed readiness, Discovery/JWKS, login asset digests, Android association/callback isolation and mobile authorization entry. These probes do not authenticate an owner.
+The latest OP version is `663dae51-6088-47d7-9e2d-b7c9dc4f42ad`, following the woven-gate activation below. The Claim Worker remains `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696) passed readiness, Discovery/JWKS, login asset digests, Android association/callback isolation and mobile authorization entry. These probes do not authenticate an owner.
 
 Production D1 has no pending migrations through `0029` in the native-enabled source. One active web RP and one active native public client are recorded, excluding internal enrollment. Signed Pixel ordinary OIDC login, app return, native-session clearing and process restart have device evidence below. Direct Passkey ceremony observation, remaining native negative cases, iPhone, web RP completion and recovery are open. Native Vault OAuth remains disabled.
 
-**Do not deploy current `main` to production.** Its older config would replace the native-enabled Worker, remove the callback Custom Domain and readiness binding, and leave a code/schema mismatch. Reconcile and qualify the native source on `main` before a new deployment. A migration list run from an old checkout only compares that checkout's migration files; “no migrations to apply” there does not mean its code matches the newer production schema.
+The native-enabled source, callback Custom Domain, readiness binding and migrations through `0029` have been reconciled on `main`. The woven-gate activation below used clean merged commit `2028a2baa1d615847c4cb0e3da092938bd05ad78`; continue to check these capabilities before each deployment. A migration list run from an old checkout only compares that checkout's migration files; “no migrations to apply” there does not mean its code matches the newer production schema.
 
 Managed RP registration and key changes are described in [RP client operations](rp-client-operations.md). The first administrator and subsequent invitation flow is described in [account enrollment](account-enrollment.md). The managed RP lease contract is in [RP session check](rp-session-check.md).
 
 ## Deploy a reviewed commit
 
-Run the following from the repository root, using an exact reviewed commit in a clean checkout that preserves the active native capabilities and schema. Record that commit and the current Worker version before changing production. The guards below must pass; they intentionally fail on current `main`. The commands use the repository-pinned Wrangler and production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists, contains both required secret names, and is mode 0600. Never commit or print the file or its values.
+Run the following from the repository root, using an exact reviewed commit in a clean checkout that preserves the active native capabilities and schema. Record that commit and the current Worker version before changing production. The guards below must pass. The commands use the repository-pinned Wrangler and production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists, contains both required secret names, and is mode 0600. Never commit or print the file or its values.
 
 ```sh
 git status --short
@@ -173,3 +173,21 @@ Before calling the rollout complete, run an owner-browser check on the intended 
 If the Worker fails, inspect the deployment and use the [Worker rollback procedure](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) with a version compatible with the current D1 schema. A Worker rollback does not restore D1. A D1 Time Travel restore overwrites the database in place; assess data loss and coordinate it separately before using the recorded bookmark. Neither rollback substitutes for checking the RP and Vault after recovery.
 
 Production recovery and web RP completion remain unverified; signed Android ordinary OIDC completion has the bounded device evidence above. Do not treat its availability as a user-ready launch or an OIDF certification result.
+
+
+## Woven bamboo login gate activation, 2026-10-01
+
+At the user's request, clean merged PR #35 commit `2028a2baa1d615847c4cb0e3da092938bd05ad78` supplied OP version `663dae51-6088-47d7-9e2d-b7c9dc4f42ad`, activated at 100% on 2026-10-01T01:25:07Z. The login and invitation registration screens use upright woven bamboo leaves, a Passkey crossbar, a compact application/domain plaque and ambient grazing light. Domain-derived colors/weaves remain decorative.
+
+The repository-pinned Wrangler built the production-configured dry-run bundle, uploaded it with `--no-bundle` and both required secrets, and inspected the new version's binding inventory before activation. DB, Vault R2, UserInfo service, issuer, Android certificate fingerprint, version metadata, signing key and readiness token were preserved. No migration was pending or applied, and no Claim Worker or trigger change was required. The previous compatible OP version is `118f7682-2857-46ec-a2ed-b0f9e5c98ab7`.
+
+| Reviewed input | SHA-256 |
+| --- | --- |
+| Uploaded `shim.js` | `eb59d4ec25ae3fdabb7c3108c36e67193a26f5e77bb1ee947c5aab3b995c2b6d` |
+| Uploaded Wasm module | `e123da2a4d68fb165d6fc6c6f3ebf0b9bae32b9f4d13f6f3dcef92f993de6e2c` |
+| Served `/login/login.js` | `846963275eb70bace0d0836c81ed1a6dde5072bc077350790b30471bbe693cb4` |
+| Served `/login/login.css` | `c2ad0ed9e184965630eb35772135f9fb457f39a2aef7317c689020979a23849c` |
+
+The initial [public smoke](https://github.com/masanork/mikaki/actions/runs/36801021810) passed health, Discovery/JWKS, exact version/clean source identity, authenticated readiness 204 and both login asset hashes. Its Android step rejected the callback's 303 because the script still expected 404. PR #33 had intentionally replaced this response with a redirect to `/native-link-help`; the source discards code/state rather than forwarding them. The smoke expectation now checks 303 with an exact code-free destination, no-store/no-referrer, while retaining 404 for `/authorize` on the callback host.
+
+Synthetic Chromium tests passed login/registration, Vault PRF encryption, locales, keyboard/mobile access, reduced motion, canvas failure/context loss and Passkey-operation animation pause. This was a local build, not independently attested CI-built bytes. The activation is **public-endpoint checked only**: a production owner Passkey ceremony, completed RP callback, physical-device tilt/performance and logout delivery are not qualified by this rollout.
