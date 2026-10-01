@@ -8,36 +8,40 @@
     <link rel="stylesheet" href="/ui/product.css" />
   </head>
   <body data-session-state="{{session_state}}">
-    <header class="product-header">
-      <div class="product-header-inner">
-        <span class="auth-brand product-brand"
-          ><span class="auth-mark" aria-hidden="true">{{brand_mark}}</span>mikaki</span
-        >
-        <span class="product-brand-tag">PRIVATE BY DESIGN</span>
-        {{language}}
-      </div>
-    </header>
-    <main class="product-result-shell">
-      <div class="product-result">
-        <div class="product-result-icon {{icon_class}}" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            {{icon}}
-          </svg>
+    <div class="product-material-shell">
+      <header class="product-header product-material">
+        <div class="gate-background" data-renderer="css" aria-hidden="true">
+          <div class="gate-fallback"><span></span></div>
+          <canvas></canvas>
         </div>
-        <span class="product-eyebrow">{{phase}}</span>
-        <h1>{{heading}}</h1>
-        <p>{{body}}</p>
-        {{action}}
-        <footer class="product-footer">mikaki · PRIVATE BY DESIGN</footer>
-      </div>
-    </main>
+        <div class="product-header-inner">
+          <span class="auth-brand product-brand">mikaki</span>
+          <div class="product-origin">
+            <span>{{origin_label}}</span><strong>{{page_host}}</strong>
+          </div>
+          {{language}}
+        </div>
+      </header>
+      <main class="product-result-shell">
+        <div class="product-result">
+          <div class="product-result-icon {{icon_class}}" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              {{icon}}
+            </svg>
+          </div>
+          <h1>{{heading}}</h1>
+          <p>{{body}}</p>
+          {{action}}
+        </div>
+      </main>
+    </div>
     <script type="module" src="/ui/session-events.js"></script>
   </body>
 </html>

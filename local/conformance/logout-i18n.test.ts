@@ -59,6 +59,9 @@ test('product logout preserves locale through switching and confirmation, with C
       const initialHtml = await initial.text();
       assert.match(initialHtml, new RegExp(`<html lang="${locale}">`));
       assert.match(initialHtml, locale === 'ja' ? /ログアウト/ : /Log out/);
+      assert.match(initialHtml, /<strong>mikaki\.test<\/strong>/);
+      assert.match(initialHtml, /data-renderer="css"/);
+      assert.doesNotMatch(initialHtml, /PRIVATE BY DESIGN/);
       const switchPath = /<a href="([^"]+)"/.exec(initialHtml)![1].replaceAll('&amp;', '&');
       const switchUrl = new URL(switchPath, issuer);
       assert.equal(switchUrl.searchParams.get('state'), state);

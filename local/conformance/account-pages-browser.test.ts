@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chromium } from '@playwright/test';
+import { chromium, type Route } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
@@ -77,7 +77,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    await page.route(`${issuer}/**`, async (route) => {
+    const forward = async (route: Route) => {
       const request = route.request();
       const response = await worker.fetch(request.url(), {
         method: request.method(),
@@ -85,12 +85,16 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         redirect: 'manual',
         ...(request.postDataBuffer() ? { body: request.postDataBuffer() } : {}),
       });
+      const headers = Object.fromEntries(response.headers);
+      const cookies = response.headers.getSetCookie();
+      if (cookies.length) headers['set-cookie'] = cookies.join('\n');
       await route.fulfill({
         status: response.status,
-        headers: Object.fromEntries(response.headers),
+        headers,
         body: await response.text(),
       });
-    });
+    };
+    await context.route(`${issuer}/**`, forward);
 
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: 900 });
@@ -103,7 +107,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         await page.goto(`${issuer}${path}`);
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();
         assert.equal(await page.locator('.product-header').count(), 1);
-        if (!path.startsWith('/logout')) {
+        {
           await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
           assert.equal(await page.locator('.product-origin strong').textContent(), 'mikaki.test');
           assert.equal(await page.locator('.gate-fallback span').count(), 1);
@@ -138,6 +142,21 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       'none',
     );
     assert.deepEqual(errors, []);
+    const staticContext = await browser.newContext({ javaScriptEnabled: false });
+    await staticContext.addCookies(await context.cookies());
+    await staticContext.route(`${issuer}/**`, forward);
+    const staticPage = await staticContext.newPage();
+    await staticPage.goto(`${issuer}/logout?lang=en`);
+    assert.equal(await staticPage.locator('.product-origin strong').textContent(), 'mikaki.test');
+    assert.equal(await staticPage.locator('.gate-fallback').isVisible(), true);
+    const confirmed = staticPage.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().includes('/logout'),
+    );
+    await staticPage.getByRole('button', { name: 'Log out', exact: true }).click();
+    assert.equal((await confirmed).status(), 200);
+    await staticPage.getByRole('heading', { name: 'You have logged out', exact: true }).waitFor();
+    assert.equal(await staticPage.locator('body').getAttribute('data-session-state'), 'ended');
+    await staticContext.close();
   } finally {
     await browser?.close();
     await harness.close();
