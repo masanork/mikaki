@@ -70,6 +70,11 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       },
     ]);
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      if (location.search.includes('no-canvas')) {
+        HTMLCanvasElement.prototype.getContext = () => null;
+      }
+    });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.route(`${issuer}/**`, async (route) => {
@@ -98,6 +103,17 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         await page.goto(`${issuer}${path}`);
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();
         assert.equal(await page.locator('.product-header').count(), 1);
+        if (!path.startsWith('/logout')) {
+          await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+          assert.equal(await page.locator('.product-origin strong').textContent(), 'mikaki.test');
+          assert.equal(await page.locator('.gate-fallback span').count(), 1);
+          assert.match(
+            await page
+              .locator('.vault-shell, .product-material-shell')
+              .evaluate((node) => (node as HTMLElement).style.getPropertyValue('--page-hue')),
+            /^\d+$/,
+          );
+        }
         assert.equal(
           await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
           'rgb(246, 248, 251)',
@@ -112,6 +128,15 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await page.goto(`${issuer}/admin?lang=ja`);
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('heading', { name: 'Issue an invitation' }).waitFor();
+    await page.goto(`${issuer}/admin?lang=en&no-canvas=1`);
+    await page.getByRole('heading', { name: 'Issue an invitation' }).waitFor();
+    assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
+    const fallback = page.locator('.gate-fallback');
+    assert.equal(await fallback.isVisible(), true);
+    assert.notEqual(
+      await fallback.evaluate((node) => getComputedStyle(node).backgroundImage),
+      'none',
+    );
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

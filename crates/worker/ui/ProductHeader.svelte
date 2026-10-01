@@ -24,7 +24,7 @@
   onMount(() => {
     if (!material) return;
     const profile = weaveProfile(page.origin);
-    const surface = header.closest<HTMLElement>('.vault-shell') ?? header;
+    const surface = header.closest<HTMLElement>('.vault-shell, .product-material-shell') ?? header;
     // CSSOM properties work under the product's self-only style policy.
     surface.style.setProperty('--page-hue', String(profile.hue));
     surface.style.setProperty('--rp-hue', String(profile.hue));

@@ -659,8 +659,8 @@ a {
   }
 }
 
-/* Vault surfaces: a woven exterior and quiet, readable storage panels. */
-.vault-shell {
+/* Material surfaces: a woven exterior and quiet, readable storage panels. */
+:is(.vault-shell, .product-material-shell) {
   min-height: 100svh;
   padding-bottom: 1px;
   background: #eef0ee;
@@ -670,7 +670,7 @@ a {
   --product-blue: #28566b;
   --page-hue: 210;
 }
-.vault-shell .product-material {
+:is(.vault-shell, .product-material-shell) .product-material {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -693,18 +693,20 @@ a {
   inset: 0;
   background:
     repeating-linear-gradient(
-      45deg,
-      transparent 0 18px,
-      #264354 19px 24px,
-      #020811 25px 27px,
-      transparent 28px 38px
+      calc(35deg + var(--grain-angle, 12deg)),
+      transparent 0 calc(var(--grain-step, 22px) * 0.8),
+      hsl(var(--page-hue) 42% 27%) calc(var(--grain-step, 22px) * 0.85)
+        calc(var(--grain-step, 22px) * 1.1),
+      #020811 calc(var(--grain-step, 22px) * 1.15) calc(var(--grain-step, 22px) * 1.25),
+      transparent calc(var(--grain-step, 22px) * 1.3) calc(var(--grain-step, 22px) * 1.75)
     ),
     repeating-linear-gradient(
-      -45deg,
-      transparent 0 18px,
-      #1b3344 19px 24px,
-      #020811 25px 27px,
-      transparent 28px 38px
+      calc(-35deg - var(--grain-angle, 12deg)),
+      transparent 0 calc(var(--grain-step, 22px) * 0.8),
+      hsl(var(--page-hue) 40% 20%) calc(var(--grain-step, 22px) * 0.85)
+        calc(var(--grain-step, 22px) * 1.1),
+      #020811 calc(var(--grain-step, 22px) * 1.15) calc(var(--grain-step, 22px) * 1.25),
+      transparent calc(var(--grain-step, 22px) * 1.3) calc(var(--grain-step, 22px) * 1.75)
     ),
     #07111c;
 }
@@ -718,7 +720,7 @@ a {
   z-index: -1;
   background: linear-gradient(180deg, #07111c22, #07111c99);
 }
-.vault-shell .product-header-inner {
+:is(.vault-shell, .product-material-shell) .product-header-inner {
   width: min(100% - 6rem, 1240px);
   min-height: 72px;
   padding: 12px 24px;
@@ -734,7 +736,7 @@ a {
     0 12px 24px #0008,
     inset 0 1px #cfdee433;
 }
-.vault-shell .product-brand {
+:is(.vault-shell, .product-material-shell) .product-brand {
   gap: 0;
   font-size: 15px;
   font-weight: 400;
@@ -767,41 +769,41 @@ a {
   color: #e1eaf0;
   overflow-wrap: anywhere;
 }
-.vault-shell .product-toolbar {
+:is(.vault-shell, .product-material-shell) .product-toolbar {
   gap: 16px;
 }
-.vault-shell .product-language {
+:is(.vault-shell, .product-material-shell) .product-language {
   font-size: 0;
   gap: 0;
 }
-.vault-shell .product-language select {
+:is(.vault-shell, .product-material-shell) .product-language select {
   font-size: 12px;
   border-radius: 2px;
   background: #101e28;
 }
-.vault-shell .product-lock-button {
+:is(.vault-shell, .product-material-shell) .product-lock-button {
   border-radius: 2px;
 }
-.vault-shell .product-main {
+:is(.vault-shell, .product-material-shell) .product-main {
   margin-block: 32px 56px;
 }
-.vault-shell .product-heading {
+:is(.vault-shell, .product-material-shell) .product-heading {
   margin-bottom: 28px;
 }
-.vault-shell .product-heading h1 {
+:is(.vault-shell, .product-material-shell) .product-heading h1 {
   margin-top: 0;
   font-size: clamp(28px, 3vw, 36px);
   font-weight: 500;
   letter-spacing: -0.025em;
   color: #24353e;
 }
-.vault-shell .product-heading > p {
+:is(.vault-shell, .product-material-shell) .product-heading > p {
   font-size: 13px;
 }
-.vault-shell .product-workspace {
+:is(.vault-shell, .product-material-shell) .product-workspace {
   gap: 28px;
 }
-.vault-shell .product-nav {
+:is(.vault-shell, .product-material-shell) .product-nav {
   gap: 0;
   padding: 8px;
   border: 1px solid #5e717b;
@@ -816,20 +818,20 @@ a {
     linear-gradient(160deg, #273943, #14222c);
   box-shadow: 0 8px 16px #12222e18;
 }
-.vault-shell .product-nav a {
+:is(.vault-shell, .product-material-shell) .product-nav a {
   min-height: 48px;
   border-radius: 2px;
   border-left: 2px solid transparent;
   color: #adbec7;
   font-weight: 400;
 }
-.vault-shell .product-nav a[aria-current='location'],
-.vault-shell .product-nav a:hover {
+:is(.vault-shell, .product-material-shell) .product-nav a[aria-current='location'],
+:is(.vault-shell, .product-material-shell) .product-nav a:hover {
   color: #f0f5f7;
   border-left-color: hsl(var(--page-hue) 45% 70%);
   background: #cbdde51a;
 }
-.vault-shell .product-content > section {
+:is(.vault-shell, .product-material-shell) .product-content > section {
   padding: 28px;
   border-radius: 4px;
   border-top-color: #fff;
@@ -838,29 +840,29 @@ a {
     0 6px 18px #20343d08,
     inset 0 1px #fff;
 }
-.vault-shell .product-content h2 {
+:is(.vault-shell, .product-material-shell) .product-content h2 {
   color: #263e49;
   font-weight: 550;
 }
-.vault-shell .product-content p {
+:is(.vault-shell, .product-material-shell) .product-content p {
   font-size: 13px;
   line-height: 1.85;
 }
-.vault-shell .product-content input:not([type='checkbox']),
-.vault-shell .product-content select,
-.vault-shell .product-content textarea {
+:is(.vault-shell, .product-material-shell) .product-content input:not([type='checkbox']),
+:is(.vault-shell, .product-material-shell) .product-content select,
+:is(.vault-shell, .product-material-shell) .product-content textarea {
   border-color: #aebcc0;
   border-radius: 3px;
   background: #fcfdfc;
   box-shadow: inset 0 2px 4px #21343e08;
 }
-.vault-shell .product-content button {
+:is(.vault-shell, .product-material-shell) .product-content button {
   border-radius: 3px;
   font-weight: 500;
   color: #285469;
   border-color: #afc0c7;
 }
-.vault-shell .product-content .product-primary {
+:is(.vault-shell, .product-material-shell) .product-content .product-primary {
   border-color: #203d4d;
   color: #f2f7f9;
   background: linear-gradient(180deg, #3d6477, #264858);
@@ -868,65 +870,115 @@ a {
     inset 0 1px #adc5cf44,
     0 3px 8px #1c354e20;
 }
-.vault-shell .product-content .product-primary:hover {
+:is(.vault-shell, .product-material-shell) .product-content .product-primary:hover {
   background: #244454;
 }
-.vault-shell .product-content .product-danger {
+:is(.vault-shell, .product-material-shell) .product-content .product-danger {
   color: #a22834;
   border-color: #e6c7cb;
 }
-.vault-shell .product-content [role='status']:not(:empty) {
+:is(.vault-shell, .product-material-shell) .product-content [role='status']:not(:empty) {
   border-radius: 3px;
   border-color: #ccdadd;
   background: #edf3f3;
   color: #365565;
 }
-.vault-shell .product-lock-state {
+:is(.vault-shell, .product-material-shell) .product-lock-state {
   border-radius: 3px;
   font-weight: 500;
 }
-.vault-shell .product-result-shell {
+:is(.vault-shell, .product-material-shell) .product-result-shell {
   min-height: calc(100svh - 170px);
   background: none;
 }
-.vault-shell .product-result {
+:is(.vault-shell, .product-material-shell) .product-result {
   border-radius: 4px;
   box-shadow: 0 12px 40px #20343d12;
 }
+.product-material-shell .product-card {
+  padding: 28px;
+  border-radius: 4px;
+  border-top-color: #fff;
+  background: linear-gradient(165deg, #fff, #f8faf8);
+  box-shadow: 0 6px 18px #20343d08;
+}
+.product-material-shell .product-card button,
+.product-material-shell .product-button {
+  border-radius: 3px;
+  font-weight: 500;
+}
+.product-material-shell .product-primary {
+  border-color: #203d4d;
+  color: #f2f7f9;
+  background: linear-gradient(180deg, #3d6477, #264858);
+  box-shadow:
+    inset 0 1px #adc5cf44,
+    0 3px 8px #1c354e20;
+}
+.product-material-shell .product-primary:hover {
+  background: #244454;
+}
+.product-material-shell .product-primary:disabled {
+  background: #69838e;
+  color: #e2e9ea;
+  box-shadow: none;
+}
+.product-material-shell .product-result h1 {
+  color: #24353e;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.product-material-shell .product-result-icon {
+  border-radius: 3px;
+  color: #365a61;
+  background: #edf3f0;
+  box-shadow: inset 0 1px #fff;
+}
+.product-material-shell .product-card code {
+  border-radius: 3px;
+  background: #eef2ef;
+  color: #28434d;
+}
+.product-material-shell .product-card :is([role='status'], [role='alert']) {
+  border-radius: 3px;
+}
 @media (max-width: 1000px) {
-  .vault-shell .product-header-inner {
+  :is(.vault-shell, .product-material-shell) .product-header-inner {
     width: calc(100% - 4rem);
   }
-  .vault-shell .product-origin {
+  :is(.vault-shell, .product-material-shell) .product-origin {
     padding-inline: 16px;
   }
 }
 @media (max-width: 760px) {
-  .vault-shell .product-material {
+  .product-material-shell .product-card {
+    padding: 20px;
+  }
+  :is(.vault-shell, .product-material-shell) .product-material {
     min-height: 160px;
     padding: 16px 0 30px;
   }
-  .vault-shell .product-header-inner {
+  :is(.vault-shell, .product-material-shell) .product-header-inner {
     width: calc(100% - 2rem);
     padding: 12px 16px;
     gap: 12px;
   }
-  .vault-shell .product-brand {
+  :is(.vault-shell, .product-material-shell) .product-brand {
     font-size: 13px;
   }
-  .vault-shell .product-origin {
+  :is(.vault-shell, .product-material-shell) .product-origin {
     flex: 1;
     padding-inline: 14px;
   }
-  .vault-shell .product-toolbar {
+  :is(.vault-shell, .product-material-shell) .product-toolbar {
     width: 100%;
     justify-content: flex-end;
     gap: 14px;
   }
-  .vault-shell .product-main {
+  :is(.vault-shell, .product-material-shell) .product-main {
     margin-top: 24px;
   }
-  .vault-shell .product-nav {
+  :is(.vault-shell, .product-material-shell) .product-nav {
     position: sticky;
     top: 0;
     z-index: 2;
@@ -935,18 +987,18 @@ a {
     padding: 6px;
     gap: 0;
   }
-  .vault-shell .product-nav a {
+  :is(.vault-shell, .product-material-shell) .product-nav a {
     padding: 10px 12px;
     font-size: 12px;
   }
-  .vault-shell .product-content > section {
+  :is(.vault-shell, .product-material-shell) .product-content > section {
     padding: 20px;
   }
-  .vault-shell .product-content > section,
-  .vault-shell .product-content > div.product-content {
+  :is(.vault-shell, .product-material-shell) .product-content > section,
+  :is(.vault-shell, .product-material-shell) .product-content > div.product-content {
     scroll-margin-top: 140px;
   }
-  .vault-shell .product-result-shell {
+  :is(.vault-shell, .product-material-shell) .product-result-shell {
     min-height: calc(100svh - 160px);
   }
 }

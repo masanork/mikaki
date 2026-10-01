@@ -92,7 +92,7 @@
   "enrollIntro": "招待コードを入力し、Passkeyを登録してください。",
   "enrollCompleteTitle": "mikaki 登録完了",
   "enrollCompleteHeading": "登録が完了しました",
-  "enrollCompleteBody": "Passkeyでmikakiにログインできます。",
+  "enrollCompleteBody": "アプリからPasskeyでサインインできます。",
   "enrollAdminLink": "招待管理へ",
   "logoutTitle": "ログアウト",
   "logoutBody": "このブラウザーのMikakiと連携アプリからログアウトします。",
