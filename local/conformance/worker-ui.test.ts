@@ -57,7 +57,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     const page = await browser.newPage();
     evidence = await startBrowserEvidence(page.context(), 'worker-ui');
     const errors: string[] = [];
-    let cueRequests = 0;
+
     let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -74,11 +74,11 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
           },
         });
       }
-      if (!location.search.includes('no-webgl')) return;
+      if (!location.search.includes('no-canvas')) return;
       const original = HTMLCanvasElement.prototype.getContext;
       Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
         value(this: HTMLCanvasElement, kind: string, ...args: unknown[]) {
-          return kind === 'webgl' ? null : Reflect.apply(original, this, [kind, ...args]);
+          return kind === '2d' ? null : Reflect.apply(original, this, [kind, ...args]);
         },
       });
     });
@@ -91,13 +91,6 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
             ? 'text/css; charset=utf-8'
             : 'text/javascript; charset=utf-8',
           body: scripts.get(url.pathname),
-        });
-        return;
-      }
-      if (url.pathname === '/login/cue') {
-        cueRequests += 1;
-        await route.fulfill({
-          json: { seed: (cueRequests === 1 ? 'c' : 'd').repeat(43), refresh_in_ms: 1_000 },
         });
         return;
       }
@@ -139,57 +132,59 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     });
 
     await page.goto('https://mikaki.test/login');
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);
-    assert.equal(await page.locator('.auth-origin-host').first().textContent(), 'mikaki.test');
-    assert.equal(await page.locator('.auth-origin-host').nth(1).textContent(), 'client.example');
-    assert.equal(await page.locator('.auth-session-tile').count(), 16);
-    await page.locator('.auth-session-cue[data-cue-live="true"]').waitFor();
-    const firstPattern = await page.locator('.auth-session-pattern').innerHTML();
+    assert.equal(await page.locator('.origin strong').first().textContent(), 'mikaki.test');
+    assert.equal(await page.locator('.origin strong').nth(1).textContent(), 'client.example');
+    assert.equal(await page.locator('#deny, .auth-brand, .auth-description').count(), 0);
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+    const firstStyle = await page
+      .locator('.auth-shell')
+      .evaluate((node) => (node as HTMLElement).style.getPropertyValue('--rp-hue'));
+    // Ambient motion must work with no pointer input.
+    const firstFrame = await page
+      .locator('canvas')
+      .evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
     await page.waitForFunction(
-      (oldPattern) => document.querySelector('.auth-session-pattern')?.innerHTML !== oldPattern,
-      firstPattern,
+      (oldFrame) =>
+        (document.querySelector('canvas') as HTMLCanvasElement)?.toDataURL() !== oldFrame,
+      firstFrame,
     );
-    assert.ok(cueRequests >= 2);
-    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
-    // A lost GPU context must leave the SVG and login controls available.
-    await page.locator('.auth-seal-light').evaluate((canvas) => {
-      canvas.dispatchEvent(new Event('webglcontextlost'));
-    });
-    await page.locator('.auth-seal[data-renderer="svg"]').waitFor();
+    await page
+      .locator('canvas')
+      .evaluate((canvas) => canvas.dispatchEvent(new Event('contextlost')));
+    await page.locator('.gate-background[data-renderer="css"]').waitFor();
     assert.equal(await page.locator('#passkey').isEnabled(), true);
-    const firstStyle = await page.locator('.auth-session-cue').getAttribute('style');
     await page.goto('https://mikaki.test/login?other-rp=1');
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
-    assert.notEqual(await page.locator('.auth-session-cue').getAttribute('style'), firstStyle);
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
+    assert.notEqual(
+      await page
+        .locator('.auth-shell')
+        .evaluate((node) => (node as HTMLElement).style.getPropertyValue('--rp-hue')),
+      firstStyle,
+    );
     await page.goto('https://mikaki.test/login');
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(
       await page
-        .locator('.auth-primary')
-        .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(23, 89, 173)',
+        .locator('.auth-shell')
+        .evaluate((node) => (node as HTMLElement).style.getPropertyValue('--rp-hue')),
+      firstStyle,
     );
     await page.goto('https://mikaki.test/login?pending-passkey=1');
-    await page.locator('.auth-seal-paused').waitFor();
-    assert.equal(
-      await page
-        .locator('.auth-seal-weave')
-        .evaluate((node) => getComputedStyle(node).animationPlayState),
-      'paused',
-    );
+    await page.locator('.auth-shell[data-paused="true"]').waitFor();
     await page.locator('#passkey').click();
     assert.equal(await page.locator('#passkey').isDisabled(), true);
-    assert.equal(await page.locator('.auth-seal-paused').count(), 1);
-    await page.goto('https://mikaki.test/login?no-webgl=1');
-    await page.locator('.auth-session-cue[data-cue-live="true"]').waitFor();
-    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
-    assert.equal(await page.locator('.auth-seal-weave path').count(), 24);
+    assert.equal(await page.locator('.auth-shell').getAttribute('data-paused'), 'true');
+    await page.goto('https://mikaki.test/login?no-canvas=1');
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
+    assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
+    await page.locator('summary').click();
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
     assert.equal(await page.getByLabel('招待コード').getAttribute('aria-invalid'), 'true');
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
-    await page.getByRole('button', { name: 'Allow and sign in with passkey' }).waitFor();
+    await page.getByRole('button', { name: 'Sign in with passkey' }).waitFor();
     assert.match(page.url(), /lang=en/);
     await page.setViewportSize({ width: 375, height: 812 });
     assert.equal(
@@ -199,29 +194,23 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/login?enroll=1');
     await page.getByRole('heading', { name: 'アカウントを登録' }).first().waitFor();
     assert.equal(await page.locator('#passkey').count(), 0);
+    assert.equal(await page.getByLabel('招待コード').isVisible(), true);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
-
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('https://mikaki.test/login');
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).waitFor();
-    assert.equal(await page.locator('.auth-session-cue').getAttribute('data-cue-live'), 'false');
-    assert.equal(await page.locator('.auth-seal').getAttribute('data-renderer'), 'svg');
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
+    await page.locator('.auth-shell[data-light-phase="still"]').waitFor();
+    const still = await page
+      .locator('canvas')
+      .evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+    await page.waitForTimeout(250);
     assert.equal(
-      await page
-        .locator('.auth-seal-weave')
-        .evaluate((node) => getComputedStyle(node).animationName),
-      'none',
-    );
-    assert.equal(
-      await page
-        .locator('.auth-session-tile')
-        .first()
-        .evaluate((node) => getComputedStyle(node).animationName),
-      'none',
+      await page.locator('canvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()),
+      still,
     );
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 

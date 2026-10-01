@@ -212,7 +212,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.getByRole('button', { name: '招待で登録する' }).waitFor();
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor),
-      'rgb(248, 249, 251)',
+      'rgb(7, 17, 28)',
     );
     await page.getByLabel('招待コード').fill(invitation);
     await page.getByRole('button', { name: '招待で登録する' }).click();
@@ -304,13 +304,13 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       await page
         .locator('.auth-primary')
         .evaluate((node) => getComputedStyle(node).backgroundColor),
-      'rgb(23, 89, 173)',
+      'rgba(0, 0, 0, 0)',
     );
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
     await page.getByRole('alert').waitFor();
     assert.ok(passkeyEvents.includes('passkey-test:auto-aborted'));
     assert.ok(passkeyEvents.includes('passkey-test:button-cancelled'));
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.ok(passkeyEvents.includes('passkey-test:button-retry'));
     const secondSso = (await context.cookies(issuer)).find(
@@ -376,10 +376,10 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       },
     ]);
     await page.goto(requiredHeader(afterLostResponse, 'location'));
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
     // The injected cancellation occurs on the first button attempt after every navigation.
     await page.getByRole('alert').waitFor();
-    await page.getByRole('button', { name: 'Passkeyで許可してログイン' }).click();
+    await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.deepEqual(errors, []);
   } catch (error) {
