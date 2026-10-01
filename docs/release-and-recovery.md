@@ -1,6 +1,6 @@
 # Release and recovery rehearsal
 
-Reviewed on 2026-09-30. This runbook separates verified local checks from production activation. It does not authorize a deployment or historical database restore. [Product quality](product-quality.md) retains the device, RP, operations and provenance gates.
+Reviewed on 2026-10-01. This runbook separates verified local checks from production activation. It does not authorize a deployment or historical database restore. [Product quality](product-quality.md) retains the device, RP, operations and provenance gates.
 
 ## Release inputs
 
@@ -12,10 +12,13 @@ The attested workflow already prepares the upload directory. After downloading a
 
 The prepared `op/bundle/shim.js` and `userinfo/bundle/shim.js` are the entrypoints for a reviewed `wrangler versions upload <entry> --no-bundle --config <production-config>` operation. The OP upload must preserve both `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN` using the reviewed `--secrets-file`; verify both Workers' binding inventories and version IDs before activation. Use a non-activating version upload first, then qualify and activate the exact IDs. [Wrangler documents](https://developers.cloudflare.com/workers/wrangler/commands/workers/) `versions upload` as uploading without immediate deployment, and `--no-bundle` as skipping its internal build. The local dry run checks that both generated bundles can be read with `--no-bundle`; no version was uploaded here. Record the hashes of the actual upload inputs and the Cloudflare-returned version IDs together. The preparer alone cannot attest the remote bytes or settings.
 
-In a clean checkout of the independently selected release commit, download the matching `attested-worker-<commit>` artifact into `artifacts/`. Set `release_commit` to that independently reviewed commit, then verify all four provenance subjects:
+In a clean checkout of the independently selected release commit, download the matching `attested-worker-<commit>` artifact into `artifacts/`. Set `release_commit` to that independently reviewed commit, then verify all five provenance subjects:
 
 ```sh
 gh attestation verify artifacts/release-manifest.json -R masanork/mikaki \
+  --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml \
+  --source-digest "$release_commit" --deny-self-hosted-runners
+gh attestation verify artifacts/login-assets.json -R masanork/mikaki \
   --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml \
   --source-digest "$release_commit" --deny-self-hosted-runners
 gh attestation verify artifacts/mikaki-worker.tar.gz -R masanork/mikaki \
@@ -102,3 +105,13 @@ This checks SQL/data compatibility and a local backup round trip. It does not em
 Before user activation, assign an operator and prove notification delivery for these signals: issuer/public-endpoint failure, schema-dependent login/token/session-check error rates, Vault object/digest failures, missing/corrupt active policy, absent signing/recipient keys or service bindings, and backlog/permanent failure/deadline exhaustion in the logout outbox. The outbox thresholds in [OIDC operations](oidc-operations.md) are design requirements; public smoke and this local rehearsal do not prove an alert is wired.
 
 For an incident, record environment/version, first/last affected timestamps, route/status/error class, active schema/policy revision, affected capability and containment/recovery decisions. Exclude cookies, tokens, assertions, plaintext notes and private keys. Retain sufficient independent revocation/audit evidence for the intended restore window. Qualification requires an injected failure reaching the responsible operator and a measured recovery/denial result, not only a dashboard screenshot.
+
+## Automatic production deployment
+
+On a push to `main`, `local-authentication-slice` waits for `verify` and the reusable signed `supply-chain-build` to succeed, then calls `deploy-production`. Pull requests and manual CI runs do not deploy. The deployment job downloads this run's `attested-worker-<commit>` artifact, verifies GitHub attestations against the exact source digest, `main` ref and supply-chain signer workflow, and rechecks the release and upload inventories. It promotes the prepared bundles with `--no-bundle`; it does not rebuild them.
+
+The GitHub `production` environment allows only the `main` branch. Its secrets are `CLOUDFLARE_API_TOKEN`, `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN`. The repository readiness secret is also used by the reusable public smoke workflow. These secrets are configured separately from source control. Main CI runs and production promotions are not cancelled by newer pushes; an older run skips promotion if application files have changed on main. The four metrics-bot output files are the only permitted newer changes because that bot's GITHUB_TOKEN commits do not trigger CI.
+
+Pending D1 migrations stop promotion before upload. Reconcile the schema using the reviewed migration/backup procedure in this runbook, then rerun the failed CI jobs. The flow stages both Workers, verifies their configured DB/R2/service/Secrets Store/runtime secret bindings, activates Claim Worker followed by OP at 100%, and synchronizes each production configuration's triggers. `production-deployment-<commit>-<attempt>` records previous deployments and which versions were activated, including partial failures. A failure does not automatically roll back either Worker or the database; use the recorded version IDs and the compatibility procedure in this runbook.
+
+The final reusable `production-smoke` job checks the exact OP version, clean source commit, signed login asset hashes, readiness, Discovery/JWKS and native association. A failed smoke marks CI red after activation and requires investigation; it does not qualify an owner Passkey ceremony or a completed relying-party login. Deployment and smoke artifacts are retained for 30 days.
