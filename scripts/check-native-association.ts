@@ -15,9 +15,11 @@ assert.deepEqual(JSON.parse(readFileSync('assetlinks.json', 'utf8')), [
     },
   },
 ]);
-assert.equal(readFileSync('native-callback-status.txt', 'utf8').trim(), '404');
+assert.equal(readFileSync('native-callback-status.txt', 'utf8').trim(), '303');
 assert.equal(readFileSync('native-authorize-status.txt', 'utf8').trim(), '404');
 const headers = readFileSync('native-callback-headers.txt', 'utf8');
+// The fallback must discard the one-use code/state and stay on the callback host.
+assert.match(headers, /^location:\s*\/native-link-help\s*$/im);
 assert.match(headers, /^cache-control:.*\bno-store\b/im);
 assert.match(headers, /^referrer-policy:\s*no-referrer\s*$/im);
 console.log(

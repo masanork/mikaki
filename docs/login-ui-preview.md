@@ -20,7 +20,7 @@ Tilt is offered on touch devices with an orientation API in a secure context. It
 
 [`auth.css`](../crates/worker/ui/auth.css) provides the login styles. To refresh the screenshots, build with `worker-build --release crates/worker`, then run `node docs/login-ui-preview/capture.mjs`. The capture uses the login CSP and checks browser exceptions and desktop/mobile horizontal overflow, including forced canvas unavailability and reduced motion. `node --test local/conformance/worker-ui.test.ts local/conformance/enrollment-browser.test.ts` checks stable connection identity, idle animation, Passkey pause, context-loss fallback, locales, validation, actual registration and sign-in through a virtual authenticator, and Vault PRF encryption. See [quality gates](product-quality.md) for the distinction between synthetic visual evidence and production/intended-device qualification.
 
-This gate design has been implemented and checked locally; it has not been deployed to production. The following record describes the preceding seal release.
+The gate design was activated on 2026-10-01 from merged PR #35. See the [activation record](cloudflare-deployment.md#woven-bamboo-login-gate-activation-2026-10-01) for the exact source/version and qualification limits. The following record describes the preceding seal release.
 
 The seal was activated in production on 2026-09-30. [Public smoke](https://github.com/masanork/mikaki/actions/runs/36688517696) matched both served login asset hashes and the clean source/version identity, with readiness 204. See the [activation record](cloudflare-deployment.md#procedural-login-seal-activation-2026-09-30) for the versions and verification limits.
 
