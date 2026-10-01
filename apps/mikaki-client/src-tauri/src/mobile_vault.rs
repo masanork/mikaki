@@ -13,8 +13,8 @@ use zeroize::Zeroizing;
 
 use crate::vault_dpop::{self, DpopKey};
 
-const CALLBACK: &str = "https://mikaki-native.tossa.app/oidc/native/callback";
-const TOKEN_ENDPOINT: &str = "https://mikaki.tossa.app/token";
+const CALLBACK: &str = "https://app.mikaki.org/oidc/native/callback";
+const TOKEN_ENDPOINT: &str = "https://auth.mikaki.org/token";
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 pub struct PendingVault {

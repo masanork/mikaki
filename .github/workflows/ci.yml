@@ -240,7 +240,7 @@ jobs:
     secrets: inherit
 
   production-smoke:
-    needs: deploy
+    needs: [deploy, deploy-website]
     if: needs.deploy.outputs.deployed == 'true'
     uses: ./.github/workflows/production-smoke.yml
     with:
@@ -250,3 +250,47 @@ jobs:
       expected_login_css_sha256: ${{ needs.deploy.outputs.login_css_sha256 }}
       expected_android_fingerprint: ${{ needs.deploy.outputs.android_fingerprint }}
     secrets: inherit
+
+  website:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build:website
+      - run: npm run check:website
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:website
+
+  deploy-website:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, dependency-advisories, website]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: production
+      url: https://mikaki.org
+    concurrency:
+      group: production-website
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build:website
+      - name: Deploy current website and app links
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/deploy-website.ts

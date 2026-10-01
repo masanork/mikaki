@@ -83,7 +83,7 @@ async function main() {
   validatePublicRecord(record);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   if (
-    config.name !== 'mikaki-userinfo-claim-worker' ||
+    config.name !== 'mikaki-auth-claims' ||
     config.workers_dev !== false ||
     config.preview_urls !== false ||
     config.secrets_store_secrets?.some(

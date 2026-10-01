@@ -18,8 +18,8 @@ test('production smoke records matching runtime identity and rejects a different
     writeFileSync(
       join(directory, 'discovery.json'),
       JSON.stringify({
-        issuer: 'https://mikaki.tossa.app',
-        jwks_uri: 'https://mikaki.tossa.app/jwks',
+        issuer: 'https://auth.mikaki.org',
+        jwks_uri: 'https://auth.mikaki.org/jwks',
       }),
     );
     writeFileSync(join(directory, 'jwks.json'), JSON.stringify({ keys: [{ kid: 'test' }] }));

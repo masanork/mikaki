@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-const issuer = 'https://mikaki.tossa.app';
+const issuer = 'https://auth.mikaki.org';
 assert.equal(readFileSync('health.txt', 'utf8'), 'ok');
 const discovery = JSON.parse(readFileSync('discovery.json', 'utf8')) as Record<string, unknown>;
 assert.equal(discovery.issuer, issuer);

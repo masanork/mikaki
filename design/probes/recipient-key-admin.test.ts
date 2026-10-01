@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
@@ -165,5 +168,53 @@ test('activation and rotation require verified bindings and update both keys ato
     );
   } finally {
     await proxy.dispose();
+  }
+});
+
+test('recipient management dry runs target the new dedicated remote claim service', async () => {
+  const root = new URL('../..', import.meta.url).pathname;
+  const configPath = join(root, 'crates/worker/wrangler.recipient-admin.jsonc');
+  const directory = await mkdtemp(join(tmpdir(), 'mikaki-claim-target-'));
+  try {
+    const run = (config: string, action: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          join(root, 'scripts/recipient-key-admin.ts'),
+          '--config',
+          config,
+          '--remote',
+          'yes',
+          '--action',
+          action,
+          '--key-id',
+          'a'.repeat(43),
+          '--actor',
+          'test',
+          '--reason',
+          'target preflight',
+          '--apply',
+          'no',
+        ],
+        { cwd: root, encoding: 'utf8' },
+      );
+    for (const action of ['verify', 'activate', 'rotate']) {
+      const result = run(configPath, action);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /"apply":"no"/);
+    }
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    for (const binding of [
+      { binding: 'USERINFO_CLAIMS', service: 'another-worker', remote: true },
+      { binding: 'USERINFO_CLAIMS', service: 'mikaki-auth-claims', remote: false },
+    ]) {
+      const invalid = join(directory, 'invalid.json');
+      await writeFile(invalid, JSON.stringify({ ...config, services: [binding] }));
+      const result = run(invalid, 'verify');
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /must remotely bind the dedicated claim Worker/);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

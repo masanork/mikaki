@@ -19,8 +19,8 @@ use zeroize::Zeroizing;
 
 use crate::{mobile_vault, vault_dpop};
 
-const ISSUER: &str = "https://mikaki.tossa.app";
-const CALLBACK: &str = "https://mikaki-native.tossa.app/oidc/native/callback";
+const ISSUER: &str = "https://auth.mikaki.org";
+const CALLBACK: &str = "https://app.mikaki.org/oidc/native/callback";
 const LOGIN_LIFETIME: Duration = Duration::from_secs(180);
 
 pub struct MobileAuthState {
@@ -502,7 +502,7 @@ mod tests {
     #[test]
     fn app_link_is_exact_and_transaction_bound() {
         let valid = Url::parse(&format!(
-            "https://mikaki-native.tossa.app/oidc/native/callback?code={CODE}&state=expected&iss=https%3A%2F%2Fmikaki.tossa.app"
+            "https://app.mikaki.org/oidc/native/callback?code={CODE}&state=expected&iss=https%3A%2F%2Fauth.mikaki.org"
         ))
         .unwrap();
         assert_eq!(parse_callback(&valid, "expected"), Ok(Some(CODE.into())));
@@ -510,11 +510,11 @@ mod tests {
             valid.as_str().replace("state=expected", "state=other"),
             valid
                 .as_str()
-                .replace("mikaki.tossa.app/oidc", "evil.example/oidc"),
+                .replace("app.mikaki.org/oidc", "evil.example/oidc"),
             valid
                 .as_str()
                 .replace("/oidc/native/callback", "/oidc/native/other"),
-            format!("{}&iss=https%3A%2F%2Fmikaki.tossa.app", valid),
+            format!("{}&iss=https%3A%2F%2Fauth.mikaki.org", valid),
         ] {
             assert!(parse_callback(&Url::parse(&uri).unwrap(), "expected").is_err());
         }

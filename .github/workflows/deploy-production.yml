@@ -26,7 +26,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'masanork/mikaki'
     environment:
       name: production
-      url: https://mikaki.tossa.app
+      url: https://auth.mikaki.org
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:

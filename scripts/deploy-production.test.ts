@@ -14,8 +14,8 @@ test('activation requires all configured native, Vault and runtime secret bindin
   const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
   const bindings: Record<string, unknown>[] = [
     { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
-    { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-vault' },
-    { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-userinfo-claim-worker' },
+    { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
+    { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
@@ -60,8 +60,8 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
       script_runtime: { compatibility_date: config.compatibility_date },
       bindings: [
         { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
-        { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-vault' },
-        { name: 'MIKAKI_ISSUER', type: 'plain_text', text: 'https://mikaki.tossa.app' },
+        { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
+        { name: 'MIKAKI_ISSUER', type: 'plain_text', text: 'https://auth.mikaki.org' },
         {
           name: 'VAULT_USERINFO_MLKEM_A',
           type: 'secrets_store_secret',

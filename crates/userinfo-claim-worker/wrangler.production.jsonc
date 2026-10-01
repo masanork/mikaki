@@ -1,20 +1,27 @@
 {
-  "name": "mikaki-userinfo-claim-worker",
+  "name": "mikaki-auth-claims",
   "main": "build/worker/shim.mjs",
   "account_id": "4b749427a0c80c547e726a42aff4b6fc",
   "compatibility_date": "2026-09-23",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "MIKAKI_ISSUER": "https://mikaki.tossa.app" },
+  "vars": {
+    "MIKAKI_ISSUER": "https://auth.mikaki.org"
+  },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mikaki-op",
-      "database_id": "f84e650a-b4d9-42a1-9ccd-6d1b27ca74a1",
+      "database_name": "mikaki-auth",
+      "database_id": "f9299d62-2dbf-4bae-ae49-8b75674572d4",
       "remote": true
     }
   ],
-  "r2_buckets": [{ "binding": "VAULT_BLOBS", "bucket_name": "mikaki-vault" }],
+  "r2_buckets": [
+    {
+      "binding": "VAULT_BLOBS",
+      "bucket_name": "mikaki-auth-vault"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

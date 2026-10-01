@@ -31,7 +31,7 @@ console.log(
 const registration = JSON.parse(
   readFileSync('apps/mikaki-client/mobile-client-registration.json', 'utf8'),
 );
-const issuer = 'https://mikaki.tossa.app';
+const issuer = 'https://auth.mikaki.org';
 const authorize = new URL(`${issuer}/authorize`);
 const random = () => randomBytes(32).toString('base64url');
 for (const [name, value] of Object.entries({

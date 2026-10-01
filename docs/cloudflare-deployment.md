@@ -1,6 +1,6 @@
 # Cloudflare deployment
 
-The normal-profile issuer is `https://mikaki.tossa.app`. Its Worker and D1 are configured in [`crates/worker/wrangler.production.jsonc`](../crates/worker/wrangler.production.jsonc). The production deployment defaults to `normal`; the conformance profile must use a different Worker, issuer, D1, and signing key.
+The normal-profile issuer is `https://auth.mikaki.org`. See [production domains](production-domains.md) for the new deployment and preserved tossa.app test environment. Its Worker and D1 are configured in [`crates/worker/wrangler.production.jsonc`](../crates/worker/wrangler.production.jsonc). The production deployment defaults to `normal`; the conformance profile must use a different Worker, issuer, D1, and signing key.
 
 The initial D1 migration, generation 1 runtime policy, and ES256 public signing key were applied on 2026-09-23. The signing private JWK is a Worker secret, not a repository file. The ignored local secret file is `local/generated/mikaki-production-secrets.json` and must remain mode 0600. Preserve it securely for future deployments or rotate the key with an overlapping public key before replacement.
 
@@ -24,7 +24,7 @@ OP Worker version `4046b879-ae02-4b7d-9600-b5dc01827ddf` added a public issuer e
 
 Later on 2026-09-27, a narashi RP login exposed three pending production D1 migrations: `0011_issued_id_token_hash.sql`, `0012_client_logout_registration.sql`, and `0013_logout_outbox.sql`. The deployed token exchange writes `token_issue.id_token_hash`, so leaving `0011` unapplied could fail the code exchange. A D1 Time Travel bookmark was recorded before applying all three migrations. `wrangler d1 migrations list` then reported no pending migrations, and the client administration list confirmed narashi's active client, exact callback, and key. A fresh browser path reached the Mikaki login page from narashi; passkey completion and the RP callback still require an owner browser check.
 
-## Current production snapshot (checked 2026-10-01)
+## Previous tossa.app test snapshot (checked 2026-10-01)
 
 The latest OP version is `8fee7db9-d981-444f-881d-5b6c63e9437b`, following the woven-gate race fix below. The Claim Worker remains `381f73cf-94b2-4b1c-b7e7-28a35560cea3`. [Version-matched public smoke](https://github.com/masanork/mikaki/actions/runs/36805542337) passed readiness, Discovery/JWKS, login asset digests, Android association, the code-free callback fallback, callback-host authorization isolation and mobile authorization entry. These probes do not authenticate an owner.
 
@@ -43,11 +43,12 @@ git status --short
 git rev-parse HEAD
 test -f crates/worker/migrations/0029_native_vault_token_context.sql
 rg -q 'MIKAKI_READY_TOKEN' crates/worker/wrangler.production.jsonc
-rg -q 'mikaki-native.tossa.app' crates/worker/wrangler.production.jsonc
+rg -q 'auth.mikaki.org' crates/worker/wrangler.production.jsonc
+rg -q 'app.mikaki.org' website/wrangler.app.jsonc
 MIKAKI_SECRETS_FILE=local/generated/mikaki-production-secrets.json
 test -f "$MIKAKI_SECRETS_FILE"
 npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
-npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations list mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 ```
 
 The `--secrets-file` argument is required here. A deploy without it produced a version whose binding list omitted `OP_PRIVATE_JWK`. The current production config declares both `OP_PRIVATE_JWK` and `MIKAKI_READY_TOKEN` as required. Generate a separate 32-byte base64url monitoring token (`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`), place it alongside `OP_PRIVATE_JWK` in the ignored, mode-0600 secret JSON, and provision the identical value as the GitHub Actions repository secret `MIKAKI_READY_TOKEN` before using version-aware production smoke. Keep it out of `vars`, URLs, logs and release artifacts. Check the deployed binding inventory for both secret names before activation; if either value is missing or malformed, `/ready` fails closed. Rotate both copies together and rerun version-aware smoke.
@@ -55,13 +56,13 @@ The `--secrets-file` argument is required here. A deploy without it produced a v
 Review any pending migration against the code and active Worker. Take and record a fresh D1 [Time Travel bookmark](https://developers.cloudflare.com/d1/reference/time-travel/) immediately before a migration. Apply migrations with the production config and `--remote` **only if** the list shows pending files, then confirm it is empty. Migrations change production D1 independently of the Worker and can affect the old version before the deploy.
 
 ```sh
-npx wrangler d1 time-travel info mikaki-op --config crates/worker/wrangler.production.jsonc
+npx wrangler d1 time-travel info mikaki-auth --config crates/worker/wrangler.production.jsonc
 # Only when the preceding list showed reviewed, pending migrations:
-npx wrangler d1 migrations apply mikaki-op --config crates/worker/wrangler.production.jsonc --remote
-npx wrangler d1 migrations list mikaki-op --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations apply mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
+npx wrangler d1 migrations list mikaki-auth --config crates/worker/wrangler.production.jsonc --remote
 ```
 
-Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
+Build and run a dry run from that same commit. Confirm the output lists D1, R2, service, issuer, version metadata, `OP_PRIVATE_JWK`, and `MIKAKI_READY_TOKEN` bindings, plus the auth Custom Domain; the separate website configuration owns the native callback Custom Domain. A dry run checks the bundle and declared bindings, not remote secret correctness or runtime behavior.
 
 ```sh
 design/probes/workers-rs/target/tools/bin/worker-build --release crates/worker
@@ -80,14 +81,14 @@ npx wrangler deployments list --config crates/worker/wrangler.production.jsonc
 Check public endpoints from a network that can reach the issuer. From this local network, TLS connections have reset before the certificate arrived; use the [manual production smoke workflow](../.github/workflows/production-smoke.yml) and save its run URL if that recurs. A passed public smoke check does not establish that login works.
 
 ```sh
-curl -fsS https://mikaki.tossa.app/health
-curl -fsS https://mikaki.tossa.app/.well-known/openid-configuration
-curl -fsS https://mikaki.tossa.app/jwks
+curl -fsS https://auth.mikaki.org/health
+curl -fsS https://auth.mikaki.org/.well-known/openid-configuration
+curl -fsS https://auth.mikaki.org/jwks
 ```
 
 After activating a version with the `CF_VERSION_METADATA` binding, fetch `/version` and compare its Cloudflare version ID and clean source commit with the activation record and verified release manifest. Check authenticated `/ready` for 204 before functional qualification; missing or incorrect bearer credentials receive 404 before dependency checks. Readiness checks policy, migration, signing-key alignment and essential bindings but cannot replace an actual Vault/RP flow. The [manual production smoke workflow](../.github/workflows/production-smoke.yml) accepts both expected values and retains the version/readiness comparison result. A response from `/version` identifies the running source revision, not the digest of the uploaded Worker bytes; record that mapping separately as described in [release and recovery](release-and-recovery.md). The recorded native-enabled production version provides both endpoints.
 
-The recorded deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
+The retained tossa.app test deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
 ## Local changes awaiting activation
 

@@ -49,7 +49,7 @@ register a public desktop client with a separate client ID, sector
 command and input format are in the architecture review. The client ID is
 public but must match the registration. Set `MIKAKI_DESKTOP_CLIENT_ID` in the
 build environment, then build from `src-tauri` with `cargo check` or the Tauri
-CLI. The issuer is pinned to `https://mikaki.tossa.app`.
+CLI. The issuer is pinned to `https://auth.mikaki.org`.
 
 The desktop login requires an installed OP with the matching client
 registration, a system browser, a Passkey, and a local loopback listener. A
@@ -67,9 +67,9 @@ app return, and cancellation are verified on a signed Pixel build; the remaining
 device cases are open. See the [App Links recovery record](../../docs/native-client-activation.md#android-app-links-recovery-observed-on-2026-10-01)
 for a device setting that prevented callback delivery despite domain verification.
 
-Register a separate public mobile client with sector `mikaki-native.tossa.app` and
-exact redirect URI `https://mikaki-native.tossa.app/oidc/native/callback`.
-The authorization server remains `https://mikaki.tossa.app`; the callback
+Register a separate public mobile client with sector `app.mikaki.org` and
+exact redirect URI `https://app.mikaki.org/oidc/native/callback`.
+The authorization server remains `https://auth.mikaki.org`; the callback
 host is separate so Safari can open its Universal Link from the authorization
 site. Set its
 public ID as `MIKAKI_MOBILE_CLIENT_ID` **when compiling the Rust app**. The
@@ -79,7 +79,7 @@ with `MIKAKI_IOS_TEAM_ID` (the ten-character Apple Developer Team ID) and
 fingerprint of the Android distribution signing certificate). Each
 `/.well-known/` association response is 404 until its corresponding valid
 value is configured. It must be publicly reachable over HTTPS on
-`mikaki-native.tossa.app`; redirects or a mismatched signing identity will prevent
+`app.mikaki.org`; redirects or a mismatched signing identity will prevent
 the OS from delivering the callback. That hostname was deployed as a second
 Custom Domain on 2026-09-30. Its Android association uses the dedicated local
 verification certificate; Apple association still awaits a Team ID. The mobile
@@ -102,7 +102,7 @@ the browser already has an SSO session. It does not select an authenticator
 or bypass user verification. Leave the variable unset in normal builds to
 retain browser SSO. The flag applies to mobile authorization requests only.
 
-The generated iOS entitlement contains `applinks:mikaki-native.tossa.app`. A signed
+The generated iOS entitlement contains `applinks:app.mikaki.org`. A signed
 physical-device build also needs an Apple development team and an association
 response containing that team's app identifier. This checkout has neither a
 signing certificate nor a configured team ID. The iPhoneOS Rust/Swift target
