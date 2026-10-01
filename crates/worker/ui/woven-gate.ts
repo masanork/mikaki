@@ -259,7 +259,13 @@ export function createWovenGate(
 
   function tick(time: number) {
     raf = 0;
-    if (destroyed || document.hidden || busy || reduced.matches) return;
+    if (destroyed || document.hidden || busy) return;
+    if (reduced.matches) {
+      // The preference can change before its media-query notification arrives.
+      // Commit the static lighting frame before ending the animation loop.
+      draw(animationTime);
+      return;
+    }
     if (time - last >= 42) {
       animationTime += Math.min(time - last, 100);
       x += (tx - x) * 0.2;

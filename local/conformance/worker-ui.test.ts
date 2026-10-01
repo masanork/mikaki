@@ -61,6 +61,17 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
+      if (location.search.includes('silent-motion-change')) {
+        const original = window.matchMedia.bind(window);
+        window.matchMedia = (query) => {
+          const media = original(query);
+          if (query === '(prefers-reduced-motion: reduce)') {
+            // Exercise a preference observed by RAF before a change notification.
+            media.addEventListener = () => {};
+          }
+          return media;
+        };
+      }
       if (location.search.includes('early-pointer')) {
         // Deliver a pointer event before the renderer's first size notification.
         // A zero-size callback also occurs when the login scene is removed quickly.
@@ -334,6 +345,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     );
     await page.goto('https://other.test/?lang=en');
     await page.getByRole('heading', { name: 'Sign in from your app' }).waitFor();
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
     assert.equal(await page.locator('.plate .origin strong').textContent(), 'other.test');
     assert.notEqual(
       await page
@@ -344,6 +356,23 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.waitForFunction(
       () => document.querySelector('.auth-shell')?.getAttribute('data-light-phase') === 'still',
+    );
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('https://mikaki.test/?silent-motion-change=1');
+    await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
+    await page.waitForFunction(() => {
+      const phase = document.querySelector('.auth-shell')?.getAttribute('data-light-phase');
+      return phase !== null && phase !== undefined && phase !== 'still';
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.locator('.auth-shell[data-light-phase="still"]').waitFor();
+    const reducedFrame = await page
+      .locator('canvas')
+      .evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.locator('canvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()),
+      reducedFrame,
     );
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(
