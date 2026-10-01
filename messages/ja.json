@@ -21,15 +21,15 @@
   "homeBody": "ログインは、利用する連携先アプリから始めてください。接続先を確認するログイン画面が開きます。",
   "homeInvite": "招待コードをお持ちの方は、アカウント登録へ進めます。",
   "homeEnroll": "招待コードで登録する",
-  "authOriginLabel": "このページのドメイン",
-  "authRpOriginLabel": "接続先のドメイン",
+  "authOriginLabel": "このページ",
+  "authRpOriginLabel": "接続先",
   "authOriginHint": "ブラウザーのアドレスバーで確認してください。",
   "authCheckApp": "接続先を確認して、パスキーで続けてください。",
-  "authRegisterHeading": "はじめて利用する方",
+  "authRegisterHeading": "招待で登録",
   "authInviteHelp": "招待コードを受け取った方は、ここからアカウントを登録できます。",
   "inviteRequired": "招待コードを入力してください。",
   "loginConsentDescription": "この接続先へアカウント識別子を共有してログインします。",
-  "loginAuthorize": "Passkeyで許可してログイン",
+  "loginAuthorize": "Passkeyでサインイン",
   "loginDeny": "連携しない",
   "parInvalidTitle": "無効な認可リクエスト",
   "parMissingBody": "このリンクには事前登録された認可リクエストがありません。アプリに戻って最初からやり直してください。",
@@ -311,5 +311,7 @@
   "productConnections": "連携",
   "productNameSharing": "名前の共有",
   "productConnectionsEmpty": "利用できる連携はまだありません。",
-  "productReload": "読み込みを再試行"
+  "productReload": "読み込みを再試行",
+  "authTilt": "傾き",
+  "authTiltUnavailable": "この端末では傾きを利用できません。"
 }

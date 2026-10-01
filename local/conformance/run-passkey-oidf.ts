@@ -187,7 +187,18 @@ try {
             ) {
               console.log('leaving first login visit unauthenticated');
             } else if (name === 'fapi2-security-profile-final-user-rejects-authentication') {
-              await page.locator('#deny').click();
+              // The minimal login UI has no rejection button; exercise the protocol endpoint.
+              await page.evaluate(async () => {
+                const tx = document.getElementById('app')?.dataset['tx'];
+                const result = await fetch('/login/deny', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ tx }),
+                });
+                if (!result.ok) throw new Error('Authentication rejection failed');
+                const body = (await result.json()) as { location: string };
+                location.assign(body.location);
+              });
               await page.waitForURL((target) => target.pathname !== '/login', { timeout: 30_000 });
             } else {
               await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {

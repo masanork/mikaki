@@ -1,4 +1,52 @@
 :root {
+  font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif;
+  color: #16243a;
+  background: #f8f9fb;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+/* Shared page foundation and brand sizing are independent of the login scene. */
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.auth-mark {
+  display: inline-block;
+  flex: none;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 24%;
+  background: linear-gradient(135deg, #173c59, #081b2d);
+}
+.auth-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+:root {
   --product-ink: #162b46;
   --product-muted: #586b80;
   --product-line: #dce5ef;

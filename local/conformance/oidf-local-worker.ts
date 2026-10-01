@@ -229,7 +229,7 @@ try {
     assert.match(loginHtml, /src="\/login\/login\.js"/);
     const loginScript = await worker.fetch(new URL('/login/login.js', issuer));
     assert.equal(loginScript.status, 200);
-    assert.match(await loginScript.text(), /Allow and sign in with passkey/);
+    assert.match(await loginScript.text(), /Sign in with passkey/);
     const tx = loginUrl.searchParams.get('tx');
     const cueUrl = new URL(`/login/cue?tx=${tx}`, issuer);
     const cue = await worker.fetch(cueUrl, { headers: { cookie: browserCookie } });

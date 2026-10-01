@@ -1,11 +1,10 @@
 <script lang="ts">
-  import BrandMark from './BrandMark.svelte';
   import { publishVaultLock } from './session-events.js';
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
-  import SessionCue from './SessionCue.svelte';
-  import LivingSeal from './LivingSeal.svelte';
+  import WovenGate from './WovenGate.svelte';
+  import { weaveProfile } from './woven-gate.js';
   import type { Locale } from './paraglide/runtime.js';
 
   let {
@@ -15,7 +14,6 @@
     rpUri,
     client,
     enrollment,
-    ownerLogin,
     locale,
   }: {
     tx: string;
@@ -28,13 +26,18 @@
     locale: Locale;
   } = $props();
   let busy = $state(false);
-  let sealSeed = $state('');
+  const page = new URL(location.href);
+  const destination = $derived(new URL(rpUri));
+  const pageProfile = weaveProfile(page.origin);
+  const rpProfile = $derived(weaveProfile(destination.origin));
   let passkeyPending = $state(false);
   let errorKind = $state<'required' | 'operation' | null>(null);
   let invitation = $state('');
+  let registrationOpen = $state(false);
   let authentication: AbortController | null = null;
 
   onMount(() => {
+    registrationOpen = enrollment;
     if (!enrollment && typeof PublicKeyCredential !== 'undefined') void authenticate(true);
     return () => authentication?.abort();
   });
@@ -109,35 +112,6 @@
       passkeyPending = false;
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
-      busy = false;
-    }
-  }
-
-  async function deny(): Promise<void> {
-    if (busy || enrollment || ownerLogin) return;
-    authentication?.abort();
-    authentication = null;
-    passkeyPending = false;
-    busy = true;
-    errorKind = null;
-    try {
-      const result = await fetch('/login/deny', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tx }),
-      });
-      if (!result.ok) throw new Error('rejected');
-      const body: unknown = await result.json();
-      if (
-        typeof body !== 'object' ||
-        body === null ||
-        !('location' in body) ||
-        typeof body.location !== 'string'
-      )
-        throw new Error('invalid response');
-      location.assign(body.location);
-    } catch {
-      errorKind = 'operation';
       busy = false;
     }
   }
@@ -222,144 +196,94 @@
   }
 </script>
 
-<div class="auth-shell">
-  <section class="auth-story" aria-labelledby="auth-title">
-    <header class="auth-header">
-      <div class="auth-brand" aria-label="mikaki">
-        <BrandMark />
-        mikaki
-      </div>
-      <span class="auth-header-tag" aria-hidden="true">IDENTITY</span>
-    </header>
-    <div class="auth-intro">
-      <p class="auth-kicker">
-        <span class="auth-kicker-line" aria-hidden="true"></span>{m.authKicker()}
-      </p>
-      <h1 id="auth-title">{m.authHeroHeadingFirst()}<br />{m.authHeroHeadingSecond()}</h1>
-      <p class="auth-hero-description">{m.authHeroDescription()}</p>
-      <SessionCue
-        seed={tx}
-        cueUrl={`/login/cue?tx=${encodeURIComponent(tx)}`}
-        pageUri={location.href}
-        {rpUri}
-        pageLabel={m.authOriginLabel()}
-        rpLabel={m.authRpOriginLabel()}
-        hint={m.authOriginHint()}
-        onSeed={(value) => {
-          if (!busy && !passkeyPending) sealSeed = value;
-        }}
-      />
-    </div>
-    <LivingSeal
-      seed={sealSeed || tx}
-      pageOrigin={location.origin}
-      rpOrigin={new URL(rpUri).origin}
-      paused={busy || passkeyPending}
+{#snippet invitationForm()}
+  <label class="invite" for="invitation"
+    >{m.invite()}
+    <input
+      id="invitation"
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      aria-describedby={errorKind === 'required' ? 'invite-error' : undefined}
+      aria-invalid={errorKind === 'required'}
+      oninput={() => {
+        if (errorKind === 'required') errorKind = null;
+      }}
+      bind:value={invitation}
     />
-    <p class="auth-story-footer">MIKAKI <span aria-hidden="true">/</span> PASSKEY IDENTITY</p>
-  </section>
+  </label>
+  {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
+      {m.inviteRequired()}
+    </p>{/if}
+  <button class="quiet" id="register" type="button" disabled={busy} onclick={register}
+    >{busy ? m.busy() : m.register()}</button
+  >
+  <p class="recovery">{m.recovery()}</p>
+{/snippet}
 
-  <div class="auth-workspace">
-    <div class="auth-toolbar">
-      <label class="auth-language">
-        <span>{m.language()}</span>
-        <select
-          aria-label={m.language()}
-          value={locale}
-          onchange={(event) => switchLocale(event.currentTarget.value)}
-        >
-          <option value="ja">日本語</option>
-          <option value="en">English</option>
-        </select>
-      </label>
+<div
+  class="auth-shell"
+  class:busy
+  class:enrollment
+  style={`--page-hue:${pageProfile.hue};--rp-hue:${rpProfile.hue}`}
+>
+  <div class="shade" aria-hidden="true"></div>
+  <div class="plate">
+    <div class="item"><span>{m.app()}</span><strong>{client}</strong></div>
+    <div
+      class="item origin"
+      style={`--grain-step:${pageProfile.spacing / 2}px;--grain-angle:${pageProfile.grainAngle}deg`}
+    >
+      <span>{m.authOriginLabel()}</span><strong>{page.host}</strong>
     </div>
-
-    <main class="auth-layout">
-      <section class="auth-card" aria-labelledby="auth-action-title">
-        <div class="auth-card-overline">
-          <span class="auth-card-overline-dot"></span> MIKAKI ACCOUNT
-        </div>
-        {#if enrollment}
-          <h2 id="auth-action-title">{m.enrollHeading()}</h2>
-          <p class="auth-card-lead" id="invite-help">{m.authInviteHelp()}</p>
-        {:else}
-          <h2 id="auth-action-title">{m.login()}</h2>
-          <p class="auth-card-lead">{ownerLogin ? m.agentOwnerLoginLead() : m.authCheckApp()}</p>
-          <div class="auth-client">
-            <span class="auth-client-icon" aria-hidden="true"
-              >{client.slice(0, 1).toUpperCase()}</span
-            >
-            <span class="auth-client-details">
-              <span class="auth-client-label">{m.app()}</span>
-              <strong class="auth-client-name">{client}</strong>
-            </span>
-          </div>
-          <p class="auth-description">
-            {ownerLogin ? m.agentOwnerLoginDescription() : m.loginConsentDescription()}
-          </p>
-          <button
-            class="auth-primary"
-            id="passkey"
-            type="button"
-            disabled={busy}
-            onclick={() => authenticate()}
-          >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="2" />
-              <path
-                d="m12 12 8 8m-3-3 2-2"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-            <span
-              >{busy ? m.busy() : ownerLogin ? m.agentOwnerLoginAction() : m.loginAuthorize()}</span
-            >
-            <span class="auth-button-arrow" aria-hidden="true">→</span>
-          </button>
-          {#if !ownerLogin}
-            <button class="auth-secondary" id="deny" type="button" disabled={busy} onclick={deny}>
-              <span>{m.loginDeny()}</span><span aria-hidden="true">→</span>
-            </button>
-          {/if}
-          <div class="auth-separator" aria-hidden="true"><span></span><i></i><span></span></div>
-          <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
-          <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
-        {/if}
-        <label class="auth-field" for="invitation">
-          {m.invite()}
-          <input
-            id="invitation"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            aria-describedby={errorKind === 'required' ? 'invite-help invite-error' : 'invite-help'}
-            aria-invalid={errorKind === 'required'}
-            oninput={() => {
-              if (errorKind === 'required') errorKind = null;
-            }}
-            bind:value={invitation}
-          />
-        </label>
-        {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
-            {m.inviteRequired()}
-          </p>{/if}
+    <div
+      class="item origin destination"
+      style={`--grain-step:${rpProfile.spacing / 2}px;--grain-angle:${rpProfile.grainAngle}deg`}
+    >
+      <span>{m.authRpOriginLabel()}</span><strong>{destination.host}</strong>
+    </div>
+  </div>
+  <main class="entry">
+    <h1 class="sr-only">{enrollment ? m.enrollHeading() : m.login()}</h1>
+    {#if enrollment}
+      <section class="registration enrollment-form" aria-label={m.enrollHeading()}>
+        {@render invitationForm()}
+      </section>
+    {:else}
+      <div class="bolt">
+        <span class="saddle left" aria-hidden="true"></span><span
+          class="saddle right"
+          aria-hidden="true"
+        ></span>
         <button
-          class="auth-secondary"
-          id="register"
+          class="passkey auth-primary"
+          id="passkey"
           type="button"
           disabled={busy}
-          onclick={register}
-          ><span>{busy ? m.busy() : m.register()}</span><span aria-hidden="true">↗</span></button
+          onclick={() => authenticate()}>{busy ? m.busy() : m.loginAuthorize()}</button
         >
-        <p class="auth-note">{m.recovery()}</p>
-        {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
-            {m.error()}
-          </p>{/if}
-      </section>
-    </main>
-    <footer class="auth-footer">© mikaki</footer>
-  </div>
+      </div>
+    {/if}
+    {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
+        {m.error()}
+      </p>{/if}
+  </main>
+  <footer>
+    {#if !enrollment}<details class="registration" bind:open={registrationOpen}>
+        <summary>{m.authRegisterHeading()}</summary>
+        {@render invitationForm()}
+      </details>{/if}
+    <WovenGate
+      pageOrigin={page.origin}
+      rpOrigin={destination.origin}
+      paused={busy || passkeyPending}
+    />
+    <select
+      class="language"
+      aria-label={m.language()}
+      value={locale}
+      onchange={(event) => switchLocale(event.currentTarget.value)}
+      ><option value="ja">日本語</option><option value="en">English</option></select
+    >
+  </footer>
 </div>
