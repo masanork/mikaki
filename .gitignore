@@ -26,3 +26,4 @@
 **/node_modules
 **/pkg
 **/pkg-web
+**/target
