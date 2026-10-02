@@ -154,6 +154,7 @@ jobs:
           cargo audit --file design/probes/pqc/Cargo.lock
           npm audit --prefix design/probes --audit-level=low
           npm audit --audit-level=low
+          npm sbom --sbom-format=cyclonedx --sbom-type=application > /dev/null
 
   worker-browser:
     if: github.event_name == 'pull_request'

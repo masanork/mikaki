@@ -14,3 +14,5 @@ npm run test:website
 The same build also emits the existing app-domain assets; app callback handling and the authentication Worker are separate. Deploy only the public site with `node_modules/.bin/wrangler deploy --config website/wrangler.jsonc`. The main-branch CI deployment continues to deploy both public domains.
 
 Sorane's optional Mermaid dependency versions are overridden to audited releases. Diagram rendering is not used by this site.
+
+ZenUML’s optional Playwright peer is aligned with the project’s Playwright 1.63.0 via a scoped override. Without it, npm accepts the optional peer mismatch at install time but fails `npm sbom`. The dependency CI job also generates an SBOM to catch this before merging.
