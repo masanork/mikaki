@@ -91,7 +91,11 @@
   let status = $state(m.vaultLoading());
   let shareStatus = $state('');
   let releaseStatus = $state('');
-  let activeSection = $state(location.hash.slice(1) || 'profile');
+  const oauthRequested = new URL(location.href).searchParams.has('agent_oauth_request');
+  const initialSection = location.hash.slice(1) || (oauthRequested ? 'connections' : 'profile');
+  let activeSection = $state(initialSection);
+  let connectionsExpanded = $state(initialSection === 'connections' || oauthRequested);
+  let securityExpanded = $state(location.hash === '#security');
   const dirty = $derived(pending !== null || (opened && name !== originalName));
 
   function errorMessage(error: unknown, fallback: string): string {
@@ -600,6 +604,8 @@
 <svelte:window
   onhashchange={() => {
     activeSection = location.hash.slice(1) || 'profile';
+    if (activeSection === 'connections') connectionsExpanded = true;
+    if (activeSection === 'security') securityExpanded = true;
   }}
 />
 <div class="vault-shell">
@@ -624,10 +630,14 @@
         >
         <a
           href="#connections"
+          onclick={() => (connectionsExpanded = true)}
           aria-current={activeSection === 'connections' ? 'location' : undefined}
           >{m.productSharing()}</a
         >
-        <a href="#security" aria-current={activeSection === 'security' ? 'location' : undefined}
+        <a
+          href="#security"
+          onclick={() => (securityExpanded = true)}
+          aria-current={activeSection === 'security' ? 'location' : undefined}
           >{m.productSecurity()}</a
         >
       </nav>
@@ -697,98 +707,105 @@
             }}
           />
         </div>
-        <div id="connections" class="product-content">
-          {#if sharing?.enabled && current}
-            <section aria-label={m.productSharing()}>
-              <h2>{m.productSharing()}</h2>
-              <p>
-                {m.vaultShareExplanation({
-                  expiry: new Date(
-                    sharing.active && sharing.expires_at
-                      ? sharing.expires_at * 1000
-                      : Date.now() + sharing.grant_ttl_seconds * 1000,
-                  ).toLocaleString(locale),
-                })}
-              </p>
-              <p role="status">{shareStatus}</p>
-              {#if sharing.active}
-                <p>{m.vaultShareActive()}</p>
-                <button
-                  type="button"
-                  disabled={!opened || busy || transferBusy || pending !== null}
-                  onclick={() => changeShare('DELETE')}>{m.vaultShareRevoke()}</button
-                >
-              {:else}
-                <button
-                  type="button"
-                  disabled={!opened || busy || transferBusy || pending !== null}
-                  onclick={() => changeShare('POST')}>{m.vaultShare()}</button
-                >
-              {/if}
-            </section>
-          {/if}
-          <AgentPanel
-            onBusy={(value) => {
-              agentBusy = value;
-            }}
-            {opened}
-            sourceRevision={current?.revision ?? 0}
-            ownerId={accountId}
-            loadName={exportSavedName}
-            {noteRevision}
-            {locale}
-            credentialId={sessionCredential}
-            evaluatePrf={prf}
-          />
-          {#if releases?.enabled && releases.clients.length > 0}
-            <section aria-label={m.vaultReleaseHeading()}>
-              <h2>{m.vaultReleaseHeading()}</h2>
-              <p>{m.vaultReleaseExplanation()}</p>
-              <p role="status">{releaseStatus}</p>
-              {#each releases.clients as client (client.client_id)}
-                <div class="product-release-client">
-                  <p>{client.sector_identifier} ({client.client_id})</p>
-                  {#if client.release_active}
-                    <p>
-                      {m.vaultReleaseUntil({
-                        expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
-                      })}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!opened || busy || transferBusy || pending !== null}
-                      onclick={() => changeRelease(client, 'DELETE')}
-                      >{m.vaultReleaseRevoke()}</button
-                    >
-                  {:else}
-                    <button
-                      type="button"
-                      disabled={!opened ||
-                        busy ||
-                        transferBusy ||
-                        pending !== null ||
-                        !releases.share_active}
-                      onclick={() => changeRelease(client, 'POST')}>{m.vaultReleaseGrant()}</button
-                    >
-                  {/if}
-                </div>
-              {/each}
-            </section>
-          {/if}
-        </div>
-        <div id="security" class="product-content">
-          <PasskeyTransfer
-            saved={current}
-            {opened}
-            evaluatePrf={prf}
-            changed={load}
-            beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
-            disabled={busy || pending !== null}
-            onBusy={(value) => {
-              transferBusy = value;
-            }}
-          />
-        </div>
+        <details id="connections" class="product-details" bind:open={connectionsExpanded}>
+          <summary>{m.productSharing()}</summary>
+          <div class="product-content">
+            {#if sharing?.enabled && current}
+              <section aria-label={m.productSharing()}>
+                <h2>{m.productSharing()}</h2>
+                <p>
+                  {m.vaultShareExplanation({
+                    expiry: new Date(
+                      sharing.active && sharing.expires_at
+                        ? sharing.expires_at * 1000
+                        : Date.now() + sharing.grant_ttl_seconds * 1000,
+                    ).toLocaleString(locale),
+                  })}
+                </p>
+                <p role="status">{shareStatus}</p>
+                {#if sharing.active}
+                  <p>{m.vaultShareActive()}</p>
+                  <button
+                    type="button"
+                    disabled={!opened || busy || transferBusy || pending !== null}
+                    onclick={() => changeShare('DELETE')}>{m.vaultShareRevoke()}</button
+                  >
+                {:else}
+                  <button
+                    type="button"
+                    disabled={!opened || busy || transferBusy || pending !== null}
+                    onclick={() => changeShare('POST')}>{m.vaultShare()}</button
+                  >
+                {/if}
+              </section>
+            {/if}
+            <AgentPanel
+              onBusy={(value) => {
+                agentBusy = value;
+              }}
+              {opened}
+              sourceRevision={current?.revision ?? 0}
+              ownerId={accountId}
+              loadName={exportSavedName}
+              {noteRevision}
+              {locale}
+              credentialId={sessionCredential}
+              evaluatePrf={prf}
+            />
+            {#if releases?.enabled && releases.clients.length > 0}
+              <section aria-label={m.vaultReleaseHeading()}>
+                <h2>{m.vaultReleaseHeading()}</h2>
+                <p>{m.vaultReleaseExplanation()}</p>
+                <p role="status">{releaseStatus}</p>
+                {#each releases.clients as client (client.client_id)}
+                  <div class="product-release-client">
+                    <p>{client.sector_identifier} ({client.client_id})</p>
+                    {#if client.release_active}
+                      <p>
+                        {m.vaultReleaseUntil({
+                          expiry: new Date((client.expires_at ?? 0) * 1000).toLocaleString(locale),
+                        })}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!opened || busy || transferBusy || pending !== null}
+                        onclick={() => changeRelease(client, 'DELETE')}
+                        >{m.vaultReleaseRevoke()}</button
+                      >
+                    {:else}
+                      <button
+                        type="button"
+                        disabled={!opened ||
+                          busy ||
+                          transferBusy ||
+                          pending !== null ||
+                          !releases.share_active}
+                        onclick={() => changeRelease(client, 'POST')}
+                        >{m.vaultReleaseGrant()}</button
+                      >
+                    {/if}
+                  </div>
+                {/each}
+              </section>
+            {/if}
+          </div>
+        </details>
+        <details id="security" class="product-details" bind:open={securityExpanded}>
+          <summary>{m.productSecurity()}</summary>
+          <div class="product-content">
+            <PasskeyTransfer
+              saved={current}
+              {opened}
+              evaluatePrf={prf}
+              changed={load}
+              beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
+              disabled={busy || pending !== null}
+              onBusy={(value) => {
+                transferBusy = value;
+              }}
+            />
+          </div>
+        </details>
       </div>
     </div>
   </main>

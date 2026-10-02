@@ -220,6 +220,11 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
         }
       }
     }
+    for (const section of ['connections', 'security']) {
+      await sourceCoverage.goto(`${origin}/vault?lang=en#${section}`);
+      await expect(page.locator(`#${section}`)).toHaveAttribute('open', '');
+      await expect(page.locator(`#${section} > summary`)).toBeVisible();
+    }
     failLoad = true;
     await sourceCoverage.goto(`${origin}/vault?lang=en`);
     await expect(page.locator('#status')).toHaveText('Loading failed.');
@@ -231,6 +236,10 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     await expect(reload).toBeEnabled();
     await reload.click();
     await expect(page.locator('#unlock')).toBeEnabled();
+    await expect(page.locator('#connections')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#security')).not.toHaveAttribute('open', '');
+    await expect(page.getByRole('button', { name: 'Open note', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export saved note', exact: true })).toBeHidden();
     // Native links are reachable by keyboard and update the selected section.
     await page.getByRole('link', { name: 'Owner note', exact: true }).focus();
     await page.keyboard.press('Enter');
@@ -291,6 +300,32 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     );
     await page.locator('#name').fill('Unsaved owner');
     await expect(page.locator('[data-draft-state="profile"]')).toBeVisible();
+    // Optional panels remain mounted: opening/closing them never discards edits.
+    await page.getByLabel('Note title', { exact: true }).fill('Draft note title');
+    const sharingLink = page.getByRole('link', { name: 'Sharing & connections', exact: true });
+    await sharingLink.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#connections')).toHaveAttribute('open', '');
+    await page.locator('#connections > summary').click();
+    await expect(page.locator('#connections')).not.toHaveAttribute('open', '');
+    // The same hash can be selected again after manually closing its panel.
+    await sharingLink.click();
+    await expect(page.locator('#connections')).toHaveAttribute('open', '');
+    await page.getByRole('link', { name: 'Passkey management', exact: true }).click();
+    await expect(page.locator('#security')).toHaveAttribute('open', '');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const summary = document.querySelector('#security > summary')!;
+          const navigation = document.querySelector('.product-nav')!;
+          return summary.getBoundingClientRect().top >= navigation.getBoundingClientRect().bottom;
+        }),
+      )
+      .toBe(true);
+    await page.locator('#security > summary').click();
+    await page.getByRole('link', { name: 'Profile', exact: true }).click();
+    await expect(page.locator('#name')).toHaveValue('Unsaved owner');
+    await expect(page.getByLabel('Note title', { exact: true })).toHaveValue('Draft note title');
     // Real beforeunload dialogs protect full-page links and language changes.
     let unloadDialogs = 0;
     page.once('dialog', (dialog) => {

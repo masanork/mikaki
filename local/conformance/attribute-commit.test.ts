@@ -549,6 +549,7 @@ test('approved note commits exact ciphertext once; proof, failures, retries, con
       approve: true,
     });
     await page.goto(`${origin}/vault?lang=en`);
+    await page.getByRole('link', { name: 'Sharing & connections', exact: true }).click();
     const panel = page.getByRole('region', { name: 'Share with an AI agent' });
     const saveButton = panel.getByRole('button', {
       name: 'Encrypt and save the approved note',

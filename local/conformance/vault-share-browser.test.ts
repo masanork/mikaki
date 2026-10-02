@@ -154,6 +154,7 @@ test('Vault screen shares an unlocked name and revokes it with explicit owner ac
 
     await page.goto('https://mikaki.test/vault');
     await page.getByRole('button', { name: 'Unlock with passkey' }).click();
+    await page.locator('#connections > summary').click();
     await page.getByRole('button', { name: 'Share saved name with UserInfo service' }).click();
     await page.getByText('Your saved name is shared with the UserInfo service.').waitFor();
     assert.deepEqual(pageErrors, []);

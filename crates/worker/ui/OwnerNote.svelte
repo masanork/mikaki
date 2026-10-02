@@ -358,29 +358,32 @@
     disabled={busy || transferBusy || !opened || !saved || pending?.method === 'PUT'}
     onclick={() => mutate('DELETE')}>{m.vaultNoteDelete()}</button
   >
-  <label
-    >{m.vaultNoteImport()}<input
-      type="file"
-      accept="application/json,.json"
-      disabled={busy || transferBusy || !opened || pending !== null}
-      onchange={(event) => {
-        void importFile(event.currentTarget.files?.[0]);
-        event.currentTarget.value = '';
-      }}
-    /></label
-  >
-  <label
-    ><input
-      type="checkbox"
-      bind:checked={disclosure}
-      disabled={busy || transferBusy || !opened || !saved}
-    />{m.vaultNoteDisclosure()}</label
-  >
-  <button
-    type="button"
-    disabled={busy || transferBusy || !opened || !saved || !disclosure}
-    onclick={download}>{m.vaultNoteExport()}</button
-  >
+  <details class="product-details product-details-inline">
+    <summary>{m.productNoteFiles()}</summary>
+    <label
+      >{m.vaultNoteImport()}<input
+        type="file"
+        accept="application/json,.json"
+        disabled={busy || transferBusy || !opened || pending !== null}
+        onchange={(event) => {
+          void importFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = '';
+        }}
+      /></label
+    >
+    <label
+      ><input
+        type="checkbox"
+        bind:checked={disclosure}
+        disabled={busy || transferBusy || !opened || !saved}
+      />{m.vaultNoteDisclosure()}</label
+    >
+    <button
+      type="button"
+      disabled={busy || transferBusy || !opened || !saved || !disclosure}
+      onclick={download}>{m.vaultNoteExport()}</button
+    >
+  </details>
   <button type="button" disabled={busy || transferBusy} onclick={reload}
     >{m.vaultNoteReload()}</button
   >
@@ -390,17 +393,22 @@
   <p role="status">{status}</p>
 </section>
 
-{#key transferGeneration}
-  <PasskeyTransfer
-    attribute="owner_note"
-    {saved}
-    {opened}
-    {evaluatePrf}
-    disabled={busy || pending !== null}
-    onBusy={(value) => {
-      transferBusy = value;
-    }}
-    changed={load}
-    beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
-  />
-{/key}
+<details class="product-details">
+  <summary>{m.productNotePasskey()}</summary>
+  <div class="product-content">
+    {#key transferGeneration}
+      <PasskeyTransfer
+        attribute="owner_note"
+        {saved}
+        {opened}
+        {evaluatePrf}
+        disabled={busy || pending !== null}
+        onBusy={(value) => {
+          transferBusy = value;
+        }}
+        changed={load}
+        beforeTransfer={() => !dirty || confirm(m.productTransferDiscard())}
+      />
+    {/key}
+  </div>
+</details>
