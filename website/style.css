@@ -245,7 +245,8 @@ footer {
     margin-top: 48px;
   }
   .prose nav {
-    gap: 16px;
+    flex-direction: row;
+    gap: 12px 18px;
   }
 }
 
@@ -256,4 +257,9 @@ footer {
   font-weight: 400;
   opacity: 0.45;
   text-decoration: none;
+}
+
+.prose nav [aria-current='page'] {
+  font-weight: 600;
+  color: #edf0ed;
 }

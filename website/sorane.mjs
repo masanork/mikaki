@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -9,6 +9,16 @@ register();
 const { renderMarkdown, escapeHtml } = await import('@sorane/core');
 const { parseConcept } = await import('@sorane/okf');
 const site = fileURLToPath(new URL('./', import.meta.url));
+const pages = JSON.parse(readFileSync(join(site, 'pages.json'), 'utf8'));
+const slugs = new Set(pages.map((page) => page.slug));
+if (slugs.size !== pages.length) throw new Error('Duplicate page slug');
+for (const locale of ['', 'en/']) {
+  const contentSlugs = readdirSync(join(site, 'content', locale))
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => file.slice(0, -3));
+  if (contentSlugs.length !== slugs.size || contentSlugs.some((slug) => !slugs.has(slug)))
+    throw new Error(`Page manifest and content differ: ${locale || 'ja'}`);
+}
 const cli = join(site, '../node_modules/@sorane/cli/bin/sorane.mjs');
 const report = JSON.parse(
   execFileSync(process.execPath, [cli, 'validate', '--cwd', site, '--json'], { encoding: 'utf8' }),
@@ -17,9 +27,8 @@ if (!report.ok) throw new Error(JSON.stringify(report));
 execFileSync(process.execPath, [cli, 'build', '--cwd', site, '--clean'], { stdio: 'inherit' });
 // Cloudflare static assets redirect .html URLs to their extensionless form.
 const canonicalUrls = (text) =>
-  text.replace(
-    /https:\/\/mikaki\.org\/((?:en\/)?)(index|integration|security)\.html/g,
-    (_, prefix, slug) => `https://mikaki.org/${prefix}${slug === 'index' ? '' : slug}`,
+  text.replace(/https:\/\/mikaki\.org\/((?:en\/)?)([a-z0-9-]+)\.html/g, (url, prefix, slug) =>
+    slugs.has(slug) ? `https://mikaki.org/${prefix}${slug === 'index' ? '' : slug}` : url,
   );
 const hashes = new Set();
 for (const lang of ['ja', 'en']) {
@@ -35,7 +44,7 @@ for (const lang of ['ja', 'en']) {
     join(site, `social-preview/${lang}.png`),
     join(site, `public/social-preview/${lang}.png`),
   );
-  for (const slug of ['index', 'integration', 'security']) {
+  for (const { slug } of pages) {
     const rel = `${prefix}${slug}.html`;
     mkdirSync(join(site, 'public', prefix), { recursive: true });
     const { concept } = parseConcept(
@@ -52,19 +61,26 @@ for (const lang of ['ja', 'en']) {
         'name="twitter:card" content="summary_large_image"',
       )
       .replace(/(?:href|src)="([^":]+)"/g, (full, url) =>
-        full.replace(url, new URL(url, `https://mikaki.org/${rel}`).pathname),
+        full.replace(url, new URL(url, 'https://mikaki.org/').pathname),
       );
     if (!head) throw new Error(`Missing Sorane metadata: ${rel}`);
     for (const match of head.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))
       hashes.add(`'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
-    const nav = `<nav class="footlinks" aria-label="${ja ? 'mikakiについて' : 'About mikaki'}"><a href="/${prefix}">${ja ? '概要' : 'Overview'}</a><a href="/${prefix}integration">${ja ? 'アプリ連携' : 'Integration'}</a><a href="/${prefix}security">${ja ? '対応状況' : 'Status'}</a><a href="/${other}${slug === 'index' ? '' : slug}" lang="${ja ? 'en' : 'ja'}" hreflang="${ja ? 'en' : 'ja'}">${ja ? 'English' : '日本語'}</a></nav>`;
+    const links = pages
+      .map(
+        (page) =>
+          `<a href="/${prefix}${page.slug === 'index' ? '' : page.slug}"${page.slug === slug ? ' aria-current="page"' : ''}>${escapeHtml(page.labels[lang])}</a>`,
+      )
+      .join('');
+    const nav = `<nav class="footlinks" aria-label="${ja ? 'mikakiについて' : 'About mikaki'}">${links}<a href="/${other}${slug === 'index' ? '' : slug}" lang="${ja ? 'en' : 'ja'}" hreflang="${ja ? 'en' : 'ja'}">${ja ? 'English' : '日本語'}</a></nav>`;
     const home = slug === 'index';
     const signin = `https://auth.mikaki.org/signin${ja ? '' : '?lang=en'}`;
-    const hero = `<div class="kicker">Your identity. Your choice.</div><h1>${ja ? '自分の情報を、<br>自分の手元に。' : 'Your information.<br>In your hands.'}</h1><p>${ja ? 'Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。' : 'Sign in with a passkey.<br>Share only what you choose, with whom you choose.'}</p><div class="actions"><a class="bolt" href="${signin}">${ja ? 'Webでサインイン' : 'Sign in on the Web'} ↗</a><a class="quiet" href="https://app.mikaki.org">${ja ? 'アプリについて' : 'About the app'} ↗</a></div><section class="details"><div><h2>Passkey</h2><p>${ja ? 'パスワードを使わず、いつもの端末で。' : 'Use your device, without a password.'}</p></div><div><h2>Vault</h2><p>${ja ? '保存した情報は、Passkeyで開く。' : 'Open your stored information with a passkey.'}</p></div><div><h2>${ja ? '選んで共有' : 'Choose what to share'}</h2><p>${ja ? '共有する情報と相手を、自分で選ぶ。' : 'You choose the information and the recipient.'}</p></div></section>`;
+    const hero = `<div class="kicker">Your identity. Your choice.</div><h1>${ja ? '自分の情報を、<br>自分の手元に。' : 'Your information.<br>In your hands.'}</h1><p>${ja ? 'Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。' : 'Sign in with a passkey.<br>Share only what you choose, with whom you choose.'}</p><div class="actions"><a class="bolt" href="${signin}">${ja ? 'Webでサインイン' : 'Sign in on the Web'} ↗</a><a class="quiet" href="/${prefix}getting-started">${ja ? 'はじめての方へ' : 'Getting started'}</a><a class="quiet" href="https://app.mikaki.org">${ja ? 'アプリについて' : 'About the app'} ↗</a></div><section class="details"><div><h2>Passkey</h2><p>${ja ? 'パスワードを使わず、いつもの端末で。' : 'Use your device, without a password.'}</p></div><div><h2>Vault</h2><p>${ja ? '保存した情報は、Passkeyで開く。' : 'Open your stored information with a passkey.'}</p></div><div><h2>${ja ? '選んで共有' : 'Choose what to share'}</h2><p>${ja ? '共有する情報と相手を、自分で選ぶ。' : 'You choose the information and the recipient.'}</p></div></section>`;
     // Sorane renders Markdown sibling links as .html; emit the public routes directly.
     const content = renderMarkdown(concept.body).replace(
-      /href="(index|integration|security)\.html([?#][^"]*)?"/g,
-      (_, slug, suffix = '') => `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"`,
+      /href="([a-z0-9-]+)\.html([?#][^"]*)?"/g,
+      (link, slug, suffix = '') =>
+        slugs.has(slug) ? `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"` : link,
     );
     const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose">${nav}${content}</section>`;
     const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
@@ -82,7 +98,19 @@ for (const file of ['sitemap.xml', 'robots.txt', 'llms.txt', 'catalog.jsonld'])
     canonicalUrls(readFileSync(join(site, 'dist', file), 'utf8')),
   );
 const llms = join(site, 'public/llms.txt');
-writeFileSync(llms, readFileSync(llms, 'utf8').replace(/^.*\[OKF bundle\].*\n/gm, ''));
+const guideLinks = ['ja', 'en'].flatMap((lang) =>
+  pages.map(
+    (page) =>
+      `- [${page.labels[lang]} (${lang})](https://mikaki.org/${lang === 'en' ? 'en/' : ''}${page.slug === 'index' ? '' : page.slug})`,
+  ),
+);
+writeFileSync(
+  llms,
+  readFileSync(llms, 'utf8').replace(/^.*\[OKF bundle\].*\n/gm, '') +
+    '\n## Guides\n\n' +
+    guideLinks.join('\n') +
+    '\n',
+);
 const headers = join(site, 'public/_headers');
 writeFileSync(
   headers,

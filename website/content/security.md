@@ -1,8 +1,8 @@
 ---
 type: article
 profile: sorane-okf/0.1
-title: "mikakiのセキュリティと対応状況"
-description: "パスキー認証、Vaultの暗号化、OpenID Conformanceテストと正式認定の状況を説明します。"
+title: 'mikakiのセキュリティと対応状況'
+description: 'パスキー認証、Vaultの暗号化、OpenID Conformanceテストと正式認定の状況を説明します。'
 lang: ja
 translation_key: security
 updated: 2026-10-02
@@ -10,11 +10,15 @@ updated: 2026-10-02
 
 ## パスキーによる認証
 
-mikakiはWebAuthnのパスキーで認証します。ログイン画面では、接続先アプリを確認できます。ログインは連携先アプリから開始してください。
+mikakiはWebAuthnのパスキーで認証します。ログイン画面では、接続先アプリを確認できます。Web版は[Webサインイン](https://auth.mikaki.org/signin?lang=ja)から、アプリへのログインは連携先アプリから開始します。通常の本人認証とVaultの解錠は別の操作で、Vaultの復号には対応パスキーとPRF機能が必要です。
 
 ## Vaultと情報の共有
 
 Owner Vaultでは、名前やノートを暗号化して保存する仕組みを開発しています。アプリへの属性提供やAIへのエクスポートには、それぞれ同意する操作があります。対応端末、復旧、運用の検証には残る課題があります。
+
+サーバーには暗号文と、項目の種類・更新時刻など運用上のメタデータを保存します。相手への共有を承認した場合は、選んだデータを復号できる相手が増えます。ダウンロードした平文ファイルや、相手に渡した内容をあとから回収することはできません。
+
+操作上の注意点は[Vaultの使い方](vault.md)を確認してください。すべての解錠手段を失った場合の復旧や、すべての実端末での互換性は保証していません。
 
 詳しくは[Vaultの説明](https://github.com/masanork/mikaki/blob/main/docs/personal-vault.md)と[セッションの制約](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md)を参照してください。
 

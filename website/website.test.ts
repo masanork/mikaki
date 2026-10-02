@@ -4,6 +4,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { auditPublicWebsite } from './audit-public.ts';
 
 test('public websites keep app callbacks code-free and render the woven material', async () => {
   const servers: ReturnType<typeof spawn>[] = [];
@@ -77,14 +78,86 @@ test('public websites keep app callbacks code-free and render the woven material
         },
       },
     ]);
-    for (const path of [
-      '/',
-      '/en/',
-      '/integration',
-      '/security',
-      '/en/integration',
-      '/en/security',
+    const manifest = JSON.parse(await readFile(new URL('pages.json', import.meta.url), 'utf8')) as {
+      slug: string;
+    }[];
+    const paths = ['ja', 'en'].flatMap((lang) =>
+      manifest.map(({ slug }) => `/${lang === 'en' ? 'en/' : ''}${slug === 'index' ? '' : slug}`),
+    );
+    const fixtures = new Map<string, Response>();
+    const audit = await auditPublicWebsite(async (url) => {
+      const response = await site.fetch(url);
+      fixtures.set(new URL(url).pathname, response.clone());
+      return response;
+    }, paths);
+    assert.equal(audit.pages.length, 12);
+    for (const failure of [
+      {
+        path: '/en/',
+        from: 'rel="canonical" href="https://mikaki.org/en/"',
+        to: 'rel="canonical" href="https://mikaki.org/"',
+        error: /canonical/,
+      },
+      {
+        path: '/getting-started',
+        from: 'hreflang="en" href="https://mikaki.org/en/getting-started"',
+        to: 'hreflang="en" href="https://mikaki.org/en/faq"',
+        error: /hreflang/,
+      },
+      {
+        path: '/vault',
+        from: '</main>',
+        to: '<a href="/faq#missing-section">More</a></main>',
+        error: /missing fragment/,
+      },
+      {
+        path: '/en/vault',
+        from: '</main>',
+        to: '<a href="/not-published">More</a></main>',
+        error: /link missing from sitemap/,
+      },
+      {
+        path: '/',
+        from: '<script type="application/ld+json"',
+        to: '<script type="application/json"',
+        error: /structured data/,
+      },
     ]) {
+      await assert.rejects(
+        auditPublicWebsite(async (url) => {
+          const path = new URL(url).pathname;
+          const response = fixtures.get(path)!.clone();
+          if (path !== failure.path) return response;
+          const html = await response.text();
+          assert.ok(html.includes(failure.from));
+          return new Response(html.replaceAll(failure.from, failure.to), {
+            headers: response.headers,
+          });
+        }, paths),
+        failure.error,
+      );
+    }
+    await assert.rejects(
+      auditPublicWebsite(async (url) => {
+        const response = fixtures.get(new URL(url).pathname)!.clone();
+        if (new URL(url).pathname !== '/') return response;
+        const headers = new Headers(response.headers);
+        headers.set('X-Robots-Tag', 'noindex');
+        return new Response(await response.arrayBuffer(), { headers });
+      }, paths),
+      /noindex/,
+    );
+    await assert.rejects(
+      auditPublicWebsite(async (url) => {
+        const response = fixtures.get(new URL(url).pathname)!.clone();
+        if (new URL(url).pathname !== '/') return response;
+        const headers = new Headers(response.headers);
+        headers.set('Content-Security-Policy', "script-src 'self'");
+        return new Response(await response.arrayBuffer(), { headers });
+      }, paths),
+      /JSON-LD blocked by CSP/,
+    );
+    for (const path of paths) {
       const response = await site.fetch(`https://mikaki.org${path}`);
       assert.equal(response.status, 200, path);
       const html = await response.text();
@@ -135,14 +208,16 @@ test('public websites keep app callbacks code-free and render the woven material
     await mkdir(new URL('../artifacts/website-preview/', import.meta.url), { recursive: true });
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const [host, path, name] of [
-        ['mikaki.org', '/', 'landing'],
-        ['mikaki.org', '/en/', 'landing-en'],
-        ['mikaki.org', '/integration', 'integration'],
-        ['mikaki.org', '/en/security', 'security-en'],
+      const previews = paths.map((path) => [
+        'mikaki.org',
+        path,
+        `${path.replace(/^\/(en\/)?/, '') || 'landing'}${path.startsWith('/en/') ? '-en' : ''}`,
+      ]);
+      previews.push(
         ['app.mikaki.org', '/', 'app'],
         ['app.mikaki.org', '/native-link-help', 'app-help'],
-      ]) {
+      );
+      for (const [host, path, name] of previews) {
         await page.goto(`https://${host}${path}`);
         await page.locator('h1').waitFor();
         await page.waitForFunction(
@@ -223,6 +298,10 @@ test('public websites keep app callbacks code-free and render the woven material
       await staticPage.locator('.bolt').getAttribute('href'),
       'https://auth.mikaki.org/signin',
     );
+    await staticPage.locator('.actions a[href="/getting-started"]').click();
+    assert.equal(new URL(staticPage.url()).pathname, '/getting-started');
+    assert.equal(await staticPage.locator('nav [aria-current="page"]').textContent(), 'はじめ方');
+    assert.ok((await staticPage.locator('main').textContent())?.includes('招待コード'));
   } finally {
     await browser?.close();
     await Promise.all(
