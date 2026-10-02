@@ -23,6 +23,8 @@ The browser registers a discoverable virtual CTAP2 authenticator with user verif
 
 The RP in this journey is a small disposable fixture, **not narashi or the deployed Helpdesk**. Its server-to-server calls use the local Worker handle and it checks session status on every protected request. This does not qualify a real RP's caching lease, backchannel delivery, DNS/TLS configuration, or production callback. PRF is exercised through Chromium's virtual authenticator rather than replaced with a fixed output, but physical devices, platform UI, synced passkeys and OS sleep remain unqualified.
 
+The HTTPS journey also traverses browser history after opening a saved Vault name. Returning requires a new Passkey/PRF unlock, and returning after another tab logs out redirects to the Web sign-in ceremony without displaying saved plaintext. The latter test holds the virtual authenticator pending so a new login cannot hide session rejection. These are real navigation/reload checks, not synthetic pagehide events. [Playwright disables BFCache by default](https://playwright.dev/docs/api/class-page#page-go-back); this journey does not qualify actual BFCache restoration. The lifecycle suite's injected persisted pagehide event remains separate evidence, and supported-browser BFCache qualification remains open.
+
 ## Failure evidence
 
 Instrumented account/Vault browser suites save `artifacts/browser-failures/<suite>-<unique-id>/` **only on failure**, before closing the browser:

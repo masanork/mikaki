@@ -145,6 +145,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.reload();
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
+    // Traverse actual HTTPS history; the default automation browser reloads the page.
+    // Saved plaintext must require a new Passkey/PRF unlock after returning.
+    await page.goto(`${issuer}/?lang=en`);
+    await page.goBack();
+    await expect(page.locator('#name')).toHaveValue('');
+    await expect(page.locator('#name')).toBeDisabled();
+    await expect(page.locator('#save')).toBeDisabled();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
     await page.goto(rpOrigin);
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
     // Chromium's virtual authenticator can satisfy the normal automatic login.
@@ -281,6 +290,36 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       .run();
     await page.goto(`${issuer}/signin?lang=en`);
     await page.waitForURL(`${issuer}/vault?lang=en`);
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await page.goto(`${issuer}/?lang=en`);
+    const formerSso = (await context.cookies(issuer)).find(
+      (cookie) => cookie.name === '__Host-op-sso',
+    );
+    assert.ok(formerSso, 'The history journey needs an authenticated SSO');
+    const logoutTab = await context.newPage();
+    logoutTab.on('pageerror', (error) => errors.push(error.message));
+    await logoutTab.goto(`${issuer}/logout?lang=en`);
+    await logoutTab.getByRole('button', { name: 'Log out', exact: true }).click();
+    await expect(
+      logoutTab.getByRole('heading', { name: 'You have logged out', exact: true }),
+    ).toBeVisible();
+    // A history entry cannot restore the revoked SSO or its decrypted display.
+    // Keep the virtual authenticator pending so a new login cannot mask rejection.
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
+    await page.goBack();
+    await page.waitForURL((url) => url.origin === issuer && url.pathname === '/login');
+    await expect(page.locator('[data-owner-login="true"]')).toHaveCount(1);
+    await expect(page.locator('#name')).toHaveCount(0);
+    assert.equal(
+      (
+        await worker.fetch(`${issuer}/vault?lang=en`, {
+          redirect: 'manual',
+          headers: { cookie: `__Host-op-sso=${formerSso.value}` },
+        })
+      ).status,
+      302,
+    );
     assert.deepEqual(errors, []);
   } catch (error) {
     failure = error;
