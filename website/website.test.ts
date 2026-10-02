@@ -157,6 +157,32 @@ test('public websites keep app callbacks code-free and render the woven material
         });
       }
     }
+    // A transient fractional scene must still allocate a drawable backing canvas.
+    await page.goto('https://mikaki.org');
+    await page.waitForFunction(() => document.querySelector('canvas')!.width > 0);
+    await page.evaluate(() => {
+      const scene = document.querySelector<HTMLElement>('.scene')!;
+      scene.style.width = '0.1px';
+      scene.style.height = '0.1px';
+      scene.style.minHeight = '0';
+    });
+    await page.waitForFunction(
+      () =>
+        document.querySelector('canvas')!.width === 1 &&
+        document.querySelector('canvas')!.height === 1,
+    );
+    // An emptied backing store must not crash an animation before the next resize.
+    await page.evaluate(() => {
+      document.querySelector('canvas')!.width = 0;
+    });
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const scene = document.querySelector<HTMLElement>('.scene')!;
+      scene.style.removeProperty('width');
+      scene.style.removeProperty('height');
+      scene.style.removeProperty('min-height');
+    });
+    await page.waitForFunction(() => document.querySelector('canvas')!.width > 1);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('https://mikaki.org');
     await page.waitForFunction(() => document.querySelector('canvas')!.width > 0);

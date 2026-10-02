@@ -50,7 +50,9 @@ export function createWovenGate(
       !Number.isFinite(width) ||
       !Number.isFinite(height) ||
       width <= 0 ||
-      height <= 0
+      height <= 0 ||
+      canvas.width <= 0 ||
+      canvas.height <= 0
     )
       return;
     const w = width,
@@ -62,7 +64,7 @@ export function createWovenGate(
       ly = clamp(y + (animated ? Math.sin(orbit * 0.73) * 0.09 * power : 0), 0.05, 0.95);
     scene.style.setProperty('--light-x', `${lx * 100}%`);
     const nextKey = JSON.stringify([canvas.width, canvas.height, [page, rp], layout, 0.9, 14]);
-    if (nextKey !== materialKey) {
+    if (nextKey !== materialKey || material.width <= 0 || material.height <= 0) {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = '#02070e';
       ctx.fillRect(0, 0, w, h);
@@ -313,8 +315,8 @@ export function createWovenGate(
     }
     // Bound memory on high-density and very large displays.
     const dpr = Math.min(devicePixelRatio || 1, 1.25, 1800 / Math.max(width, height));
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    canvas.width = Math.max(1, Math.round(width * dpr));
+    canvas.height = Math.max(1, Math.round(height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw(animationTime);
     start();
