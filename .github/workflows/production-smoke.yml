@@ -105,6 +105,22 @@ jobs:
           }
           console.log('Public Japanese and English invitation registration entries passed');
           JS
+      - name: Check Web signin and protected Vault entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for entry in signin vault; do
+            for lang in ja en; do
+              jar="$RUNNER_TEMP/web-$entry-$lang.cookies"
+              touch "$jar"
+              curl -fsS -L --max-redirs 2 --proto '=https' --proto-redir '=https' \
+                --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
+                -c "$jar" -b "$jar" "https://auth.mikaki.org/$entry?lang=$lang" \
+                -o "web-$entry-$lang.html"
+            done
+          done
+          node scripts/check-web-signin-smoke.ts
       - name: Retain version-matched smoke evidence
         if: ${{ inputs.expected_version_id != '' && inputs.expected_source_commit != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
