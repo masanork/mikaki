@@ -164,10 +164,17 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
           return;
         }
       }
+      // Miniflare wraps Undici's response stream. Consume it before awaiting
+      // browser cookie updates: GC may otherwise cancel the original response.
+      const body = Buffer.from(await response.arrayBuffer());
       const confirmation = /__Host-op-logout=([^;, ]+)/.exec(
         response.headers.get('set-cookie') ?? '',
       );
-      if (confirmation)
+      if (confirmation) {
+        if (global.gc) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          global.gc();
+        }
         await page.context().addCookies([
           {
             name: '__Host-op-logout',
@@ -178,10 +185,11 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
             sameSite: 'Lax',
           },
         ]);
+      }
       await route.fulfill({
         status: response.status,
         headers: Object.fromEntries(response.headers),
-        body: Buffer.from(await response.arrayBuffer()),
+        body,
       });
     });
     for (const locale of ['ja', 'en']) {
