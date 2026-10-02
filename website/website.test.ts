@@ -77,6 +77,38 @@ test('public websites keep app callbacks code-free and render the woven material
         },
       },
     ]);
+    for (const path of [
+      '/',
+      '/en/',
+      '/integration',
+      '/security',
+      '/en/integration',
+      '/en/security',
+    ]) {
+      const response = await site.fetch(`https://mikaki.org${path}`);
+      assert.equal(response.status, 200, path);
+      const html = await response.text();
+      assert.ok(html.includes(`rel="canonical" href="https://mikaki.org${path}"`), path);
+      assert.match(html, /hreflang="en"/);
+      assert.match(html, /application\/ld\+json/);
+      assert.match(response.headers.get('content-security-policy') ?? '', /sha256-/);
+      assert.ok(!html.includes('mikaki.tossa.app'));
+      assert.doesNotMatch(html, /href="(?:integration|security)\.(?:html|md)"/);
+      if (path === '/' || path === '/en/') {
+        const prefix = path === '/' ? '' : 'en/';
+        assert.ok(html.includes(`href="/${prefix}integration"`));
+        assert.ok(html.includes(`href="/${prefix}security"`));
+      }
+    }
+    for (const path of [
+      '/sitemap.xml',
+      '/robots.txt',
+      '/llms.txt',
+      '/catalog.jsonld',
+      '/index.md',
+      '/en/index.md',
+    ])
+      assert.equal((await site.fetch(`https://mikaki.org${path}`)).status, 200, path);
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     const errors: string[] = [];
@@ -105,6 +137,9 @@ test('public websites keep app callbacks code-free and render the woven material
       await page.setViewportSize({ width, height: 900 });
       for (const [host, path, name] of [
         ['mikaki.org', '/', 'landing'],
+        ['mikaki.org', '/en/', 'landing-en'],
+        ['mikaki.org', '/integration', 'integration'],
+        ['mikaki.org', '/en/security', 'security-en'],
         ['app.mikaki.org', '/', 'app'],
         ['app.mikaki.org', '/native-link-help', 'app-help'],
       ]) {
@@ -122,6 +157,32 @@ test('public websites keep app callbacks code-free and render the woven material
         });
       }
     }
+    // A transient fractional scene must still allocate a drawable backing canvas.
+    await page.goto('https://mikaki.org');
+    await page.waitForFunction(() => document.querySelector('canvas')!.width > 0);
+    await page.evaluate(() => {
+      const scene = document.querySelector<HTMLElement>('.scene')!;
+      scene.style.width = '0.1px';
+      scene.style.height = '0.1px';
+      scene.style.minHeight = '0';
+    });
+    await page.waitForFunction(
+      () =>
+        document.querySelector('canvas')!.width === 1 &&
+        document.querySelector('canvas')!.height === 1,
+    );
+    // An emptied backing store must not crash an animation before the next resize.
+    await page.evaluate(() => {
+      document.querySelector('canvas')!.width = 0;
+    });
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const scene = document.querySelector<HTMLElement>('.scene')!;
+      scene.style.removeProperty('width');
+      scene.style.removeProperty('height');
+      scene.style.removeProperty('min-height');
+    });
+    await page.waitForFunction(() => document.querySelector('canvas')!.width > 1);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('https://mikaki.org');
     await page.waitForFunction(() => document.querySelector('canvas')!.width > 0);
@@ -145,6 +206,19 @@ test('public websites keep app callbacks code-free and render the woven material
     });
     await staticPage.goto('https://mikaki.org');
     assert.equal(await staticPage.locator('h1').textContent(), '自分の情報を、自分の手元に。');
+    const proseLink = staticPage.locator('.prose p a').first();
+    assert.equal(
+      await proseLink.evaluate((link) => getComputedStyle(link).textDecorationLine),
+      'underline',
+    );
+    const integrationLink = staticPage.locator('.prose li a[href="/integration"]');
+    const navigation = staticPage.waitForResponse(
+      (response) => response.url() === 'https://mikaki.org/integration',
+    );
+    await integrationLink.click();
+    assert.equal((await navigation).status(), 200);
+    assert.equal(new URL(staticPage.url()).pathname, '/integration');
+    await staticPage.goto('https://mikaki.org');
     assert.equal(
       await staticPage.locator('.bolt').getAttribute('href'),
       'https://auth.mikaki.org/signin',
