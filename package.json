@@ -36,6 +36,8 @@
     "test:agent-oauth": "node --test local/conformance/agent-oauth.test.ts",
     "probe:agent-oauth-clients": "node scripts/probe-agent-oauth-clients.ts",
     "test:agent-preparation": "node --test scripts/prepare-grok-bot.test.ts scripts/inspect-grok-bot-oauth.test.ts",
+    "check:worker-budgets": "node scripts/check-worker-budgets.ts",
+    "test:worker-budgets": "node --test scripts/check-worker-budgets.test.ts",
     "check:docs": "node scripts/check_docs.ts",
     "test:product-ui": "node --expose-gc --test --test-concurrency=1 local/conformance/product-ui-browser.test.ts local/conformance/logout-i18n.test.ts local/conformance/vault-share-browser.test.ts",
     "preview:product-ui": "node docs/product-ui-preview/capture.mjs",

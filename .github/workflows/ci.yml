@@ -40,6 +40,7 @@ jobs:
           node scripts/check_design.ts
           npm run test:sql
           npm run test:release
+          npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
           cargo fmt --all -- --check
@@ -94,6 +95,10 @@ jobs:
           worker-build --release crates/worker
           worker-build --release crates/userinfo-claim-worker
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
+      - name: Check served UI and server Wasm byte budgets
+        run: |
+          npm run check:worker-budgets
+          cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"
       - name: Check Node TypeScript sources
         run: |
           npm run check:node
