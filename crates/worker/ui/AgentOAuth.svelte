@@ -6,7 +6,9 @@
   import * as m from './paraglide/messages.js';
   let {
     grants,
+    onBusy = () => {},
   }: {
+    onBusy?: (busy: boolean) => void;
     grants: {
       grant_id: string;
       delegate: string;
@@ -40,6 +42,10 @@
   let review: Review | null = $state(null),
     busy = $state(false),
     failed = $state(false);
+  $effect(() => {
+    onBusy(busy);
+    return () => onBusy(false);
+  });
   let selected = $state(''),
     consent = $state(false);
   const choices = $derived(

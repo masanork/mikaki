@@ -31,7 +31,9 @@
     locale,
     credentialId,
     evaluatePrf,
+    onBusy = () => {},
   }: {
+    onBusy?: (busy: boolean) => void;
     opened: boolean;
     sourceRevision: number;
     ownerId: string;
@@ -173,6 +175,11 @@
   let actions = $state(false);
   let noteConsent = $state(false);
   let busy = $state(false);
+  let oauthBusy = $state(false);
+  $effect(() => {
+    onBusy(busy || oauthBusy || checkingSources);
+    return () => onBusy(false);
+  });
   let status = $state('');
   let credential = $state('');
   type LocalDocument = {
@@ -794,7 +801,12 @@
 <section aria-label={m.agentHeading()}>
   <h2>{m.agentHeading()}</h2>
   <p>{m.agentExplanation()}</p>
-  <AgentOAuth grants={remote?.grants ?? []} />
+  <AgentOAuth
+    grants={remote?.grants ?? []}
+    onBusy={(value) => {
+      oauthBusy = value;
+    }}
+  />
   <section aria-label={m.agentSourcesHeading()}>
     <h3>{m.agentSourcesHeading()}</h3>
     <p>{m.agentSourcesExplanation()}</p>

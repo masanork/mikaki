@@ -82,6 +82,8 @@
   let loading = $state(true);
   let busy = $state(false);
   let transferBusy = $state(false);
+  let noteBusy = $state(false);
+  let agentBusy = $state(false);
   let loadFailed = $state(false);
   let originalName = $state('');
   let pending: Pending | null = $state(null);
@@ -601,7 +603,12 @@
   }}
 />
 <div class="vault-shell">
-  <ProductHeader {locale} onlock={context.lock} material paused={busy || transferBusy || loading} />
+  <ProductHeader
+    {locale}
+    onlock={context.lock}
+    material
+    paused={busy || transferBusy || loading || noteBusy || agentBusy}
+  />
   <main class="product-main">
     <div class="product-heading">
       <h1>{m.vaultHeading()}</h1>
@@ -680,6 +687,9 @@
         </section>
         <div id="notes" class="product-content">
           <OwnerNote
+            onBusy={(value) => {
+              noteBusy = value;
+            }}
             credentialId={sessionCredential}
             evaluatePrf={prf}
             onSavedRevision={(revision) => {
@@ -718,6 +728,9 @@
             </section>
           {/if}
           <AgentPanel
+            onBusy={(value) => {
+              agentBusy = value;
+            }}
             {opened}
             sourceRevision={current?.revision ?? 0}
             ownerId={accountId}

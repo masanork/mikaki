@@ -940,7 +940,7 @@ a {
   background: #fcfbf2;
 }
 :is(.vault-shell, .product-material-shell)
-  :is(.product-content button, .product-card button, .product-button):hover {
+  :is(.product-content button, .product-card button, .product-button):hover:not(:disabled) {
   background: #e8eddc;
   border-color: #738668;
 }
@@ -954,13 +954,19 @@ a {
     0 3px 6px #253e3020;
 }
 :is(.vault-shell, .product-material-shell)
-  :is(.product-content .product-primary, .product-card .product-primary, .product-primary):hover {
+  :is(
+    .product-content .product-primary,
+    .product-card .product-primary,
+    .product-primary
+  ):hover:not(:disabled) {
   color: #fffdf0;
   background: #344b38;
   border-color: #344a37;
 }
 :is(.vault-shell, .product-material-shell)
-  :is(.product-content button, .product-card button, .product-button):disabled {
+  :is(.product-content button, .product-card button, .product-button):disabled,
+:is(.vault-shell, .product-material-shell)
+  :is(.product-content button, .product-card button, .product-button):disabled:hover {
   background: #edeedf;
   color: #7b846f;
   border-color: #b7bfa9;
