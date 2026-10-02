@@ -90,7 +90,7 @@ test('public websites keep app callbacks code-free and render the woven material
       fixtures.set(new URL(url).pathname, response.clone());
       return response;
     }, paths);
-    assert.equal(audit.pages.length, 12);
+    assert.equal(audit.pages.length, paths.length);
     for (const failure of [
       {
         path: '/en/',

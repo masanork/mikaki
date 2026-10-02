@@ -5,7 +5,7 @@ title: 'Getting started with mikaki: invitations and passkeys'
 description: 'How to register with an invitation, sign in on the Web, unlock Vault and connect to an application using mikaki passkeys.'
 lang: en
 translation_key: getting-started
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 
 ## What mikaki does
@@ -29,6 +29,8 @@ After sign-in, you enter Vault. Authentication confirms your account; unlocking 
 Use the item's unlock action and confirm the passkey. Decryption needs the corresponding passkey used for the saved data and WebAuthn PRF support. Successful ordinary sign-in does not establish that this device and browser can unlock the item.
 
 Names and notes are separate items. Read [Using Vault](vault.md) before saving, sharing or transferring data. Recovery qualification is incomplete, so review the limitations before using Vault as the only copy of information you cannot afford to lose.
+
+For compatibility and unlock troubleshooting, follow the checks in [Passkeys and unlocking Vault](passkeys.md).
 
 ## 4. Sign in to a connected application
 

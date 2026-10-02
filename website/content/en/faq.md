@@ -5,7 +5,7 @@ title: 'mikaki FAQ: invitations, passkeys and Vault'
 description: 'Answers about invitations, Web and native apps, passkey compatibility, Vault recovery and sharing, and OpenID, FAPI and FIDO certification.'
 lang: en
 translation_key: faq
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 
 ## Can anyone register?
@@ -23,6 +23,8 @@ mikaki uses passkeys for login. It does not provide password fallback or a mecha
 ## Why can I sign in but not unlock Vault?
 
 Authentication and decryption are separate. Unlocking needs the passkey corresponding to the saved data and PRF support. Merely adding another passkey to the account does not make it able to decrypt the item. Check the device and passkey used to save it, and follow the screen's error instructions. Do not try to recover it by overwriting it with new data.
+
+If sign-in works but Vault stays locked, follow the checks in [Passkeys and unlocking Vault](passkeys.md).
 
 ## Does every application or AI get all my saved data?
 
