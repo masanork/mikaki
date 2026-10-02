@@ -93,6 +93,12 @@ test('public websites keep app callbacks code-free and render the woven material
       assert.match(html, /application\/ld\+json/);
       assert.match(response.headers.get('content-security-policy') ?? '', /sha256-/);
       assert.ok(!html.includes('mikaki.tossa.app'));
+      assert.doesNotMatch(html, /href="(?:integration|security)\.(?:html|md)"/);
+      if (path === '/' || path === '/en/') {
+        const prefix = path === '/' ? '' : 'en/';
+        assert.ok(html.includes(`href="/${prefix}integration"`));
+        assert.ok(html.includes(`href="/${prefix}security"`));
+      }
     }
     for (const path of [
       '/sitemap.xml',
@@ -174,6 +180,19 @@ test('public websites keep app callbacks code-free and render the woven material
     });
     await staticPage.goto('https://mikaki.org');
     assert.equal(await staticPage.locator('h1').textContent(), '自分の情報を、自分の手元に。');
+    const proseLink = staticPage.locator('.prose p a').first();
+    assert.equal(
+      await proseLink.evaluate((link) => getComputedStyle(link).textDecorationLine),
+      'underline',
+    );
+    const integrationLink = staticPage.locator('.prose li a[href="/integration"]');
+    const navigation = staticPage.waitForResponse(
+      (response) => response.url() === 'https://mikaki.org/integration',
+    );
+    await integrationLink.click();
+    assert.equal((await navigation).status(), 200);
+    assert.equal(new URL(staticPage.url()).pathname, '/integration');
+    await staticPage.goto('https://mikaki.org');
     assert.equal(
       await staticPage.locator('.bolt').getAttribute('href'),
       'https://auth.mikaki.org/signin',

@@ -1,6 +1,6 @@
 # Integrate a relying party
 
-This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://mikaki.tossa.app`. One web RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A separate native public client is also registered; its client authentication and callback rules differ from this server-side guide. A Mikaki operator registers each RP.
+This guide is for server-side relying parties (RPs), including tossa and tsudoi, connecting to the production issuer `https://auth.mikaki.org`. One web RP is registered for production qualification, but its complete sign-in and session flow has not been verified there. A separate native public client is also registered; its client authentication and callback rules differ from this server-side guide. A Mikaki operator registers each RP.
 
 ## 1. Register the RP
 
@@ -15,7 +15,7 @@ Never send the private JWK. See [managed client operations](rp-client-operations
 
 ## 2. Start login
 
-Read Discovery at `https://mikaki.tossa.app/.well-known/openid-configuration` and obtain signing keys from its `jwks_uri`. The normal profile uses Authorization Code, the `openid` scope, PKCE S256, and ES256 `private_key_jwt`. Client-secret methods in the isolated conformance profile are not for production RPs.
+Read Discovery at `https://auth.mikaki.org/.well-known/openid-configuration` and obtain signing keys from its `jwks_uri`. The normal profile uses Authorization Code, the `openid` scope, PKCE S256, and ES256 `private_key_jwt`. Client-secret methods in the isolated conformance profile are not for production RPs.
 
 Protect the RP's login initiation against CSRF. For every transaction, generate high-entropy `state`, `nonce`, and a PKCE `code_verifier`. Store them server-side with the start time, browser binding, and a validated **RP-local** return path. The `code_challenge` is the unpadded base64url encoding of SHA-256 over the verifier. Redirect the browser to the discovered `authorization_endpoint` with:
 
@@ -43,7 +43,7 @@ Validate the ID Token's signature and `alg` against JWKS, then check `iss`, `aud
 
 ## 4. Establish an application session
 
-Before issuing a cookie, call `POST https://mikaki.tossa.app/session/check` from the backend with JSON containing `client_id`, `client_assertion_type`, a **new** `client_assertion`, and the ID Token's `sid`. This is a managed-RP extension, not a standard OIDC endpoint. The new assertion's `aud` must be **`https://mikaki.tossa.app/session/check`**; a token-endpoint assertion cannot be reused. See the [session-check contract](rp-session-check.md).
+Before issuing a cookie, call `POST https://auth.mikaki.org/session/check` from the backend with JSON containing `client_id`, `client_assertion_type`, a **new** `client_assertion`, and the ID Token's `sid`. This is a managed-RP extension, not a standard OIDC endpoint. The new assertion's `aud` must be **`https://auth.mikaki.org/session/check`**; a token-endpoint assertion cannot be reused. See the [session-check contract](rp-session-check.md).
 
 If `active=true`, compare `sub` and `auth_time` with the verified ID Token. Measure `lease_ttl` from the **start** of the check and cap the deadline at parent SSO `expires_at`. The RP application session expires at the earlier of its `app_idle_timeout` and parent SSO expiry. Atomically commit the revocation check, membership decision, completed browser transaction, and new RP session in the RP store. Then issue an RP-host-only cookie with `Secure`, `HttpOnly`, and `SameSite=Lax`; do not use a shared `Domain` cookie with Mikaki.
 
