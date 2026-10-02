@@ -3,7 +3,7 @@
   const context = vaultContext();
   const scope = vaultScope();
   const fetch = scope.request;
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import PasskeyTransfer from './PasskeyTransfer.svelte';
   import {
     encodeBase64Url,
@@ -19,6 +19,7 @@
     decodeOwnerNote,
     encodeOwnerNote,
     newOwnerNote,
+    ownerNoteInputError,
     type OwnerNote,
   } from './vault-note.js';
   import * as m from './paraglide/messages.js';
@@ -61,6 +62,10 @@
     return () => onBusy(false);
   });
   let status = $state('');
+  let validationAttempted = $state(false);
+  const invalidField = $derived(validationAttempted ? ownerNoteInputError(title, body) : null);
+  let titleInput: HTMLInputElement;
+  let textInput: HTMLTextAreaElement;
   let disclosure = $state(false);
   let pending: Pending | null = $state(null);
   const dirty = $derived(
@@ -69,6 +74,7 @@
   const endpoint = `/vault/attributes/${NOTE_ATTRIBUTE}`;
 
   async function load() {
+    validationAttempted = false;
     onSavedRevision(0);
     loaded = false;
     opened = false;
@@ -174,6 +180,16 @@
     )
       return;
     if (method === 'DELETE' && !pending && !confirm(m.productNoteDeleteConfirm())) return;
+    if (method === 'PUT' && !pending) {
+      validationAttempted = true;
+      const field = ownerNoteInputError(title, body);
+      if (field) {
+        status = '';
+        await tick();
+        (field === 'title' ? titleInput : textInput)?.focus();
+        return;
+      }
+    }
     busy = true;
     try {
       const value =
@@ -336,6 +352,9 @@
       type="text"
       maxlength="256"
       disabled={busy || transferBusy || !opened || pending !== null}
+      bind:this={titleInput}
+      aria-invalid={invalidField === 'title' || undefined}
+      aria-describedby={invalidField === 'title' ? 'note-input-error' : undefined}
       bind:value={title}
     /></label
   >
@@ -344,6 +363,9 @@
       rows="5"
       maxlength="4096"
       disabled={busy || transferBusy || !opened || pending !== null}
+      bind:this={textInput}
+      aria-invalid={invalidField === 'text' || undefined}
+      aria-describedby={invalidField === 'text' ? 'note-input-error' : undefined}
       bind:value={body}></textarea></label
   >
   <button
@@ -391,6 +413,11 @@
       {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
     </p>{/if}
   <p role="status">{status}</p>
+  {#if invalidField}
+    <p id="note-input-error" role="alert">
+      {invalidField === 'title' ? m.vaultNoteTitleInvalid() : m.vaultNoteTextInvalid()}
+    </p>
+  {/if}
 </section>
 
 <details class="product-details">

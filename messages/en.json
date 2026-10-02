@@ -212,6 +212,8 @@
   "vaultNoteUnlock": "Open note",
   "vaultNoteTitle": "Note title",
   "vaultNoteText": "Note text",
+  "vaultNoteTitleInvalid": "Enter a title, or shorten it if it is too long.",
+  "vaultNoteTextInvalid": "Enter note text, or shorten it if it is too long.",
   "vaultNoteSave": "Save note",
   "vaultNoteDelete": "Delete note",
   "vaultNoteImport": "Import note JSON",

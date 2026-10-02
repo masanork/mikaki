@@ -101,8 +101,18 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
           }
         }
         Object.defineProperty(window, 'PublicKeyCredential', { value: MockCredential });
+        Object.defineProperty(window, '__notePasskeyCalls', { value: 0, writable: true });
         Object.defineProperty(navigator, 'credentials', {
-          value: { get: async () => new MockCredential() },
+          value: {
+            get: async () => {
+              Reflect.set(
+                window,
+                '__notePasskeyCalls',
+                Reflect.get(window, '__notePasskeyCalls') + 1,
+              );
+              return new MockCredential();
+            },
+          },
         });
       },
       { credential: [...credential], prf: [...prf] },
@@ -162,6 +172,38 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
     });
     await unlock.click();
     await expect(title).toHaveValue('Node title');
+    await expect(panel.locator('[data-draft-state]')).toHaveCount(0);
+    const passkeyCalls = await page.evaluate(() => Reflect.get(window, '__notePasskeyCalls'));
+    for (const invalid of [
+      { title: 'あ'.repeat(86), text: 'Node text', field: title, message: 'Enter a title' },
+      { title: '   ', text: 'Node text', field: title, message: 'Enter a title' },
+      { title: 'Node title', text: 'あ'.repeat(1366), field: text, message: 'Enter note text' },
+      { title: 'Node title', text: '   ', field: text, message: 'Enter note text' },
+    ]) {
+      await title.fill(invalid.title);
+      await text.fill(invalid.text);
+      await save.click();
+      await expect(panel.getByRole('alert')).toContainText(invalid.message);
+      await expect(invalid.field).toBeFocused();
+      await expect(invalid.field).toHaveAttribute('aria-invalid', 'true');
+      await expect(invalid.field).toHaveAttribute('aria-describedby', 'note-input-error');
+      await expect(title).toHaveValue(invalid.title);
+      await expect(text).toHaveValue(invalid.text);
+      assert.equal(puts.length, 0, 'Invalid inputs must not send a write');
+      assert.equal(
+        await page.evaluate(() => Reflect.get(window, '__notePasskeyCalls')),
+        passkeyCalls,
+        'Invalid inputs must not request a Passkey',
+      );
+      assert.equal((await current()).revision, 1);
+    }
+    await title.fill('あ'.repeat(85));
+    await text.fill('あ'.repeat(1365));
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    await expect(title).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(text).not.toHaveAttribute('aria-invalid', 'true');
+    await title.fill('Node title');
+    await text.fill('Node text');
     await expect(panel.locator('[data-draft-state]')).toHaveCount(0);
     await text.fill('Keep this draft');
     let navigationCancelled = false;
