@@ -186,6 +186,10 @@ pub async fn start(
     let Some(login) = passkey_login::transaction(&db, &input.tx, &browser_hash).await? else {
         return reject(400);
     };
+    // First-party sign-in is not an enrollment transaction. Use /enroll instead.
+    if login.owner_login != 0 {
+        return reject(400);
+    }
     let invite_hash = passkey_login::hash(&input.invitation);
     let mut random = WorkersCryptoRandom;
     let challenge = passkey_login::random_secret(&mut random)?;
@@ -254,6 +258,10 @@ pub async fn finish(
     let Some(login) = passkey_login::transaction(&db, &input.tx, &browser_hash).await? else {
         return reject(400);
     };
+    // First-party sign-in is not an enrollment transaction. Use /enroll instead.
+    if login.owner_login != 0 {
+        return reject(400);
+    }
     let row = db
         .prepare(
             "SELECT r.invite_hash,i.kind,r.challenge,r.user_handle,r.expires_at,r.failures \

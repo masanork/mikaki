@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { chromium, expect } from '@playwright/test';
 import { exportJWK, generateKeyPair } from 'jose';
 import { createTestHarness } from 'wrangler';
@@ -203,6 +204,33 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       page.getByRole('link', { name: 'Register with an invitation', exact: true }),
     ).toHaveAttribute('href', '/enroll?lang=en');
     await expect(page.locator('details.registration')).toHaveCount(0);
+    const pendingTx = new URL(page.url()).searchParams.get('tx')!;
+    const unusedInvite = 'i'.repeat(43);
+    await DB.prepare(
+      "INSERT INTO enrollment_invite(invite_hash,kind,issuer_account_id,issued_at,expires_at) SELECT ?,'normal',account_id,unixepoch(),unixepoch()+300 FROM account_role WHERE role='admin'",
+    )
+      .bind(createHash('sha256').update(unusedInvite).digest('base64url'))
+      .run();
+    const invalidRegistration = await worker.fetch(`${issuer}/register/start`, {
+      method: 'POST',
+      headers: {
+        origin: issuer,
+        'content-type': 'application/json',
+        cookie: (await context.cookies(issuer))
+          .map((cookie) => `${cookie.name}=${cookie.value}`)
+          .join('; '),
+      },
+      body: JSON.stringify({ tx: pendingTx, invitation: unusedInvite }),
+    });
+    assert.equal(invalidRegistration.status, 400);
+    assert.equal(
+      (
+        await DB.prepare('SELECT consumed_at FROM enrollment_invite WHERE invite_hash=?')
+          .bind(createHash('sha256').update(unusedInvite).digest('base64url'))
+          .first()
+      ).consumed_at,
+      null,
+    );
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
     await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
     await page.waitForURL(`${issuer}/vault?lang=en`);
