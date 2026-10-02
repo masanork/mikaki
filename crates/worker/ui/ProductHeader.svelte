@@ -21,6 +21,10 @@
   } = $props();
   const page = new URL(location.href);
   let header: HTMLElement;
+  $effect(() => {
+    const surface = header?.closest<HTMLElement>('.vault-shell, .product-material-shell');
+    if (surface) surface.dataset.materialPaused = String(paused);
+  });
   onMount(() => {
     if (!material) return;
     const profile = weaveProfile(page.origin);
@@ -45,7 +49,11 @@
     />
   {/if}
   <div class="product-header-inner">
-    <a class="auth-brand product-brand" href="/" aria-label="mikaki">
+    <a
+      class="auth-brand product-brand"
+      href={session ? `/vault?lang=${locale}` : '/'}
+      aria-label="mikaki"
+    >
       {#if !material}<BrandMark />{/if}
       mikaki
     </a>

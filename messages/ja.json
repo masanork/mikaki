@@ -205,7 +205,7 @@
   "vaultNoteImported": "メモを編集欄に読み込みました。保存するまでVaultは変更されません。",
   "vaultNoteInvalidImport": "対応するメモ形式ではありません。編集内容は変更していません。",
   "vaultNoteHeading": "本人用メモ",
-  "vaultNoteExplanation": "型と版を持つ本人申告のメモです。タイトルはUTF-8で256バイト、本文は4096バイトまで。ローカルAIとの共有には、別途選択と開示の承認が必要です。名前とは別の鍵なので、名前のパスキー移行ではこのメモは移行されません。",
+  "vaultNoteExplanation": "自分のための暗号化メモです。AIとの共有は、自分で選んで許可します。メモのパスキーは表示名とは別に移行してください。",
   "vaultNoteUnlock": "メモを開く",
   "vaultNoteTitle": "メモのタイトル",
   "vaultNoteText": "メモの本文",

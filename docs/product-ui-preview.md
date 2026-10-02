@@ -1,6 +1,6 @@
 # Product UI preview
 
-Vault, invitation management, registration completion, and logout carry the login/home woven fence into a compact header, with the current host on a metal plaque. The origin determines the weave, color, and grain; pointer movement and ambient light animate the surface, respecting reduced motion. The CSS fallback also uses the origin's color and grain when Canvas is unavailable. Logout renders its host plaque and confirmation/completion on the server, so it remains usable without JavaScript; the fence then keeps its default static material. Light mineral panels keep the editors readable, and a metal navigation bar stays accessible on mobile. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
+Vault, invitation management, registration completion, and logout carry the login/home woven fence into a compact header, with the current host on a timber plaque. The origin determines the weave, color, and grain; pointer movement and ambient light animate the surface, respecting reduced motion. The CSS fallback also uses the origin's color and grain when Canvas is unavailable. Logout renders its host plaque and confirmation/completion on the server, so it remains usable without JavaScript; the fence then keeps its default static material. Inside the fence, warm paper-like panels sit against a quiet courtyard surface. Faint woven shadows and slowly shifting light echo the origin-derived material while the editing surfaces stay still and readable. Timber navigation and shallow grain connect the header, Vault, Passkey settings, invitations and completion screens. Reduced motion freezes the courtyard light as well as the fence; sensitive operations pause both. Mobile navigation stays accessible, and the service link returns signed-in users to Vault. Profile operations expose loading and retry state, prevent overlapping mutations, and allow explicit discard/reload after failures. Name/note editors show unsaved changes; voluntary lock, reload, transfer, and initial deletion use confirmation. Browser unload protection is best effort.
 
 | Vault | Logout |
 | --- | --- |
@@ -16,7 +16,7 @@ Vault, invitation management, registration completion, and logout carry the logi
 
 [Mobile logout complete](product-ui-preview/logout-complete-mobile.png)
 
-Captured from the actual Worker and UI bundles with disposable synthetic accounts/data and mocked Passkey PRF. These screens have not been deployed as part of this change. They do not qualify intended devices or accessibility certification.
+Captured from the actual Worker and UI bundles with disposable synthetic accounts/data and mocked Passkey PRF. They do not qualify intended devices or accessibility certification.
 
 Build with `worker-build --release crates/worker`, then run `npm run preview:product-ui` to refresh these images. The capture checks desktop/375px horizontal overflow, browser exceptions, Vault unlock, the mobile session lock, and logout completion. `npm run test:product-ui` separately runs interaction and failure regressions in CI. See [product quality gates](product-quality.md).
 
