@@ -12,7 +12,7 @@ updated: 2026-10-02
 
 mikaki is an experimental open source identity service built primarily in Rust. It combines passkey authentication with OpenID Connect sign-in for applications.
 
-Use the [Web sign-in page](https://auth.mikaki.org/signin) directly, or start application sign-in from the application you want to use. Check the destination on the login screen, then authenticate with your passkey. Account registration currently requires an invitation code.
+Use the [Web sign-in page](https://auth.mikaki.org/signin?lang=en) directly, or start application sign-in from the application you want to use. Check the destination on the login screen, then authenticate with your passkey. Account registration currently requires an invitation code.
 
 ## Explore mikaki
 
