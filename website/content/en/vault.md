@@ -5,7 +5,7 @@ title: 'Using Vault: unlocking, saving and sharing'
 description: 'How mikaki Vault handles names and notes, passkey PRF unlocking, plaintext export, sharing consent and passkey transfer limitations.'
 lang: en
 translation_key: vault
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 
 ## Sign-in and unlocking are separate
@@ -13,6 +13,8 @@ updated: 2026-10-02
 Vault is the interface for storing an encrypted name and note. Signing in to mikaki with a passkey does not automatically decrypt saved items. Opening an item uses the corresponding passkey's WebAuthn PRF output to decrypt it in your browser.
 
 PRF is not required for ordinary login, but it is required for Vault decryption. Available operations can differ with the device, browser and passkey provider, even when ordinary sign-in works.
+
+See [Passkeys and unlocking Vault](passkeys.md) for the difference between sign-in and decryption, and checks before changing devices.
 
 ## Save a name or note
 
