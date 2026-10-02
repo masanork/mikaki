@@ -45,4 +45,4 @@ WebAuthn PRFは、パスキーに結び付いた値をブラウザから得る�
 
 ## 仕様と検証範囲を確認する
 
-一般的な仕組みはW3Cの[WebAuthn PRF仕様](https://www.w3.org/TR/webauthn-3/#prf-extension)と[生体認証の扱い](https://www.w3.org/TR/webauthn-3/#sctn-authenticator-local-biometric-recognition)に記載されています。mikakiの実装・実端末検証の範囲は[対応状況](security.md)、[端末互換性の検証記録](https://github.com/masanork/mikaki/blob/main/docs/webauthn-device-compatibility.md)、[パスキー移行の設計](https://github.com/masanork/mikaki/blob/main/docs/vault-passkey-transfer.md)を参照してください。
+一般的な仕組みはW3Cの[WebAuthn PRF仕様](https://www.w3.org/TR/webauthn-3/#prf-extension)と[生体認証の扱い](https://www.w3.org/TR/webauthn-3/#sctn-biometric-privacy)に記載されています。mikakiの実装・実端末検証の範囲は[対応状況](security.md)、[端末互換性の検証記録](https://github.com/masanork/mikaki/blob/main/docs/webauthn-device-compatibility.md)、[パスキー移行の設計](https://github.com/masanork/mikaki/blob/main/docs/vault-passkey-transfer.md)を参照してください。
