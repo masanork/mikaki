@@ -91,8 +91,10 @@
   let status = $state(m.vaultLoading());
   let shareStatus = $state('');
   let releaseStatus = $state('');
-  let activeSection = $state(location.hash.slice(1) || 'profile');
-  let connectionsExpanded = $state(location.hash === '#connections');
+  const oauthRequested = new URL(location.href).searchParams.has('agent_oauth_request');
+  const initialSection = location.hash.slice(1) || (oauthRequested ? 'connections' : 'profile');
+  let activeSection = $state(initialSection);
+  let connectionsExpanded = $state(initialSection === 'connections' || oauthRequested);
   let securityExpanded = $state(location.hash === '#security');
   const dirty = $derived(pending !== null || (opened && name !== originalName));
 

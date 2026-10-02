@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -768,6 +768,10 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       await route.fulfill({ status: 200, body: 'Returned to client' });
     });
     await page.goto(ownerLocation + '&lang=en');
+    await expect(page.locator('#connections')).toHaveAttribute('open', '');
+    await expect(
+      page.getByRole('link', { name: 'Sharing & connections', exact: true }),
+    ).toHaveAttribute('aria-current', 'location');
     const panel = page.getByRole('region', { name: 'Connect an OAuth client' });
     await panel.getByText('native-test · native-test', { exact: true }).waitFor();
     assert.equal(testedLoginRollback, true);

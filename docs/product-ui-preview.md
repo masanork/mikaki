@@ -6,7 +6,7 @@ Vault, invitation management, registration completion, and logout carry the logi
 | -------------------------------------- | ---------------------------------------- |
 | ![Vault](product-ui-preview/vault.png) | ![Logout](product-ui-preview/logout.png) |
 
-Vault initially shows the profile and owner-note editors. Sharing, name/Passkey management, note-key transfer, and note-file import/export use native disclosure panels. Navigation links open the relevant panel, including direct `#connections` and `#security` links. Closing a panel keeps its component mounted, preserving drafts, pending retries and existing authorization checks; the shared Vault lock still disposes the whole view. File disclosure consent and transfer warnings appear with their actions.
+Vault initially shows the profile and owner-note editors. Sharing, name/Passkey management, note-key transfer, and note-file import/export use native disclosure panels. Navigation links open the relevant panel, including direct `#connections` and `#security` links. Incoming OAuth connection requests open sharing automatically so the client review remains visible. Closing a panel keeps its component mounted, preserving drafts, pending retries and existing authorization checks; the shared Vault lock still disposes the whole view. File disclosure consent and transfer warnings appear with their actions.
 
 [Mobile Vault](product-ui-preview/vault-mobile.png) · [Mobile logout](product-ui-preview/logout-mobile.png) · [English Vault](product-ui-preview/vault-en.png) · [Invitation management](product-ui-preview/admin.png) · [Registration complete](product-ui-preview/complete.png) · [Logout complete](product-ui-preview/logout-complete.png)
 

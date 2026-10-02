@@ -305,6 +305,7 @@ test('one proposal authority enforces explicit capability, exact review, concurr
       });
     });
     await page.goto(`${origin}/vault?lang=en`);
+    await page.getByRole('link', { name: 'Sharing & connections', exact: true }).click();
     const panel = page.getByRole('region', { name: 'Share with an AI agent' });
     const allowButton = panel.getByRole('button', {
       name: 'Allow note proposals for this connection',
