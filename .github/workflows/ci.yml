@@ -38,6 +38,7 @@ jobs:
           node scripts/check_design.ts
           npm run test:sql
           npm run test:release
+          node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
@@ -211,14 +212,7 @@ jobs:
       - name: Record project metrics and refresh charts
         run: node scripts/metrics.ts --record --snapshot-file artifacts/metrics/current.json --output-dir artifacts/metrics
       - name: Commit updated history and charts
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add metrics/history.json metrics/code-size.svg metrics/coverage.svg metrics/dependency-inventory.md
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update project metrics"
-            git push origin HEAD:main
-          fi
+        run: bash scripts/publish-metrics.sh
 
   supply-chain:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
