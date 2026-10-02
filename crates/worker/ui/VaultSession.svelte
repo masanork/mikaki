@@ -123,8 +123,8 @@
 {/if}
 {#if reason || suspended || checking}
   <div class="vault-shell">
-    <ProductHeader {locale} material paused={checking || suspended} />
-    <main class="product-result-shell">
+    <ProductHeader {locale} contentId="vault-status-main" material paused={checking || suspended} />
+    <main id="vault-status-main" tabindex="-1" class="product-result-shell">
       <section class="product-result" aria-labelledby="vault-lock-title" aria-busy={checking}>
         <div class="product-result-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"

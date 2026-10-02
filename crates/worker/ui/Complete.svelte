@@ -8,7 +8,7 @@
 
 <div class="product-material-shell">
   <ProductHeader {locale} material />
-  <main class="product-result-shell">
+  <main id="product-main" tabindex="-1" class="product-result-shell">
     <div class="product-result">
       <div class="product-result-icon is-success" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"

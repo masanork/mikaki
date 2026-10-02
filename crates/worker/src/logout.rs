@@ -440,6 +440,7 @@ fn render_page(
     let message = |key| i18n::html_escape(strings.message(key));
     let template = include_str!("../ui/logout.html");
     let values = [
+        ("{{skip_content}}", message("productSkipContent")),
         ("{{origin_label}}", message("authOriginLabel")),
         (
             "{{page_host}}",

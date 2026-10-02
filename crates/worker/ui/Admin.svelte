@@ -97,7 +97,7 @@
 
 <div class="product-material-shell">
   <ProductHeader {locale} material paused={busy} />
-  <main class="product-main product-admin">
+  <main id="product-main" tabindex="-1" class="product-main product-admin">
     <div class="product-heading">
       <h1>{m.adminHeading()}</h1>
       <p>{m.adminIntro()}</p>

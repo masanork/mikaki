@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/ui/product.css" />
   </head>
   <body data-session-state="{{session_state}}">
+    <a class="product-skip" href="#product-main">{{skip_content}}</a>
     <div class="product-material-shell">
       <header class="product-header product-material">
         <div class="gate-background" data-renderer="css" aria-hidden="true">
@@ -22,7 +23,7 @@
           {{language}}
         </div>
       </header>
-      <main class="product-result-shell">
+      <main id="product-main" tabindex="-1" class="product-result-shell">
         <div class="product-result">
           <div class="product-result-icon {{icon_class}}" aria-hidden="true">
             <svg

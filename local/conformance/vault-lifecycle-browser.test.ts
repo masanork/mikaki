@@ -171,10 +171,17 @@ async function exerciseLifecycle(notifications: Notifications) {
         },
         ...(request.postData() ? { body: request.postData()! } : {}),
       });
+      // Miniflare wraps Undici's response stream. Consume it before awaiting
+      // browser cookie updates: GC may otherwise cancel the original response.
+      const body = Buffer.from(await response.arrayBuffer());
       const confirmation = /__Host-op-logout=([^;, ]+)/.exec(
         response.headers.get('set-cookie') ?? '',
       );
-      if (confirmation)
+      if (confirmation) {
+        if (global.gc) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          global.gc();
+        }
         await page.context().addCookies([
           {
             name: '__Host-op-logout',
@@ -185,10 +192,11 @@ async function exerciseLifecycle(notifications: Notifications) {
             sameSite: 'Lax',
           },
         ]);
+      }
       await route.fulfill({
         status: response.status,
         headers: Object.fromEntries(response.headers),
-        body: Buffer.from(await response.arrayBuffer()),
+        body,
       });
     });
     const lock = page.getByRole('button', { name: 'Lock Vault', exact: true });
@@ -232,6 +240,11 @@ async function exerciseLifecycle(notifications: Notifications) {
     await lock.click();
     await expect(locked).toBeVisible();
     await expect(locked).toBeFocused();
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#vault-status-main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(reopen).toBeFocused();
     assert.equal(await page.locator('#name, textarea').count(), 0);
     await expect(
       page.getByRole('heading', { name: 'Saved name, revision 1', exact: true }),
@@ -281,6 +294,9 @@ async function exerciseLifecycle(notifications: Notifications) {
     await page.locator('#name').fill('Preserved same-session draft');
     await visibility(true);
     await expect(page.locator('#name')).toBeHidden();
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#vault-status-main')).toBeFocused();
     holdCheck = new Promise<void>((resolve) => {
       finishCheck = resolve;
     });
