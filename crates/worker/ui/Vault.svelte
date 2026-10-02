@@ -615,7 +615,7 @@
     material
     paused={busy || transferBusy || loading || noteBusy || agentBusy}
   />
-  <main class="product-main">
+  <main id="product-main" tabindex="-1" class="product-main">
     <div class="product-heading">
       <h1>{m.vaultHeading()}</h1>
       <p>{m.productVaultHint()}</p>

@@ -12,6 +12,7 @@
   "expired": "Restart sign-in from the app.",
   "busy": "Checking…",
   "app": "Connecting to",
+  "productSkipContent": "Skip to content",
   "language": "Language",
   "authKicker": "SECURE SIGN-IN",
   "authHeroHeadingFirst": "Passkeys,",

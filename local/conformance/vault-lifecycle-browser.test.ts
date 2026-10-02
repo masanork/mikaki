@@ -232,6 +232,11 @@ async function exerciseLifecycle(notifications: Notifications) {
     await lock.click();
     await expect(locked).toBeVisible();
     await expect(locked).toBeFocused();
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#vault-status-main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(reopen).toBeFocused();
     assert.equal(await page.locator('#name, textarea').count(), 0);
     await expect(
       page.getByRole('heading', { name: 'Saved name, revision 1', exact: true }),
@@ -281,6 +286,9 @@ async function exerciseLifecycle(notifications: Notifications) {
     await page.locator('#name').fill('Preserved same-session draft');
     await visibility(true);
     await expect(page.locator('#name')).toBeHidden();
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#vault-status-main')).toBeFocused();
     holdCheck = new Promise<void>((resolve) => {
       finishCheck = resolve;
     });

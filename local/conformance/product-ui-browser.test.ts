@@ -210,6 +210,26 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
           assert.doesNotMatch(response!.headers()['content-security-policy']!, /unsafe-inline/);
         }
         assert.equal(await page.locator('main').count(), 1);
+        const skip = page.getByRole('link', {
+          name: locale === 'ja' ? '本文へ移動' : 'Skip to content',
+          exact: true,
+        });
+        assert.ok((await skip.boundingBox())!.y < 0, 'Shortcut stays offscreen until focused');
+        await page.keyboard.press('Tab');
+        await expect(skip).toBeFocused();
+        await expect(skip).toBeInViewport();
+        const hashBefore = new URL(page.url()).hash;
+        await page.keyboard.press('Enter');
+        await expect(page.locator('#product-main')).toBeFocused();
+        if (path !== '/logout') assert.equal(new URL(page.url()).hash, hashBefore);
+        await page.keyboard.press('Tab');
+        assert.ok(
+          await page
+            .locator('#product-main')
+            .evaluate((main) => main.contains(document.activeElement)),
+          'Tab continues inside the main content rather than returning to the header',
+        );
+
         for (const width of [1440, 375]) {
           await page.setViewportSize({ width, height: 900 });
           assert.equal(
@@ -306,6 +326,12 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     await sharingLink.focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('#connections')).toHaveAttribute('open', '');
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#product-main')).toBeFocused();
+    assert.equal(new URL(page.url()).hash, '#connections');
+    await expect(page.locator('#name')).toHaveValue('Unsaved owner');
+    await expect(page.getByLabel('Note title', { exact: true })).toHaveValue('Draft note title');
     await page.locator('#connections > summary').click();
     await expect(page.locator('#connections')).not.toHaveAttribute('open', '');
     // The same hash can be selected again after manually closing its panel.

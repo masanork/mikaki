@@ -8,12 +8,14 @@
   import { weaveProfile } from './woven-gate.js';
   let {
     locale,
+    contentId = 'product-main',
     session = true,
     onlock,
     material = false,
     paused = false,
   }: {
     locale: Locale;
+    contentId?: string;
     session?: boolean;
     onlock?: () => void;
     material?: boolean;
@@ -37,6 +39,17 @@
   });
 </script>
 
+<a
+  class="product-skip"
+  href={`#${contentId}`}
+  onclick={(event) => {
+    const main = document.getElementById(contentId);
+    if (main) {
+      event.preventDefault();
+      main.focus();
+    }
+  }}>{m.productSkipContent()}</a
+>
 <header class="product-header" class:product-material={material} bind:this={header}>
   {#if material}
     <WovenGate
