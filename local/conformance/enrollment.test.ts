@@ -49,3 +49,54 @@ test('bootstrap invitation is hashed, single-open, expiring, and permanently clo
     await harness.close();
   }
 });
+
+test('invitation entry accepts supported locales and binds the registration continuation', async () => {
+  const issuer = 'https://mikaki.test';
+  const harness = createTestHarness({
+    root: new URL('../..', import.meta.url).pathname,
+    workers: [
+      {
+        configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
+        vars: { MIKAKI_ISSUER: issuer },
+      },
+    ],
+  });
+  try {
+    await harness.listen();
+    const worker = harness.getWorker('mikaki-op-worker');
+    await worker.applyD1Migrations('DB');
+    const { DB } = await worker.getEnv();
+    for (const lang of ['ja', 'en']) {
+      const response = await worker.fetch(`${issuer}/enroll?lang=${lang}`, {
+        redirect: 'manual',
+        headers: { 'Accept-Language': lang === 'ja' ? 'en' : 'ja' },
+      });
+      assert.equal(response.status, 302);
+      const destination = new URL(response.headers.get('location')!);
+      assert.equal(destination.searchParams.get('lang'), lang);
+      const tx = destination.searchParams.get('tx')!;
+      const row = await DB.prepare('SELECT authorization_url FROM login_transaction WHERE tx_id=?')
+        .bind(tx)
+        .first();
+      assert.equal(row.authorization_url, `${issuer}/enroll/complete?lang=${lang}`);
+      const screen = await worker.fetch(destination.href, {
+        headers: { cookie: response.headers.get('set-cookie')!.split(';')[0] },
+      });
+      assert.equal(screen.status, 200);
+      assert.match(await screen.text(), new RegExp(`<html lang="${lang}">`));
+    }
+    for (const path of [
+      '/enroll?lang=xx',
+      '/enroll?lang=en&lang=ja',
+      '/enroll?next=https://evil.test/',
+    ])
+      assert.equal((await worker.fetch(`${issuer}${path}`, { redirect: 'manual' })).status, 400);
+    assert.equal(
+      (await worker.fetch('https://evil.test/enroll?lang=en', { redirect: 'manual' })).status,
+      400,
+    );
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM login_transaction').first()).n, 2);
+  } finally {
+    await harness.close();
+  }
+});

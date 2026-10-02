@@ -125,12 +125,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
         isUserVerified: true,
       },
     });
-    await page.goto(`${issuer}/enroll`);
+    await page.goto(`${issuer}/?lang=en`);
+    await page.getByRole('link', { name: 'Register with an invitation', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await page.getByLabel('Invitation code', { exact: true }).fill(invitation);
     await page.getByRole('button', { name: 'Register with invitation', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Registration complete', exact: true }),
     ).toBeVisible();
+    assert.equal(page.url(), `${issuer}/enroll/complete?lang=en`);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 1);
     await page.goto(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();

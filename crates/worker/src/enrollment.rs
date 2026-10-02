@@ -82,9 +82,24 @@ pub async fn entry(
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
     let issuer = issuer(&context)?;
-    if request.url()?.query().is_some() {
+    let requested = request.url()?;
+    let query = requested.query_pairs().collect::<Vec<_>>();
+    if requested.origin().ascii_serialization() != issuer
+        || query.len() > 1
+        || query
+            .iter()
+            .any(|(key, value)| key != "lang" || !matches!(value.as_ref(), "ja" | "en"))
+    {
         return reject(400);
     }
+    let locale_query = query
+        .first()
+        .map(|(_, lang)| format!("?lang={lang}"))
+        .unwrap_or_default();
+    let login_locale = query
+        .first()
+        .map(|(_, lang)| format!("&lang={lang}"))
+        .unwrap_or_default();
     let db = context.env.d1("DB")?;
     let policy = db
         .prepare("SELECT registration_ttl_seconds FROM enrollment_policy WHERE id=1")
@@ -97,11 +112,11 @@ pub async fn entry(
     let challenge = passkey_login::random_secret(&mut random)?;
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     db.prepare("INSERT INTO login_transaction(tx_id,browser_hash,authorization_url,client_id,challenge,expires_at) VALUES(?1,?2,?3,'mikaki-internal-enrollment',?4,?5)")
-        .bind(&[JsValue::from_str(&tx),JsValue::from_str(&passkey_login::hash(&browser)),JsValue::from_str(&format!("{issuer}/enroll/complete")),JsValue::from_str(&challenge),JsValue::from_f64((now+policy.registration_ttl_seconds) as f64)])?
+        .bind(&[JsValue::from_str(&tx),JsValue::from_str(&passkey_login::hash(&browser)),JsValue::from_str(&format!("{issuer}/enroll/complete{locale_query}")),JsValue::from_str(&challenge),JsValue::from_f64((now+policy.registration_ttl_seconds) as f64)])?
         .run().await?;
     Ok(worker::Response::builder()
         .with_status(302)
-        .with_header("Location", &format!("{issuer}/login?tx={tx}"))?
+        .with_header("Location", &format!("{issuer}/login?tx={tx}{login_locale}"))?
         .with_header(
             "Set-Cookie",
             &format!(
