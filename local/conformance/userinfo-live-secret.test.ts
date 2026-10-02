@@ -328,6 +328,7 @@ test('live local Secrets Store decrypts consented name and writes disclosure aud
     assert.equal(navigation?.status(), 200, await page.locator('body').innerText());
     assert.deepEqual(pageErrors, []);
     await page.getByRole('button', { name: 'Unlock with passkey' }).click();
+    await page.getByRole('link', { name: 'Sharing & connections', exact: true }).click();
     await page.getByRole('button', { name: 'Share saved name with UserInfo service' }).click();
     await page.getByText('Your saved name is shared with the UserInfo service.').waitFor();
     const sharedWithoutRpConsent = await userinfo();
