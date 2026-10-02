@@ -868,15 +868,15 @@
   },
   {
     "date": "2026-10-02",
-    "commit": "17cbb72",
+    "commit": "8e2a27b",
     "code": {
-      "implementationLines": 26888,
+      "implementationLines": 26935,
       "testLines": 4432,
       "implementationFiles": 111,
       "testFiles": 13,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 8023,
+          "implementationLines": 8025,
           "testLines": 2292
         },
         "rust": {
@@ -884,7 +884,7 @@
           "testLines": 2140
         },
         "svelte": {
-          "implementationLines": 4067,
+          "implementationLines": 4112,
           "testLines": 0
         }
       }
@@ -892,7 +892,7 @@
     "dependencies": {
       "npm": {
         "runtime": 5,
-        "dev": 16
+        "dev": 20
       },
       "rust": {
         "runtime": 27,
@@ -922,6 +922,9 @@
           "@inlang/plugin-message-format",
           "@jridgewell/trace-mapping",
           "@playwright/test",
+          "@sorane/cli",
+          "@sorane/core",
+          "@sorane/okf",
           "@sveltejs/vite-plugin-svelte",
           "@types/node",
           "@typescript/native",
@@ -930,6 +933,7 @@
           "prettier-plugin-svelte",
           "smol-toml",
           "svelte-check",
+          "tsx",
           "typescript",
           "vite",
           "wrangler"
