@@ -92,6 +92,8 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       ({ credential, prf }) => {
         type PreviewWindow = Window & {
           cancelPrf?: boolean;
+          holdPrf?: boolean;
+          releasePrf?: () => void;
           recordCspViolation: (directive: string) => void;
         };
         const preview = window as unknown as PreviewWindow;
@@ -108,6 +110,12 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
         Object.defineProperty(navigator, 'credentials', {
           value: {
             get: async () => {
+              if (preview.holdPrf) {
+                preview.holdPrf = false;
+                await new Promise<void>((resolve) => {
+                  preview.releasePrf = resolve;
+                });
+              }
               if (preview.cancelPrf) {
                 preview.cancelPrf = false;
                 throw new DOMException('Raw platform cancellation detail', 'NotAllowedError');
@@ -229,6 +237,39 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     await expect(page.getByRole('link', { name: 'Owner note', exact: true })).toHaveAttribute(
       'aria-current',
       'location',
+    );
+    // A child editor awaiting Passkey verification must also quiet the shared scene.
+    await page.evaluate(() => {
+      (window as unknown as { holdPrf: boolean }).holdPrf = true;
+    });
+    await page.getByRole('button', { name: 'Open note', exact: true }).click();
+    const courtyardMotion = () =>
+      page
+        .locator('.vault-shell')
+        .evaluate((node) => getComputedStyle(node, '::before').animationPlayState);
+    await expect.poll(courtyardMotion).toBe('paused');
+    await page.evaluate(() => {
+      (window as unknown as { releasePrf: () => void }).releasePrf();
+    });
+    await expect(page.getByLabel('Note title', { exact: true })).toBeEnabled();
+    await expect.poll(courtyardMotion).toBe('running');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(
+      await page
+        .locator('.vault-shell')
+        .evaluate((node) => getComputedStyle(node, '::before').animationName),
+      'none',
+    );
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const disabledSave = page.locator('#save');
+    await expect(disabledSave).toBeDisabled();
+    const disabledColor = await disabledSave.evaluate(
+      (node) => getComputedStyle(node).backgroundColor,
+    );
+    await disabledSave.hover();
+    assert.equal(
+      await disabledSave.evaluate((node) => getComputedStyle(node).backgroundColor),
+      disabledColor,
     );
     await page.evaluate(() => {
       (window as unknown as Window & { cancelPrf: boolean }).cancelPrf = true;

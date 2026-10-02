@@ -8,7 +8,7 @@ import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
 import { newOwnerNote, encodeOwnerNote } from '../../crates/worker/ui/vault-note.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const origin = 'https://mikaki.test';
+const origin = 'https://auth.mikaki.org';
 const harness = createTestHarness({
   root,
   workers: [

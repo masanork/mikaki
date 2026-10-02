@@ -27,6 +27,7 @@
     credentialId,
     evaluatePrf,
     onSavedRevision = () => {},
+    onBusy = () => {},
   }: {
     credentialId: Uint8Array<ArrayBuffer> | null;
     evaluatePrf: (
@@ -34,6 +35,7 @@
       input: Uint8Array<ArrayBuffer>,
     ) => Promise<Uint8Array<ArrayBuffer>>;
     onSavedRevision?: (revision: number) => void;
+    onBusy?: (busy: boolean) => void;
   } = $props();
   type Saved = SealedAttribute & { revision: number };
   type Pending = {
@@ -54,6 +56,10 @@
   let busy = $state(false);
   let transferBusy = $state(false);
   let transferGeneration = $state(0);
+  $effect(() => {
+    onBusy(busy || transferBusy);
+    return () => onBusy(false);
+  });
   let status = $state('');
   let disclosure = $state(false);
   let pending: Pending | null = $state(null);
