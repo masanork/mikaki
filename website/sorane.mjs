@@ -26,6 +26,15 @@ for (const lang of ['ja', 'en']) {
   const prefix = lang === 'ja' ? '' : 'en/';
   const other = lang === 'ja' ? 'en/' : '';
   const ja = lang === 'ja';
+  const imageUrl = `https://mikaki.org/social-preview/${lang}.png`;
+  const imageAlt = ja
+    ? 'mikaki — 自分の情報を、自分の手元に。パスキーでサインイン。'
+    : 'mikaki — Your information. In your hands. Sign in with a passkey.';
+  mkdirSync(join(site, 'public/social-preview'), { recursive: true });
+  copyFileSync(
+    join(site, `social-preview/${lang}.png`),
+    join(site, `public/social-preview/${lang}.png`),
+  );
   for (const slug of ['index', 'integration', 'security']) {
     const rel = `${prefix}${slug}.html`;
     mkdirSync(join(site, 'public', prefix), { recursive: true });
@@ -38,6 +47,10 @@ for (const lang of ['ja', 'en']) {
     const head = generated
       .match(/<head>([\s\S]*?)<\/head>/)?.[1]
       .replace(/<link rel="stylesheet"[^>]*>/g, '')
+      .replace(
+        'name="twitter:card" content="summary"',
+        'name="twitter:card" content="summary_large_image"',
+      )
       .replace(/(?:href|src)="([^":]+)"/g, (full, url) =>
         full.replace(url, new URL(url, `https://mikaki.org/${rel}`).pathname),
       );
@@ -54,7 +67,8 @@ for (const lang of ['ja', 'en']) {
       (_, slug, suffix = '') => `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"`,
     );
     const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose">${nav}${content}</section>`;
-    const html = `<!doctype html><html lang="${lang}"><head>${head}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${home ? '' : 'small'}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="/${prefix}">mikaki</a><span class="plaque">mikaki.org</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="${signin}">${ja ? 'サインイン' : 'Sign in'}</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;
+    const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
+    const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${home ? '' : 'small'}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="/${prefix}">mikaki</a><span class="plaque">mikaki.org</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="${signin}">${ja ? 'サインイン' : 'Sign in'}</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;
     writeFileSync(join(site, 'public', rel), html);
     copyFileSync(
       join(site, 'dist', rel.replace('.html', '.md')),

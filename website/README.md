@@ -16,3 +16,5 @@ The same build also emits the existing app-domain assets; app callback handling 
 Sorane's optional Mermaid dependency versions are overridden to audited releases. Diagram rendering is not used by this site.
 
 ZenUML’s optional Playwright peer is aligned with the project’s Playwright 1.63.0 via a scoped override. Without it, npm accepts the optional peer mismatch at install time but fails `npm sbom`. The dependency CI job also generates an SBOM to catch this before merging.
+
+Social previews use committed 1200×630 PNG captures of the existing woven hero, with a Japanese or English image selected by page language. After changing the hero or renderer, regenerate them with `npm run build:website`, `node website/export-social-preview.mjs`, then `npm run build:website` again. The capture needs an installed Playwright Chromium browser; normal builds only copy the committed images.
