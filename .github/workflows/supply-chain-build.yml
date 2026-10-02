@@ -37,6 +37,8 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
           npm run test:release
+          npm run check:worker-budgets
+          cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"
           npm run test:frontend-coverage
       - name: Verify product journeys and Worker screens in Chromium
         run: |

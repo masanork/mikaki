@@ -1,0 +1,38 @@
+{
+  "/login/login.js": {
+    "raw": 103424,
+    "gzip": 32768
+  },
+  "/login/login.css": {
+    "raw": 11264,
+    "gzip": 4096
+  },
+  "/ui/product.css": {
+    "raw": 48128,
+    "gzip": 10240
+  },
+  "/ui/session-events.js": {
+    "raw": 12288,
+    "gzip": 5120
+  },
+  "/enroll/complete.js": {
+    "raw": 92160,
+    "gzip": 29696
+  },
+  "/admin/admin.js": {
+    "raw": 96256,
+    "gzip": 30720
+  },
+  "/vault/vault.js": {
+    "raw": 315392,
+    "gzip": 88064
+  },
+  "crates/worker/build/index_bg.wasm": {
+    "raw": 3681280,
+    "gzip": 1222656
+  },
+  "crates/userinfo-claim-worker/build/index_bg.wasm": {
+    "raw": 803840,
+    "gzip": 271360
+  }
+}
