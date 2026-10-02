@@ -896,6 +896,49 @@ a {
   color: #354739;
   font-weight: 550;
 }
+.vault-shell .product-details {
+  border: 1px solid #c2c6b6;
+  border-radius: 2px;
+  background: linear-gradient(115deg, #fffdf4, #f7f5eb);
+  box-shadow: 0 4px 14px #2e40330a;
+  scroll-margin-top: 24px;
+}
+.vault-shell .product-details > summary {
+  padding: 18px 22px;
+  color: #354739;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 550;
+}
+.vault-shell .product-details > summary::marker {
+  color: #7b866d;
+}
+.vault-shell .product-details > summary:hover {
+  background: #697c4e0a;
+}
+.vault-shell .product-details > .product-content {
+  padding: 0 16px 16px;
+}
+.vault-shell .product-details > .product-content > section {
+  padding: 22px 8px;
+  border: 0;
+  border-top: 1px solid #c2c6b6;
+  background: transparent;
+  box-shadow: none;
+}
+.vault-shell .product-details-inline {
+  margin: 22px 0;
+  padding: 0 14px 14px;
+  box-shadow: none;
+}
+.vault-shell .product-details-inline:not([open]) {
+  padding-bottom: 0;
+}
+.vault-shell .product-details-inline > summary {
+  margin: 0 -14px;
+  padding: 14px;
+  font-size: 13px;
+}
 :is(.vault-shell, .product-material-shell) .product-content h3 {
   color: #425545;
 }
@@ -1084,7 +1127,8 @@ a {
     padding: 20px;
   }
   :is(.vault-shell, .product-material-shell) .product-content > section,
-  :is(.vault-shell, .product-material-shell) .product-content > div.product-content {
+  :is(.vault-shell, .product-material-shell) .product-content > div.product-content,
+  .vault-shell .product-details {
     scroll-margin-top: 140px;
   }
   :is(.vault-shell, .product-material-shell) .product-result-shell {

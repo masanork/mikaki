@@ -153,12 +153,17 @@ try {
   );
   await capture('vault');
   await capture('vault-full', true);
+  await page.getByRole('link', { name: '共有と連携', exact: true }).click();
+  await expect(page.locator('#connections')).toHaveAttribute('open', '');
+  await capture('vault-connections');
+  await page.locator('#connections > summary').click();
   await page.getByRole('link', { name: 'パスキー管理', exact: true }).click();
   await expect(page.getByRole('link', { name: 'パスキー管理', exact: true })).toHaveAttribute(
     'aria-current',
     'location',
   );
   await capture('vault-settings');
+  await page.locator('#security > summary').click();
   await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
   await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
     'aria-current',
@@ -174,6 +179,7 @@ try {
     'location',
   );
   await capture('vault-settings-mobile');
+  await page.locator('#security > summary').click();
   await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
   await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
     'aria-current',

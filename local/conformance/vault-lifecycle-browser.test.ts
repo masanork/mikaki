@@ -184,6 +184,7 @@ test('Vault disposes drafts and late PRF results, verifies resume identity and l
       }, hidden);
     }
     await open();
+    await page.locator('#connections > summary').click();
     const agent = page.getByRole('region', { name: 'Share with an AI agent' });
     await agent.getByRole('checkbox', { name: 'Share my saved name' }).check();
     await agent.getByRole('checkbox', { name: 'I approve disclosure' }).check();

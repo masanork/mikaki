@@ -210,6 +210,8 @@ test('note transfer preserves saved schema independently of name, retries exactl
     });
     await page.goto(`${origin}/vault?lang=en`);
     const editor = page.getByRole('region', { name: 'Owner note', exact: true });
+    await page.getByText('Move the note to another Passkey', { exact: true }).click();
+    await page.locator('#connections > summary').click();
     const transfer = page.getByRole('region', {
       name: 'Move my saved note to another Passkey',
       exact: true,
@@ -283,6 +285,7 @@ test('note transfer preserves saved schema independently of name, retries exactl
     await editor.getByRole('button', { name: 'Open note', exact: true }).click();
     await expect(editor.getByLabel('Note title', { exact: true })).toHaveValue(note.title);
     await expect(editor.getByLabel('Note text', { exact: true })).toHaveValue(note.text);
+    await page.getByText('Move the note to another Passkey', { exact: true }).click();
     // A concurrent owner edit must win; the prepared stale transfer must not overwrite it.
     await write(
       'owner_note',

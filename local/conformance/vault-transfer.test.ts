@@ -458,6 +458,7 @@ test('Vault browser adds a passkey, transfers only the saved name, survives a lo
       );
       void dialog.accept();
     });
+    await first.page.locator('#security > summary').click();
     const panel = first.page.getByRole('region', { name: 'Move my saved name to another Passkey' });
     await panel.getByRole('checkbox').check();
     await panel.getByRole('button', { name: 'Add a Passkey to this account', exact: true }).click();

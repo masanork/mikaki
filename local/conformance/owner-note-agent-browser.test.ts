@@ -134,6 +134,7 @@ test('saved note selection reaches local MCP without name unlock, edits, writes 
       });
     });
     await page.goto(`${origin}/vault?lang=en`);
+    await page.locator('#connections > summary').click();
     const panel = page.getByRole('region', { name: 'Share with an AI agent' });
     const notePanel = page.getByRole('region', { name: 'Owner note', exact: true });
     const select = panel.getByRole('checkbox', {

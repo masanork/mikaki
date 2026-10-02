@@ -201,6 +201,7 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
     );
     await unlock.click();
     await text.fill('Unsaved text');
+    await panel.getByText('Import or export a note', { exact: true }).click();
     const exportButton = panel.getByRole('button', { name: 'Export saved note', exact: true });
     await expect(exportButton).toBeDisabled();
     await panel.getByRole('checkbox').check();
