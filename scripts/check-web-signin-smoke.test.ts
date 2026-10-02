@@ -12,7 +12,8 @@ function page(locale: 'ja' | 'en') {
 test('public Web entry checks reject locale, RP, and transaction regressions', () => {
   for (const locale of ['ja', 'en'] as const) {
     const html = page(locale);
-    checkWebSigninPage(html, locale);
+    const destination = `https://auth.mikaki.org/login?tx=${'t'.repeat(43)}&lang=${locale}`;
+    checkWebSigninPage(html, locale, destination);
     for (const invalid of [
       html.replace(`<html lang="${locale}">`, '<html lang="other">'),
       html.replace('data-owner-login="true"', 'data-owner-login="false"'),
@@ -23,7 +24,21 @@ test('public Web entry checks reject locale, RP, and transaction regressions', (
       html.replace('data-challenge="', 'data-missing-challenge="'),
       html.replace('/login/login.js', '/missing.js'),
     ]) {
-      assert.throws(() => checkWebSigninPage(invalid, locale));
+      assert.throws(() => checkWebSigninPage(invalid, locale, destination));
+    }
+    for (const invalid of [
+      destination.replace('auth.mikaki.org', 'other.example'),
+      destination.replace('https:', 'http:'),
+      destination.replace('/login?', '/other?'),
+      destination.replace(`lang=${locale}`, 'lang=other'),
+      destination.replace('t'.repeat(43), 'short'),
+      destination.replace('t'.repeat(43), 'x'.repeat(43)),
+      `${destination}&tx=${'t'.repeat(43)}`,
+      `${destination}&next=https://other.example`,
+      `${destination}#other`,
+      'not a URL',
+    ]) {
+      assert.throws(() => checkWebSigninPage(html, locale, invalid));
     }
   }
 });
