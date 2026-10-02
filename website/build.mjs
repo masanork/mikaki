@@ -80,3 +80,9 @@ for (const dir of ['public', 'app-public'])
   );
 
 await import('./sorane.mjs');
+
+// Search Console ownership verification applies only to the public website.
+await writeFile(
+  new URL('public/google39c752b3da515c0e.html', base),
+  await readFile(new URL('verification/google39c752b3da515c0e.html', base)),
+);
