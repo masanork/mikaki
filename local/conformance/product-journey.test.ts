@@ -112,7 +112,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
         protocol: 'ctap2',
         ctap2Version: 'ctap2_1',
@@ -196,8 +196,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
           body: request.postData()!,
         };
     });
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
     await page.goto(`${issuer}/?lang=en`);
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+    await expect(
+      page.getByRole('link', { name: 'Register with an invitation', exact: true }),
+    ).toHaveAttribute('href', '/enroll?lang=en');
+    await expect(page.locator('details.registration')).toHaveCount(0);
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+    await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
     await page.waitForURL(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
