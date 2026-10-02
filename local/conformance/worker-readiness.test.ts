@@ -56,13 +56,14 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
       status: number,
       authorization: string | null = `Bearer ${readyToken}`,
       fault = '',
+      dependencyFault = '',
     ) => {
-      const response = await op.fetch(
-        `https://mikaki.test/ready${fault ? '?r2_fault=' + fault : ''}`,
-        {
-          headers: authorization === null ? {} : { Authorization: authorization },
-        },
-      );
+      const url = new URL('https://mikaki.test/ready');
+      if (fault) url.searchParams.set('r2_fault', fault);
+      if (dependencyFault) url.searchParams.set('ready_fault', dependencyFault);
+      const response = await op.fetch(url.href, {
+        headers: authorization === null ? {} : { Authorization: authorization },
+      });
       assert.equal(response.status, status);
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
       assert.equal(await response.text(), '');
@@ -109,8 +110,33 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await check(503, `Bearer ${readyToken}`, 'pending');
     const elapsed = performance.now() - started;
     assert.ok(elapsed >= 2_500, 'Pending R2 must reach the dependency timeout');
-    assert.ok(elapsed < 8_000, 'A stalled R2 HEAD must return within its bound');
+    assert.ok(elapsed < 4_500, 'R2 must time out before the five-second whole-probe deadline');
     await check(204);
+    const dependencyCalls = async () =>
+      (await (await op.fetch('https://mikaki.test/__test/dependencies')).json()) as string[];
+    for (const dependency of ['d1', 'claim']) {
+      const before = (await dependencyCalls()).length;
+      const start = performance.now();
+      await check(503, `Bearer ${readyToken}`, '', dependency);
+      const duration = performance.now() - start;
+      assert.ok(
+        duration >= 4_500 && duration < 7_500,
+        `${dependency} must reach the whole-probe timeout`,
+      );
+      assert.equal(
+        (await dependencyCalls()).slice(before).at(-1),
+        dependency,
+        'Injected pending dependency must actually be called',
+      );
+      await check(204);
+      const recovered = (await dependencyCalls()).length;
+      await check(404, null, '', dependency);
+      assert.equal(
+        (await dependencyCalls()).length,
+        recovered,
+        'Unauthorized checks bypass pending dependencies',
+      );
+    }
     const calls = (await heads()).length;
     await check(404, null, 'error');
     assert.equal((await heads()).length, calls, 'Unauthorized checks bypass even a failed R2');
