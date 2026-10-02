@@ -28,9 +28,9 @@ jobs:
       - name: Install pinned build tools
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview --target wasm32-unknown-unknown
-          cargo install wasm-pack --version 0.15.0 --locked
-          cargo install worker-build --version 0.8.6 --locked
-          cargo install cargo-llvm-cov --version 0.9.1 --locked
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: verify
       - run: npm ci
       - name: Validate npm release BOM
         run: npm sbom --sbom-format=cyclonedx --sbom-type=application > "$RUNNER_TEMP/npm-build.cdx.json"
@@ -147,7 +147,10 @@ jobs:
       - name: Install pinned audit tools
         run: |
           rustup toolchain install 1.98.1 --profile minimal
-          cargo install cargo-audit --version 0.22.2 --locked
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: audit
+      - run: |
           npm ci
           npm ci --prefix design/probes
       - name: Dependency advisories
@@ -175,7 +178,9 @@ jobs:
           cache: npm
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
       - run: npm ci
-      - run: cargo install worker-build --version 0.8.6 --locked
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: worker
       - name: Build Worker and run passkey preflight
         run: |
           npm run build:policy

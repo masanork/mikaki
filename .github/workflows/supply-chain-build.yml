@@ -19,10 +19,11 @@ jobs:
           cache: npm
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
       - run: npm ci
-      - name: Install pinned BOM and Worker build tools
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: release
+      - name: Install pinned BOM validator
         run: |
-          cargo install cargo-cyclonedx --version 0.5.9 --locked
-          cargo install worker-build --version 0.8.6 --locked
           curl -fsSL -o /tmp/cyclonedx https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.33.1/cyclonedx-linux-x64
           echo 'bfc8b2538da86fe239bc53658bbb63c1c8c510a293c1e6891aa5bea5d3c58746  /tmp/cyclonedx' | sha256sum -c -
           chmod 755 /tmp/cyclonedx
