@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { chromium, expect } from '@playwright/test';
 import { exportJWK, generateKeyPair } from 'jose';
 import { createTestHarness } from 'wrangler';
@@ -112,7 +113,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
         protocol: 'ctap2',
         ctap2Version: 'ctap2_1',
@@ -124,12 +125,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
         isUserVerified: true,
       },
     });
-    await page.goto(`${issuer}/enroll`);
+    await page.goto(`${issuer}/?lang=en`);
+    await page.getByRole('link', { name: 'Register with an invitation', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await page.getByLabel('Invitation code', { exact: true }).fill(invitation);
     await page.getByRole('button', { name: 'Register with invitation', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Registration complete', exact: true }),
     ).toBeVisible();
+    assert.equal(page.url(), `${issuer}/enroll/complete?lang=en`);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 1);
     await page.goto(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
@@ -175,12 +179,108 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await expect(
       page.getByRole('heading', { name: 'You have logged out', exact: true }),
     ).toBeVisible();
-    assert.equal((await page.goto(`${issuer}/vault?lang=en`))?.status(), 401);
+    assert.equal(
+      (await worker.fetch(`${issuer}/vault?lang=en`, { redirect: 'manual' })).status,
+      302,
+    );
     await expect(page.locator('#name')).toHaveCount(0);
     assert.equal((await page.goto(`${rpOrigin}/protected`))?.status(), 401);
     await expect(
       page.getByRole('heading', { name: 'Sign-in required', exact: true }),
     ).toBeVisible();
+    // Follow actual HTTPS redirects from the public entry, without an RP or native app.
+    const connectionsBefore = (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first())
+      .n;
+    let webFinish: { url: string; headers: Record<string, string>; body: string } | undefined;
+    page.on('request', async (request) => {
+      if (new URL(request.url()).pathname === '/login/finish')
+        webFinish = {
+          url: request.url(),
+          headers: await request.allHeaders(),
+          body: request.postData()!,
+        };
+    });
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
+    await page.goto(`${issuer}/?lang=en`);
+    await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+    await expect(
+      page.getByRole('link', { name: 'Register with an invitation', exact: true }),
+    ).toHaveAttribute('href', '/enroll?lang=en');
+    await expect(page.locator('details.registration')).toHaveCount(0);
+    const pendingTx = new URL(page.url()).searchParams.get('tx')!;
+    const unusedInvite = 'i'.repeat(43);
+    await DB.prepare(
+      "INSERT INTO enrollment_invite(invite_hash,kind,issuer_account_id,issued_at,expires_at) SELECT ?,'normal',account_id,unixepoch(),unixepoch()+300 FROM account_role WHERE role='admin'",
+    )
+      .bind(createHash('sha256').update(unusedInvite).digest('base64url'))
+      .run();
+    const invalidRegistration = await worker.fetch(`${issuer}/register/start`, {
+      method: 'POST',
+      headers: {
+        origin: issuer,
+        'content-type': 'application/json',
+        cookie: (await context.cookies(issuer))
+          .map((cookie) => `${cookie.name}=${cookie.value}`)
+          .join('; '),
+      },
+      body: JSON.stringify({ tx: pendingTx, invitation: unusedInvite }),
+    });
+    assert.equal(invalidRegistration.status, 400);
+    assert.equal(
+      (
+        await DB.prepare('SELECT consumed_at FROM enrollment_invite WHERE invite_hash=?')
+          .bind(createHash('sha256').update(unusedInvite).digest('base64url'))
+          .first()
+      ).consumed_at,
+      null,
+    );
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+    await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
+    await page.waitForURL(`${issuer}/vault?lang=en`);
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    assert.equal(
+      (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first()).n,
+      connectionsBefore,
+    );
+    assert.ok(webFinish);
+    assert.equal(
+      (
+        await worker.fetch(webFinish.url, {
+          method: 'POST',
+          headers: webFinish.headers,
+          body: webFinish.body,
+        })
+      ).status,
+      400,
+    );
+    const tx = (JSON.parse(webFinish.body) as { tx: string }).tx;
+    for (const destination of [
+      'https://evil.test/vault',
+      `${issuer}/admin`,
+      `${issuer}/vault?agent_oauth_request=${'x'.repeat(43)}`,
+      `${issuer}/vault#fragment`,
+    ]) {
+      await DB.prepare(
+        'UPDATE web_login_transaction SET consumed=0,authorization_url=? WHERE tx_id=?',
+      )
+        .bind(destination, tx)
+        .run();
+      const rejected = await worker.fetch(webFinish.url, {
+        method: 'POST',
+        headers: webFinish.headers,
+        body: webFinish.body,
+      });
+      assert.equal(rejected.status, 400);
+      assert.equal(((await rejected.json()) as { error: string }).error, 'invalid_continuation');
+    }
+    await DB.prepare(
+      'UPDATE web_login_transaction SET consumed=1,authorization_url=? WHERE tx_id=?',
+    )
+      .bind(`${issuer}/vault?lang=en`, tx)
+      .run();
+    await page.goto(`${issuer}/signin?lang=en`);
+    await page.waitForURL(`${issuer}/vault?lang=en`);
     assert.deepEqual(errors, []);
   } catch (error) {
     failure = error;

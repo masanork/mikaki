@@ -83,6 +83,28 @@ jobs:
               curl --config - -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$issuer/ready" > ready-status.txt
           fi
           node scripts/check-production-smoke.ts
+      - name: Check invitation registration links in both languages
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for lang in ja en; do
+            jar="$RUNNER_TEMP/enrollment-$lang.cookies"
+            touch "$jar"
+            curl -fsS -L --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
+              -c "$jar" -b "$jar" "https://auth.mikaki.org/enroll?lang=$lang" -o "enrollment-$lang.html"
+          done
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          for (const lang of ['ja', 'en']) {
+            const html = readFileSync(`enrollment-${lang}.html`, 'utf8');
+            assert.ok(html.includes(`<html lang="${lang}">`));
+            assert.ok(html.includes('data-enrollment="true"'));
+            assert.ok(html.includes(`data-rp-uri="https://auth.mikaki.org/enroll/complete?lang=${lang}"`));
+          }
+          console.log('Public Japanese and English invitation registration entries passed');
+          JS
       - name: Retain version-matched smoke evidence
         if: ${{ inputs.expected_version_id != '' && inputs.expected_source_commit != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

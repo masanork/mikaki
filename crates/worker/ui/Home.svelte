@@ -22,6 +22,9 @@
   </div>
   <main class="entry home-entry">
     <h1>{m.homeHeading()}</h1>
+    <a class="home-signin" href={`/signin?lang=${locale}`}
+      >{m.homeSignIn()}<span aria-hidden="true">↗</span></a
+    >
   </main>
   <footer>
     <a class="quiet home-enroll" href={`/enroll?lang=${locale}`}

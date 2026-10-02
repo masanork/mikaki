@@ -1,4 +1,4 @@
-//! Public issuer entry point. OIDC login still starts from a registered RP.
+//! Public issuer entry point with first-party Web sign-in and invitation registration.
 
 use super::*;
 
@@ -15,12 +15,13 @@ pub(super) async fn get(
         "日本語"
     };
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>mikaki</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-page="home"><div class="auth-shell home-shell"><div class="shade" aria-hidden="true"></div><div class="gate-background" aria-hidden="true"><div class="gate-fallback"><span></span></div></div><div class="plate home-plate"><div class="item home-name">mikaki</div><div class="item origin"><span>{page_label}</span><strong>{host}</strong></div></div><main class="entry home-entry"><h1>{heading}</h1></main><footer><a class="quiet home-enroll" href="/enroll?lang={locale}">{enroll}<span aria-hidden="true">↗</span></a><a class="quiet" href="/?lang={other_locale}" lang="{other_locale}">{other_locale_label}</a></footer></div></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>mikaki</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-page="home"><div class="auth-shell home-shell"><div class="shade" aria-hidden="true"></div><div class="gate-background" aria-hidden="true"><div class="gate-fallback"><span></span></div></div><div class="plate home-plate"><div class="item home-name">mikaki</div><div class="item origin"><span>{page_label}</span><strong>{host}</strong></div></div><main class="entry home-entry"><h1>{heading}</h1><a class="home-signin" href="/signin?lang={locale}">{signin}<span aria-hidden="true">↗</span></a></main><footer><a class="quiet home-enroll" href="/enroll?lang={locale}">{enroll}<span aria-hidden="true">↗</span></a><a class="quiet" href="/?lang={other_locale}" lang="{other_locale}">{other_locale_label}</a></footer></div></div><script type="module" src="/login/login.js"></script></body></html>"#,
         locale = strings.locale,
         host = i18n::html_escape(request.url()?.host_str().unwrap_or_default()),
         page_label = message("authOriginLabel"),
         heading = message("homeHeading"),
         enroll = message("homeEnroll"),
+        signin = message("homeSignIn"),
     );
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?

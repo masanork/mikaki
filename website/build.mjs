@@ -41,7 +41,7 @@ await writeFile(
   document(
     'mikaki.org',
     '自分の情報を、自分の手元に',
-    `<div class="kicker">Your identity. Your choice.</div><h1>自分の情報を、<br>自分の手元に。</h1><p>Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。</p><div class="actions"><a class="bolt" href="https://auth.mikaki.org">サインインについて ↗</a><a class="quiet" href="https://app.mikaki.org">アプリについて ↗</a></div><section class="details"><div><h2>Passkey</h2><p>パスワードを使わず、いつもの端末で。</p></div><div><h2>Vault</h2><p>保存した情報は、Passkeyで開く。</p></div><div><h2>選んで共有</h2><p>共有する情報と相手を、自分で選ぶ。</p></div></section>`,
+    `<div class="kicker">Your identity. Your choice.</div><h1>自分の情報を、<br>自分の手元に。</h1><p>Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。</p><div class="actions"><a class="bolt" href="https://auth.mikaki.org/signin">Webでサインイン ↗</a><a class="quiet" href="https://app.mikaki.org">アプリについて ↗</a></div><section class="details"><div><h2>Passkey</h2><p>パスワードを使わず、いつもの端末で。</p></div><div><h2>Vault</h2><p>保存した情報は、Passkeyで開く。</p></div><div><h2>選んで共有</h2><p>共有する情報と相手を、自分で選ぶ。</p></div></section>`,
   ),
 );
 await writeFile(
@@ -49,7 +49,7 @@ await writeFile(
   document(
     'app.mikaki.org',
     'mikakiアプリ',
-    `<div class="kicker">mikaki app</div><h1>手元から、<br>つながる。</h1><p>mikakiアプリのサインインを、このドメインで受け取ります。<br>インストール済みのアプリからサインインしてください。</p><p>アプリは現在テスト中です。一般向けの配布は準備中です。</p><div class="actions"><a class="bolt" href="https://auth.mikaki.org">ブラウザでサインイン ↗</a><a class="quiet" href="https://github.com/masanork/mikaki/tree/main/apps/mikaki-client">アプリのソース ↗</a></div>`,
+    `<div class="kicker">mikaki app</div><h1>手元から、<br>つながる。</h1><p>mikakiアプリのサインインを、このドメインで受け取ります。<br>Web版はアプリなしでサインインできます。</p><p>身分証の読み取りなど、端末の機能を使う場面ではアプリを利用します。アプリの一般向け配布は準備中です。</p><div class="actions"><a class="bolt" href="https://auth.mikaki.org/signin">Webでサインイン ↗</a><a class="quiet" href="https://github.com/masanork/mikaki/tree/main/apps/mikaki-client">アプリのソース ↗</a></div>`,
     true,
   ),
 );

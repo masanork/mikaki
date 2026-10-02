@@ -326,10 +326,14 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       .waitFor();
     assert.equal(await page.getByRole('button', { name: 'Unlock with passkey' }).isEnabled(), true);
     await page.goto('https://mikaki.test/?lang=ja');
-    await page.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    await page.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
     assert.equal(await page.locator('.gate-fallback span').count(), 1);
     assert.equal(await page.locator('.bolt, #passkey').count(), 0);
+    assert.equal(
+      await page.getByRole('link', { name: 'サインイン', exact: true }).getAttribute('href'),
+      '/signin?lang=ja',
+    );
     assert.equal(await page.locator('.plate .origin strong').textContent(), 'mikaki.test');
     assert.equal(
       await page.getByRole('link', { name: '招待コードで登録' }).getAttribute('href'),
@@ -344,7 +348,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       phase,
     );
     await page.goto('https://other.test/?lang=en');
-    await page.getByRole('heading', { name: 'Sign in from your app' }).waitFor();
+    await page.getByRole('heading', { name: 'Sign in with your passkey' }).waitFor();
     await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
     assert.equal(await page.locator('.plate .origin strong').textContent(), 'other.test');
     assert.notEqual(
@@ -380,7 +384,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       true,
     );
     await page.goto('https://mikaki.test/?no-canvas=1');
-    await page.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    await page.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
     assert.equal(await page.locator('.gate-fallback span').count(), 1);
     assert.deepEqual(errors, []);
@@ -397,11 +401,15 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       });
     });
     await staticPage.goto('https://mikaki.test/');
-    await staticPage.getByRole('heading', { name: 'サインインはアプリから' }).waitFor();
+    await staticPage.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await staticPage.locator('.gate-fallback span').count(), 1);
     assert.equal(await staticPage.locator('#passkey, canvas').count(), 0);
+    assert.equal(
+      await staticPage.getByRole('link', { name: 'サインイン', exact: true }).getAttribute('href'),
+      '/signin?lang=ja',
+    );
     await staticPage.getByRole('link', { name: 'English' }).click();
-    await staticPage.getByRole('heading', { name: 'Sign in from your app' }).waitFor();
+    await staticPage.getByRole('heading', { name: 'Sign in with your passkey' }).waitFor();
     assert.equal(
       await staticPage
         .getByRole('link', { name: 'Register with an invitation' })

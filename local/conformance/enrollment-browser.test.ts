@@ -193,7 +193,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       code_challenge: createHash('sha256').update('v'.repeat(43)).digest('base64url'),
       code_challenge_method: 'S256',
     }).toString();
-    const pending = await worker.fetch(`${issuer}/enroll`, { redirect: 'manual' });
+    const pending = await worker.fetch(`${issuer}/enroll?lang=ja`, { redirect: 'manual' });
     assert.equal(pending.status, 302);
     const initialBrowserCookie = requiredHeader(pending, 'set-cookie').split(';')[0];
     const initialLoginUrl = requiredHeader(pending, 'location');

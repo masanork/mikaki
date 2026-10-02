@@ -10,6 +10,12 @@ The UserInfo service is `mikaki-auth-claims`. Both authentication Workers bind t
 
 The signing key and readiness token use the existing production secret provisioning, including GitHub Actions. Public signing material and runtime policy are initialized in the new DB. Native Vault OAuth and attribute sharing remain disabled. Recipient key activation is a separate operation before enabling sharing. The disabled native Vault grant protocol retains its existing resource/detail identifiers to match the shared validator and immutable migration constraints; network requests use auth.mikaki.org. Renaming those protocol identifiers requires a separate schema change before native Vault activation.
 
+## Web sign-in
+
+The public landing and app pages link to `https://auth.mikaki.org/signin`. The issuer home also offers Web sign-in and invitation registration. Existing Passkeys sign in directly to `/vault`; unauthenticated Vault visits start the same flow. No native app, RP authorization, or agent request is needed. Browser account settings and Vault remain available on the Web; native apps provide device integrations such as identity-document reading.
+
+First-party sign-in uses a separate five-minute, browser-bound transaction, requires verified WebAuthn authentication, and fixes its continuation to the issuer's Vault. It creates an SSO session without adding an application connection or authorizing an agent. Only the optional `lang=ja|en` parameter is accepted. Deployments must reconcile migration `0030_web_signin.sql` before activating the new authentication bundle.
+
 ## App links
 
 The exact mobile redirect is `https://app.mikaki.org/oidc/native/callback`, with sector `app.mikaki.org` and the checked-in mobile client registration. Android package/signing identity is preserved. Rebuild/reinstall the native app to use its new issuer, callback and verified-link host. Existing installed builds still refer to the old test environment. iOS association remains unconfigured pending the actual Apple team/signing identity; this deployment does not claim iPhone qualification.

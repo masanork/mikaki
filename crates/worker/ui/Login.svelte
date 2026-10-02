@@ -14,6 +14,7 @@
     rpUri,
     client,
     enrollment,
+    ownerLogin,
     locale,
   }: {
     tx: string;
@@ -269,7 +270,10 @@
       </p>{/if}
   </main>
   <footer>
-    {#if !enrollment}<details class="registration" bind:open={registrationOpen}>
+    {#if !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}
+        >{m.homeEnroll()}</a
+      >
+    {:else if !enrollment}<details class="registration" bind:open={registrationOpen}>
         <summary>{m.authRegisterHeading()}</summary>
         {@render invitationForm()}
       </details>{/if}

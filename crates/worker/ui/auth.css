@@ -513,3 +513,26 @@ body {
     max-width: 280px;
   }
 }
+
+.home-signin {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  padding: 1rem 2rem;
+  color: #f4f8f7;
+  text-decoration: none;
+  border: 1px solid #a8bfc755;
+  background: linear-gradient(180deg, #88999d, #526870 49%, #314d59 51%, #607d86);
+  box-shadow:
+    inset 0 1px #e4f3f270,
+    0 10px 35px #0006;
+  font-size: 0.9rem;
+}
+.home-signin:hover {
+  filter: brightness(1.15);
+}
+.home-signin:focus-visible {
+  outline: 2px solid #def5ef;
+  outline-offset: 5px;
+}

@@ -234,7 +234,7 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
         {
             return crate::passkey_login::start_owner(&request, &context, &db).await;
         }
-        return error(401, "authentication_required");
+        return crate::passkey_login::web_signin(request, context).await;
     }
     let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
     let mut html = include_str!("../ui/vault.html").to_owned();
