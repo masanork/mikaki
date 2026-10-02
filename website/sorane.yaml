@@ -1,0 +1,24 @@
+preset: blog
+site:
+  title: mikaki
+  description: OSSのパスキー認証・OpenID Connectサービス
+  base_url: https://mikaki.org
+  lang: ja
+  i18n:
+    default: ja
+    locales:
+      en:
+        lang: en
+        path_prefix: en
+build:
+  content_dir: content
+  out_dir: dist
+  permalink: "{{slug}}.html"
+  outputs:
+    md_alternate: true
+    catalog: true
+    llms_txt: true
+    feed: false
+    okf_bundle: false
+  quality:
+    lang_mixing: false

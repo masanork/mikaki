@@ -201,3 +201,58 @@ footer {
     padding-top: 80px;
   }
 }
+
+.prose {
+  max-width: 68ch;
+  margin-top: 80px;
+  padding: 32px;
+  border: 1px solid #ffffff24;
+  background: #111c;
+  line-height: 1.8;
+  border-radius: 8px;
+}
+.prose nav {
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+.prose h2 {
+  margin-top: 2em;
+  font-size: 1.35rem;
+}
+.prose p {
+  font-size: 1rem;
+  max-width: none;
+}
+.prose a {
+  color: inherit;
+  text-underline-offset: 4px;
+}
+.prose pre {
+  overflow: auto;
+  padding: 16px;
+  background: #0008;
+}
+.prose code {
+  overflow-wrap: anywhere;
+}
+.article-title {
+  font-size: clamp(2rem, 5vw, 4rem);
+}
+@media (max-width: 600px) {
+  .prose {
+    padding: 20px;
+    margin-top: 48px;
+  }
+  .prose nav {
+    gap: 16px;
+  }
+}
+
+.prose .heading-anchor {
+  display: inline-block;
+  margin-left: 0.5em;
+  font-size: 0.7em;
+  font-weight: 400;
+  opacity: 0.45;
+  text-decoration: none;
+}

@@ -77,6 +77,32 @@ test('public websites keep app callbacks code-free and render the woven material
         },
       },
     ]);
+    for (const path of [
+      '/',
+      '/en/',
+      '/integration',
+      '/security',
+      '/en/integration',
+      '/en/security',
+    ]) {
+      const response = await site.fetch(`https://mikaki.org${path}`);
+      assert.equal(response.status, 200, path);
+      const html = await response.text();
+      assert.ok(html.includes(`rel="canonical" href="https://mikaki.org${path}"`), path);
+      assert.match(html, /hreflang="en"/);
+      assert.match(html, /application\/ld\+json/);
+      assert.match(response.headers.get('content-security-policy') ?? '', /sha256-/);
+      assert.ok(!html.includes('mikaki.tossa.app'));
+    }
+    for (const path of [
+      '/sitemap.xml',
+      '/robots.txt',
+      '/llms.txt',
+      '/catalog.jsonld',
+      '/index.md',
+      '/en/index.md',
+    ])
+      assert.equal((await site.fetch(`https://mikaki.org${path}`)).status, 200, path);
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     const errors: string[] = [];
@@ -105,6 +131,9 @@ test('public websites keep app callbacks code-free and render the woven material
       await page.setViewportSize({ width, height: 900 });
       for (const [host, path, name] of [
         ['mikaki.org', '/', 'landing'],
+        ['mikaki.org', '/en/', 'landing-en'],
+        ['mikaki.org', '/integration', 'integration'],
+        ['mikaki.org', '/en/security', 'security-en'],
         ['app.mikaki.org', '/', 'app'],
         ['app.mikaki.org', '/native-link-help', 'app-help'],
       ]) {

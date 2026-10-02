@@ -37,14 +37,6 @@ for (const dir of ['public', 'app-public']) {
 const document = (host, title, body, small = false) =>
   `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Passkeyでサインイン。自分の情報を、自分の手元に。"><title>${title} · mikaki</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${small ? 'small' : ''}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="https://mikaki.org">mikaki</a><span class="plaque">${host}</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="https://auth.mikaki.org">サインインについて</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;
 await writeFile(
-  new URL('public/index.html', base),
-  document(
-    'mikaki.org',
-    '自分の情報を、自分の手元に',
-    `<div class="kicker">Your identity. Your choice.</div><h1>自分の情報を、<br>自分の手元に。</h1><p>Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。</p><div class="actions"><a class="bolt" href="https://auth.mikaki.org/signin">Webでサインイン ↗</a><a class="quiet" href="https://app.mikaki.org">アプリについて ↗</a></div><section class="details"><div><h2>Passkey</h2><p>パスワードを使わず、いつもの端末で。</p></div><div><h2>Vault</h2><p>保存した情報は、Passkeyで開く。</p></div><div><h2>選んで共有</h2><p>共有する情報と相手を、自分で選ぶ。</p></div></section>`,
-  ),
-);
-await writeFile(
   new URL('app-public/index.html', base),
   document(
     'app.mikaki.org',
@@ -86,3 +78,5 @@ for (const dir of ['public', 'app-public'])
       true,
     ),
   );
+
+await import('./sorane.mjs');

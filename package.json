@@ -77,6 +77,17 @@
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",
     "vite": "8.3.0",
-    "wrangler": "4.144.0"
+    "wrangler": "4.144.0",
+    "@sorane/cli": "0.5.0",
+    "@sorane/core": "0.5.0",
+    "@sorane/okf": "0.5.0",
+    "tsx": "4.23.15"
+  },
+  "overrides": {
+    "@sorane/core": {
+      "mermaid": "12.0.0",
+      "@mermaid-js/mermaid-cli": "12.0.0"
+    },
+    "lodash-es": "4.18.1"
   }
 }
