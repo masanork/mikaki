@@ -8,7 +8,8 @@ import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
 
-test('Vault disposes drafts and late PRF results, verifies resume identity and locks across tabs and deadlines', async () => {
+type Notifications = 'available' | 'storage-only' | 'unavailable';
+async function exerciseLifecycle(notifications: Notifications) {
   const origin = 'https://mikaki.test';
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
@@ -79,8 +80,30 @@ test('Vault disposes drafts and late PRF results, verifies resume identity and l
     assert.equal(written.status, 200);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await context.addInitScript((notifications) => {
+      const denied = { channel: 0, storage: 0 };
+      Object.defineProperty(window, 'deniedVaultNotifications', { value: denied });
+      if (notifications !== 'available') {
+        Object.defineProperty(window, 'BroadcastChannel', {
+          value: class {
+            constructor() {
+              denied.channel++;
+              throw new DOMException('Channel access denied', 'SecurityError');
+            }
+          },
+        });
+      }
+      if (notifications === 'unavailable') {
+        Object.defineProperty(window, 'localStorage', {
+          get() {
+            denied.storage++;
+            throw new DOMException('Storage access denied', 'SecurityError');
+          },
+        });
+      }
+    }, notifications);
     const page = await context.newPage();
-    evidence = await startBrowserEvidence(page.context(), 'vault-lifecycle-browser');
+    evidence = await startBrowserEvidence(page.context(), `vault-lifecycle-${notifications}`);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(
@@ -327,13 +350,31 @@ test('Vault disposes drafts and late PRF results, verifies resume identity and l
     await expect(page.locator('#unlock')).toBeEnabled();
     await page.locator('#unlock').click();
     const other = await page.context().newPage();
+    other.on('pageerror', (error) => errors.push(error.message));
     await other.goto(`${origin}/logout?lang=en`);
     await other.getByRole('button', { name: 'Log out', exact: true }).click();
     await expect(
       other.getByRole('heading', { name: 'You have logged out', exact: true }),
     ).toBeVisible();
+    if (notifications === 'unavailable') {
+      // With both notification APIs denied, the visible tab receives no logout hint.
+      // Server authorization must still reject its next protected operation.
+      await expect(page.locator('#name')).toHaveValue('Saved owner');
+      await expect(locked).toHaveCount(0);
+      await page.getByRole('button', { name: 'Reload profile', exact: true }).click();
+    }
     await expect(locked).toBeVisible();
     assert.equal(await page.locator('#name, textarea').count(), 0);
+    const denied = await other.evaluate(
+      () =>
+        (
+          window as unknown as Window & {
+            deniedVaultNotifications: { channel: number; storage: number };
+          }
+        ).deniedVaultNotifications,
+    );
+    if (notifications !== 'available') assert.ok(denied.channel > 0);
+    if (notifications === 'unavailable') assert.ok(denied.storage > 0);
     await reopen.click();
     await expect(locked).toBeVisible();
     await expect(page.locator('#unlock')).toHaveCount(0);
@@ -347,4 +388,9 @@ test('Vault disposes drafts and late PRF results, verifies resume identity and l
     await browser?.close();
     await harness.close();
   }
-});
+}
+
+for (const notifications of ['available', 'storage-only', 'unavailable'] as const) {
+  test(`Vault lifecycle with ${notifications} cross-tab notifications`, () =>
+    exerciseLifecycle(notifications));
+}
