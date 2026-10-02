@@ -3290,7 +3290,20 @@ async fn ready_route(
         if version.id().is_empty() {
             return Err(worker::Error::RustError("missing Worker version".into()));
         }
-        context.env.bucket("VAULT_BLOBS")?;
+        let bucket = context.env.bucket("VAULT_BLOBS")?;
+        // Probe only metadata in a reserved namespace; absence is healthy.
+        // Bound this dependency check without writing or reading Vault ciphertext.
+        match futures_util::future::select(
+            Box::pin(bucket.head("__mikaki_readiness__/r2-head")),
+            Box::pin(worker::Delay::from(std::time::Duration::from_secs(3))),
+        )
+        .await
+        {
+            futures_util::future::Either::Left((result, _)) => { result?; }
+            futures_util::future::Either::Right(_) => {
+                return Err(worker::Error::RustError("R2 readiness timed out".into()));
+            }
+        }
         let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
         if configured_issuer(&issuer).is_none() {
             return Err(worker::Error::RustError("invalid issuer".into()));
