@@ -93,13 +93,89 @@ pub(super) async fn transaction(
     if row.is_some() {
         return Ok(row);
     }
-    db.prepare("SELECT l.authorization_url,'mikaki-internal-agent' AS client_id,l.challenge,l.expires_at,l.failures,1 AS owner_login \
+    let row = db.prepare("SELECT l.authorization_url,'mikaki-internal-agent' AS client_id,l.challenge,l.expires_at,l.failures,1 AS owner_login \
       FROM owner_login_transaction l JOIN agent_oauth_request r ON r.request_id=l.request_id \
       JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 \
       WHERE l.tx_id=?1 AND l.browser_hash=?2 AND l.consumed=0 AND l.failures<5 \
       AND l.expires_at>unixepoch() AND r.expires_at>unixepoch() AND r.decision IS NULL AND r.owner_account IS NULL")
       .bind(&[JsValue::from_str(tx),JsValue::from_str(browser_hash)])?
+      .first::<LoginTransactionRow>(None).await?;
+    if row.is_some() {
+        return Ok(row);
+    }
+    db.prepare("SELECT authorization_url,'mikaki-internal-web' AS client_id,challenge,expires_at,failures,2 AS owner_login FROM web_login_transaction WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>unixepoch()")
+      .bind(&[JsValue::from_str(tx),JsValue::from_str(browser_hash)])?
       .first::<LoginTransactionRow>(None).await
+}
+
+pub(super) async fn web_signin(
+    request: worker::Request,
+    context: worker::RouteContext<()>,
+) -> worker::Result<worker::Response> {
+    let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
+    let Some(issuer) = configured_issuer(&issuer) else {
+        return crate::vault_attributes::error(503, "invalid_configuration");
+    };
+    let query = request
+        .url()?
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    if request.url()?.origin().ascii_serialization() != issuer
+        || query
+            .iter()
+            .any(|(key, value)| key != "lang" || !matches!(value.as_str(), "ja" | "en"))
+        || query.len() > 1
+    {
+        return crate::vault_attributes::error(400, "invalid_request");
+    }
+    let mut continuation = url::Url::parse(&format!("{issuer}/vault"))
+        .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
+    if let Some((_, lang)) = query.first() {
+        continuation.query_pairs_mut().append_pair("lang", lang);
+    }
+    let db = context.env.d1("DB")?;
+    if crate::vault_attributes::owner(&request, &db)
+        .await?
+        .is_some()
+    {
+        return Ok(worker::Response::builder()
+            .with_status(302)
+            .with_header("Location", continuation.as_str())?
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
+    let mut random = WorkersCryptoRandom;
+    let tx = random_secret(&mut random)?;
+    let browser = browser_cookie(&request, "__Host-op-browser")?
+        .filter(|value| valid_tx(value))
+        .unwrap_or(random_secret(&mut random)?);
+    let challenge = random_secret(&mut random)?;
+    // Bound storage retention as well as the number of live ceremonies.
+    db.prepare("DELETE FROM web_login_transaction WHERE tx_id IN (SELECT tx_id FROM web_login_transaction WHERE expires_at<=unixepoch() ORDER BY expires_at LIMIT 100)")
+        .run().await?;
+    let result = db.prepare("INSERT INTO web_login_transaction(tx_id,browser_hash,authorization_url,challenge,expires_at) SELECT ?1,?2,?3,?4,unixepoch()+300 WHERE (SELECT count(*) FROM web_login_transaction WHERE consumed=0 AND expires_at>unixepoch())<1000 AND (SELECT count(*) FROM web_login_transaction WHERE browser_hash=?2 AND consumed=0 AND expires_at>unixepoch())<5")
+        .bind(&[JsValue::from_str(&tx),JsValue::from_str(&hash(&browser)),JsValue::from_str(continuation.as_str()),JsValue::from_str(&challenge)])?.run().await?;
+    if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
+        return crate::vault_attributes::error(429, "too_many_requests");
+    }
+    let mut login_url = url::Url::parse(&format!("{issuer}/login?tx={tx}"))
+        .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
+    if let Some((_, lang)) = query.first() {
+        login_url.query_pairs_mut().append_pair("lang", lang);
+    }
+    Ok(worker::Response::builder()
+        .with_status(302)
+        .with_header("Location", login_url.as_str())?
+        .with_header(
+            "Set-Cookie",
+            &format!(
+                "__Host-op-browser={browser}; Max-Age=300; Path=/; Secure; HttpOnly; SameSite=Lax"
+            ),
+        )?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("Referrer-Policy", "no-referrer")?
+        .empty())
 }
 
 pub(super) async fn start_owner(
@@ -218,7 +294,7 @@ pub(super) async fn get(
         });
     let strings = crate::i18n::catalog(crate::i18n::select(&request, ui_locales.as_deref())?);
     let enrollment = login.client_id == "mikaki-internal-enrollment";
-    let rp_uri = if enrollment || login.owner_login == 1 {
+    let rp_uri = if enrollment || login.owner_login != 0 {
         login.authorization_url.clone()
     } else {
         url::Url::parse(&login.authorization_url)
@@ -232,7 +308,7 @@ pub(super) async fn get(
     };
     let html = format!(
         r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
-        owner_login = if login.owner_login == 1 {
+        owner_login = if login.owner_login != 0 {
             "true"
         } else {
             "false"
@@ -243,7 +319,7 @@ pub(super) async fn get(
         } else {
             "title"
         })),
-        client = crate::i18n::html_escape(if enrollment || login.owner_login == 1 {
+        client = crate::i18n::html_escape(if enrollment || login.owner_login != 0 {
             "mikaki"
         } else {
             &login.client_id
@@ -370,7 +446,7 @@ pub(super) async fn deny(
     let Some(login) = transaction(&db, &input.tx, &browser_hash).await? else {
         return Ok(worker::Response::builder().with_status(400).empty());
     };
-    if login.owner_login == 1 {
+    if login.owner_login != 0 {
         return Ok(worker::Response::builder().with_status(400).empty());
     }
     let authorization_url = url::Url::parse(&login.authorization_url)
@@ -451,7 +527,7 @@ pub(super) async fn finish(
     let Some(login) = transaction(&db, &input.tx, &browser_hash).await? else {
         return Ok(worker::Response::builder().with_status(400).empty());
     };
-    let owner_login = login.owner_login == 1;
+    let owner_login = login.owner_login != 0;
     if owner_login {
         let destination = url::Url::parse(&login.authorization_url)
             .map_err(|_| worker::Error::RustError("invalid continuation".into()))?;
@@ -459,10 +535,24 @@ pub(super) async fn finish(
             return crate::vault_attributes::error(400, "invalid_continuation");
         }
     }
-    let login_table = if owner_login {
-        "owner_login_transaction"
-    } else {
-        "login_transaction"
+    if login.owner_login == 2 {
+        let destination = url::Url::parse(&login.authorization_url)
+            .map_err(|_| worker::Error::RustError("invalid continuation".into()))?;
+        let query = destination.query_pairs().collect::<Vec<_>>();
+        if destination.fragment().is_some()
+            || query.len() > 1
+            || query
+                .iter()
+                .any(|(key, value)| key != "lang" || !matches!(value.as_ref(), "ja" | "en"))
+        {
+            return crate::vault_attributes::error(400, "invalid_continuation");
+        }
+    }
+    let login_table = match login.owner_login {
+        0 => "login_transaction",
+        1 => "owner_login_transaction",
+        2 => "web_login_transaction",
+        _ => return crate::vault_attributes::error(400, "invalid_request"),
     };
     let credential = db
         .prepare(
@@ -525,7 +615,7 @@ pub(super) async fn finish(
     let sso_id = random_secret(&mut random)?;
     let sso_secret = random_secret(&mut random)?;
     let sso_hash = hash(&sso_secret);
-    let live_request = if owner_login {
+    let live_request = if login.owner_login == 1 {
         " AND EXISTS(SELECT 1 FROM agent_oauth_request r JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 WHERE r.request_id=owner_login_transaction.request_id AND r.expires_at>unixepoch() AND r.decision IS NULL AND r.owner_account IS NULL)"
     } else {
         ""

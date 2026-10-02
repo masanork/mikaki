@@ -17,7 +17,7 @@
   "authHeroHeadingFirst": "Passkeys,",
   "authHeroHeadingSecond": "made simple.",
   "authHeroDescription": "Sign in or create your account with a passkey.",
-  "homeHeading": "Sign in from your app",
+  "homeHeading": "Sign in with your passkey",
   "homeBody": "Start sign-in from the app you want to use. The login screen will show the app you are connecting to.",
   "homeInvite": "If you have an invitation code, you can create an account.",
   "homeEnroll": "Register with an invitation",
@@ -313,5 +313,6 @@
   "productConnectionsEmpty": "No connections are available yet.",
   "productReload": "Retry loading",
   "authTilt": "Tilt",
-  "authTiltUnavailable": "Tilt is unavailable on this device."
+  "authTiltUnavailable": "Tilt is unavailable on this device.",
+  "homeSignIn": "Sign in"
 }

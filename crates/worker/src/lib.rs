@@ -247,6 +247,7 @@ struct LoginTransactionRow {
     challenge: String,
     expires_at: i64,
     failures: u32,
+    // 0: RP authorization, 1: agent owner login, 2: first-party Web sign-in.
     owner_login: i64,
 }
 
@@ -3663,6 +3664,7 @@ pub async fn main(
     }
     worker::Router::with_data(())
         .get_async("/", home::get)
+        .get_async("/signin", passkey_login::web_signin)
         .get_async("/favicon.svg", branding::get)
         .get_async("/favicon.ico", branding::get)
         .get_async("/favicon-32x32.png", branding::get)

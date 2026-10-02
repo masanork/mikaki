@@ -46,12 +46,12 @@ try {
       fullPage: true,
     });
   }
-  await capture('home', 'https://mikaki.tossa.app/?lang=ja');
-  await capture('home-en', 'https://mikaki.tossa.app/?lang=en');
+  await capture('home', 'https://auth.mikaki.org/?lang=ja');
+  await capture('home-en', 'https://auth.mikaki.org/?lang=en');
   await capture('other-origin', 'https://other.test/?lang=ja');
   await page.setViewportSize({ width: 390, height: 844 });
-  await capture('home-mobile', 'https://mikaki.tossa.app/?lang=ja');
-  await capture('home-fallback', 'https://mikaki.tossa.app/?lang=ja&no-canvas=1');
+  await capture('home-mobile', 'https://auth.mikaki.org/?lang=ja');
+  await capture('home-fallback', 'https://auth.mikaki.org/?lang=ja&no-canvas=1');
   assert.deepEqual(errors, []);
 } finally {
   await browser?.close();

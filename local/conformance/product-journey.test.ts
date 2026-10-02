@@ -175,12 +175,74 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await expect(
       page.getByRole('heading', { name: 'You have logged out', exact: true }),
     ).toBeVisible();
-    assert.equal((await page.goto(`${issuer}/vault?lang=en`))?.status(), 401);
+    assert.equal(
+      (await worker.fetch(`${issuer}/vault?lang=en`, { redirect: 'manual' })).status,
+      302,
+    );
     await expect(page.locator('#name')).toHaveCount(0);
     assert.equal((await page.goto(`${rpOrigin}/protected`))?.status(), 401);
     await expect(
       page.getByRole('heading', { name: 'Sign-in required', exact: true }),
     ).toBeVisible();
+    // Follow actual HTTPS redirects from the public entry, without an RP or native app.
+    const connectionsBefore = (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first())
+      .n;
+    let webFinish: { url: string; headers: Record<string, string>; body: string } | undefined;
+    page.on('request', async (request) => {
+      if (new URL(request.url()).pathname === '/login/finish')
+        webFinish = {
+          url: request.url(),
+          headers: await request.allHeaders(),
+          body: request.postData()!,
+        };
+    });
+    await page.goto(`${issuer}/?lang=en`);
+    await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+    await page.waitForURL(`${issuer}/vault?lang=en`);
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    assert.equal(
+      (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first()).n,
+      connectionsBefore,
+    );
+    assert.ok(webFinish);
+    assert.equal(
+      (
+        await worker.fetch(webFinish.url, {
+          method: 'POST',
+          headers: webFinish.headers,
+          body: webFinish.body,
+        })
+      ).status,
+      400,
+    );
+    const tx = (JSON.parse(webFinish.body) as { tx: string }).tx;
+    for (const destination of [
+      'https://evil.test/vault',
+      `${issuer}/admin`,
+      `${issuer}/vault?agent_oauth_request=${'x'.repeat(43)}`,
+      `${issuer}/vault#fragment`,
+    ]) {
+      await DB.prepare(
+        'UPDATE web_login_transaction SET consumed=0,authorization_url=? WHERE tx_id=?',
+      )
+        .bind(destination, tx)
+        .run();
+      const rejected = await worker.fetch(webFinish.url, {
+        method: 'POST',
+        headers: webFinish.headers,
+        body: webFinish.body,
+      });
+      assert.equal(rejected.status, 400);
+      assert.equal(((await rejected.json()) as { error: string }).error, 'invalid_continuation');
+    }
+    await DB.prepare(
+      'UPDATE web_login_transaction SET consumed=1,authorization_url=? WHERE tx_id=?',
+    )
+      .bind(`${issuer}/vault?lang=en`, tx)
+      .run();
+    await page.goto(`${issuer}/signin?lang=en`);
+    await page.waitForURL(`${issuer}/vault?lang=en`);
     assert.deepEqual(errors, []);
   } catch (error) {
     failure = error;

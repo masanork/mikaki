@@ -17,7 +17,7 @@
   "authHeroHeadingFirst": "パスキーで、",
   "authHeroHeadingSecond": "シンプルに。",
   "authHeroDescription": "ログインもアカウント登録も、パスキーで。",
-  "homeHeading": "サインインはアプリから",
+  "homeHeading": "Passkeyでサインイン",
   "homeBody": "ログインは、利用する連携先アプリから始めてください。接続先を確認するログイン画面が開きます。",
   "homeInvite": "招待コードをお持ちの方は、アカウント登録へ進めます。",
   "homeEnroll": "招待コードで登録",
@@ -313,5 +313,6 @@
   "productConnectionsEmpty": "利用できる連携はまだありません。",
   "productReload": "読み込みを再試行",
   "authTilt": "傾き",
-  "authTiltUnavailable": "この端末では傾きを利用できません。"
+  "authTiltUnavailable": "この端末では傾きを利用できません。",
+  "homeSignIn": "サインイン"
 }

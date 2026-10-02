@@ -622,7 +622,7 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     assert.equal(sdkStart.status, 302);
     const ownerLocation = sdkStart.headers.get('Location')!;
     const ownerRequest = new URL(ownerLocation).searchParams.get('agent_oauth_request')!;
-    assert.equal((await op.fetch('https://mikaki.test/vault')).status, 401);
+    assert.equal((await op.fetch('https://mikaki.test/vault', { redirect: 'manual' })).status, 302);
     for (const url of [
       ownerLocation + '&return_url=https://evil.test/',
       ownerLocation + '&agent_oauth_request=' + ownerRequest,

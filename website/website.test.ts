@@ -145,7 +145,10 @@ test('public websites keep app callbacks code-free and render the woven material
     });
     await staticPage.goto('https://mikaki.org');
     assert.equal(await staticPage.locator('h1').textContent(), '自分の情報を、自分の手元に。');
-    assert.equal(await staticPage.locator('.bolt').getAttribute('href'), 'https://auth.mikaki.org');
+    assert.equal(
+      await staticPage.locator('.bolt').getAttribute('href'),
+      'https://auth.mikaki.org/signin',
+    );
   } finally {
     await browser?.close();
     await Promise.all(

@@ -200,11 +200,11 @@ try {
     const homeHtml = await home.text();
     assert.match(homeHtml, /<html lang="ja">/);
     assert.match(homeHtml, /href="\/enroll\?lang=ja"/);
-    assert.match(homeHtml, /サインインはアプリから/);
+    assert.match(homeHtml, /Passkeyでサインイン/);
     const englishHome = await worker.fetch(new URL('/?lang=en', issuer));
     assert.equal(englishHome.status, 200);
     const englishHomeHtml = await englishHome.text();
-    assert.match(englishHomeHtml, /Sign in from your app/);
+    assert.match(englishHomeHtml, /Sign in with your passkey/);
     assert.match(englishHomeHtml, /href="\/enroll\?lang=en"/);
     const authorizeUrl = new URL('/authorize', issuer);
     authorizeUrl.search = new URLSearchParams({

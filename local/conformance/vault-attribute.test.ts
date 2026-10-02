@@ -9,6 +9,7 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
     workers: [
       {
         configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
+        vars: { MIKAKI_ISSUER: 'https://mikaki.test' },
       },
     ],
   });
@@ -32,7 +33,10 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
       ),
     ]);
     const url = 'https://mikaki.test/vault/attributes/name';
-    assert.equal((await worker.fetch('https://mikaki.test/vault')).status, 401);
+    assert.equal(
+      (await worker.fetch('https://mikaki.test/vault', { redirect: 'manual' })).status,
+      302,
+    );
     const page = await worker.fetch('https://mikaki.test/vault', {
       headers: { Cookie: `__Host-op-sso=${secret}` },
     });
@@ -189,6 +193,89 @@ test('Vault attribute ciphertext is owner scoped and revision safe in workerd', 
     assert.equal(await env.VAULT_BLOBS.get('vault-attribute/orphan-test'), null);
     assert.equal(await env.VAULT_BLOBS.get(stored.object_key), null);
     assert.ok(await env.VAULT_BLOBS.get(active.object_key));
+  } finally {
+    await harness.close();
+  }
+});
+
+test('Web sign-in binds the browser, limits pending requests, and fixes the Vault destination', async () => {
+  const harness = createTestHarness({
+    root: new URL('../..', import.meta.url).pathname,
+    workers: [
+      {
+        configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
+        vars: { MIKAKI_ISSUER: 'https://mikaki.test' },
+      },
+    ],
+  });
+  try {
+    await harness.listen();
+    const worker = harness.getWorker('mikaki-op-worker');
+    await worker.applyD1Migrations('DB');
+    const { DB } = await worker.getEnv();
+    for (const path of [
+      '/signin?next=https://evil.test/',
+      '/signin?lang=en&lang=ja',
+      '/signin?lang=xx',
+      '/vault?return_url=https://evil.test/',
+    ]) {
+      assert.equal(
+        (await worker.fetch(`https://mikaki.test${path}`, { redirect: 'manual' })).status,
+        400,
+      );
+    }
+    assert.equal(
+      (await worker.fetch('https://evil.test/signin', { redirect: 'manual' })).status,
+      400,
+    );
+    const start = await worker.fetch('https://mikaki.test/signin?lang=en', { redirect: 'manual' });
+    assert.equal(start.status, 302);
+    const cookie = start.headers.get('set-cookie')!;
+    assert.match(cookie, /Secure; HttpOnly; SameSite=Lax/);
+    assert.equal(start.headers.get('cache-control'), 'no-store');
+    const location = start.headers.get('location')!;
+    const tx = new URL(location).searchParams.get('tx')!;
+    const row = await DB.prepare(
+      'SELECT authorization_url,browser_hash,challenge,expires_at FROM web_login_transaction WHERE tx_id=?',
+    )
+      .bind(tx)
+      .first();
+    assert.equal(row.authorization_url, 'https://mikaki.test/vault?lang=en');
+    assert.equal(
+      row.browser_hash,
+      createHash('sha256').update(cookie.split(';')[0].split('=')[1]).digest('base64url'),
+    );
+    assert.equal((await worker.fetch(location, { redirect: 'manual' })).status, 400);
+    const headers = { cookie: cookie.split(';')[0] };
+    assert.equal((await worker.fetch(location, { headers })).status, 200);
+    for (let i = 0; i < 4; i++)
+      assert.equal(
+        (await worker.fetch('https://mikaki.test/signin', { headers, redirect: 'manual' })).status,
+        302,
+      );
+    assert.equal(
+      (await worker.fetch('https://mikaki.test/signin', { headers, redirect: 'manual' })).status,
+      429,
+    );
+    await DB.prepare('UPDATE web_login_transaction SET expires_at=unixepoch()-1 WHERE tx_id=?')
+      .bind(tx)
+      .run();
+    assert.equal((await worker.fetch(location, { headers })).status, 400);
+    assert.equal(
+      (await worker.fetch('https://mikaki.test/signin', { headers, redirect: 'manual' })).status,
+      302,
+    );
+    await DB.prepare(
+      'UPDATE web_login_transaction SET expires_at=unixepoch()+300,consumed=1 WHERE tx_id=?',
+    )
+      .bind(tx)
+      .run();
+    assert.equal((await worker.fetch(location, { headers })).status, 400);
+    await DB.prepare('UPDATE web_login_transaction SET consumed=0,failures=5 WHERE tx_id=?')
+      .bind(tx)
+      .run();
+    assert.equal((await worker.fetch(location, { headers })).status, 400);
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM app_connection').first()).n, 0);
   } finally {
     await harness.close();
   }
