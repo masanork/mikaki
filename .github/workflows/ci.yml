@@ -32,6 +32,8 @@ jobs:
           cargo install worker-build --version 0.8.6 --locked
           cargo install cargo-llvm-cov --version 0.9.1 --locked
       - run: npm ci
+      - name: Validate npm release BOM
+        run: npm sbom --sbom-format=cyclonedx --sbom-type=application > "$RUNNER_TEMP/npm-build.cdx.json"
       - name: Design and formatting
         run: |
           npm run generate:i18n
