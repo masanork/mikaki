@@ -44,6 +44,8 @@ Owner Vaultでは、名前やノートを暗号化して保存する仕組みを
 
 **FIDO2 Server — 2026年9月29日：** Tools 1.9.2を使った開発試験では、分離したnativeアダプターとWasmアダプターで、それぞれ167成功・0失敗でした。製品の通常設定より広いアルゴリズム・attestationを扱う試験用構成で、正式提出用の結果ではありません。MDSは`mds3.0`を選択し、ツールのES256Kケースはpendingで未実行でした。[認定準備と検証範囲](https://github.com/masanork/mikaki/blob/main/docs/webauthn-certification-readiness.md)を参照してください。
 
+[試験結果一覧](conformance.md)にはログアウトとOID4VCの限定試験も含め、ツール版、結果の内訳、未検証範囲を掲載しています。公開環境の機能は[仕様・対応標準](specifications.md)で確認できます。
+
 ## 試験結果の読み方と残る課題
 
 `REVIEW`は人による確認が残る結果、`SKIPPED`は選択した構成で実行しなかった結果です。どちらもPASSEDに合算しません。`WARNING`も独立した結果として残します。
