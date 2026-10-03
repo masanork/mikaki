@@ -1,201 +1,201 @@
 import { encodeBase64Url } from './vault-crypto.ts';
-import type { OwnerRecord, OwnerRecordContext } from './vault-owner-crypto.ts';
-import type { OwnerKeySession } from './vault-owner-session.ts';
-import type { StoredOwnerKey } from './vault-owner-store.ts';
-import type { VaultScope } from './vault-lifecycle.ts';
+import type { OwnerRecord } from './vault-owner-crypto.ts';
+import type { OwnerVaultController } from './vault-owner-controller.ts';
 
-export type OwnerRecordHead = {
-  record_id: string;
-  kind: string;
+export type OwnerRecordTarget = Readonly<{ collectionId: string; recordId: string; kind: string }>;
+export const OWNER_NAME: OwnerRecordTarget = Object.freeze({
+  collectionId: 'personal',
+  recordId: 'name',
+  kind: 'name',
+});
+export const OWNER_NOTE: OwnerRecordTarget = Object.freeze({
+  collectionId: 'personal',
+  recordId: 'owner_note',
+  kind: 'owner_note',
+});
+export type OwnerRecordHead = Readonly<{
   revision: number;
   deleted: boolean;
-};
-export type PreparedOwnerWrite = Readonly<{
-  endpoint: string;
-  method: 'PUT' | 'DELETE';
-  body: string;
-  operation: string;
-  previousRevision: number;
-  revision: number;
+  record: OwnerRecord | null;
 }>;
+export type PreparedOwnerMutation = Readonly<{
+  method: 'PUT' | 'DELETE';
+  expectedRevision: number;
+  operationId: string;
+  body: string;
+}>;
+export class OwnerRecordError extends Error {
+  readonly code: string;
+  constructor(code: string) {
+    super(code);
+    this.code = code;
+  }
+}
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('invalid record response');
+    throw new OwnerRecordError('invalid_record');
   return value as Record<string, unknown>;
 }
-function identifier(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
-}
-function revision(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+function revision(response: Response): number {
+  const match = /^"([1-9][0-9]*)"$/.exec(response.headers.get('etag') ?? '');
+  if (!match || !Number.isSafeInteger(Number(match[1])))
+    throw new OwnerRecordError('invalid_record');
+  return Number(match[1]);
 }
 export class OwnerRecordStore {
-  constructor(
-    private readonly scope: VaultScope,
-    private readonly session: OwnerKeySession,
-    private readonly root: StoredOwnerKey,
-  ) {}
-  private check(value: unknown, collection: string): Record<string, unknown> {
-    const v = object(value),
-      c = this.root.context;
-    if (
-      v['format_version'] !== 2 ||
-      v['owner_id'] !== c.ownerId ||
-      v['origin'] !== c.origin ||
-      v['vault_id'] !== c.vaultId ||
-      v['key_generation'] !== c.keyGeneration ||
-      v['owner_key_revision'] !== this.root.revision ||
-      v['collection_id'] !== collection
-    )
-      throw new Error('record context changed');
-    this.scope.assert();
-    if (!this.session.opened) throw new Error('owner key locked');
-    return v;
+  readonly target: OwnerRecordTarget;
+  private readonly endpoint: string;
+  private readonly prepared = new WeakSet<PreparedOwnerMutation>();
+  private readonly owner: OwnerVaultController;
+  constructor(owner: OwnerVaultController, target: OwnerRecordTarget) {
+    this.owner = owner;
+    for (const value of Object.values(target))
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error('invalid target');
+    this.target = Object.freeze({ ...target });
+    this.endpoint = `/vault/records/${target.collectionId}/${target.recordId}`;
   }
-  private endpoint(collection: string, id?: string): string {
-    if (!identifier(collection) || (id !== undefined && !identifier(id)))
-      throw new Error('invalid record target');
-    return `/vault/records/${collection}${id === undefined ? '' : `/${id}`}`;
+  private authorityChanged(): never {
+    this.owner.lock('unconfirmed');
+    throw new OwnerRecordError('owner_key_changed');
   }
-  async list(collection: string): Promise<OwnerRecordHead[]> {
-    const heads: OwnerRecordHead[] = [],
-      seen = new Set<string>();
-    let after: string | null = null;
-    for (let page = 0; page < 6; page++) {
-      const response = await this.scope.request(
-        this.endpoint(collection) + (after ? `?after=${after}` : ''),
-        { cache: 'no-store' },
-      );
-      if (!response.ok) throw new Error('record list unavailable');
-      const value = this.check(await response.json(), collection);
-      if (!Array.isArray(value['records'])) throw new Error('invalid record list');
-      for (const entry of value['records']) {
-        const v = object(entry);
-        if (
-          !identifier(v['record_id']) ||
-          !identifier(v['kind']) ||
-          !revision(v['revision']) ||
-          typeof v['deleted'] !== 'boolean' ||
-          v['key_generation'] !== this.root.context.keyGeneration ||
-          seen.has(v['record_id'])
-        )
-          throw new Error('invalid record head');
-        seen.add(v['record_id']);
-        heads.push({
-          record_id: v['record_id'],
-          kind: v['kind'],
-          revision: v['revision'],
-          deleted: v['deleted'],
-        });
-      }
-      const next = value['next_cursor'];
-      if (next === null) return heads;
-      if (!identifier(next) || next === after || next !== heads.at(-1)?.record_id)
-        throw new Error('invalid record cursor');
-      after = next;
-    }
-    throw new Error('record list limit exceeded');
-  }
-  async read(
-    collection: string,
-    id: string,
-    kind: string,
-  ): Promise<{ revision: number; plaintext: Uint8Array<ArrayBuffer> | null }> {
-    const response = await this.scope.request(this.endpoint(collection, id), { cache: 'no-store' });
-    if (response.status === 404) {
+  private async failure(response: Response): Promise<never> {
+    let code = 'storage_unavailable';
+    try {
       const value = object(await response.json());
-      if (value['error'] !== 'not_found') throw new Error('record unavailable');
-      const etag = response.headers.get('etag');
-      if (etag === null && value['deleted'] !== true) return { revision: 0, plaintext: null };
-      const match = /^"([1-9][0-9]*)"$/.exec(etag ?? '');
-      const n = Number(match?.[1]);
-      if (!match || !revision(n) || value['deleted'] !== true) throw new Error('invalid tombstone');
-      return { revision: n, plaintext: null };
+      if (typeof value['error'] === 'string') code = value['error'];
+    } catch {
+      /* Fail closed on malformed errors. */
     }
-    if (!response.ok) throw new Error('record unavailable');
-    const value = this.check(await response.json(), collection);
+    if (code === 'owner_key_changed' || code === 'owner_key_unavailable') this.authorityChanged();
+    // A concurrent head read may fail without revoking the owner's lease.
+    // Recheck the root before keeping other drafts and plaintext available.
+    if (code === 'record_changed') await this.owner.verifyAuthority();
+    throw new OwnerRecordError(code);
+  }
+  async read(): Promise<OwnerRecordHead> {
+    const token = this.owner.checkpoint(),
+      { stored } = this.owner.lease();
+    const response = await this.owner.scope.request(this.endpoint, { cache: 'no-store' });
+    if (response.status !== 404 && !response.ok) return this.failure(response);
+    const value = object(await response.json());
+    this.owner.assertCurrent(token);
+    if (response.status === 404) {
+      if (value['error'] !== 'not_found') throw new OwnerRecordError('invalid_record');
+      if (value['deleted'] === true)
+        return Object.freeze({ revision: revision(response), deleted: true, record: null });
+      if (Object.keys(value).length !== 1 || response.headers.has('etag'))
+        throw new OwnerRecordError('invalid_record');
+      return Object.freeze({ revision: 0, deleted: false, record: null });
+    }
+    const c = stored.context;
     if (
-      value['record_id'] !== id ||
-      value['kind'] !== kind ||
-      !revision(value['revision']) ||
-      response.headers.get('etag') !== `"${value['revision']}"` ||
+      value['owner_id'] !== c.ownerId ||
+      value['origin'] !== c.origin ||
+      value['vault_id'] !== c.vaultId ||
+      value['key_generation'] !== c.keyGeneration ||
+      value['owner_key_revision'] !== stored.revision
+    )
+      this.authorityChanged();
+    const headRevision = revision(response);
+    if (
+      value['format_version'] !== 2 ||
+      value['collection_id'] !== this.target.collectionId ||
+      value['record_id'] !== this.target.recordId ||
+      value['kind'] !== this.target.kind ||
+      value['revision'] !== headRevision ||
       typeof value['ciphertext'] !== 'string' ||
       typeof value['key_envelope'] !== 'string'
     )
-      throw new Error('invalid record response');
-    const item = { collectionId: collection, recordId: id, kind, revision: value['revision'] };
-    const record: OwnerRecord = {
-      format_version: 2,
-      ciphertext: value['ciphertext'],
-      key_envelope: value['key_envelope'],
-    };
-    return { revision: item.revision, plaintext: await this.session.open(record, item) };
+      throw new OwnerRecordError('invalid_record');
+    return Object.freeze({
+      revision: headRevision,
+      deleted: false,
+      record: Object.freeze({
+        format_version: 2 as const,
+        ciphertext: value['ciphertext'],
+        key_envelope: value['key_envelope'],
+      }),
+    });
+  }
+  async readPlaintext(head: OwnerRecordHead): Promise<Uint8Array<ArrayBuffer>> {
+    const token = this.owner.checkpoint();
+    if (!head.record || head.deleted) throw new OwnerRecordError('not_found');
+    const bytes = await this.owner
+      .lease()
+      .session.open(head.record, { ...this.target, revision: head.revision });
+    try {
+      this.owner.assertCurrent(token);
+      return bytes;
+    } catch (error) {
+      bytes.fill(0);
+      throw error;
+    }
   }
   async prepare(
-    collection: string,
-    id: string,
-    kind: string,
-    previousRevision: number,
-    plaintext: Uint8Array<ArrayBuffer> | null,
-  ): Promise<PreparedOwnerWrite> {
+    method: 'PUT' | 'DELETE',
+    expectedRevision: number,
+    plaintext?: Uint8Array<ArrayBuffer>,
+  ): Promise<PreparedOwnerMutation> {
+    const token = this.owner.checkpoint(),
+      { session, stored } = this.owner.lease();
     if (
-      !Number.isSafeInteger(previousRevision) ||
-      previousRevision < 0 ||
-      previousRevision >= Number.MAX_SAFE_INTEGER ||
-      !identifier(kind) ||
-      (!plaintext && previousRevision === 0)
+      !Number.isSafeInteger(expectedRevision) ||
+      expectedRevision < 0 ||
+      expectedRevision >= Number.MAX_SAFE_INTEGER ||
+      (method === 'DELETE' && expectedRevision === 0)
     )
-      throw new Error('invalid write');
-    const endpoint = this.endpoint(collection, id),
-      next = previousRevision + 1;
-    const item: OwnerRecordContext = {
-      collectionId: collection,
-      recordId: id,
-      kind,
-      revision: next,
+      throw new OwnerRecordError('invalid_record');
+    const context = {
+      format_version: 2 as const,
+      vault_id: stored.context.vaultId,
+      key_generation: stored.context.keyGeneration,
+      owner_key_revision: stored.revision,
+      kind: this.target.kind,
+      revision: expectedRevision + 1,
     };
-    const sealed = plaintext ? await this.session.seal(plaintext, item) : null;
-    this.scope.assert();
-    if (!this.session.opened) throw new Error('owner key locked');
-    return Object.freeze({
-      endpoint,
-      method: plaintext ? 'PUT' : 'DELETE',
+    let record: OwnerRecord | undefined;
+    if (method === 'PUT') {
+      if (!plaintext) throw new OwnerRecordError('invalid_record');
+      record = await session.seal(plaintext, { ...this.target, revision: context.revision });
+    }
+    this.owner.assertCurrent(token);
+    const operation = Object.freeze({
+      method,
+      expectedRevision,
+      operationId: encodeBase64Url(crypto.getRandomValues(new Uint8Array(32))),
       body: JSON.stringify({
-        format_version: 2,
-        vault_id: this.root.context.vaultId,
-        key_generation: this.root.context.keyGeneration,
-        owner_key_revision: this.root.revision,
-        kind,
-        revision: next,
-        ...sealed,
+        ...context,
+        ...(record ? { ciphertext: record.ciphertext, key_envelope: record.key_envelope } : {}),
       }),
-      operation: encodeBase64Url(crypto.getRandomValues(new Uint8Array(32))),
-      previousRevision,
-      revision: next,
     });
+    this.prepared.add(operation);
+    return operation;
   }
-  async commit(write: PreparedOwnerWrite): Promise<void> {
-    this.scope.assert();
-    if (!this.session.opened) throw new Error('owner key locked');
-    const response = await this.scope.request(write.endpoint, {
-      method: write.method,
+  async commit(operation: PreparedOwnerMutation): Promise<{ revision: number; deleted: boolean }> {
+    const token = this.owner.checkpoint();
+    this.owner.lease();
+    if (!this.prepared.has(operation)) throw new OwnerRecordError('invalid_operation');
+    const response = await this.owner.scope.request(this.endpoint, {
+      method: operation.method,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
-        'X-Operation-ID': write.operation,
-        [write.previousRevision === 0 ? 'If-None-Match' : 'If-Match']:
-          write.previousRevision === 0 ? '*' : `"${write.previousRevision}"`,
+        'X-Operation-ID': operation.operationId,
+        ...(operation.expectedRevision === 0
+          ? { 'If-None-Match': '*' }
+          : { 'If-Match': `"${operation.expectedRevision}"` }),
       },
-      body: write.body,
+      body: operation.body,
     });
-    if (response.status === 409) throw new Error('record conflict');
-    if (!response.ok) throw new Error('record write unconfirmed');
+    if (!response.ok) return this.failure(response);
     const value = object(await response.json());
+    this.owner.assertCurrent(token);
     if (
-      value['revision'] !== write.revision ||
-      value['deleted'] !== (write.method === 'DELETE') ||
-      response.headers.get('etag') !== `"${write.revision}"`
+      value['revision'] !== operation.expectedRevision + 1 ||
+      value['revision'] !== revision(response) ||
+      value['deleted'] !== (operation.method === 'DELETE')
     )
-      throw new Error('record write unconfirmed');
-    this.scope.assert();
+      throw new OwnerRecordError('invalid_record');
+    return { revision: value['revision'] as number, deleted: value['deleted'] as boolean };
   }
 }

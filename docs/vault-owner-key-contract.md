@@ -63,7 +63,7 @@ The future controller must also invalidate this fixed-context lease when it obse
 
 ## Bounded owner-record API
 
-The isolated [`vault_owner_records.rs`](../crates/worker/src/vault_owner_records.rs) adapter and migration [`0032`](../crates/worker/migrations/0032_vault_owner_records.sql) persist the v2 records produced by `OwnerKeySession.seal`. The default panels still use v1. There is no legacy import, new key hierarchy, application schema, attachment transport or recipient authority in this slice.
+The isolated [`vault_owner_records.rs`](../crates/worker/src/vault_owner_records.rs) adapter and migration [`0032`](../crates/worker/migrations/0032_vault_owner_records.sql) persist the v2 records produced by `OwnerKeySession.seal`. Existing attribute panels use v1; the default new-Vault workspace uses this API. There is no legacy import, new key hierarchy, application schema, attachment transport or recipient authority in this slice.
 
 ### Endpoints and caller contract
 

@@ -122,6 +122,10 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       };
     });
     await cdp.send('WebAuthn.enable', { enableUI: false });
+    let ownerAssertions = 0;
+    cdp.on('WebAuthn.credentialAsserted', () => {
+      ownerAssertions++;
+    });
     const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
         protocol: 'ctap2',
@@ -158,6 +162,42 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       1,
     );
     await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    // The opt-in hierarchy uses one actual virtual WebAuthn/PRF ceremony for
+    // both supported records and repeated saves. The legacy route stays separate.
+    const beforeOwner = ownerAssertions;
+    await page.goto(`${issuer}/vault?lang=en&storage=owner-v2`);
+    await expect(page.locator('#owner-name')).toHaveCount(0);
+    await page.locator('#owner-unlock').click();
+    await expect(page.locator('#owner-name')).toBeEnabled();
+    assert.equal(ownerAssertions, beforeOwner + 1);
+    await page.locator('#owner-name').fill('Unified journey owner');
+    await page.locator('#owner-profile-save').click();
+    await expect(page.locator('#owner-profile-status')).toHaveText(
+      'Saved and verified. Vault stays open.',
+    );
+    await page.locator('#owner-note-title').fill('Journey record');
+    await page.locator('#owner-note-text').fill('One unlock protects both supported records.');
+    await page.locator('#owner-note-save').click();
+    await expect(page.locator('#owner-note-status')).toHaveText(
+      'Saved and verified. Vault stays open.',
+    );
+    await page.locator('#owner-name').fill('Unified journey owner updated');
+    await page.locator('#owner-profile-save').click();
+    await expect(page.locator('#owner-profile-status')).toHaveText(
+      'Saved and verified. Vault stays open.',
+    );
+    assert.equal(ownerAssertions, beforeOwner + 1);
+    await page.reload();
+    await expect(page.locator('#owner-name')).toHaveCount(0);
+    await page.locator('#owner-unlock').click();
+    await expect(page.locator('#owner-name')).toHaveValue('Unified journey owner updated');
+    await expect(page.locator('#owner-note-text')).toHaveValue(
+      'One unlock protects both supported records.',
+    );
+    assert.equal(ownerAssertions, beforeOwner + 2);
+    await page.goto(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
     // Traverse actual HTTPS history; the default automation browser reloads the page.

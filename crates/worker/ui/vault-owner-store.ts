@@ -44,7 +44,10 @@ function parse(value: unknown, origin: string, scope: VaultScope): StoredOwnerKe
     throw new Error('wrong stored credential');
   return Object.freeze({ context, revision: item['revision'], envelope });
 }
-async function read(scope: VaultScope, origin: string): Promise<StoredOwnerKey | null> {
+export async function readOwnerKey(
+  scope: VaultScope,
+  origin: string,
+): Promise<StoredOwnerKey | null> {
   const response = await scope.request(endpoint, { cache: 'no-store' });
   const value: unknown = await response.json();
   if (
@@ -65,13 +68,17 @@ export async function openOwnerVault(
   scope: VaultScope,
   origin: string,
   evaluate: OwnerPrfEvaluator,
+  assertCurrent: () => void = () => scope.assert(),
 ): Promise<{ session: OwnerKeySession; stored: StoredOwnerKey; created: boolean }> {
   await scope.ensure();
-  const current = await read(scope, origin);
+  assertCurrent();
+  const current = await readOwnerKey(scope, origin);
+  assertCurrent();
   if (current) {
     const session = new OwnerKeySession(scope, current.context);
     try {
       await session.unlock(current.envelope, evaluate);
+      assertCurrent();
       return { session, stored: current, created: false };
     } catch (error) {
       session.dispose();
@@ -88,6 +95,9 @@ export async function openOwnerVault(
   const session = new OwnerKeySession(scope, context);
   try {
     const envelope = await session.initialize(evaluate);
+    // A visibility/session generation may change while WebCrypto is pending.
+    // Do not submit a bootstrap after its initiating operation was invalidated.
+    assertCurrent();
     const body = JSON.stringify({
       format_version: 2,
       suite: OWNER_KEY_SUITE,
@@ -98,6 +108,7 @@ export async function openOwnerVault(
     const operation = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
     let stored: StoredOwnerKey | null = null;
     try {
+      assertCurrent();
       const response = await scope.request(endpoint, {
         method: 'PUT',
         cache: 'no-store',
@@ -108,15 +119,19 @@ export async function openOwnerVault(
         },
         body,
       });
+      assertCurrent();
       if (!response.ok) throw new Error('owner-key creation unavailable');
       stored = parse(await response.json(), origin, scope);
+      assertCurrent();
       if (response.headers.get('etag') !== `"${stored.revision}"`)
         throw new Error('owner-key revision mismatch');
     } catch {
       // A lost response never causes a new root to replace an existing one.
       // Reconcile by reading the exact encrypted candidate before returning.
       await scope.ensure();
-      stored = await read(scope, origin);
+      assertCurrent();
+      stored = await readOwnerKey(scope, origin);
+      assertCurrent();
     }
     if (
       !stored ||
@@ -125,7 +140,7 @@ export async function openOwnerVault(
       JSON.stringify(stored.envelope) !== JSON.stringify(envelope)
     )
       throw new Error('owner-key creation conflict/unconfirmed');
-    scope.assert();
+    assertCurrent();
     if (!session.opened) throw new Error('owner session ended');
     return { session, stored, created: true };
   } catch (error) {

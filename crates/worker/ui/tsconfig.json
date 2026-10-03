@@ -33,6 +33,7 @@
     "vault-owner-store.ts",
     "vault-owner-record-store.ts",
     "vault-thread-archive.ts",
+    "vault-owner-workspace-store.ts",
     "vault-note.ts",
     "attribute-commit.ts",
     "agent-crypto.ts",

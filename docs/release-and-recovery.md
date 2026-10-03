@@ -115,3 +115,38 @@ The GitHub `production` environment allows only the `main` branch. Its secrets a
 Pending D1 migrations stop promotion before upload. Reconcile the schema using the reviewed migration/backup procedure in this runbook, then rerun the failed CI jobs. The flow stages both Workers, verifies their configured DB/R2/service/Secrets Store/runtime secret bindings, activates Claim Worker followed by OP at 100%, and synchronizes each production configuration's triggers. `production-deployment-<commit>-<attempt>` records previous deployments and which versions were activated, including partial failures. A failure does not automatically roll back either Worker or the database; use the recorded version IDs and the compatibility procedure in this runbook.
 
 The final reusable `production-smoke` job checks the exact OP version, clean source commit, signed login asset hashes, readiness, Discovery/JWKS and native association. A failed smoke marks CI red after activation and requires investigation; it does not qualify an owner Passkey ceremony or a completed relying-party login. Deployment and smoke artifacts are retained for 30 days.
+
+## Vault schema reconciliation recovery boundary
+
+The [bounded 0031 and 0032 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migrations-0031-and-0032)
+records its source/DB/migration hashes, pending state, schema fingerprint,
+Time Travel timestamp and bookmark before applying. The same timestamp is read
+back to confirm the service returns the same bookmark. The apply step checks
+that record is less than two minutes old and the reviewed ledger/schema state
+still matches. This verifies a currently readable recovery coordinate; it is
+not a restore rehearsal, an export, or proof of a quiesced database boundary.
+
+The sanitized preflight artifact is retained before any write; a separate result
+artifact distinguishes verified completion from an uncertain attempted operation.
+Copy the record/run URL to the restricted activation record. Actions artifacts
+are requested for 30 days, but repository retention limits/deletion still apply.
+Artifact retention does **not** extend D1 Time Travel retention. Cloudflare
+[documents](https://developers.cloudflare.com/d1/reference/time-travel/) up to
+30 days for Workers Paid and 7 days for Workers Free. The bookmark response does
+not establish this account's plan or usable retention window; verify and record
+those independently. A bookmark is not an access credential, but keep recovery
+records under the existing operations access rules.
+
+0031 and 0032 are additive and do not modify prior application rows; 0032 also
+inserts its GC cursor initialization row. Each migration commits separately, so
+0031 may remain applied after a 0032 failure. Inspect with a fresh plan and
+review its new digest before attempting the missing suffix; never retry or
+restore automatically. A code rollback
+normally leaves these tables and the current migration ledger in place, subject
+to the existing code/schema compatibility review. A database restore would
+overwrite the whole database and could lose later legitimate writes or revive
+revoked authority; it requires the historical restore gate above and separate
+explicit authorization. The bookmark does not back up R2 objects, signing keys,
+Passkey PRF material or an external revocation/recovery fence. It provides no
+proof of complete Vault recovery. No table drop, ledger repair, restore, Worker
+rollback or deployment is automated by this reconciliation workflow.

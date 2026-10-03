@@ -1,6 +1,6 @@
 # Owner Vault UI
 
-New Vaults use the v2 owner-key and record APIs through `OwnerVault.svelte` and `OwnerRecordStore`. The page selects a presentation using an escaped, fixed `data-vault-format` value; this is not permission to access data. Each API still checks current owner/session/credential/root authority.
+New Vaults use the v2 owner-key and record APIs through `OwnerWorkspace.svelte` and `OwnerRecordStore` in `vault-owner-workspace-store.ts`. The page selects a presentation using an escaped, fixed `data-vault-format` value; this is not permission to access data. Each API still checks current owner/session/credential/root authority.
 
 One explicit Passkey PRF evaluation initializes or opens the parent key. Profile reads, edits, saves, explicit deletion/recreation, archive import, archive reads and reloads reuse the nonextractable handle within the existing 15-minute idle/one-hour absolute display lease. They do not prompt again. A reload/new page or manual/expired lock requires a new unlock. Visibility suspension hides the workspace, invalidates pending crypto results, and verifies the owner session before resuming the retained key. Lock/unmount removes profile, archive, search and pending-write state and disposes the handle. JavaScript strings cannot promise physical memory erasure.
 
@@ -35,8 +35,10 @@ Existing connection management and explicit agent OAuth review remain available 
 
 ## Evidence
 
-[`vault-owner-ui-browser.test.ts`](../local/conformance/vault-owner-ui-browser.test.ts) exercises the served UI against actual workerd/D1/R2 with synthetic PRF: one unlock across profile save, lost-response exact retry, archive import/read/search and reload; manual lock clears the workspace; a fresh page reopens the same records; profile deletion/recreation uses tombstone revision; visibility suspension resumes without PRF, failed session confirmation removes plaintext, and mobile accessibility is checked. This is not physical-device WebAuthn qualification. The test is part of `test:worker-browser`.
+[`vault-owner-workspace-browser.test.ts`](../local/conformance/vault-owner-workspace-browser.test.ts) exercises the served UI against actual workerd/D1/R2 with synthetic PRF: one unlock across profile save, lost-response exact retry, archive import/read/search and reload; manual lock clears the workspace; a fresh page reopens the same records; profile deletion/recreation uses tombstone revision; visibility suspension resumes without PRF, failed session confirmation removes plaintext, and mobile accessibility is checked. This is not physical-device WebAuthn qualification. The test is part of `test:worker-browser`.
 
 The underlying crypto/API race and atomicity evidence remains in the [owner-key contract](vault-owner-key-contract.md). SQLite projection, intended-device Passkey/PRF tests and end-to-end selected sharing remain outstanding.
 
 [`product-journey.test.ts`](../local/conformance/product-journey.test.ts) also exercises the new workspace through actual HTTPS and Chromium virtual WebAuthn/PRF: invite registration, one credential call across initial unlock/save/reload, fresh-page decrypt, RP code exchange and logout/history denial. It does not qualify a physical phone or security key.
+
+The separately selected `?storage=owner-v2` name/note qualification preview remains intact. Its controller, editor, target-specific store and regression tests are preserved; the default workspace stores its JSON profile separately at `personal/profile` and does not rewrite the preview name/note slots.
