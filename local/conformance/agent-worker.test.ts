@@ -707,6 +707,40 @@ test('v2 selected record grants cross the private OP bridge with exact OAuth and
       ).status,
       409,
     );
+    // Exercise the deepest authorization SQL in actual D1/workerd for v2, too.
+    // Exact owner approval and concurrent retries must create only one private draft.
+    const proposalId = id();
+    const proposed = await rpc(note.token, 'propose', {
+      proposal_id: proposalId,
+      document_id: 'owner_note',
+      title: 'Private selected-record draft',
+      text: 'This draft cannot modify the selected Vault note.',
+    });
+    const receipt = toolOutputs.propose.parse(proposed.data?.result.structuredContent);
+    const executeArgs = { proposal_id: proposalId, request_hash: receipt.request_hash };
+    assert.equal((await rpc(note.token, 'execute', executeArgs)).data?.result.isError, true);
+    const decision = await owner('decide', { ...executeArgs, approve: true });
+    assert.equal(decision.status, 200, await decision.text());
+    assert.equal(
+      (await rpc(note.token, 'execute', { ...executeArgs, request_hash: id() })).data?.result
+        .isError,
+      true,
+    );
+    const executions = await Promise.all([
+      rpc(note.token, 'execute', executeArgs),
+      rpc(note.token, 'execute', executeArgs),
+    ]);
+    assert.equal(executions[0]!.data?.result.isError, undefined, JSON.stringify(executions));
+    assert.deepEqual(executions[0], executions[1]);
+    assert.equal(
+      toolOutputs.execute.parse(executions[0]!.data?.result.structuredContent).state,
+      'executed',
+    );
+    assert.equal((await env.DB.prepare('SELECT count(*) n FROM agent_draft').first()).n, 1);
+    assert.equal(
+      (await rpc(note.token, 'read', { id: 'owner_note' })).data?.result.structuredContent.text,
+      note.text,
+    );
     // The default dashboard remains exclusively v1 so old clients cannot relabel v2 grants.
     const status = await op.fetch(`${origin}/vault/agents/status`, { headers });
     const statusBody = (await status.json()) as { grants: unknown[] };
@@ -749,7 +783,8 @@ test('v2 selected record grants cross the private OP bridge with exact OAuth and
         ...(requested === null ? {} : { authorization_details: JSON.stringify(requested) }),
       }))
         url.searchParams.set(key, value);
-      const response = await agent.fetch(url.href);
+      // The redirect targets the synthetic owner origin, never public DNS.
+      const response = await agent.fetch(url.href, { redirect: 'manual' });
       assert.equal(response.status, 302, await response.text());
       return {
         verifier,
