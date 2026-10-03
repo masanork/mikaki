@@ -13,6 +13,7 @@
     onlock,
     material = false,
     paused = false,
+    vaultHref,
   }: {
     locale: Locale;
     contentId?: string;
@@ -20,6 +21,7 @@
     onlock?: () => void;
     material?: boolean;
     paused?: boolean;
+    vaultHref?: string;
   } = $props();
   const page = new URL(location.href);
   let header: HTMLElement;
@@ -64,7 +66,7 @@
   <div class="product-header-inner">
     <a
       class="auth-brand product-brand"
-      href={session ? `/vault?lang=${locale}` : '/'}
+      href={session ? (vaultHref ?? `/vault?lang=${locale}`) : '/'}
       aria-label="mikaki"
     >
       {#if !material}<BrandMark />{/if}

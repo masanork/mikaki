@@ -1,6 +1,6 @@
 # Candidate Vault owner-key contract
 
-**Status:** new-format crypto, bounded lease, owner-key bootstrap and bounded owner-record APIs, implemented 2026-10-03. Verification and deployment limits are listed below. The default Vault UI, native client and agent service do not use it yet. This is an implementation step toward U1/U2 in the [Vault product model](vault-product-model.md). The owner confirms there are no existing data assets requiring a legacy migration; new-format functionality is the rollout target.
+**Status:** new-format crypto, bounded lease, owner-key bootstrap and bounded owner-record APIs, implemented 2026-10-03. Verification and deployment limits are listed below. The default Vault UI, native client and agent service do not use it yet. The separate [unified-unlock preview](vault-unified-unlock.md) now connects the owner lease and bounded record API behind explicit qualification selection. This is an implementation step toward U1/U2 in the [Vault product model](vault-product-model.md). The owner confirms there are no existing data assets requiring a legacy migration; new-format functionality is the rollout target.
 
 ## Responsibility and keys
 

@@ -1,12 +1,13 @@
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
+import { drainBrowserRoutes } from './support/browser-route-teardown.ts';
 import { startBrowserSourceCoverage } from './support/browser-source-coverage.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createTestHarness } from 'wrangler';
-import { chromium, expect } from '@playwright/test';
+import { chromium, expect, type Page } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
 
@@ -22,6 +23,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     ],
   });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let routedPage: Page | undefined;
   let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
   let failure: unknown;
   let releaseSave = () => {};
@@ -82,6 +84,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     assert.equal(written.status, 200);
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    routedPage = page;
     const sourceCoverage = startBrowserSourceCoverage(page, origin);
     evidence = await startBrowserEvidence(page.context(), 'product-ui-browser');
     const errors: string[] = [];
@@ -512,12 +515,21 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     await sourceCoverage.finish();
   } catch (error) {
     failure = error;
-    throw error;
   } finally {
     releaseSave();
     releaseReads();
+    try {
+      await drainBrowserRoutes(routedPage);
+    } catch (error) {
+      // Record cleanup failures, without replacing an earlier assertion failure.
+      failure ??= error;
+    }
     await evidence?.finish(failure);
-    await browser?.close();
-    await harness.close();
+    try {
+      await browser?.close();
+    } finally {
+      await harness.close();
+    }
   }
+  if (failure !== undefined) throw failure;
 });
