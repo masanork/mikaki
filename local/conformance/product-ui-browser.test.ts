@@ -1,3 +1,4 @@
+import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { startBrowserSourceCoverage } from './support/browser-source-coverage.ts';
 import { test } from 'node:test';
@@ -24,6 +25,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
   let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
   let failure: unknown;
   let releaseSave = () => {};
+  let releaseReads = () => {};
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -127,6 +129,16 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       },
       { credential: [...credential], prf: [...prf] },
     );
+    let holdReads = false;
+    const readPaths = new Set([
+      '/vault/shares/userinfo/name',
+      '/vault/releases/name',
+      '/vault/attributes/name',
+    ]);
+    const observedReads = new Set<string>();
+    const readBarrier = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
     let failLoad = false;
     const puts: { id: string; body: string }[] = [];
     let saveStarted = () => {};
@@ -167,6 +179,10 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       // Miniflare wraps Undici's response stream. Consume it before awaiting
       // browser cookie updates: GC may otherwise cancel the original response.
       const body = Buffer.from(await response.arrayBuffer());
+      if (holdReads && request.method() === 'GET' && readPaths.has(path)) {
+        observedReads.add(path);
+        await readBarrier;
+      }
       const confirmation = /__Host-op-logout=([^;, ]+)/.exec(
         response.headers.get('set-cookie') ?? '',
       );
@@ -218,6 +234,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
           assert.doesNotMatch(response!.headers()['content-security-policy']!, /unsafe-inline/);
         }
         assert.equal(await page.locator('main').count(), 1);
+        await auditAccessibility(page, `${path.split('/').filter(Boolean).join('-')}-${locale}`);
         const skip = page.getByRole('link', {
           name: locale === 'ja' ? '本文へ移動' : 'Skip to content',
           exact: true,
@@ -238,7 +255,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
           'Tab continues inside the main content rather than returning to the header',
         );
 
-        for (const width of [1440, 375]) {
+        for (const width of [1440, 390, 320]) {
           await page.setViewportSize({ width, height: 900 });
           assert.equal(
             await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
@@ -253,6 +270,35 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       await expect(page.locator(`#${section}`)).toHaveAttribute('open', '');
       await expect(page.locator(`#${section} > summary`)).toBeVisible();
     }
+    // None of the independent reads may wait for another read's response.
+    holdReads = true;
+    await sourceCoverage.goto(`${origin}/vault?lang=en`);
+    try {
+      await expect.poll(() => observedReads.size).toBe(3);
+      await expect(page.locator('#unlock')).toBeDisabled();
+    } finally {
+      holdReads = false;
+      releaseReads();
+    }
+    await expect(page.locator('#unlock')).toBeEnabled();
+    // Scrolling the decorative header offscreen stops its work, and scrolling back resumes it.
+    await page.locator('#notes').scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        page.locator('.product-header').evaluate((node) => node.getBoundingClientRect().bottom),
+      )
+      .toBeLessThanOrEqual(0);
+    await page.waitForTimeout(150);
+    const offscreenPhase = await page.locator('.product-header').getAttribute('data-light-phase');
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.locator('.product-header').getAttribute('data-light-phase'),
+      offscreenPhase,
+    );
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect
+      .poll(() => page.locator('.product-header').getAttribute('data-light-phase'))
+      .not.toBe(offscreenPhase);
     failLoad = true;
     await sourceCoverage.goto(`${origin}/vault?lang=en`);
     await expect(page.locator('#status')).toHaveText('Loading failed.');
@@ -285,10 +331,13 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
         .locator('.vault-shell')
         .evaluate((node) => getComputedStyle(node, '::before').animationPlayState);
     await expect.poll(courtyardMotion).toBe('paused');
+    const movedFocus = page.getByRole('link', { name: 'Sharing & connections', exact: true });
+    await movedFocus.focus();
     await page.evaluate(() => {
       (window as unknown as { releasePrf: () => void }).releasePrf();
     });
     await expect(page.getByLabel('Note title', { exact: true })).toBeEnabled();
+    await expect(movedFocus).toBeFocused();
     await expect.poll(courtyardMotion).toBe('running');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(
@@ -316,8 +365,10 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       'Passkey confirmation was cancelled or timed out. You can try again.',
     );
     await expect(page.locator('#unlock')).toBeEnabled();
-    await page.locator('#unlock').click();
+    await expect(page.locator('#unlock')).toBeFocused();
+    await page.keyboard.press('Enter');
     await expect(page.locator('#name')).toHaveValue('Saved owner');
+    await expect(page.locator('#name')).toBeFocused();
     page.once('dialog', (dialog) => {
       void dialog.dismiss();
     });
@@ -401,11 +452,13 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     );
     await expect(page.locator('#name')).toBeDisabled();
     await expect(page.locator('#save')).toBeEnabled();
+    await expect(page.locator('#save')).toBeFocused();
     await expect(page.locator('#delete')).toBeDisabled();
     await page.locator('#save').click();
     await expect(page.locator('#status')).toHaveText(
       'Saved. Unlock with your passkey to verify it.',
     );
+    await expect(page.locator('#unlock')).toBeFocused();
     assert.equal(puts.length, 2);
     assert.deepEqual(puts[0], puts[1]);
     const record = (await (
@@ -455,6 +508,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     throw error;
   } finally {
     releaseSave();
+    releaseReads();
     await evidence?.finish(failure);
     await browser?.close();
     await harness.close();

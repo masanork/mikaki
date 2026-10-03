@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { restoreActionFocus } from './action-focus.js';
   import { vaultScope, vaultContext } from './vault-context.js';
   const context = vaultContext();
   const scope = vaultScope();
@@ -284,13 +285,17 @@
       }
       sessionCredential = decodeBase64Url(sessionBody.credential_id);
       accountId = sessionBody.account_id;
-      await loadShareStatus().catch(() => {
-        sharing = null;
-      });
-      await loadReleaseStatus().catch(() => {
-        releases = null;
-      });
-      const response = await fetch(endpoint, { cache: 'no-store' });
+      // Independent reads may overlap after the owner session has been checked.
+      // Settle all reads so an optional-panel failure cannot leave late state updates.
+      const [share, release, stored] = await Promise.allSettled([
+        loadShareStatus(),
+        loadReleaseStatus(),
+        fetch(endpoint, { cache: 'no-store' }),
+      ]);
+      if (share.status === 'rejected') sharing = null;
+      if (release.status === 'rejected') releases = null;
+      if (stored.status === 'rejected') throw stored.reason;
+      const response = stored.value;
       if (response.status === 404) {
         const etag = response.headers.get('ETag');
         if (etag !== null) {
@@ -317,6 +322,7 @@
 
   async function unlock(): Promise<void> {
     if (loading || loadFailed || busy || transferBusy || opened) return;
+    const previousFocus = document.activeElement;
     busy = true;
     try {
       if (current) {
@@ -351,6 +357,9 @@
       message(errorMessage(error, m.vaultOpenFailed()));
     } finally {
       busy = false;
+      await restoreActionFocus(previousFocus, () =>
+        document.getElementById(opened ? 'name' : 'unlock'),
+      );
     }
   }
 
@@ -384,6 +393,7 @@
   async function mutate(method: 'PUT' | 'DELETE'): Promise<void> {
     if (!opened || busy || transferBusy || loading) return;
     if (method === 'DELETE' && !pending && !confirm(m.productProfileDeleteConfirm())) return;
+    const previousFocus = document.activeElement;
     busy = true;
     try {
       const revision = currentRevision;
@@ -456,6 +466,23 @@
       );
     } finally {
       busy = false;
+      await restoreActionFocus(previousFocus, () =>
+        document.getElementById(
+          pending
+            ? method === 'PUT'
+              ? 'save'
+              : 'delete'
+            : !opened
+              ? loadFailed
+                ? 'reload-profile'
+                : 'unlock'
+              : method === 'PUT' && (name.length === 0 || name.length > 256)
+                ? 'name'
+                : method === 'PUT'
+                  ? 'save'
+                  : 'delete',
+        ),
+      );
     }
   }
 
@@ -686,8 +713,11 @@
                 pending?.method === 'PUT'}
               onclick={() => mutate('DELETE')}>{m.vaultDelete()}</button
             >
-            <button type="button" disabled={busy || transferBusy || loading} onclick={reload}
-              >{m.productProfileReload()}</button
+            <button
+              id="reload-profile"
+              type="button"
+              disabled={busy || transferBusy || loading}
+              onclick={reload}>{m.productProfileReload()}</button
             >
           </div>
           <p id="status" role="status" aria-live="polite">{status}</p>

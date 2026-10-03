@@ -15,6 +15,7 @@ export async function journeyServer(
     url: string,
     init: { method: string; headers: Record<string, string>; body?: string },
   ) => Promise<Reply>,
+  port = 0,
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-journey-'));
   let server: ReturnType<typeof createServer> | undefined;
@@ -86,7 +87,7 @@ export async function journeyServer(
     );
     await new Promise<void>((resolve, reject) => {
       server!.once('error', reject);
-      server!.listen(0, '127.0.0.1', resolve);
+      server!.listen(port, '127.0.0.1', resolve);
     });
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Journey server address missing');

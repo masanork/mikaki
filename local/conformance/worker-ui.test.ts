@@ -1,7 +1,8 @@
+import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { execFileSync } from 'node:child_process';
 
@@ -204,6 +205,8 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     assert.deepEqual(errors, [], 'zero-height resize must not draw an empty material canvas');
 
     await page.goto('https://mikaki.test/login');
+    await page.locator('#passkey').waitFor();
+    await auditAccessibility(page, 'login-ja');
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);
     assert.equal(await page.locator('.origin strong').first().textContent(), 'mikaki.test');
@@ -255,6 +258,8 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('alert').getByText('招待コードを入力してください。').waitFor();
     assert.equal(await page.getByLabel('招待コード').getAttribute('aria-invalid'), 'true');
+    await expect(page.getByLabel('招待コード')).toBeFocused();
+    await auditAccessibility(page, 'login-invitation-error-ja');
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('button', { name: 'Sign in with passkey' }).waitFor();
     assert.match(page.url(), /lang=en/);

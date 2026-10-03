@@ -36,6 +36,7 @@
     "test:agent-oauth": "node --test local/conformance/agent-oauth.test.ts",
     "probe:agent-oauth-clients": "node scripts/probe-agent-oauth-clients.ts",
     "test:agent-preparation": "node --test scripts/prepare-grok-bot.test.ts scripts/inspect-grok-bot-oauth.test.ts",
+    "probe:ui-experience": "node scripts/probe-ui-experience.ts",
     "check:worker-budgets": "node scripts/check-worker-budgets.ts",
     "test:worker-budgets": "node --test scripts/check-worker-budgets.test.ts",
     "check:docs": "node scripts/check_docs.ts",

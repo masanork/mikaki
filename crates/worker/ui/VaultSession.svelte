@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { restoreActionFocus } from './action-focus.js';
   import { onMount, setContext, tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import Vault from './Vault.svelte';
@@ -59,6 +60,7 @@
   }
   async function reopen(): Promise<void> {
     if (checking) return;
+    const previousFocus = document.activeElement;
     checking = true;
     const candidate = new VaultScope(locked);
     scope = candidate;
@@ -70,6 +72,8 @@
       suspended = false;
     }
     checking = false;
+    if (!reason)
+      await restoreActionFocus(previousFocus, () => document.getElementById('product-main'));
   }
   onMount(() => {
     const activity = (event: Event) => {

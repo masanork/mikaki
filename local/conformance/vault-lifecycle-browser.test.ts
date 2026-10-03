@@ -1,3 +1,4 @@
+import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -240,6 +241,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     await lock.click();
     await expect(locked).toBeVisible();
     await expect(locked).toBeFocused();
+    await auditAccessibility(page, 'vault-locked');
     await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('#vault-status-main')).toBeFocused();
@@ -249,7 +251,10 @@ async function exerciseLifecycle(notifications: Notifications) {
     await expect(
       page.getByRole('heading', { name: 'Saved name, revision 1', exact: true }),
     ).toHaveCount(0);
-    await reopen.click();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#product-main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Profile', exact: true })).toBeFocused();
     await expect(page.locator('#name')).toHaveValue('');
     await expect(page.locator('textarea')).toHaveValue('');
     await page.locator('#unlock').click();
