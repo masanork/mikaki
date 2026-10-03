@@ -1,6 +1,6 @@
 # Encrypted thread archives and SQLite search
 
-**Status:** browser search foundation, 2026-10-03. The v2 workspace stores encrypted imported archives. The SQLite projection, bounded Worker protocol and lifecycle client now have a real-WASM Chromium regression test; they are not yet loaded by the Vault screen. The screen still uses substring filtering. It extends the [Vault product model](vault-product-model.md).
+**Status:** integrated browser search, 2026-10-03. The v2 workspace stores encrypted imported archives and lazily builds a local SQLite FTS5 projection when the owner searches. It extends the [Vault product model](vault-product-model.md).
 
 ## Implemented search foundation
 
@@ -12,7 +12,11 @@ A replacement closes the previous database first. Invalid snapshots or failed bu
 
 Run `npm ci --prefix design/probes/vault-search` then `npm run test:vault-thread-search`. The [regression](../local/conformance/vault-thread-search-browser.test.ts) serves pinned SQLite 3.53.4-build2 locally with a restrictive CSP, checks real FTS results and exact anchors, scope, normalization, replacement/deletion, invalid/bounded requests, truncation, abort/pagehide and absence of localStorage/sessionStorage/IndexedDB/CacheStorage/OPFS data. CI installs and audits the isolated runtime package. This is distinct from the earlier synthetic performance probe.
 
-The production bootstrap and runtime asset routes are still pending. Vault's inline bundle is near its byte budget, so the runtime must be separately served and loaded lazily with a scoped `worker-src 'self'` and WASM permission. This change neither adds those CSP permissions to production nor distributes SQLite assets there. Follow with UI loading/failure/coverage states, search-hit navigation, stale-query guards, authority-bound rebuilds after import/delete/reload, and browser tests of hidden/resume and actual Vault lock. Encrypted snapshot persistence and live messaging remain later contracts.
+The [search UI](../crates/worker/ui/ThreadSearch.svelte) loads [the bootstrap](../crates/worker/ui/search.ts) at `/vault/search.js` and the pinned binary at `/vault/sqlite3.wasm` only for a nonempty search. Both public assets are embedded in the attested Rust Worker build and served with correct MIME types, nosniff and no-store. The main Vault CSP adds only `worker-src 'self'`; the search Worker response permits WASM compilation with `'wasm-unsafe-eval'`. There are no inline scripts, eval permission on the Vault page, external runtime downloads, persistent indexes or plaintext asset generation. SQLite's upstream license/version notices survive minification; the wrapper package's Apache-2.0 license is recorded in the pinned npm dependency inventory.
+
+The UI debounces input and serializes requests, reuses the in-memory index across queries, rejects obsolete query results, and discards the Worker/index/results when archive state or mutation-busy state changes. It verifies live owner/root authority before searching and before displaying results. Result navigation rechecks owner authority and the current loaded record revision, then focuses the exact message or title. The search covers the bounded, loaded archive snapshot, not records changed remotely since its last reload. There is no promise of live remote freshness. Loading, failure/retry, no-match and 50-hit truncation are distinct states; results expose no total count beyond the return bound.
+
+Hidden visibility clears query/results and terminates the Worker; returning to the verified workspace needs a fresh search but no additional Passkey ceremony. Lock, expiry, lease replacement, unmount and pagehide terminate pending work. The served [workspace regression](../local/conformance/vault-owner-workspace-browser.test.ts) checks lazy loading, mixed short Japanese terms, exact message focus, hidden/resume, failed asset loading/retry and manual lock against actual workerd/D1/R2. Its PRF and hidden visibility are simulated. Intended mobile-device performance, centered snippets/highlighting, explicit per-thread/date UI filters, encrypted snapshot persistence and live messaging remain later work.
 
 ## Recommendation
 

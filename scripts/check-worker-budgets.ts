@@ -16,6 +16,8 @@ export const resources = [
   '/enroll/complete.js',
   '/admin/admin.js',
   '/vault/vault.js',
+  '/vault/search.js',
+  '/vault/sqlite3.wasm',
   'crates/worker/build/index_bg.wasm',
   'crates/userinfo-claim-worker/build/index_bg.wasm',
 ] as const;
@@ -80,7 +82,11 @@ async function main(): Promise<void> {
       if (resource.startsWith('/')) {
         const response = await worker.fetch(`https://mikaki.test${resource}`);
         assert.equal(response.status, 200, `Unavailable asset: ${resource}`);
-        const mime = resource.endsWith('.js') ? 'text/javascript' : 'text/css';
+        const mime = resource.endsWith('.wasm')
+          ? 'application/wasm'
+          : resource.endsWith('.js')
+            ? 'text/javascript'
+            : 'text/css';
         assert.equal(response.headers.get('Content-Type')?.split(';')[0], mime);
         bytes = new Uint8Array(await response.arrayBuffer());
       } else {

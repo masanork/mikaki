@@ -22,6 +22,12 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault-owner-store.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-record-store.ts");
     println!("cargo:rerun-if-changed=ui/vault-thread-archive.ts");
+    println!("cargo:rerun-if-changed=ui/vault-thread-search.ts");
+    println!("cargo:rerun-if-changed=ui/vault-thread-search-client.ts");
+    println!("cargo:rerun-if-changed=ui/vault-thread-search-worker.ts");
+    println!("cargo:rerun-if-changed=ui/search.ts");
+    println!("cargo:rerun-if-changed=ui/ThreadSearch.svelte");
+    println!("cargo:rerun-if-changed=../../package-lock.json");
     println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerRecordEditor.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-controller.ts");
@@ -140,6 +146,25 @@ fn main() {
     assert!(status.success(), "Worker UI Svelte check failed");
     let vite = manifest.join("../../node_modules/.bin/vite");
     println!("cargo:rerun-if-env-changed=MIKAKI_UI_COVERAGE");
+    fs::copy(
+        repository.join("node_modules/@sqlite.org/sqlite-wasm/dist/sqlite3.wasm"),
+        output.join("sqlite3.wasm"),
+    )
+    .expect("Pinned SQLite WASM runtime is required; run npm ci");
+    // Vite library mode inlines URL-referenced WASM into JS. Bundle this dedicated
+    // browser Worker with esbuild to keep the pinned WASM in its own response.
+    let mut search_build = Command::new(repository.join("node_modules/.bin/esbuild"));
+    search_build
+        .arg(manifest.join("ui/search.ts"))
+        .args(["--bundle", "--platform=browser", "--format=esm", "--minify"])
+        .arg(format!("--outfile={}", output.join("search.js").display()));
+    if env::var("MIKAKI_UI_COVERAGE").as_deref() == Ok("1") {
+        search_build.arg("--sourcemap=external");
+    }
+    let status = search_build
+        .status()
+        .expect("esbuild is required; run npm ci");
+    assert!(status.success(), "Search Worker build failed");
     for entry in ["login", "vault", "admin", "complete", "logout"] {
         let status = Command::new(&vite)
             .arg("build")

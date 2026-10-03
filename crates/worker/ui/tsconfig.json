@@ -37,6 +37,7 @@
     "vault-thread-search.ts",
     "vault-thread-search-worker.ts",
     "vault-thread-search-client.ts",
+    "search.ts",
     "vault-note.ts",
     "attribute-commit.ts",
     "agent-crypto.ts",

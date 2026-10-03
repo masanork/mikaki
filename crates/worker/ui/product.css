@@ -1174,3 +1174,24 @@ a {
 .product-skip:focus {
   transform: none;
 }
+/* Private archive search keeps the same quiet, tactile workspace surface. */
+.thread-search-hits {
+  list-style: none;
+  padding: 0;
+}
+.thread-search-hits button {
+  width: 100%;
+  text-align: start;
+  display: grid;
+  gap: 0.4rem;
+  margin-block: 0.5rem;
+}
+.thread-search-hits span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.archive-message:focus,
+#thread-title:focus {
+  outline: 2px solid var(--product-accent, #8c8157);
+  outline-offset: 4px;
+}
