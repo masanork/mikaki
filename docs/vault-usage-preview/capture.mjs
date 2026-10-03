@@ -27,6 +27,34 @@ try {
     await page.getByRole('button', { name: 'Passkeyで開く', exact: true }).focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('#main')).toBeFocused();
+    await page.screenshot({ path: `${directory}threads-${label}.png`, fullPage: true });
+    await page.getByRole('button', { name: /引っ越しの相談/ }).click();
+    await expect(
+      page.getByRole('button', { name: 'この内容で申請を許可', exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({ path: `${directory}human-thread-${label}.png`, fullPage: true });
+    await page.getByRole('button', { name: '会話へ戻る', exact: true }).click();
+    await page.getByRole('button', { name: /AIと申請を準備/ }).click();
+    await expect(
+      page.getByText('この会話は、参加しているAIサービスに渡す内容です。', { exact: true }),
+    ).toBeVisible();
+    await auditAccessibility(page, `usage-thread-${label}`);
+    await page.screenshot({ path: `${directory}ai-thread-${label}.png`, fullPage: true });
+    await page.getByRole('button', { name: '申請内容を確認', exact: true }).click();
+    await page.getByRole('button', { name: 'この内容で申請を許可', exact: true }).click();
+    await expect(page.getByText('本人が申請を許可', { exact: true })).toBeVisible();
+    await expect(page.getByText('送信・受付は未確認', { exact: true })).toBeVisible();
+    await expect(page.getByRole('status')).toHaveText(
+      'この内容への許可を記録しました。送信・受付は未確認です。',
+    );
+    await page.screenshot({ path: `${directory}application-history-${label}.png`, fullPage: true });
+    await page.setViewportSize({ width: 320, height: 1000 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+      false,
+    );
+    await page.setViewportSize({ width, height: 1000 });
+    await page.getByRole('button', { name: '自分の情報', exact: true }).click();
     await expect(page.getByLabel('表示名')).toHaveValue('山田 太郎');
     await page.getByLabel('表示名').fill('山田 花子');
     await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -65,7 +93,9 @@ try {
     }
     assert.deepEqual(errors, []);
     await page.close();
-    console.log(`${label}: fictional unlock/save/review/share/stop/lock flow and layout passed`);
+    console.log(
+      `${label}: fictional threads/history/unlock/save/review/share/stop/lock flow and layout passed`,
+    );
   }
 } finally {
   await browser?.close();

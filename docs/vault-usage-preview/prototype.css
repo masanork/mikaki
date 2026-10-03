@@ -367,6 +367,59 @@ input {
   color: #536745;
   min-height: 25px;
 }
+.messages {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+  display: grid;
+  gap: 18px;
+}
+.message {
+  background: #edf0e2;
+  border-left: 2px solid #a2b392;
+  padding: 16px 20px;
+  margin-right: 40px;
+}
+.message.own {
+  margin-right: 0;
+  margin-left: 40px;
+  background: #f5f3e4;
+  border-left-color: #baa67c;
+}
+.message span {
+  color: #68775f;
+  font-size: 12px;
+}
+.message p {
+  font-size: 14px;
+  margin-bottom: 0;
+}
+.linked-artifact {
+  background: #f5f5e9;
+  border: 1px solid #d4ddc6;
+  padding: 19px 22px;
+}
+.history {
+  margin-top: 28px;
+}
+.history ol {
+  list-style: none;
+  padding: 0;
+  border-left: 2px solid #bcc9aa;
+}
+.history li {
+  display: grid;
+  gap: 6px;
+  padding: 9px 0 14px 19px;
+}
+.history li span {
+  color: #6b7b60;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.history .pending {
+  color: #82795d;
+}
 @media (max-width: 700px) {
   .preview-label {
     font-size: 10px;
@@ -397,7 +450,7 @@ input {
     gap: 0;
   }
   nav button {
-    padding: 14px 10px;
+    padding: 14px 7px;
     flex: 1;
     font-size: 13px;
   }

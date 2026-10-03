@@ -4,7 +4,7 @@ This records planned direction and decisions still needed before implementation;
 
 The [protocol review](vault-protocol-review.md) and [ADR 0012](adr/0012-vault-protocol-boundaries.md) separate owner ciphertext storage, profile release, credential presentation, file synchronization, and AI adapters. Remote MCP is one access adapter; it is not the canonical Vault protocol.
 
-The [2026-10-03 usage-model proposal](vault-product-model.md) makes human review/reuse and selected agent-produced records the initial product hypothesis, rather than manual note-taking. It separates semantic attributes, multi-item records, attachments and underlying blobs, and specifies a unified owner-key unlock target. Its interactive preview is fictional; the current per-attribute encryption and individual unlock contracts have not changed.
+The [2026-10-03 usage-model proposal](vault-product-model.md) prioritizes encrypted human/human and human/AI threads, followed by linked application/approval history. It separates thread/message/workflow semantics, attributes, records, attachments and underlying blobs, and specifies a unified owner-key unlock target. Its interactive preview is fictional; the current per-attribute encryption and individual unlock contracts have not changed.
 
 ## Boundaries
 
