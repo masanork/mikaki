@@ -12,3 +12,15 @@ export function vaultContext(): VaultContext {
 export function vaultScope(): VaultScope {
   return vaultContext().current();
 }
+
+// Deliberately separate from the unchanged format-1 panel context.
+import type { OwnerVaultController } from './vault-owner-controller.ts';
+export const OWNER_VAULT_CONTEXT = Symbol('Owner Vault lease');
+export type OwnerVaultContext = {
+  current: () => OwnerVaultController;
+  registerDraft: (dirty: () => boolean) => () => void;
+  lock: () => void;
+};
+export function ownerVaultContext(): OwnerVaultContext {
+  return getContext<OwnerVaultContext>(OWNER_VAULT_CONTEXT);
+}
