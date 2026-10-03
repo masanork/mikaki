@@ -27,12 +27,12 @@ Social previews use committed 1200×630 PNG captures of the existing woven hero,
 
 The localized images in `screenshots/onboarding/` are maintained manually, separately from CI. Public enrollment/sign-in captures only make GET requests. Vault captures use a disposable local Worker, synthetic account/note and mocked PRF; they do not qualify production saving, recovery or physical devices.
 
-To refresh, build an isolated checkout at the commit returned by the public OP `/version` (policy and Worker build), then run from the website checkout:
+To refresh, prepare an isolated clean checkout at the commit returned by the public OP `/version`, with dependencies and `worker-build` installed, then run from the website checkout:
 
 ```sh
 MIKAKI_SCREENSHOT_SOURCE_ROOT=/path/to/isolated-active-op node website/capture-onboarding.mjs
 ```
 
-The script verifies the active source commit, pins downloaded deployed UI assets into the local fixture, checks saved/reopened sample text, and refuses a changed public version during capture. `screenshots/onboarding/provenance.json` records deployment/source identifiers, public and local asset hashes, image hashes and capture scope. Review both languages before publishing and update the visible capture dates.
+The script rejects tracked/untracked source changes, rebuilds ignored policy/Worker artifacts from the active source commit, pins downloaded deployed UI assets into the local fixture, checks saved/reopened sample text, and refuses a changed public version during capture. `screenshots/onboarding/provenance.json` records deployment/source identifiers, public and local asset hashes, image hashes and capture scope. Review both languages before publishing and update the visible capture dates.
 
 `build:website` copies tracked PNGs and adds intrinsic dimensions and lazy loading. `test:website` checks image responses, dimensions, alt text, decoding and mobile overflow, including a missing-image regression. Invitation/integration links use the four public forms in `.github/ISSUE_TEMPLATE/`; never test these by submitting secrets or creating an unsolicited issue.

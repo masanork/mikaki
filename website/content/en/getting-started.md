@@ -5,7 +5,7 @@ title: 'Getting started with mikaki: invitations and passkeys'
 description: 'How to register with an invitation, sign in on the Web, unlock Vault and connect to an application using mikaki passkeys.'
 lang: en
 translation_key: getting-started
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 ## What mikaki does
@@ -22,7 +22,7 @@ Passkey creation and storage depend on your device and browser. Check which acco
 
 ![Public registration screen with invitation code field and Register with invitation button](../../screenshots/onboarding/enroll-en.png)
 
-*Public registration screen, October 3, 2026. Enter a code only after receiving an invitation.*
+*Public registration screen, October 4, 2026. Enter a code only after receiving an invitation.*
 
 ## 2. Sign in on the Web
 
@@ -32,7 +32,7 @@ After sign-in, you enter Vault. Authentication confirms your account; unlocking 
 
 ![Public sign-in screen with the passkey sign-in action](../../screenshots/onboarding/signin-en.png)
 
-*Public sign-in screen, October 3, 2026. Use the passkey created during registration.*
+*Public sign-in screen, October 4, 2026. Use the passkey created during registration.*
 
 ## 3. Open a saved Vault item
 
@@ -58,7 +58,7 @@ The Web interface runs in your browser. The [mikaki app](https://app.mikaki.org)
 
 For troubleshooting, read the [FAQ](faq.md). For adoption decisions, review [security and implementation status](security.md).
 
-Images use the public UI checked on October 3, 2026. Registration/sign-in were captured from public pages; Vault uses the same deployed UI with synthetic data in an isolated environment. PRF was mocked for capture; these images do not qualify physical devices or production saving/recovery.
+Images use the public UI checked on October 4, 2026. Registration/sign-in were captured from public pages; Vault uses the same deployed UI with synthetic data in an isolated environment. PRF was mocked for capture; these images do not qualify physical devices or production saving/recovery.
 
 ## Read next
 

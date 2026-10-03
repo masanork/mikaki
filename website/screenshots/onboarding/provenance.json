@@ -1,8 +1,13 @@
 {
-  "checked_at": "2026-10-03T13:20:43.013Z",
+  "checked_at": "2026-10-03T22:46:59.844Z",
   "issuer": "https://auth.mikaki.org",
   "source_commit": "04b94d951465f5f5ab02a3c71eaa55bbfe117448",
   "version_id": "c9138630-23fb-4652-abb4-3fbebbb95a4d",
+  "source_clean": true,
+  "rebuilt_inputs": [
+    "npm run build:policy",
+    "worker-build --release crates/worker"
+  ],
   "assets": {
     "/login/login.js": {
       "public_sha256": "d72d60465628823777b5bfdf4b13d7d4fbbd9125346e3c5c274b572a11bebc1e",
@@ -49,7 +54,7 @@
     },
     {
       "file": "note-edit-ja.png",
-      "sha256": "c5599b33248429e79c234c1e3efcf8265003317d7d4d66c6536745738146ebf8",
+      "sha256": "d7e913244b71efb83ad2b1650cd479841dbf12c270143076e4f35f1190cced87",
       "kind": "local-synthetic"
     },
     {
@@ -59,7 +64,7 @@
     },
     {
       "file": "note-reopened-ja.png",
-      "sha256": "f8beb4edd30c26f9a0b7f7cc56dde29191f7007ff5df52d1943594bb888acecd",
+      "sha256": "486672f2fed4440554e56a379b1a5dff55629f5525ae5e4d4bd692abca012576",
       "kind": "local-synthetic"
     },
     {
@@ -69,7 +74,7 @@
     },
     {
       "file": "note-edit-en.png",
-      "sha256": "6f7d520687917aab574fa9ec4d65bb40b273e174fa9479af5f8cc0168f040375",
+      "sha256": "065ac2c2a8c06dbb59a179b49cefaadfeae01c3035d62a6145e47c0232b0e17e",
       "kind": "local-synthetic"
     },
     {

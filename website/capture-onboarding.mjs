@@ -21,6 +21,18 @@ assert.equal(version.worker, 'mikaki-op');
 assert.equal(version.source_clean, true);
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim();
 assert.equal(commit, version.source_commit, 'Use a checkout of the active public OP commit');
+function verifyCleanSource() {
+  const changes = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+    cwd: source,
+    encoding: 'utf8',
+  }).trim();
+  assert.equal(changes, '', 'Capture source must be clean; use an isolated checkout');
+}
+verifyCleanSource();
+// Ignored outputs cannot attest to HEAD: regenerate policy and Worker before loading them.
+execFileSync('npm', ['run', 'build:policy'], { cwd: source, stdio: 'inherit' });
+execFileSync('worker-build', ['--release', 'crates/worker'], { cwd: source, stdio: 'inherit' });
+verifyCleanSource();
 const { activateWorkerPolicy } = await import(
   pathToFileURL(resolve(source, 'scripts/worker-policy-store.ts')).href
 );
@@ -40,6 +52,8 @@ const record = {
   issuer,
   source_commit: commit,
   version_id: version.version_id,
+  source_clean: true,
+  rebuilt_inputs: ['npm run build:policy', 'worker-build --release crates/worker'],
   assets: {},
   images: [],
   scope:
