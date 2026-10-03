@@ -120,6 +120,8 @@ jobs:
           MIKAKI_BROWSER_SOURCE_COVERAGE: '1'
         run: |
           node design/probes/pqc/browser.ts
+          npm ci --prefix design/probes/vault-search
+          npm run test:vault-thread-search
           npm run test:worker-browser
           npm run test:agent-integration
           npm run test:vault-transfer
@@ -158,11 +160,13 @@ jobs:
       - run: |
           npm ci
           npm ci --prefix design/probes
+          npm ci --prefix design/probes/vault-search
       - name: Dependency advisories
         run: |
           cargo audit --file Cargo.lock
           cargo audit --file design/probes/pqc/Cargo.lock
           npm audit --prefix design/probes --audit-level=low
+          npm audit --prefix design/probes/vault-search --audit-level=low
           npm audit --audit-level=low
           npm sbom --sbom-format=cyclonedx --sbom-type=application > /dev/null
 
@@ -194,6 +198,8 @@ jobs:
       - name: Verify Worker Svelte screens in Chromium
         run: |
           npx playwright install --with-deps chromium
+          npm ci --prefix design/probes/vault-search
+          npm run test:vault-thread-search
           npm run test:worker-browser
       - name: Preserve browser failure evidence
         if: failure()
