@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: >-
-        このIssueは公開されます。招待コード、パスワード、秘密鍵、OAuthのcode・token・callback
+        このIssueは公開されます。招待コード、パスワード、秘密鍵、OAuthのcode・token・ログイン中に発行されたcallback
         URL、個人連絡先、Vault内容は投稿しないでください。受付は相談の入口であり、招待・登録・応答期限を保証しません。招待コードや登録に必要な非公開情報は、対応可能な場合に管理者と別の受け渡し経路を調整します。
   - type: input
     id: application

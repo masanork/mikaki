@@ -5,10 +5,10 @@ body:
   - type: markdown
     attributes:
       value: >-
-        This issue is public. Do not post invitations, passwords, private keys, OAuth
-        codes/tokens/callback URLs, personal contact details or Vault contents. A request does not
-        guarantee an invitation, registration or response deadline. If accepted, arrange a separate
-        private delivery channel with an administrator.
+        This issue is public. Do not post invitations, passwords, private keys, OAuth codes/tokens
+        or callback URLs issued during login, personal contact details or Vault contents. A request
+        does not guarantee an invitation, registration or response deadline. If accepted, arrange a
+        separate private delivery channel with an administrator.
   - type: input
     id: application
     attributes:
