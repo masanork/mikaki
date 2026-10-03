@@ -15,6 +15,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Review build evidence | [Supply chain](supply-chain.md) and [metrics](../metrics/README.md) |
 | Prepare release or recovery | [Release inventory, migration rehearsal and recovery gates](release-and-recovery.md) |
 | Review UI and product quality | [Login preview](login-ui-preview.md), [product screens](product-ui-preview.md), and [quality gates](product-quality.md) |
+| Review the next Vault experience | [Human/agent journeys, data semantics and unified unlock](vault-product-model.md), with a [fictional interactive preview](vault-usage-preview/README.md) |
 | Review tests and coverage | [Product test coverage and CI evidence](test-quality.md) |
 | Work on the code | [Development guide](contributing.md) |
 | Connect an AI agent and review remaining work | [Agent integration and local MCP](agent-integration.md) |
