@@ -118,12 +118,13 @@ The final reusable `production-smoke` job checks the exact OP version, clean sou
 
 ## Vault schema reconciliation recovery boundary
 
-The [bounded 0033 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migration-0033)
+The [bounded 0033–0035 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migrations-0033-through-0035)
 records its source/DB/migration hashes, pending state, schema fingerprint,
 Time Travel timestamp and bookmark before applying. The same timestamp is read
 back to confirm the service returns the same bookmark. The apply step checks
 that record is less than two minutes old and the reviewed ledger/schema state
-still matches. This verifies a currently readable recovery coordinate; it is
+still matches. The original timestamp is checked again at the mutation boundary
+after remote inspection and staging. This verifies a currently readable recovery coordinate; it is
 not a restore rehearsal, an export, or proof of a quiesced database boundary.
 
 The sanitized preflight artifact is retained before any write; a separate result
@@ -137,13 +138,18 @@ not establish this account's plan or usable retention window; verify and record
 those independently. A bookmark is not an access credential, but keep recovery
 records under the existing operations access rules.
 
-0033 adds source-identity columns and validation/revocation triggers. Existing
-grants remain v1 and existing rows/authority are preserved at application, but
+0033–0035 add source/target identities, separate disabled record sharing and
+validation/revocation/approval guards. Existing grants, consent, proposals and
+prepared commits remain v1, with rows/authority preserved at application, but
 future revocation clears encrypted snapshots irreversibly. A code rollback does
 not restore those snapshots or grant authority. If an application fails or times
-out, 0033 may already have committed. Inspect with a fresh read-only plan and
+out, an approved prefix may already have committed. Inspect with a fresh read-only plan and
 review its state/digest before any further authorized action; never retry or
-restore automatically. An already-applied state is plan-only. A code rollback
+restore automatically. An already-applied state is plan-only. Sharing must stay at its exact disabled
+initialization; this gate never resets an activated policy. Qualified old OP/Claim
+versions and absence of another ordinary-account Worker D1 consumer are checked
+before/after application. Pages Functions and Workers for Platforms are not
+inventoried, so this is not a blanket audit of all potential D1 consumers. A code rollback
 normally leaves these tables and the current migration ledger in place, subject
 to the existing code/schema compatibility review. A database restore would
 overwrite the whole database and could lose later legitimate writes or revive

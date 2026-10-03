@@ -1,9 +1,9 @@
-name: reconcile-production-0033
+name: reconcile-production-0033-0035
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Read-only plan, or approved missing 0033 only
+        description: Read-only plan, or approved missing suffix of 0033 through 0035
         type: choice
         options: [plan, apply-reviewed]
         default: plan
@@ -12,7 +12,7 @@ on:
         type: string
         default: ''
       confirm_apply:
-        description: 'For apply only, type: APPLY 0033 TO mikaki-auth'
+        description: 'For apply only, type: APPLY 0033 THROUGH 0035 TO mikaki-auth'
         type: string
         default: ''
 permissions:
@@ -41,7 +41,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 0fc3ad859e6668461d36388fb3a6f93e7c18cd06
+          ref: af0b89963761b4ecda2adbf3ed7fb77bfda507d4
           path: reviewed-source
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -52,18 +52,18 @@ jobs:
       - name: Install reviewed dependencies without lifecycle scripts
         working-directory: reviewed-source
         run: npm ci --ignore-scripts
-      - name: Read ledger/schema and record a checked Time Travel bookmark
+      - name: Verify dormant compatibility, read ledger/schema and record a checked Time Travel bookmark
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node scripts/reconcile-production-0031.ts plan
       - name: Retain recovery coordinate before any application
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: migration-0033-preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/migration-0033-plan.json
+          name: migration-0033-0035-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/migration-0033-0035-plan.json
           if-no-files-found: error
           retention-days: 30
-      - name: Apply only missing reviewed 0033 and verify ledger and schema
+      - name: Apply only missing reviewed 0033 through 0035 and verify ledger and schema
         if: inputs.mode == 'apply-reviewed'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -72,7 +72,7 @@ jobs:
         if: always() && inputs.mode == 'apply-reviewed'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: migration-0033-result-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/migration-0033-result.json
+          name: migration-0033-0035-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/migration-0033-0035-result.json
           if-no-files-found: ignore
           retention-days: 30

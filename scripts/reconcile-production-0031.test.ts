@@ -18,6 +18,10 @@ import {
   CONFIRMATION,
   LEDGER_SQL,
   CURSOR_SQL,
+  POLICY_SQL,
+  DORMANT_POLICY,
+  COMPATIBILITY_TARGET,
+  inspectComplete,
   SCHEMA_SQL,
   applicationGate,
   applyApprovedSuffix,
@@ -31,12 +35,12 @@ import {
 } from './reconcile-production-0031.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-// This one-off production gate intentionally becomes obsolete at 0034. Keep its
+// This one-off production gate intentionally becomes obsolete at 0036. Keep its
 // supported-state fixtures stable so later migrations do not break normal CI.
-const fixture = mkdtempSync(join(tmpdir(), 'mikaki-reviewed-0033-'));
+const fixture = mkdtempSync(join(tmpdir(), 'mikaki-reviewed-0033-0035-'));
 const fixtureMigrations = join(fixture, 'crates/worker/migrations');
 mkdirSync(fixtureMigrations, { recursive: true });
-for (const name of readdirSync(join(root, 'crates/worker/migrations')).sort().slice(0, 33)) {
+for (const name of readdirSync(join(root, 'crates/worker/migrations')).sort().slice(0, 35)) {
   copyFileSync(join(root, 'crates/worker/migrations', name), join(fixtureMigrations, name));
 }
 after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -47,15 +51,26 @@ const ledger = (count = 32) =>
 const response = (rows: unknown[]) => JSON.stringify([{ success: true, results: rows }]);
 const bookmark = '00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683';
 
-test('only 0033 is a pending candidate, or safely already applied', () => {
+test('only approved 0033–0035 suffixes are candidates, or safely already applied', () => {
   const plan = inspectState(inputs, ledger(), inputs.schemas[32]!);
   assert.deepEqual(plan.pending, approvedNames);
   assert.match(plan.plan_sha256, /^[a-f0-9]{64}$/);
   applicationGate(plan, plan.plan_sha256, CONFIRMATION);
-  for (const old of ['', 'APPLY 0031 TO mikaki-auth', 'APPLY 0031 AND 0032 TO mikaki-auth'])
+  for (const old of [
+    '',
+    'APPLY 0031 TO mikaki-auth',
+    'APPLY 0031 AND 0032 TO mikaki-auth',
+    'APPLY 0033 TO mikaki-auth',
+  ])
     assert.throws(() => applicationGate(plan, plan.plan_sha256, old), /confirmation/);
   assert.throws(() => applicationGate(plan, 'a'.repeat(64), CONFIRMATION), /reviewed plan/);
-  const done = inspectState(inputs, ledger(33), inputs.schemas[33]!);
+  for (const count of [33, 34]) {
+    const partial = inspectState(inputs, ledger(count), inputs.schemas[count]!);
+    assert.deepEqual(partial.pending, approvedNames.slice(count - 32));
+    applicationGate(partial, partial.plan_sha256, CONFIRMATION);
+    assert.throws(() => applicationGate(partial, plan.plan_sha256, CONFIRMATION), /reviewed plan/);
+  }
+  const done = inspectState(inputs, ledger(35), inputs.schemas[35]!);
   assert.deepEqual(done.pending, []);
   assert.notEqual(done.plan_sha256, plan.plan_sha256);
   assert.throws(() => applicationGate(done, done.plan_sha256, CONFIRMATION), /nonempty approved/);
@@ -67,7 +82,7 @@ test('missing, unknown, duplicate, reordered or malformed ledger never becomes a
     assert.throws(() => inspectState(inputs, ledger(count), inputs.schemas[32]!), /prefix/);
   for (const rows of [
     [...ledger(), { id: 33, name: '0033_unreviewed.sql' }],
-    [...ledger(33), { id: 34, name: '0034_unreviewed.sql' }],
+    [...ledger(35), { id: 36, name: '0036_unreviewed.sql' }],
     ledger().map((row, i) => (i === 29 ? { ...row, name: inputs.names[0] } : row)),
     ledger().reverse(),
     ledger().map((row, i) => (i === 29 ? { ...row, id: 0 } : row)),
@@ -298,9 +313,9 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
     /github.ref == 'refs\/heads\/main' && github.repository == 'masanork\/mikaki'/,
   );
   assert.match(workflow, /cancel-in-progress: false/);
-  assert.match(workflow, /APPLY 0033 TO mikaki-auth/);
-  assert.match(workflow, /migration-0033-plan\.json/);
-  assert.match(workflow, /ref: 0fc3ad859e6668461d36388fb3a6f93e7c18cd06/);
+  assert.match(workflow, /APPLY 0033 THROUGH 0035 TO mikaki-auth/);
+  assert.match(workflow, /migration-0033-0035-plan\.json/);
+  assert.match(workflow, /ref: af0b89963761b4ecda2adbf3ed7fb77bfda507d4/);
   assert.ok(
     workflow.indexOf('if-no-files-found: error') <
       workflow.indexOf('run: node scripts/reconcile-production-0031.ts apply'),
@@ -311,8 +326,8 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
   );
 });
 
-test('production input loader rejects a later 0034 without breaking the stable test fixture', () => {
-  const later = join(fixtureMigrations, '0034_unreviewed.sql');
+test('production input loader rejects a later 0036 without breaking the stable test fixture', () => {
+  const later = join(fixtureMigrations, '0036_unreviewed.sql');
   try {
     writeFileSync(later, 'CREATE TABLE later(id INTEGER);');
     assert.throws(() => expectedInputs(fixture), /exactly the reviewed/);
@@ -322,7 +337,7 @@ test('production input loader rejects a later 0034 without breaking the stable t
   assert.deepEqual(expectedInputs(fixture).names, inputs.names);
 });
 
-test('uncertain completed 0033 is inspected as complete, never reapplied or restored', () => {
+test('uncertain completed 0033–0035 is inspected as complete, never reapplied or restored', () => {
   const temp = mkdtempSync(join(tmpdir(), 'mikaki-uncertain-test-'));
   const db = database32();
   let calls = 0;
@@ -352,7 +367,7 @@ test('uncertain completed 0033 is inspected as complete, never reapplied or rest
       [],
       ['0031_vault_owner_keys.sql'],
       ['0032_vault_owner_records.sql'],
-      ['0034_unreviewed.sql'],
+      ['0036_unreviewed.sql'],
       [...approvedNames, ...approvedNames],
     ])
       assert.throws(
@@ -374,8 +389,8 @@ test('uncertain completed 0033 is inspected as complete, never reapplied or rest
   }
 });
 
-test('both supported states require the initialized GC cursor id without reading its value', () => {
-  for (const count of [32, 33]) {
+test('all supported states require the initialized GC cursor id without reading its value', () => {
+  for (const count of [32, 33, 34, 35]) {
     for (const rows of [[], [{ id: 2 }], [{ id: 1 }, { id: 2 }]]) {
       assert.throws(
         () =>
@@ -383,6 +398,7 @@ test('both supported states require the initialized GC cursor id without reading
             const sql = args.at(-1);
             if (sql === LEDGER_SQL) return response(ledger(count));
             if (sql === SCHEMA_SQL) return response(inputs.schemas[count]!);
+            if (sql === POLICY_SQL) return response(DORMANT_POLICY);
             assert.equal(sql, CURSOR_SQL);
             assert.equal(sql, 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id');
             return response(rows);
@@ -398,11 +414,13 @@ test('both supported states require the initialized GC cursor id without reading
               ? ledger(count)
               : args.at(-1) === SCHEMA_SQL
                 ? inputs.schemas[count]!
-                : [{ id: 1 }],
+                : args.at(-1) === POLICY_SQL
+                  ? DORMANT_POLICY
+                  : [{ id: 1 }],
           ),
         inputs,
       ).pending,
-      count === 32 ? approvedNames : [],
+      approvedNames.slice(count - 32),
     );
   }
 });
@@ -418,11 +436,13 @@ function database32() {
   for (const row of ledger()) db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(row.name);
   return db;
 }
-function applyLocal(db: DatabaseSync) {
-  db.exec('BEGIN');
-  db.exec(inputs.migrations[approvedNames[0]!]!);
-  db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(approvedNames[0]!);
-  db.exec('COMMIT');
+function applyLocal(db: DatabaseSync, count = approvedNames.length) {
+  for (const name of approvedNames.slice(0, count)) {
+    db.exec('BEGIN');
+    db.exec(inputs.migrations[name]!);
+    db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(name);
+    db.exec('COMMIT');
+  }
 }
 function seedLegacy(db: DatabaseSync) {
   db.exec(`INSERT INTO account_security VALUES('owner',1,1);
@@ -440,6 +460,15 @@ function seedLegacy(db: DatabaseSync) {
     INSERT INTO agent_attribute_capability VALUES('legacy','owner_note',0,1,100,200);
     INSERT INTO agent_attribute_proposal(proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at)
     VALUES('proposal','legacy',1,'hash','owner_note',0,'synthetic-payload',200,100);`);
+  db.exec(`UPDATE agent_attribute_proposal SET state='approved' WHERE proposal_id='proposal';
+    INSERT INTO agent_attribute_commit VALUES('proposal','owner','operation','{"format_version":1}','synthetic-candidate-hash','https://owner.test',100,NULL);
+    INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('rp',1,1,'https://rp.test');
+    INSERT INTO app_connection VALUES('owner','rp',1,1);
+    INSERT INTO vault_claim_release VALUES('owner','rp','name',1,1,1,1,1,'revoked',200,100);
+    INSERT INTO vault_claim_disclosure_audit VALUES(1,'owner','rp','name',1,1,100);`);
+  db.prepare(
+    "INSERT INTO vault_claim_release_audit VALUES('owner',?,?,'rp','name','revoke',1,100)",
+  ).run('x'.repeat(43), 'y'.repeat(43));
   db.prepare(
     `INSERT INTO vault_owner_key_head VALUES('owner','vault','https://owner.test',1,1,2,'fixture',?,?,100)`,
   ).run('o'.repeat(43), 'q'.repeat(43));
@@ -456,7 +485,7 @@ function seedV2(db: DatabaseSync) {
     ).run(`v2:${id}`, JSON.stringify([id]), `token:${id}`, id, id, 'a'.repeat(43));
 }
 
-test('0033 preserves all existing rows and authority, defaulting existing grants to v1', () => {
+test('0033–0035 preserve all existing rows and authority, defaulting existing grants to v1', () => {
   const db = database32();
   try {
     seedLegacy(db);
@@ -495,6 +524,44 @@ test('0033 preserves all existing rows and authority, defaulting existing grants
       inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all()).pending,
       [],
     );
+    assert.deepEqual(
+      db
+        .prepare(POLICY_SQL)
+        .all()
+        .map((row) => ({ ...row })),
+      DORMANT_POLICY,
+    );
+    for (const table of [
+      'agent_attribute_capability',
+      'agent_attribute_proposal',
+      'agent_attribute_commit',
+    ])
+      assert.ok(
+        db
+          .prepare(`SELECT storage_version FROM ${table}`)
+          .all()
+          .every((row) => row.storage_version === 1),
+        table,
+      );
+    for (const table of [
+      'vault_claim_release',
+      'vault_claim_release_audit',
+      'vault_claim_disclosure_audit',
+    ])
+      assert.ok(
+        db
+          .prepare(`SELECT source_storage_version FROM ${table}`)
+          .all()
+          .every((row) => row.source_storage_version === 1),
+        table,
+      );
+    for (const table of [
+      'vault_record_recipient_envelope',
+      'vault_record_grant',
+      'vault_record_share_audit',
+      'vault_record_share_guard',
+    ])
+      assert.equal(db.prepare(`SELECT count(*) n FROM ${table}`).get()!.n, 0, table);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     assert.equal(db.prepare('PRAGMA integrity_check').get()!.integrity_check, 'ok');
     db.exec("UPDATE agent_grant SET revoked=1 WHERE grant_id='legacy'");
@@ -621,7 +688,7 @@ test('every affected table/index/trigger is captured, and each missing definitio
       inputs.schemas[33]!.some((r) => r.type === 'table' && r.name === table),
       table,
     );
-  for (const count of [32, 33]) {
+  for (const count of [32, 33, 34, 35]) {
     for (const row of inputs.schemas[count]!)
       assert.throws(
         () =>
@@ -774,6 +841,202 @@ test('bookmark expiring during remote inspection/readback cannot reach the migra
     assert.equal(bookmarkAt(run, capturedAt), bookmark);
     assert.equal(Date.now() - Date.parse(capturedAt), 121_000);
     assert.throws(() => applyApprovedSuffix(run, inputs, state.pending, temp, capturedAt), /stale/);
+    assert.equal(mutations, 0);
+    assert.deepEqual(readdirSync(temp), []);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('0034/0035 require exact disabled policy initialization and never repair it', () => {
+  for (const count of [34, 35])
+    for (const mutation of [
+      'DELETE FROM vault_record_share_policy',
+      'UPDATE vault_record_share_policy SET enabled=1,revision=2',
+      'UPDATE vault_record_share_policy SET grant_ttl_seconds=600,revision=2',
+      'UPDATE vault_record_share_policy SET revision=2',
+    ]) {
+      const db = database32();
+      try {
+        applyLocal(db, count - 32);
+        const run = (args: string[]) => response(db.prepare(args.at(-1)!).all());
+        assert.deepEqual(inspect(run, inputs).pending, approvedNames.slice(count - 32));
+        db.exec(mutation);
+        assert.throws(() => inspect(run, inputs), /disabled initialization/);
+      } finally {
+        db.close();
+      }
+    }
+});
+
+test('partial success leaves only a reviewed suffix and requires a new digest', () => {
+  for (const committed of [1, 2]) {
+    const db = database32();
+    const temp = mkdtempSync(join(tmpdir(), 'mikaki-partial-0035-'));
+    let calls = 0;
+    try {
+      seedLegacy(db);
+      const initial = inspectState(
+        inputs,
+        db.prepare(LEDGER_SQL).all(),
+        db.prepare(SCHEMA_SQL).all(),
+      );
+      assert.throws(
+        () =>
+          applyApprovedSuffix(
+            () => {
+              calls++;
+              applyLocal(db, committed);
+              db.exec('BEGIN');
+              db.exec(inputs.migrations[approvedNames[committed]!]!);
+              db.exec('ROLLBACK');
+              throw new Error('later migration failed');
+            },
+            inputs,
+            initial.pending,
+            temp,
+            new Date().toISOString(),
+          ),
+        /later migration failed/,
+      );
+      assert.equal(calls, 1);
+      const partial = inspectState(
+        inputs,
+        db.prepare(LEDGER_SQL).all(),
+        db.prepare(SCHEMA_SQL).all(),
+      );
+      assert.deepEqual(partial.pending, approvedNames.slice(committed));
+      assert.throws(
+        () => applicationGate(partial, initial.plan_sha256, CONFIRMATION),
+        /reviewed plan/,
+      );
+      applicationGate(partial, partial.plan_sha256, CONFIRMATION);
+      applyApprovedSuffix(
+        (args) => {
+          const configPath = args.at(-1)!;
+          const config = JSON.parse(readFileSync(configPath, 'utf8'));
+          const directory = join(configPath, '..', config.d1_databases[0].migrations_dir);
+          assert.deepEqual(readdirSync(directory).sort(), approvedNames.slice(committed));
+          return '';
+        },
+        inputs,
+        partial.pending,
+        temp,
+        new Date().toISOString(),
+      );
+      assert.deepEqual(readdirSync(temp), []);
+    } finally {
+      db.close();
+      rmSync(temp, { recursive: true, force: true });
+    }
+  }
+});
+
+function compatibilityMetadata(extraService = false, advance: () => void = () => {}) {
+  return async (path: string) => {
+    advance();
+    const target = COMPATIBILITY_TARGET;
+    if (path.includes('/scripts-search'))
+      return {
+        success: true,
+        result: [{ script_name: target.op }, { script_name: target.claim }],
+        result_info: { page: 1, per_page: 20, count: 2, total_count: 2, total_pages: 1 },
+      };
+    const op = path.includes(`/scripts/${target.op}/`);
+    const id = op ? target.versions.op : target.versions.claim;
+    const bindings = [
+      { name: 'DB', type: 'd1', database_id: target.database_id },
+      ...(extraService ? [{ name: 'EXTRA', type: 'service', service: 'other' }] : []),
+    ];
+    if (path.endsWith('/settings')) return { success: true, result: { bindings } };
+    if (path.includes('/deployments'))
+      return {
+        success: true,
+        result: {
+          deployments: [
+            { strategy: 'percentage', versions: [{ version_id: id, percentage: 100 }] },
+          ],
+        },
+      };
+    assert.ok(path.endsWith(`/versions/${id}`));
+    return {
+      success: true,
+      result: {
+        id,
+        resources: { bindings },
+        annotations: {
+          'workers/tag': target.qualified_source.slice(0, 12),
+          'workers/message': `main CI ${target.qualified_source}`,
+        },
+      },
+    };
+  };
+}
+function dbRead(count = 32) {
+  return (args: string[]) =>
+    response(
+      args.at(-1) === LEDGER_SQL
+        ? ledger(count)
+        : args.at(-1) === SCHEMA_SQL
+          ? inputs.schemas[count]!
+          : args.at(-1) === POLICY_SQL
+            ? DORMANT_POLICY
+            : [{ id: 1 }],
+    );
+}
+
+test('plan digest binds live metadata and rechecks dormant policy and ledger', async () => {
+  const first = await inspectComplete(dbRead(), inputs, compatibilityMetadata());
+  const changed = await inspectComplete(dbRead(), inputs, compatibilityMetadata(true));
+  assert.notEqual(first.plan_sha256, changed.plan_sha256);
+  assert.throws(() => applicationGate(changed, first.plan_sha256, CONFIRMATION), /reviewed plan/);
+  assert.deepEqual(
+    (await inspectComplete(dbRead(35), inputs, compatibilityMetadata())).pending,
+    [],
+  );
+  let queries = 0;
+  await assert.rejects(
+    inspectComplete(
+      () => {
+        queries++;
+        return '';
+      },
+      inputs,
+      async () => ({ success: false }),
+    ),
+    /metadata/,
+  );
+  assert.equal(queries, 0);
+});
+
+test('slow metadata inventory cannot outlive the original retained bookmark before mutation', async (t) => {
+  const now = Date.parse('2026-10-03T10:00:00.000Z');
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const capturedAt = new Date(now - 119_000).toISOString();
+  assertFreshBookmark(capturedAt);
+  const state = await inspectComplete(
+    dbRead(),
+    inputs,
+    compatibilityMetadata(false, () => t.mock.timers.tick(1000)),
+  );
+  assert.ok(Date.now() - Date.parse(capturedAt) > 120_000);
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-slow-inventory-'));
+  let mutations = 0;
+  try {
+    assert.throws(
+      () =>
+        applyApprovedSuffix(
+          () => {
+            mutations++;
+            return '';
+          },
+          inputs,
+          state.pending,
+          temp,
+          capturedAt,
+        ),
+      /stale/,
+    );
     assert.equal(mutations, 0);
     assert.deepEqual(readdirSync(temp), []);
   } finally {

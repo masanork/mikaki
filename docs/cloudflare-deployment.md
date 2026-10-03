@@ -90,85 +90,130 @@ After activating a version with the `CF_VERSION_METADATA` binding, fetch `/versi
 
 The retained tossa.app test deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
-## Manual reconciliation of reviewed migration 0033
+## Manual reconciliation of reviewed migrations 0033 through 0035
 
-The [reconcile-production-0033 workflow](../.github/workflows/reconcile-production-0031.yml)
-uses the existing `production` environment and `CLOUDFLARE_API_TOKEN`. The file
-and helper paths remain stable; their labels and confirmation now identify only
-0033. It never deploys Workers and shares the production deployment concurrency
-group. Coordinate with operators so no external schema changes or restore run
-concurrently. Do not change protection settings or create/widen credentials to
-make a failed run pass. Actual environment review requirements and token D1 write
-scope must be checked by an authorized operator.
+The [reconcile-production-0033-0035 workflow](../.github/workflows/reconcile-production-0031.yml)
+keeps its stable file/helper paths, existing production environment/token and
+production deployment concurrency group. It is main-only, manual, read-only by
+default, and never deploys Workers. Coordinate against external schema changes,
+restores or deployments. Do not create/widen credentials or change protections
+to get past a failure; existing metadata-read and D1-write permission must suffice.
 
-The implementation is reviewed on `main`; its separate input checkout is pinned
-to `0fc3ad859e6668461d36388fb3a6f93e7c18cd06`. It rejects any change to the complete
-0001–0033 input inventory or production config in the workflow revision, including
-an added 0034 or 0035. No arbitrary source, SQL or target input is accepted.
+Its separate migration/dependency input checkout is pinned to
+`af0b89963761b4ecda2adbf3ed7fb77bfda507d4`. This does not select or downgrade the
+application source for the separately authorized current-main deployment. All
+0001–0035 migration names/bytes and both production configurations must match the
+workflow source exactly. Added 0036, modified SQL/config and arbitrary operator
+source, target or SQL are rejected.
 
-- D1: `mikaki-auth`, ID `f9299d62-2dbf-4bae-ae49-8b75674572d4`
-- Production config: `crates/worker/wrangler.production.jsonc`, SHA-256
+- D1 `mikaki-auth`: `f9299d62-2dbf-4bae-ae49-8b75674572d4`
+- OP config `crates/worker/wrangler.production.jsonc`, SHA-256:
   `145772fc877d6442509deddd5e29e35308fa9f2a36644b44f63b64c44f6c1efd`
-- `0033_agent_record_sources.sql`, SHA-256
+- Claim config `crates/userinfo-claim-worker/wrangler.production.jsonc`, SHA-256:
+  `6ef89b6ddbbc453fa2d5a0c79d3bfc946c287e90d45de47ac9a38a86cb0d4216`
+- `0033_agent_record_sources.sql`, SHA-256:
   `4afb23458731123b33ebf4902983d06bd66051c920342c320788075646dc5f35`
+- `0034_vault_record_userinfo.sql`, SHA-256:
+  `efe8977f8f84973115489673d183d31328122ee13ef0d4520a4730408127fe9f`
+- `0035_agent_record_approvals.sql`, SHA-256:
+  `71af68c80be4aa4875788b46c562b2cde5ff424f8af4adce7f7fb3ac24e13644`
 
-0033 adds nine columns to `agent_grant`; existing rows default to storage version
-1 with no v2 source identity. It adds shape, immutability, snapshot-clearing,
-exact v1/v2 source/root revocation and legacy-capability/proposal-v1 guards, and
-replaces the legacy source-change trigger. It provisions no recipients or grants,
-adds no authority to existing grants and does not update existing Vault records.
-Future revocation clears encrypted snapshots and cannot be reversed by returning
-to older code. Approval must explicitly cover this effect, not just additive DDL.
+0033 adds agent source identities and revocation guards. 0034 adds separate record
+sharing with a disabled policy and v1 defaults for prior consent/audit rows. 0035
+adds exact note-target identities and a prepared-commit storage discriminator,
+with existing capabilities/proposals/commits remaining v1. No recipients, grants
+or capabilities are provisioned, no sharing policy is enabled and no existing
+Vault record is rewritten by these migrations. Future revocation clears encrypted
+snapshots/proposal plaintext irreversibly. Once separately enabled and explicitly
+approved, a v2 note commit can replace the current note. A code rollback cannot
+restore cleared data; after v2 use, reassess compatibility before rolling back.
 
-1. Run `mode=plan` on `main` (the default). Review the pending list, exact schema
-   match, plan SHA-256, timestamp and Time Travel bookmark in the summary and
-   `migration-0033-preflight-<run>-<attempt>` artifact. Planning performs only
-   SELECTs and Time Travel metadata reads. Wrangler 4.144.0's `migrations list`
-   initializes its ledger and has no JSON option, so the workflow instead reads
-   the existing ledger via `d1 execute --remote --json`; an absent ledger fails.
-2. Only exact 0001–0032 or 0001–0033 ledger prefixes with matching table/index/
-   trigger definitions are accepted. The pending list is `[0033]` or empty.
-   Inspection covers each changed table and grant/revocation dependencies as well
-   as the existing owner tables. SQL comparison preserves quoted literal bytes
-   and token boundaries while ignoring layout/comments. Both states require
-   exactly the initialized GC cursor ID 1; its cursor value is never read.
-   Unknown migrations, partial tables, altered schemas or missing initialization
-   stop the run.
-3. After reviewing the plan and recovery boundary, run `mode=apply-reviewed`,
-   the exact `approved_plan_sha256`, and `confirm_apply=APPLY 0033 TO mikaki-auth`.
-   Earlier confirmation literals are rejected. Existing environment protections
-   still apply. An empty pending list needs no application; changed state requires
-   a new plan digest and review before another authorized attempt.
-4. The apply run repeats preflight, obtains and reads back a fresh timestamped
-   bookmark, and successfully uploads the record before writing. It rejects a
-   record older than two minutes and rechecks ledger/schema and bookmark. The
-   temporary config preserves the pinned account/DB/ledger while exposing only
-   missing 0033, with its staged hash rechecked. Earlier or future migration files
-   can never be applied by this command.
-5. Verify `applied_and_schema_verified`, the complete 0001–0033 ledger, exact
-   schemas and GC initialization, and an empty pending list. Then resume the
-   separately authorized attested deployment flow for the appropriate current-main
-   source. Older CI runs can skip promotion after newer non-metrics changes; never
-   weaken that source-freshness gate to deploy an older run.
+### Qualified dormant upgrade window
 
-Pinned `migrations apply` supports neither `--yes` nor `--json`; its documented
-noninteractive CI behavior handles confirmation. Only `d1 execute` and
-`time-travel info` JSON is parsed. No raw CLI output, credential values, private
-rows or dumps are printed/uploaded. Retained evidence includes reviewed IDs,
-hashes, migration names, schema fingerprints, recovery coordinates and attempted
-migration names. Temporary CLI files/logs are removed. Signing and readiness
-secrets are not supplied to the job.
+Plan, apply and post-application inspection each check the complete ordinary
+account-Worker roster using [paginated script search](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/search/).
+Pagination must be complete and consistent, without duplicates or ambiguous/
+nondefault environments, within five pages/100 scripts. Check each script's
+[current settings](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/)
+and every version in its [active deployment](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/),
+using [version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/).
+Reread the roster/deployments/settings to reject drift. Denied, missing, unknown,
+oversized or ambiguous responses fail closed. The OP cannot have `AGENT_ACCESS`.
+Among ordinary Workers, only the declared OP and ClaimWorker may bind this D1.
 
-A failed/timed-out apply is an uncertain result, even if 0033 actually committed.
-Preserve its preflight/result, run a fresh read-only plan, and review the resulting
-state before any further action. A complete 0033 cannot be reapplied by this gate.
-There is no automatic retry, ledger insertion/repair, table drop, restore or
-deployment. The isolated first-33 SQLite fixtures cover preserved v1 rows/authority,
-future exact source revocation, immutable cleared snapshots, schema/literal drift,
-unknown 0034, missing initialization and lost-response/rollback outcomes.
-See the [recovery boundary](release-and-recovery.md#vault-schema-reconciliation-recovery-boundary)
-for retention and Vault recovery limits. Local rehearsals do not prove a remote
-application or a usable restore.
+Both must serve the independently recorded old-live version at 100%, with upload
+source annotations matching `04b94d951465f5f5ab02a3c71eaa55bbfe117448`:
+
+- OP `mikaki-auth`: `c9138630-23fb-4652-abb4-3fbebbb95a4d`
+- ClaimWorker `mikaki-auth-claims`: `870b0ae4-95f9-4694-bfae-15d8041be144`
+
+Version/source provenance is [deployment run 37092046315](https://github.com/masanork/mikaki/actions/runs/37092046315),
+artifact `production-deployment-04b94d951465f5f5ab02a3c71eaa55bbfe117448-1`, ZIP SHA-256
+`e12863b268de701a934c913eaf845c3dbc747bc83289d7d58fe14b082ec9325f`.
+Exact activation IDs are required; annotations alone cannot qualify another build.
+Prior local old-source/schema-35 functional qualification was recorded before a
+workspace replacement; its former local files are no longer available. Do not
+present those vanished files as a fresh check. Require independently reviewed,
+reproducible compatibility evidence for the intended upgrade window. Functional
+compatibility is separate from readiness: the old binary embeds migration 0030,
+so authenticated `/ready` can return 503 until code/schema alignment.
+
+Evidence explicitly says `ordinary_account_workers_only`, with Pages Functions
+and Workers for Platforms not inventoried. It is not proof that all resource
+families lack D1 access. There is no such consumer in the reviewed Mikaki deployment
+source; known additional consumers require a scoped compatibility review before
+execution, without silently broadening APIs or token permissions.
+
+Only fixed-origin GET metadata endpoints are requested, never script content or
+secrets endpoints. A response can contain unused binding-value fields, but code
+never accesses them and retains only validated names, service targets, D1 IDs,
+version IDs and the explicit coverage limitation. No raw responses, returned error
+messages, text/JSON binding values, credentials, private rows or dumps enter logs/
+artifacts. Errors expose only bounded status/code/endpoint diagnostics.
+
+### Plan, approve and apply
+
+1. Run `mode=plan` on `main`. Review pending suffix, schema, qualified compatibility
+   evidence, exact plan digest, timestamp and checked Time Travel bookmark in
+   `migration-0033-0035-preflight-<run>-<attempt>`. Planning uses SELECTs, Time Travel
+   metadata and the read-only inventory. It never calls `migrations list`, which
+   can initialize a ledger; an absent ledger fails.
+2. Only exact ledger prefixes through 0032, 0033, 0034 or 0035 with corresponding
+   table/index/trigger definitions are accepted. Pending work is `[0033,0034,0035]`,
+   `[0034,0035]`, `[0035]` or empty. All affected tables and consent/grant/audit
+   dependencies are covered. SQL normalization preserves literals/token boundaries.
+   Every state requires GC cursor ID 1 without reading its value. At/after 0034,
+   require exactly policy ID 1, enabled 0, TTL 604800, revision 1. A missing,
+   changed or previously activated policy is never repaired/reset by this gate.
+3. After explicit approval of all three migrations and their consequences, select
+   `mode=apply-reviewed`, the exact `approved_plan_sha256` and
+   `confirm_apply=APPLY 0033 THROUGH 0035 TO mikaki-auth`. Earlier literals fail.
+   Sanitized live metadata is bound into the digest; changed runtime state requires
+   a new reviewed plan. An empty pending suffix is plan-only.
+4. The apply run repeats full preflight, captures/reads back a fresh bookmark and
+   successfully retains it before writing. Recheck the same original timestamp
+   after remote reads and immediately before the sole migration command, after
+   staging. At two minutes old, future or invalid, stop without silently refreshing
+   the coordinate. Stage only the missing fixed suffix with all hashes rechecked.
+5. Verify `applied_and_schema_verified`, exact schema/ledger through 0035, no pending
+   work, unchanged dormant policy and qualified compatibility evidence. Then resume
+   the separately authorized attested OP+Claim deployment from current main. These
+   old-live pins intentionally become obsolete after deployment; later use requires
+   review. Preserve the deployment source-freshness gate.
+
+Wrangler 4.144.0 uses noninteractive CI confirmation for `migrations apply`, which
+supports neither `--yes` nor `--json`. Each migration commits separately. A failure
+can leave an approved prefix applied, and a lost response can conceal success.
+Preserve preflight/result, inspect with a new read-only plan, and review its new
+digest before any separately authorized retry. There is no automatic retry, ledger
+repair, table drop, restore, policy activation or deployment.
+
+Isolated first-35 SQLite fixtures cover preserved v1 rows/authority, no new v2
+records/grants, exact source revocation/clearing, literal/schema drift, unknown0036,
+changed initialization, partial commit/rollback/lost response, metadata drift/
+isolation/redaction and bookmark expiry during slow metadata reads. See the
+[recovery boundary](release-and-recovery.md#vault-schema-reconciliation-recovery-boundary)
+for retention and complete-Vault recovery limits.
 
 ## Local changes awaiting activation
 

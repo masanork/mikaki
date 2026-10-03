@@ -1,4 +1,4 @@
-/** Only reviewed D1 migration 0033. No deploy, credentials, data export, or restore. */
+/** Only reviewed D1 migrations 0033–0035. No deploy, credentials, data export, or restore. */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -14,15 +14,38 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import {
+  cloudflareMetadataGet,
+  inspectWorkerInventory,
+  InventoryError,
+  type MetadataGet,
+} from './production-worker-inventory.ts';
 
 export const APPROVED = {
-  source: '0fc3ad859e6668461d36388fb3a6f93e7c18cd06',
+  source: 'af0b89963761b4ecda2adbf3ed7fb77bfda507d4',
   migrations: [
     {
       name: '0033_agent_record_sources.sql',
       sha256: '4afb23458731123b33ebf4902983d06bd66051c920342c320788075646dc5f35',
     },
+    {
+      name: '0034_vault_record_userinfo.sql',
+      sha256: 'efe8977f8f84973115489673d183d31328122ee13ef0d4520a4730408127fe9f',
+    },
+    {
+      name: '0035_agent_record_approvals.sql',
+      sha256: '71af68c80be4aa4875788b46c562b2cde5ff424f8af4adce7f7fb3ac24e13644',
+    },
   ],
+  qualified_live: {
+    source: '04b94d951465f5f5ab02a3c71eaa55bbfe117448',
+    op: { name: 'mikaki-auth', version: 'c9138630-23fb-4652-abb4-3fbebbb95a4d' },
+    claim: { name: 'mikaki-auth-claims', version: '870b0ae4-95f9-4694-bfae-15d8041be144' },
+    deployment_run: '37092046315',
+    deployment_artifact_sha256: 'e12863b268de701a934c913eaf845c3dbc747bc83289d7d58fe14b082ec9325f',
+  },
+  claim_config: 'crates/userinfo-claim-worker/wrangler.production.jsonc',
+  claim_config_sha256: '6ef89b6ddbbc453fa2d5a0c79d3bfc946c287e90d45de47ac9a38a86cb0d4216',
   config: 'crates/worker/wrangler.production.jsonc',
   config_sha256: '145772fc877d6442509deddd5e29e35308fa9f2a36644b44f63b64c44f6c1efd',
   account: '4b749427a0c80c547e726a42aff4b6fc',
@@ -30,9 +53,26 @@ export const APPROVED = {
   database_id: 'f9299d62-2dbf-4bae-ae49-8b75674572d4',
   wrangler: '4.144.0',
 } as const;
-export const CONFIRMATION = 'APPLY 0033 TO mikaki-auth';
+export const CONFIRMATION = 'APPLY 0033 THROUGH 0035 TO mikaki-auth';
 export const LEDGER_SQL = 'SELECT id, name FROM d1_migrations ORDER BY id';
 export const CURSOR_SQL = 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id';
+export const POLICY_SQL =
+  'SELECT id, enabled, grant_ttl_seconds, revision FROM vault_record_share_policy ORDER BY id';
+export const DORMANT_POLICY = [{ id: 1, enabled: 0, grant_ttl_seconds: 604800, revision: 1 }];
+export const COMPATIBILITY_TARGET = {
+  account: APPROVED.account,
+  database_id: APPROVED.database_id,
+  qualified_source: APPROVED.qualified_live.source,
+  op: APPROVED.qualified_live.op.name,
+  claim: APPROVED.qualified_live.claim.name,
+  versions: {
+    op: APPROVED.qualified_live.op.version,
+    claim: APPROVED.qualified_live.claim.version,
+  },
+};
+const BASELINE = 32;
+const LATEST = BASELINE + APPROVED.migrations.length;
+
 // Include each changed table and the grant/revocation dependencies, not just owner tables.
 // tbl_name includes every index/trigger attached to these tables, including unknown extras.
 const schemaTables = [
@@ -52,6 +92,24 @@ const schemaTables = [
   'vault_owner_record_head',
   'vault_owner_record_mutation',
   'vault_owner_record_gc_cursor',
+  'agent_attribute_commit',
+  'agent_attribute_commit_guard',
+  'vault_record_share_policy',
+  'vault_record_recipient_envelope',
+  'vault_record_grant',
+  'vault_record_share_audit',
+  'vault_record_share_guard',
+  'vault_claim_release',
+  'vault_claim_release_audit',
+  'vault_claim_disclosure_audit',
+  'vault_claim_release_policy',
+  'vault_share_policy',
+  'vault_recipient_key',
+  'client',
+  'app_connection',
+  'vault_attribute_grant',
+  'vault_attribute_recipient_envelope',
+  'vault_attribute_mutation',
 ]
   .map((name) => `'${name}'`)
   .join(', ');
@@ -77,8 +135,9 @@ type Plan = {
   run_attempt: string;
   captured_at: string;
   bookmark: string;
-  state: State;
+  state: FullState;
 };
+type FullState = State & { compatibility: Awaited<ReturnType<typeof inspectWorkerInventory>> };
 class GateError extends Error {}
 function gate(ok: unknown, message: string): asserts ok {
   if (!ok) throw new GateError(message);
@@ -192,17 +251,17 @@ export function expectedInputs(root: string): Inputs {
   const directory = join(root, 'crates/worker/migrations');
   const names = readdirSync(directory).sort();
   gate(
-    names.length === 33 &&
+    names.length === LATEST &&
       names.every(
         (name, index) =>
           name.startsWith(`${String(index + 1).padStart(4, '0')}_`) &&
           /^\d{4}_[a-z0-9_]+\.sql$/.test(name),
       ),
-    'Expected exactly the reviewed 0001–0033 migration files.',
+    'Expected exactly the reviewed 0001–0035 migration files.',
   );
   gate(
     equal(
-      names.slice(32),
+      names.slice(BASELINE),
       APPROVED.migrations.map((item) => item.name),
     ),
     'Unexpected approved migration suffix.',
@@ -215,12 +274,13 @@ export function expectedInputs(root: string): Inputs {
   }
   const db = new DatabaseSync(':memory:');
   try {
-    for (const name of names.slice(0, 32)) db.exec(readFileSync(join(directory, name), 'utf8'));
+    for (const name of names.slice(0, BASELINE))
+      db.exec(readFileSync(join(directory, name), 'utf8'));
     db.exec(ledgerDDL);
-    const schemas: Record<number, Row[]> = { 32: db.prepare(SCHEMA_SQL).all() };
+    const schemas: Record<number, Row[]> = { [BASELINE]: db.prepare(SCHEMA_SQL).all() };
     for (const [index, item] of APPROVED.migrations.entries()) {
       db.exec(migrations[item.name]!);
-      schemas[33 + index] = db.prepare(SCHEMA_SQL).all();
+      schemas[BASELINE + 1 + index] = db.prepare(SCHEMA_SQL).all();
     }
     return { names, migrations, schemas };
   } finally {
@@ -230,8 +290,8 @@ export function expectedInputs(root: string): Inputs {
 
 export function inspectState(inputs: Inputs, ledger: Row[], schema: Row[]): State {
   gate(
-    [32, 33].includes(ledger.length),
-    'Ledger is not the reviewed 0001–0032/0033 prefix; stop for review.',
+    Number.isSafeInteger(ledger.length) && ledger.length >= BASELINE && ledger.length <= LATEST,
+    'Ledger is not the reviewed 0001–0032/0033/0034/0035 prefix; stop for review.',
   );
   let previous = 0;
   for (const [index, row] of ledger.entries()) {
@@ -278,7 +338,26 @@ export function inspect(run: Run, inputs: Inputs): State {
     equal(query(CURSOR_SQL), [{ id: 1 }]),
     '0032 GC cursor initialization differs; no automatic repair.',
   );
+  if (LATEST - state.pending.length >= 34)
+    gate(
+      equal(query(POLICY_SQL), DORMANT_POLICY),
+      '0034 record sharing policy is not the exact disabled initialization; stop for review.',
+    );
   return state;
+}
+export async function inspectComplete(
+  run: Run,
+  inputs: Inputs,
+  get: MetadataGet,
+): Promise<FullState> {
+  // Finish long metadata inspection before capturing a plan bookmark; repeat it on apply/post-check.
+  const compatibility = await inspectWorkerInventory(get, COMPATIBILITY_TARGET);
+  const state = inspect(run, inputs);
+  return {
+    ...state,
+    compatibility,
+    plan_sha256: digest(JSON.stringify({ database_plan_sha256: state.plan_sha256, compatibility })),
+  };
 }
 export function bookmarkAt(run: Run, timestamp: string): string {
   const value = json(
@@ -317,7 +396,7 @@ export function applicationGate(
   );
   gate(
     isApprovedSuffix(state.pending),
-    'Apply requires a nonempty approved 0033 suffix; use plan to inspect an already-applied database.',
+    'Apply requires a nonempty approved 0033–0035 suffix; use plan to inspect an already-applied database.',
   );
 }
 export function isApprovedSuffix(pending: string[]) {
@@ -351,7 +430,7 @@ export function applyApprovedSuffix(
       'Staged migration hash differs.',
     );
   }
-  const directory = mkdtempSync(join(temp, 'mikaki-0033-'));
+  const directory = mkdtempSync(join(temp, 'mikaki-0033-0035-'));
   try {
     mkdirSync(join(directory, 'migrations'));
     for (const name of pending)
@@ -410,6 +489,21 @@ function verifySource(root: string, implementation: string) {
       config.d1_databases[0].database_name === APPROVED.database,
     'Production target differs.',
   );
+  const claimBytes = readFileSync(join(root, APPROVED.claim_config));
+  gate(
+    digest(claimBytes) === APPROVED.claim_config_sha256 &&
+      claimBytes.equals(readFileSync(join(implementation, APPROVED.claim_config))),
+    'Claim production configuration differs; re-review required.',
+  );
+  const claimConfig = JSON.parse(claimBytes.toString());
+  gate(
+    config.name === APPROVED.qualified_live.op.name &&
+      claimConfig.name === APPROVED.qualified_live.claim.name &&
+      claimConfig.account_id === APPROVED.account &&
+      claimConfig.d1_databases.length === 1 &&
+      claimConfig.d1_databases[0].database_id === APPROVED.database_id,
+    'Declared production Worker target differs.',
+  );
   gate(
     JSON.parse(readFileSync(join(root, 'node_modules/wrangler/package.json'), 'utf8')).version ===
       APPROVED.wrangler,
@@ -461,6 +555,7 @@ async function main() {
   );
   verifySource(root, implementation);
   const inputs = expectedInputs(root);
+  const getMetadata = cloudflareMetadataGet(APPROVED.account, process.env.CLOUDFLARE_API_TOKEN!);
   const temporary = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'mikaki-reconcile-'));
   const run: Run = (args) => {
     try {
@@ -486,8 +581,8 @@ async function main() {
   };
   const artifacts = join(implementation, 'artifacts');
   mkdirSync(artifacts, { recursive: true });
-  const planPath = join(artifacts, 'migration-0033-plan.json');
-  const resultPath = join(artifacts, 'migration-0033-result.json');
+  const planPath = join(artifacts, 'migration-0033-0035-plan.json');
+  const resultPath = join(artifacts, 'migration-0033-0035-result.json');
   const identity = {
     workflow_commit: process.env.GITHUB_SHA!,
     run_id: process.env.GITHUB_RUN_ID!,
@@ -495,7 +590,7 @@ async function main() {
   };
   try {
     if (mode === 'plan') {
-      const state = inspect(run, inputs);
+      const state = await inspectComplete(run, inputs, getMetadata);
       if (process.env.RECONCILE_MODE === 'apply-reviewed')
         applicationGate(state, process.env.APPROVED_PLAN_SHA256, process.env.CONFIRM_APPLY);
       const captured_at = new Date().toISOString();
@@ -506,7 +601,7 @@ async function main() {
       );
       const plan: Plan = { approved: APPROVED, ...identity, captured_at, bookmark, state };
       save(planPath, plan);
-      const summary = `0033 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
+      const summary = `0033–0035 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nCompatibility scope: ordinary account Workers only; Pages Functions and Workers for Platforms were not inventoried.\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
       console.log(summary);
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
       return;
@@ -521,7 +616,7 @@ async function main() {
       'Preflight record belongs to a different source or run.',
     );
     assertFreshBookmark(plan.captured_at);
-    const state = inspect(run, inputs);
+    const state = await inspectComplete(run, inputs, getMetadata);
     applicationGate(state, process.env.APPROVED_PLAN_SHA256, process.env.CONFIRM_APPLY);
     gate(equal(state, plan.state), 'State changed after preflight; no application.');
     gate(
@@ -539,13 +634,13 @@ async function main() {
     save(resultPath, result);
     // The workflow must successfully retain the preflight artifact before this step.
     applyApprovedSuffix(run, inputs, state.pending, temporary, plan.captured_at);
-    const after = inspect(run, inputs);
+    const after = await inspectComplete(run, inputs, getMetadata);
     gate(after.pending.length === 0, 'Post-application migrations remain pending.');
     result.outcome = 'applied_and_schema_verified';
     result.after = after;
     save(resultPath, result);
     const summary =
-      'Approved pending suffix applied; the full reviewed 0001–0033 ledger and exact table/index/trigger definitions match. No migrations pending. No Worker was deployed.\n';
+      'Approved pending suffix applied; the full reviewed 0001–0035 ledger and exact table/index/trigger definitions match. No migrations pending. No Worker was deployed.\n';
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   } finally {
@@ -557,7 +652,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     await main();
   } catch (error) {
     console.error(
-      error instanceof GateError
+      error instanceof GateError || error instanceof InventoryError
         ? error.message
         : 'Reconciliation stopped. No raw response or exception is printed; inspect the retained preflight/result before taking further action.',
     );
