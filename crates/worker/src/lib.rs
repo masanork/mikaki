@@ -3825,6 +3825,8 @@ pub async fn main(
         .post_async("/vault/releases/name", vault_claim_releases::grant)
         .delete_async("/vault/releases/name", vault_claim_releases::revoke)
         .get_async("/vault/vault.js", vault_attributes::script)
+        .get_async("/vault/search.js", vault_attributes::search_script)
+        .get_async("/vault/sqlite3.wasm", vault_attributes::search_wasm)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .get_async(
             "/vault-api/attributes/:attribute",

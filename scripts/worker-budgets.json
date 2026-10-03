@@ -24,12 +24,20 @@
     "gzip": 30720
   },
   "/vault/vault.js": {
-    "raw": 315392,
-    "gzip": 88064
+    "raw": 323584,
+    "gzip": 91136
+  },
+  "/vault/search.js": {
+    "raw": 245760,
+    "gzip": 73728
+  },
+  "/vault/sqlite3.wasm": {
+    "raw": 900000,
+    "gzip": 420000
   },
   "crates/worker/build/index_bg.wasm": {
-    "raw": 3681280,
-    "gzip": 1222656
+    "raw": 4500000,
+    "gzip": 1600000
   },
   "crates/userinfo-claim-worker/build/index_bg.wasm": {
     "raw": 803840,

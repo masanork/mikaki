@@ -27,7 +27,10 @@ export class ThreadSearchClient {
       if (event.data.error) pending.reject(new Error('search unavailable'));
       else pending.resolve(event.data.result);
     };
-    worker.onerror = () => this.dispose();
+    worker.onerror = (event) => {
+      event.preventDefault();
+      this.dispose();
+    };
     worker.onmessageerror = () => this.dispose();
     signal.addEventListener('abort', this.stop, { once: true });
     window.addEventListener('pagehide', this.stop);

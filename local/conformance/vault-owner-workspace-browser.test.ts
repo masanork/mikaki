@@ -166,12 +166,21 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       { credential: [...credential] },
     );
     let lose = false,
-      failSession = false;
+      failSession = false,
+      failSearch = false;
+    const searchAssets: string[] = [];
     const recordBodies: string[] = [];
     const errors: string[] = [];
     await context.route(`${origin}/**`, async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
+      if (path === '/vault/search.js' || path === '/vault/sqlite3.wasm') {
+        searchAssets.push(path);
+        if (failSearch) {
+          await route.abort();
+          return;
+        }
+      }
       if (path.startsWith('/vault/agents/') || path.startsWith('/vault/attributes/'))
         (request.frame().url().includes('storage=legacy-v1')
           ? legacyModeRequests
@@ -205,6 +214,19 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         headers: { ...(await request.allHeaders()), cookie: `__Host-op-sso=${secret}` },
         ...(request.postData() ? { body: request.postData()! } : {}),
       });
+      if (path === '/vault/search.js') {
+        assert.match(response.headers.get('Content-Security-Policy')!, /'wasm-unsafe-eval'/);
+        assert.equal(response.headers.get('Content-Type'), 'text/javascript; charset=utf-8');
+      }
+      if (path === '/vault' && response.ok) {
+        assert.match(response.headers.get('Content-Security-Policy')!, /worker-src 'self'/);
+        assert.doesNotMatch(response.headers.get('Content-Security-Policy')!, /wasm-unsafe-eval/);
+      }
+      if (path === '/vault/sqlite3.wasm') {
+        assert.equal(response.headers.get('Content-Type'), 'application/wasm');
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
+        assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+      }
       const body = Buffer.from(await response.arrayBuffer());
       if (
         lose &&
@@ -311,13 +333,61 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '申請の相談', exact: true }).click();
     await expect(page.getByText('必要な情報を整理しましょう', { exact: true })).toBeVisible();
-    await page.locator('#thread-search').fill('保育園');
-    await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
+    assert.equal(searchAssets.length, 0, 'SQLite loads only for a search');
+    await page.locator('#thread-search').fill('園 園 園 園 園 園 園 園 園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#thread-search-results [role=status]')).toHaveText(
+      'Use up to 8 space-separated search terms (256 characters maximum).',
+    );
+    await expect(page.locator('#thread-search-results button')).toHaveCount(0);
+    assert.equal(searchAssets.length, 0, 'Invalid query does not load SQLite or offer retry');
+    await page.locator('#thread-search').fill('園　園　園　園　園　園　園　園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'false');
+    await expect(page.locator('#thread-search-results button')).toHaveCount(1);
+    await page.locator('#thread-search').fill('園 申請');
+    const results = page.locator('#thread-search-results');
+    await expect(results.getByRole('button')).toHaveCount(1);
+    assert.ok(searchAssets.includes('/vault/search.js'));
+    assert.ok(searchAssets.includes('/vault/sqlite3.wasm'));
+    await results.getByRole('button').click();
+    await expect(page.locator('#thread-message-0')).toBeFocused();
+    await page.locator('#thread-search').fill('園 園 園 園 園 園 園 園 園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'true');
+    await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('園 申請');
+    await expect(results.getByRole('button')).toHaveCount(1);
+
+    await mkdir('artifacts', { recursive: true });
+    await page.screenshot({ path: 'artifacts/mikaki-owner-search-mobile.png', fullPage: true });
     await page.locator('#thread-search').fill('absent');
-    await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toHaveCount(0);
+    await expect(results.getByRole('status')).toHaveText('No matching conversations.');
+    await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('園 申請');
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await page.evaluate(() =>
+      (window as unknown as { setVaultHidden: (value: boolean) => void }).setVaultHidden(true),
+    );
+    await page.evaluate(() =>
+      (window as unknown as { setVaultHidden: (value: boolean) => void }).setVaultHidden(false),
+    );
+    await expect(page.locator('#thread-search')).toHaveValue('');
+    await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('情報');
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await results.getByRole('button').click();
+    await expect(page.locator('#thread-message-1')).toBeFocused();
     await page.locator('#thread-search').fill('');
     await page.locator('#reload-profile').click();
     await expect(page.locator('#name')).toHaveValue('New owner');
+    failSearch = true;
+    await page.locator('#thread-search').fill('情報');
+    await expect(results.getByRole('status')).toHaveText(
+      'Search is unavailable. Please try again.',
+    );
+    failSearch = false;
+    await results.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await page.locator('#thread-search').fill('');
     assert.equal(ceremonies, 1);
     await auditAccessibility(page, 'owner-vault-mobile');
     await mkdir('artifacts', { recursive: true });
@@ -366,6 +436,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       'Same record in both presentations.',
     );
     await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '申請の相談', exact: true }).click();
+    await page.locator('#thread-search').fill('申請');
+    await expect(page.locator('#thread-search-results button')).toHaveCount(2);
+    await page.locator('#threads .product-danger').click();
+    await expect(page.locator('#thread-search-results [role=status]')).toHaveText(
+      'No matching conversations.',
+    );
+    await expect(page.locator('#thread-search-results button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('');
     await page.locator('#connections summary').click();
     await assertConnectionsOnly();
     // Existing v1 data remains accessible in an explicitly separate presentation,
