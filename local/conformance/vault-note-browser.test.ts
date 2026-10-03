@@ -170,8 +170,10 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
     const reload = panel.getByRole('button', {
       name: 'Discard edits and retry state, then reload note',
     });
-    await unlock.click();
+    await unlock.focus();
+    await page.keyboard.press('Enter');
     await expect(title).toHaveValue('Node title');
+    await expect(title).toBeFocused();
     await expect(panel.locator('[data-draft-state]')).toHaveCount(0);
     const passkeyCalls = await page.evaluate(() => Reflect.get(window, '__notePasskeyCalls'));
     for (const invalid of [
@@ -228,8 +230,10 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
     await save.click();
     await expect(panel.getByRole('status')).toContainText('Could not save.');
     await expect(title).toBeDisabled();
-    await save.click();
+    await expect(save).toBeFocused();
+    await page.keyboard.press('Enter');
     await expect(panel.getByRole('status')).toHaveText('Note encrypted and saved.');
+    await expect(unlock).toBeFocused();
     assert.deepEqual(puts[0], puts[1]);
     assert.equal((await current()).revision, 2);
     assert.deepEqual(await read(), newOwnerNote('Browser title', 'Browser text 🗾'));

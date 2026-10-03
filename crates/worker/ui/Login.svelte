@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { restoreActionFocus } from './action-focus.js';
   import { publishVaultLock } from './session-events.js';
   import { onMount } from 'svelte';
   import * as m from './paraglide/messages.js';
@@ -59,6 +60,7 @@
   async function authenticate(automatic = false): Promise<void> {
     if (busy) return;
     if (automatic && authentication) return;
+    const previousFocus = document.activeElement;
     authentication?.abort();
     const controller = new AbortController();
     authentication = controller;
@@ -114,13 +116,17 @@
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
       busy = false;
+      if (!automatic && !controller.signal.aborted)
+        await restoreActionFocus(previousFocus, () => document.getElementById('passkey'));
     }
   }
 
   async function register(): Promise<void> {
     if (busy) return;
+    const previousFocus = document.activeElement;
     if (!invitation.trim()) {
       errorKind = 'required';
+      await restoreActionFocus(previousFocus, () => document.getElementById('invitation'));
       return;
     }
     authentication?.abort();
@@ -193,6 +199,7 @@
     } catch {
       errorKind = 'operation';
       busy = false;
+      await restoreActionFocus(previousFocus, () => document.getElementById('register'));
     }
   }
 </script>

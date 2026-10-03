@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { restoreActionFocus } from './action-focus.js';
   import { vaultScope, vaultContext } from './vault-context.js';
   const context = vaultContext();
   const scope = vaultScope();
@@ -147,6 +148,7 @@
 
   async function unlock() {
     if (busy || transferBusy || !loaded || !credentialId) return;
+    const previousFocus = document.activeElement;
     busy = true;
     try {
       if (saved) {
@@ -166,6 +168,9 @@
       status = m.vaultNoteInvalid();
     } finally {
       busy = false;
+      await restoreActionFocus(previousFocus, () =>
+        opened ? titleInput : document.getElementById('note-unlock'),
+      );
     }
   }
 
@@ -190,6 +195,7 @@
         return;
       }
     }
+    const previousFocus = document.activeElement;
     busy = true;
     try {
       const value =
@@ -267,6 +273,17 @@
               : m.vaultNoteWriteFailed();
     } finally {
       busy = false;
+      await restoreActionFocus(previousFocus, () =>
+        document.getElementById(
+          !loaded
+            ? 'note-reload'
+            : !opened
+              ? 'note-unlock'
+              : method === 'PUT'
+                ? 'note-save'
+                : 'note-delete',
+        ),
+      );
     }
   }
 
@@ -342,6 +359,7 @@
   <h2>{m.vaultNoteHeading()}</h2>
   <p>{m.vaultNoteExplanation()}</p>
   <button
+    id="note-unlock"
     class="product-primary"
     type="button"
     disabled={busy || transferBusy || !loaded || opened || !credentialId}
@@ -369,12 +387,14 @@
       bind:value={body}></textarea></label
   >
   <button
+    id="note-save"
     class="product-primary"
     type="button"
     disabled={busy || transferBusy || !opened || pending?.method === 'DELETE'}
     onclick={() => mutate('PUT')}>{m.vaultNoteSave()}</button
   >
   <button
+    id="note-delete"
     class="product-danger"
     type="button"
     disabled={busy || transferBusy || !opened || !saved || pending?.method === 'PUT'}
@@ -406,7 +426,7 @@
       onclick={download}>{m.vaultNoteExport()}</button
     >
   </details>
-  <button type="button" disabled={busy || transferBusy} onclick={reload}
+  <button id="note-reload" type="button" disabled={busy || transferBusy} onclick={reload}
     >{m.vaultNoteReload()}</button
   >
   {#if dirty}<p class="product-draft-status" data-draft-state="note" aria-live="polite">

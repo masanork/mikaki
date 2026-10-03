@@ -37,6 +37,7 @@ export function createWovenGate(
     last = 0,
     animationTime = 0,
     busy = false,
+    visible = true,
     destroyed = false,
     x = 0.24,
     y = 0.28,
@@ -47,6 +48,7 @@ export function createWovenGate(
   function draw(time: number) {
     if (
       destroyed ||
+      !visible ||
       !Number.isFinite(width) ||
       !Number.isFinite(height) ||
       width <= 0 ||
@@ -262,7 +264,7 @@ export function createWovenGate(
 
   function tick(time: number) {
     raf = 0;
-    if (destroyed || document.hidden || busy) return;
+    if (destroyed || !visible || document.hidden || busy) return;
     if (reduced.matches) {
       // The preference can change before its media-query notification arrives.
       // Commit the static lighting frame before ending the animation loop.
@@ -285,6 +287,7 @@ export function createWovenGate(
   function start() {
     if (
       !destroyed &&
+      visible &&
       width > 0 &&
       height > 0 &&
       !raf &&
@@ -322,6 +325,16 @@ export function createWovenGate(
     start();
   });
   observer.observe(scene);
+  const visibility =
+    typeof IntersectionObserver === 'undefined'
+      ? null
+      : new IntersectionObserver((entries) => {
+          const entry = entries.find((entry) => entry.target === scene);
+          if (!entry || destroyed || visible === entry.isIntersecting) return;
+          visible = entry.isIntersecting;
+          refresh();
+        });
+  visibility?.observe(scene);
   function pointer(event: PointerEvent) {
     if (destroyed || event.pointerType !== 'mouse' || busy || reduced.matches) return;
     const rect = scene.getBoundingClientRect();
@@ -365,6 +378,7 @@ export function createWovenGate(
       destroyed = true;
       stop();
       observer.disconnect();
+      visibility?.disconnect();
       scene.removeEventListener('pointermove', pointer);
       scene.removeEventListener('pointerleave', leave);
       document.removeEventListener('visibilitychange', refresh);
