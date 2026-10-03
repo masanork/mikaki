@@ -21,6 +21,7 @@ import {
   SCHEMA_SQL,
   applicationGate,
   applyApprovedSuffix,
+  assertFreshBookmark,
   bookmarkAt,
   canonicalSql,
   expectedInputs,
@@ -221,6 +222,7 @@ test('application exposes only pinned missing suffix; local SQL rehearsal preser
       inputs,
       approvedNames,
       temp,
+      new Date().toISOString(),
     );
     assert.equal(calls, 1);
     assert.deepEqual(readdirSync(temp), []);
@@ -246,6 +248,7 @@ test('application exposes only pinned missing suffix; local SQL rehearsal preser
           },
           approvedNames,
           temp,
+          new Date().toISOString(),
         ),
       /hash/,
     );
@@ -269,6 +272,7 @@ test('failed application cleans temporary material and propagates without retry'
           inputs,
           approvedNames,
           temp,
+          new Date().toISOString(),
         ),
       /uncertain/,
     );
@@ -335,6 +339,7 @@ test('uncertain completed 0033 is inspected as complete, never reapplied or rest
           inputs,
           before.pending,
           temp,
+          new Date().toISOString(),
         ),
       /response lost/,
     );
@@ -359,6 +364,7 @@ test('uncertain completed 0033 is inspected as complete, never reapplied or rest
             inputs,
             invalid,
             temp,
+            new Date().toISOString(),
           ),
         /approved suffix/,
       );
@@ -715,6 +721,7 @@ test('0033 rollback leaves the original schema/ledger and no implicit retry', ()
           inputs,
           before.pending,
           temp,
+          new Date().toISOString(),
         ),
       /transaction failed/,
     );
@@ -725,6 +732,51 @@ test('0033 rollback leaves the original schema/ledger and no implicit retry', ()
     );
   } finally {
     db.close();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('bookmark freshness rejects invalid, future and boundary-expired timestamps', () => {
+  const now = Date.parse('2026-10-03T10:00:00.000Z');
+  for (const age of [0, 119_999]) assertFreshBookmark(new Date(now - age).toISOString(), now);
+  for (const timestamp of [
+    'invalid',
+    new Date(now + 1).toISOString(),
+    new Date(now - 120_000).toISOString(),
+  ])
+    assert.throws(() => assertFreshBookmark(timestamp, now), /stale/);
+});
+
+test('bookmark expiring during remote inspection/readback cannot reach the migration command', (t) => {
+  const now = Date.parse('2026-10-03T10:00:00.000Z');
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const capturedAt = new Date(now - 119_000).toISOString();
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-expired-test-'));
+  let mutations = 0;
+  const run = (args: string[]) => {
+    if (args[1] === 'migrations') {
+      mutations++;
+      return '';
+    }
+    t.mock.timers.tick(500);
+    if (args[1] === 'time-travel') return JSON.stringify({ bookmark });
+    return response(
+      args.at(-1) === LEDGER_SQL
+        ? ledger()
+        : args.at(-1) === SCHEMA_SQL
+          ? inputs.schemas[32]!
+          : [{ id: 1 }],
+    );
+  };
+  try {
+    assertFreshBookmark(capturedAt);
+    const state = inspect(run, inputs);
+    assert.equal(bookmarkAt(run, capturedAt), bookmark);
+    assert.equal(Date.now() - Date.parse(capturedAt), 121_000);
+    assert.throws(() => applyApprovedSuffix(run, inputs, state.pending, temp, capturedAt), /stale/);
+    assert.equal(mutations, 0);
+    assert.deepEqual(readdirSync(temp), []);
+  } finally {
     rmSync(temp, { recursive: true, force: true });
   }
 });

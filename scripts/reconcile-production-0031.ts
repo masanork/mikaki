@@ -328,7 +328,20 @@ export function isApprovedSuffix(pending: string[]) {
     equal(pending, names.slice(-pending.length))
   );
 }
-export function applyApprovedSuffix(run: Run, inputs: Inputs, pending: string[], temp: string) {
+export function assertFreshBookmark(capturedAt: string, now = Date.now()) {
+  const age = now - Date.parse(capturedAt);
+  gate(
+    Number.isFinite(age) && age >= 0 && age < 120_000,
+    'Recorded pre-migration bookmark is stale; prepare a fresh run.',
+  );
+}
+export function applyApprovedSuffix(
+  run: Run,
+  inputs: Inputs,
+  pending: string[],
+  temp: string,
+  capturedAt: string,
+) {
   gate(isApprovedSuffix(pending), 'Only the missing approved suffix may be staged.');
   for (const name of pending) {
     const approved = APPROVED.migrations.find((item) => item.name === name)!;
@@ -364,6 +377,9 @@ export function applyApprovedSuffix(run: Run, inputs: Inputs, pending: string[],
     );
     // migrations apply supports neither --json nor --yes in pinned Wrangler.
     // CI=true + noninteractive stdin provides its documented confirmation behavior.
+    // Remote preflight/bookmark reads and local staging can consume the freshness window.
+    // Recheck the original retained timestamp at the mutation boundary; never refresh it here.
+    assertFreshBookmark(capturedAt);
     run(['d1', 'migrations', 'apply', APPROVED.database, '--remote', '--config', config]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -504,11 +520,7 @@ async function main() {
         plan.run_attempt === identity.run_attempt,
       'Preflight record belongs to a different source or run.',
     );
-    gate(
-      Date.now() - Date.parse(plan.captured_at) >= 0 &&
-        Date.now() - Date.parse(plan.captured_at) < 120_000,
-      'Recorded pre-migration bookmark is stale; prepare a fresh run.',
-    );
+    assertFreshBookmark(plan.captured_at);
     const state = inspect(run, inputs);
     applicationGate(state, process.env.APPROVED_PLAN_SHA256, process.env.CONFIRM_APPLY);
     gate(equal(state, plan.state), 'State changed after preflight; no application.');
@@ -523,9 +535,10 @@ async function main() {
       outcome: 'application_attempted_outcome_unverified',
       attempted_migrations: state.pending,
     };
+    assertFreshBookmark(plan.captured_at);
     save(resultPath, result);
     // The workflow must successfully retain the preflight artifact before this step.
-    applyApprovedSuffix(run, inputs, state.pending, temporary);
+    applyApprovedSuffix(run, inputs, state.pending, temporary, plan.captured_at);
     const after = inspect(run, inputs);
     gate(after.pending.length === 0, 'Post-application migrations remain pending.');
     result.outcome = 'applied_and_schema_verified';
