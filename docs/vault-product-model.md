@@ -43,6 +43,8 @@ Profiles may contain references to records; records may have attachments; both u
 
 A thread groups messages and links records/workflows; it is not a single continually overwritten blob. Bodies, artifacts and attachments may be separately encrypted blobs referenced by bounded, versioned events. One thread can link multiple applications, and an application may link several conversations, so its workflow identity must not be the thread ID. Message/record/attachment permissions must be checked together; a visible filename or search hit cannot leak a disallowed item.
 
+The [SQLite thread-search investigation](vault-thread-search.md) proposes a locally decrypted FTS5 projection and encrypted portable snapshot, inspired by Sorane. Authoritative conversation events remain separate from the rebuildable index; short Japanese terms, browser unlock lifetime and AI search scope need explicit qualification.
+
 ## Live E2EE, owner archive and AI recipients
 
 Live messaging uses participant/device messaging keys and a qualified messaging protocol. The owner's Vault key protects their retained conversation archive, not a permanent copy of all live message/ratchet secrets. Preserve the established [messaging boundary](federated-messaging.md); transport encryption, storage encryption and end-to-end messaging are separate claims. A plaintext chat import may become an encrypted owner archive but does not retroactively establish E2EE for its original transport.
