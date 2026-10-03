@@ -66,6 +66,21 @@ export function newOwnerNote(title: string, body: string): OwnerNote {
   });
 }
 
+// Keep editor feedback aligned with the published schema's UTF-8/Unicode checks.
+export function ownerNoteInputError(title: string, body: string): 'title' | 'text' | null {
+  try {
+    text(title, NOTE_MAX_TITLE_BYTES, false);
+  } catch {
+    return 'title';
+  }
+  try {
+    text(body, NOTE_MAX_TEXT_BYTES, true);
+  } catch {
+    return 'text';
+  }
+  return null;
+}
+
 export function encodeOwnerNote(value: unknown): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new TextEncoder().encode(JSON.stringify(parseOwnerNote(value))));
   if (bytes.length > NOTE_MAX_DOCUMENT_BYTES) throw new Error('Note document too large');

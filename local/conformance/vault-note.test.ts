@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   newOwnerNote,
+  ownerNoteInputError,
   encodeOwnerNote,
   decodeOwnerNote,
   parseOwnerNote,
@@ -11,12 +12,19 @@ test('note v1 preserves Unicode and self-asserted provenance within UTF-8 limits
   const note = newOwnerNote('旅行 🗾', '本人のメモ\n\t次の予定');
   assert.deepEqual(decodeOwnerNote(encodeOwnerNote(note)), note);
   assert.equal(newOwnerNote('a'.repeat(256), 'a'.repeat(4096)).version, 1);
+  assert.equal(ownerNoteInputError('あ'.repeat(85), 'あ'.repeat(1365)), null);
+  assert.equal(ownerNoteInputError('あ'.repeat(86), 'text'), 'title');
+  assert.equal(ownerNoteInputError('title', 'あ'.repeat(1366)), 'text');
   assert.throws(() => newOwnerNote('あ'.repeat(86), 'text'));
   assert.throws(() => newOwnerNote('title', 'あ'.repeat(1366)));
-  for (const title of ['', ' ', 'a\n', '\ud800', '\udfff'])
+  for (const title of ['', ' ', 'a\n', '\ud800', '\udfff']) {
     assert.throws(() => newOwnerNote(title, 'text'));
-  for (const body of ['', ' ', '\u0000', '\u007f', '\ud800'])
+    assert.equal(ownerNoteInputError(title, 'text'), 'title');
+  }
+  for (const body of ['', ' ', '\u0000', '\u007f', '\ud800']) {
     assert.throws(() => newOwnerNote('title', body));
+    assert.equal(ownerNoteInputError('title', body), 'text');
+  }
 });
 
 test('incompatible, ambiguous and misleading note input is rejected without fallback', () => {

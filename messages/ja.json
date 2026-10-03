@@ -212,6 +212,8 @@
   "vaultNoteUnlock": "メモを開く",
   "vaultNoteTitle": "メモのタイトル",
   "vaultNoteText": "メモの本文",
+  "vaultNoteTitleInvalid": "タイトルを入力してください。長い場合は短くしてください。",
+  "vaultNoteTextInvalid": "本文を入力してください。長い場合は短くしてください。",
   "vaultNoteSave": "メモを保存",
   "vaultNoteDelete": "メモを削除",
   "vaultNoteImport": "メモJSONを読み込む",
