@@ -1,3 +1,6 @@
+import { parseApprovedRecordNote, type ApprovedRecordNote } from './vault-record-approval.ts';
+import { sealApprovedOwnerRecord, type PreparedApprovedOwnerRecord } from './vault-owner-crypto.ts';
+import type { AgentRecipient } from './agent-crypto.ts';
 // Candidate owner-key lease. No production caller yet; never persists secrets.
 import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
@@ -8,11 +11,15 @@ import {
   ownerKeyContext,
   parseOwnerKeyEnvelope,
   sealOwnerRecord,
+  sealOwnerRecordUserInfoRecipient,
   type OwnerKeyContext,
   type OwnerKeyEnvelope,
   type OwnerRecord,
   type OwnerRecordContext,
 } from './vault-owner-crypto.ts';
+
+import type { RecordUserInfoRecipient } from './recipient-directory-v2.ts';
+import type { VaultRecordSource, VaultRecordAuthority } from './vault-record-source.ts';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 export type OwnerPrfEvaluator = (
@@ -152,6 +159,27 @@ export class OwnerKeySession {
     this.clear();
     this.scope.signal.removeEventListener('abort', this.clear);
   }
+  async sealApprovedNote(
+    proposal: ApprovedRecordNote,
+    operationId: string,
+    recipient: AgentRecipient,
+  ): Promise<PreparedApprovedOwnerRecord> {
+    this.assert();
+    const key = this.key,
+      generation = this.generation;
+    if (!key) throw new Error('owner key locked');
+    const selected = parseApprovedRecordNote(proposal);
+    const prepared = await sealApprovedOwnerRecord(
+      selected,
+      operationId,
+      recipient,
+      key,
+      this.context,
+    );
+    this.assert();
+    if (generation !== this.generation) throw new Error('stale approved note');
+    return prepared;
+  }
   async seal(plaintext: Bytes, item: OwnerRecordContext): Promise<OwnerRecord> {
     this.assert();
     const key = this.key,
@@ -174,6 +202,33 @@ export class OwnerKeySession {
       return plaintext;
     } catch (error) {
       plaintext.fill(0);
+      throw error;
+    }
+  }
+  async sealUserInfoRecipient(
+    record: OwnerRecord,
+    source: VaultRecordSource,
+    authority: VaultRecordAuthority,
+    recipient: RecordUserInfoRecipient,
+  ): Promise<Bytes> {
+    this.assert();
+    const key = this.key,
+      generation = this.generation;
+    if (!key) throw new Error('owner key locked');
+    const envelope = await sealOwnerRecordUserInfoRecipient(
+      record,
+      key,
+      this.context,
+      source,
+      authority,
+      recipient,
+    );
+    try {
+      this.assert();
+      if (generation !== this.generation) throw new Error('stale recipient seal');
+      return envelope;
+    } catch (error) {
+      envelope.fill(0);
       throw error;
     }
   }

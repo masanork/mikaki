@@ -20,7 +20,7 @@ The default `/vault/agents/status` returns only legacy grants and their correspo
 
 V2 OAuth requests require exact version-2 authorization details with complete source and authority tuples. Scope-only and legacy detailed requests cannot select v2 grants. Owner consent, code redemption and active token access all retain exact grant/revision/resource and narrowed-scope checks. V2 UI for reviewing this detail remains a separate gate.
 
-Private draft proposals remain selected-document-bound and cannot modify the Vault. A v2 read grant cannot enter the legacy attribute-capability/proposal/approved-commit state machine; its dedicated owner-note write capability is separate work.
+Private draft proposals remain selected-document-bound and cannot modify the Vault. A v2 read grant cannot enter the legacy attribute-capability/proposal/approved-commit state machine; its dedicated [owner-note write capability](vault-record-approved-commit.md) is a separate explicit service authority, with UI qualification still pending.
 
 ## Evidence and limits
 

@@ -1,5 +1,18 @@
+import { parseApprovedRecordNote, type ApprovedRecordNote } from './vault-record-approval.ts';
+import { sealApprovedRecordProof } from './agent-record-proof.ts';
+import type { AgentRecipient } from './agent-crypto.ts';
+import type { RecordAgentEnvelope } from './agent-record-crypto.ts';
 // Candidate v2 owner-key format. Not wired to production Vault storage/UI.
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { sealRecordUserInfoDataKey } from './vault-record-recipient-envelope.ts';
+import type { RecordUserInfoRecipient } from './recipient-directory-v2.ts';
+import {
+  parseVaultRecordSource,
+  parseVaultRecordAuthority,
+  vaultCiphertextDigest,
+  type VaultRecordSource,
+  type VaultRecordAuthority,
+} from './vault-record-source.ts';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 export type OwnerKeyContext = Readonly<{
@@ -460,5 +473,179 @@ export async function rewrapOwnerRecord(
     });
   } finally {
     raw.fill(0);
+  }
+}
+
+// This specific capability returns encrypted per-record material only. It never
+// exposes a root, raw content key, or caller-controlled callback/transferable lease.
+export async function sealOwnerRecordUserInfoRecipient(
+  value: OwnerRecord,
+  key: CryptoKey,
+  context: OwnerKeyContext,
+  selected: VaultRecordSource,
+  selectedAuthority: VaultRecordAuthority,
+  entry: RecordUserInfoRecipient,
+): Promise<Bytes> {
+  context = ownerKeyContext(context);
+  const source = parseVaultRecordSource(selected);
+  const authority = parseVaultRecordAuthority(selectedAuthority);
+  const recipient = Object.freeze({ ...entry });
+  const record = Object.freeze({ ...value });
+  if (
+    source.record_id !== 'name' ||
+    source.kind !== 'name' ||
+    source.owner_id !== context.ownerId ||
+    source.origin !== context.origin ||
+    source.vault_id !== context.vaultId ||
+    authority.key_generation !== context.keyGeneration
+  )
+    throw new Error('Wrong UserInfo record binding');
+  const item = {
+    collectionId: source.collection_id,
+    recordId: source.record_id,
+    kind: source.kind,
+    revision: source.revision,
+  };
+  let plaintext: Bytes | undefined;
+  let raw: Bytes | undefined;
+  try {
+    if ((await vaultCiphertextDigest(record.ciphertext)) !== source.ciphertext_sha256)
+      throw new Error('Selected ciphertext digest mismatch');
+    // Authenticate the body and strict text before doing any recipient sealing.
+    plaintext = await openOwnerRecord(record, key, context, item);
+    const name = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(plaintext);
+    if (!name.length || name.length > 256 || plaintext.length > 1024)
+      throw new Error('Invalid saved name');
+    const envelope = decode(record.key_envelope, 1 + NONCE + KEY + TAG);
+    raw = new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: envelope.slice(1, 1 + NONCE),
+          additionalData: recordAad('mikaki-vault-record-key', context, item),
+        },
+        key,
+        envelope.slice(1 + NONCE),
+      ),
+    );
+    return await sealRecordUserInfoDataKey(raw, recipient, {
+      source,
+      authority,
+      ciphertext: record.ciphertext,
+    });
+  } finally {
+    plaintext?.fill(0);
+    raw?.fill(0);
+  }
+}
+
+export type PreparedApprovedOwnerRecord = Readonly<{
+  proposal_id: string;
+  request_hash: string;
+  operation_id: string;
+  candidate: string;
+  candidate_sha256: string;
+  proof: RecordAgentEnvelope;
+}>;
+// Operation-only proof of a freshly sealed note. No callback or raw content-key
+// accessor is available to the owner UI, and existing source keys are never sent.
+export async function sealApprovedOwnerRecord(
+  value: ApprovedRecordNote,
+  operationId: string,
+  recipientValue: AgentRecipient,
+  key: CryptoKey,
+  ownerContext: OwnerKeyContext,
+): Promise<PreparedApprovedOwnerRecord> {
+  const proposal = parseApprovedRecordNote(value),
+    context = ownerKeyContext(ownerContext);
+  const recipient = Object.freeze({
+    ...recipientValue,
+    public_jwk: { ...recipientValue.public_jwk },
+  });
+  const target = proposal.target;
+  if (
+    !/^[A-Za-z0-9_-]{43}$/.test(operationId) ||
+    target.origin !== context.origin ||
+    target.owner_id !== context.ownerId ||
+    target.vault_id !== context.vaultId ||
+    proposal.authority.key_generation !== context.keyGeneration ||
+    recipient.enabled === false
+  )
+    throw new Error('Wrong approved note binding');
+  const item = {
+    collectionId: target.collection_id,
+    recordId: target.record_id,
+    kind: target.kind,
+    revision: target.revision + 1,
+  };
+  const bytes = new TextEncoder().encode(proposal.payload);
+  let restored: Bytes | undefined, raw: Bytes | undefined;
+  try {
+    const sealed = await sealOwnerRecord(bytes, key, context, item);
+    restored = await openOwnerRecord(sealed, key, context, item);
+    if (restored.length !== bytes.length || restored.some((byte, index) => byte !== bytes[index]))
+      throw new Error('Candidate verification failed');
+    const candidate = JSON.stringify({
+      format_version: 2,
+      vault_id: context.vaultId,
+      key_generation: context.keyGeneration,
+      owner_key_revision: proposal.authority.owner_key_revision,
+      kind: target.kind,
+      revision: item.revision,
+      ciphertext: sealed.ciphertext,
+      key_envelope: sealed.key_envelope,
+    });
+    const candidateHash = encodeBase64Url(
+      new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate))),
+    );
+    const candidateSource = parseVaultRecordSource({
+      storage_version: 2,
+      origin: context.origin,
+      owner_id: context.ownerId,
+      vault_id: context.vaultId,
+      collection_id: item.collectionId,
+      record_id: item.recordId,
+      kind: item.kind,
+      revision: item.revision,
+      ciphertext_sha256: await vaultCiphertextDigest(sealed.ciphertext),
+    });
+    const envelope = decode(sealed.key_envelope, 1 + NONCE + KEY + TAG);
+    raw = new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: envelope.slice(1, 1 + NONCE),
+          additionalData: recordAad('mikaki-vault-record-key', context, item),
+        },
+        key,
+        envelope.slice(1 + NONCE),
+      ),
+    );
+    const proof = await sealApprovedRecordProof(raw, recipient, {
+      owner: context.ownerId,
+      grant_id: proposal.grant_id,
+      key_id: recipient.key_id,
+      resource: recipient.resource,
+      expires_at: proposal.expires_at,
+      proposal_id: proposal.proposal_id,
+      request_hash: proposal.request_hash,
+      operation_id: operationId,
+      candidate_sha256: candidateHash,
+      target,
+      authority: proposal.authority,
+      candidate_source: candidateSource,
+    });
+    return Object.freeze({
+      proposal_id: proposal.proposal_id,
+      request_hash: proposal.request_hash,
+      operation_id: operationId,
+      candidate,
+      candidate_sha256: candidateHash,
+      proof,
+    });
+  } finally {
+    bytes.fill(0);
+    restored?.fill(0);
+    raw?.fill(0);
   }
 }
