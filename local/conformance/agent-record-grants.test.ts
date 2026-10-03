@@ -14,6 +14,7 @@ const root = new URL('../..', import.meta.url).pathname;
 const compiled = await build({
   stdin: {
     contents: `export * as model from './crates/agent-worker/model.ts';
+    export * as records from './crates/agent-worker/record-proposals.ts';
     export * as store from './crates/agent-worker/store.ts';
     export * as oauth from './crates/agent-worker/oauth.ts';
     export * as details from './crates/agent-worker/authorization-details.ts';
@@ -46,7 +47,7 @@ const compiled = await build({
 const implementation = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0]!.text).toString('base64')}`
 );
-const { model, store, oauth, details, worker, OwnerAgents } = implementation;
+const { model, store, oauth, details, records, worker, OwnerAgents } = implementation;
 const origin = 'https://mikaki.test',
   resource = 'https://agent.mikaki.test/mcp';
 const id = () => randomBytes(32).toString('base64url');
@@ -129,7 +130,7 @@ function fixture(before33 = false) {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
   for (const name of migrations) {
-    if (Number(name.slice(0, 4)) >= (before33 ? 33 : 34)) break;
+    if (before33 && Number(name.slice(0, 4)) >= 33) break;
     sqlite.exec(readFileSync(new URL(name, migrationDir), 'utf8'));
   }
   const time = Math.floor(Date.now() / 1000),
@@ -574,7 +575,9 @@ test('v2 private drafts remain selected, review-bound and separate from legacy a
     );
     assert.throws(() =>
       f.sqlite
-        .prepare("INSERT INTO agent_attribute_capability VALUES(?,'owner_note',0,1,?,?)")
+        .prepare(
+          "INSERT INTO agent_attribute_capability(grant_id,attribute_id,base_revision,grant_revision,created_at,expires_at) VALUES(?,'owner_note',0,1,?,?)",
+        )
         .run(note.input.grant_id, f.time, f.time + 600),
     );
     const proposal = {
@@ -921,3 +924,113 @@ test('remote v2 names preserve the owner character bound and leading BOM exactly
     f.sqlite.close();
   }
 });
+
+for (const stage of ['retry', 'after-audit'] as const)
+  for (const [label, mutation] of Object.entries({
+    target:
+      "UPDATE vault_owner_record_head SET ciphertext_sha256='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' WHERE record_id='owner_note'",
+    grant: 'UPDATE agent_grant SET revoked=1',
+    recipient: "UPDATE agent_recipient_key SET state='disabled'",
+    credential: 'UPDATE credential SET active=0',
+  }))
+    test(`record proposal ${stage} rechecks live ${label} before returning delegated metadata`, async () => {
+      const f = fixture();
+      try {
+        f.sqlite.exec("INSERT INTO vault_owner_key_wrap VALUES('owner',1,'passkey','{}')");
+        const v2 = await selected(f);
+        await create(f, v2.input);
+        const target = {
+          ...v2.input.source,
+          record_id: 'owner_note',
+          kind: 'owner_note',
+          ciphertext_sha256: hash('owner_note'),
+          deleted: false,
+        };
+        const allowed = await f.ownerRequest('/record-capability', {
+          grant_id: v2.input.grant_id,
+          target,
+          authority: v2.input.authority,
+        });
+        assert.equal(allowed.status, 200, await allowed.text());
+        const input = {
+          storage_version: 2,
+          proposal_id: id(),
+          target,
+          authority: v2.input.authority,
+          value: newOwnerNote('Approved target', 'Keep this exact target'),
+          expires_at: f.time + 300,
+        };
+        const grant = await store.active(f.db, hash(v2.token), keyId, resource);
+        if (stage === 'retry') await records.propose(f.db, grant, input);
+        let injected = false;
+        f.afterQuery((sql) => {
+          if (
+            !injected &&
+            (stage === 'retry' ? sql.startsWith('SELECT cap.*') : sql.includes("'record-propose'"))
+          ) {
+            injected = true;
+            f.sqlite.exec(mutation);
+          }
+        });
+        await assert.rejects(records.propose(f.db, grant, input), /Access denied/);
+        assert.equal(injected, true);
+      } finally {
+        f.sqlite.close();
+      }
+    });
+
+for (const [label, mutation] of Object.entries({
+  target:
+    "UPDATE vault_owner_record_head SET ciphertext_sha256='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' WHERE record_id='owner_note'",
+  capability: 'DELETE FROM agent_attribute_capability',
+  expiry: 'UPDATE agent_attribute_proposal SET expires_at=unixepoch()',
+}))
+  test(`public record proposal closes the final generic-refresh ${label} race`, async () => {
+    const f = fixture();
+    try {
+      f.sqlite.exec("INSERT INTO vault_owner_key_wrap VALUES('owner',1,'passkey','{}')");
+      const v2 = await selected(f);
+      await create(f, v2.input);
+      const target = {
+        ...v2.input.source,
+        record_id: 'owner_note',
+        kind: 'owner_note',
+        ciphertext_sha256: hash('owner_note'),
+        deleted: false,
+      };
+      const allowed = await f.ownerRequest('/record-capability', {
+        grant_id: v2.input.grant_id,
+        target,
+        authority: v2.input.authority,
+      });
+      assert.equal(allowed.status, 200, await allowed.text());
+      const input = {
+        storage_version: 2,
+        proposal_id: id(),
+        target,
+        authority: v2.input.authority,
+        value: newOwnerNote('Exact target', 'Do not return stale authority'),
+        expires_at: f.time + 300,
+      };
+      let injected = false;
+      f.afterQuery((sql) => {
+        if (
+          !injected &&
+          sql.startsWith('SELECT p.* FROM agent_attribute_proposal p WHERE p.proposal_id=')
+        ) {
+          injected = true;
+          if (label === 'expiry') {
+            // Advance database time, never mutate an immutable proposal deadline.
+            f.sqlite.function('unixepoch', () => f.time + 301);
+          } else f.sqlite.exec(mutation);
+        }
+      });
+      const response = await rpc(f, v2.token, 'propose_record', input);
+      assert.equal(response.status, 200);
+      assert.equal(response.data?.result?.isError, true);
+      assert.equal(response.data?.result?.structuredContent, undefined);
+      assert.equal(injected, true);
+    } finally {
+      f.sqlite.close();
+    }
+  });

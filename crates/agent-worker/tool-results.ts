@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { noteTargetSchema } from './record-contract.ts';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
@@ -112,6 +113,16 @@ const page = z.strictObject({
   access: accessInfo,
 });
 export const toolOutputs = {
+  propose_record: z.strictObject({
+    ...common,
+    proposal_id: opaque,
+    request_hash: opaque,
+    state: z.enum(['pending', 'approved', 'rejected', 'invalid', 'committed']),
+    target: noteTargetSchema,
+    authority: recordAuthority,
+    expires_at: timestamp,
+    destination: z.literal('owner-vault-record'),
+  }),
   list: page,
   search: page,
   read: z.strictObject({

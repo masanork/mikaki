@@ -62,3 +62,7 @@ The active versioned D1 policy is authoritative for deployed runtime values. The
 `npm run check:docs` checks repository-owned Markdown file/image destinations and Markdown heading fragments without network access; it does not verify external URLs or deployment claims. Repository Markdown documentation is in English. The product UI still supports Japanese and English. Historical ADRs retain their sequence; topic documents present the current contract or a clearly marked proposal.
 
 [Grok Bot integration](grok-bot-integration.md) tracks the new hosted-plugin product, account-wide authorization and current qualification gates.
+
+The [selected v2 approved-note service](vault-record-approved-commit.md) documents the explicit record capability, one-operation proof, atomic commit and historical acknowledgment boundary. Its UI and deployment remain gated.
+
+The [explicit record-v2 UserInfo service](vault-record-userinfo.md) documents the distinct recipient profile, exact source and authority fences, and source-selected RP consent ledger. Policy defaults disabled.

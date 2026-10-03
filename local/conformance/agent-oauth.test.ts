@@ -458,7 +458,15 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       return client;
     };
     const mcp = await connect(issued.access_token);
-    assert.equal((await mcp.listTools()).tools.length, 6);
+    assert.deepEqual((await mcp.listTools()).tools.map((tool) => tool.name).sort(), [
+      'mikaki_execute',
+      'mikaki_list',
+      'mikaki_propose',
+      'mikaki_propose_attribute',
+      'mikaki_propose_record',
+      'mikaki_read',
+      'mikaki_search',
+    ]);
     const read = await mcp.callTool({ name: 'mikaki_read', arguments: { id: 'name' } });
     assert.ok(!read.isError);
     assert.match(JSON.stringify(read), /OAuth owner/);

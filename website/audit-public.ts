@@ -17,6 +17,31 @@ const tags = (html: string, name: string) =>
     ),
   );
 
+/** Require an explicit hash grant that survives every enforced script policy. */
+export function permitsScriptHash(csp: string | null, hash: string) {
+  // Headers combines repeated CSP fields with commas; browsers enforce their intersection.
+  const scriptPolicies = (csp ?? '')
+    .split(',')
+    .filter((policy) => policy.trim())
+    .map((policy) => {
+      const directives = new Map<string, string[]>();
+      for (const directive of policy.split(';')) {
+        const [name, ...sources] = directive.trim().split(/\s+/);
+        // CSP uses the first occurrence of a duplicate directive.
+        if (!directives.has(name.toLowerCase())) directives.set(name.toLowerCase(), sources);
+      }
+      return (
+        directives.get('script-src-elem') ??
+        directives.get('script-src') ??
+        directives.get('default-src')
+      );
+    });
+  return (
+    scriptPolicies.some((sources) => sources?.includes(hash)) &&
+    scriptPolicies.every((sources) => !sources || sources.includes(hash))
+  );
+}
+
 /** Audit real responses, including internal links; never follow links outside the public site. */
 export async function auditPublicWebsite(
   request: (url: string) => Promise<Response> = (url) =>
@@ -108,7 +133,7 @@ export async function auditPublicWebsite(
       assert.equal(data['@context'], 'https://schema.org');
       const hash = createHash('sha256').update(script[1]).digest('base64');
       assert.ok(
-        response.headers.get('content-security-policy')?.includes(`'sha256-${hash}'`),
+        permitsScriptHash(response.headers.get('content-security-policy'), `'sha256-${hash}'`),
         `${path}: JSON-LD blocked by CSP`,
       );
     }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, setContext } from 'svelte';
+  import { onMount, setContext, tick } from 'svelte';
   import { restoreActionFocus } from './action-focus.js';
   import { vaultContext, OWNER_VAULT_CONTEXT, type OwnerVaultContext } from './vault-context.js';
   import ProductHeader from './ProductHeader.svelte';
@@ -12,11 +12,13 @@
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url, decodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
+  import ThreadSearch from './ThreadSearch.svelte';
+  import type { SearchHit } from './vault-thread-search.ts';
   let { locale }: { locale: Locale } = $props();
   const context = vaultContext(),
     scope = context.current();
-  let owner: OwnerVaultController | null = null,
-    store: OwnerWorkspaceStore | null = null;
+  let owner: OwnerVaultController | null = $state(null);
+  let store: OwnerWorkspaceStore | null = null;
   setContext<OwnerVaultContext>(OWNER_VAULT_CONTEXT, {
     current: () => {
       if (!owner) throw new Error('owner_key_locked');
@@ -39,14 +41,26 @@
   let threads: { id: string; revision: number; archive: ThreadArchive }[] = $state([]);
   let selected = $state('');
   const dirty = $derived(pending !== null || name !== savedName);
-  const visibleThreads = $derived(
-    threads.filter((t) =>
-      `${t.archive.title}\n${t.archive.messages.map((x) => x.text).join('\n')}`
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
-    ),
-  );
+  const visibleThreads = $derived(query.trim() ? [] : threads);
   const active = $derived(threads.find((t) => t.id === selected));
+  async function selectHit(hit: SearchHit) {
+    try {
+      if (!owner || busy) return;
+      const token = owner.checkpoint();
+      await owner.verifyAuthority();
+      owner.assertCurrent(token);
+      if (!threads.some((thread) => thread.id === hit.thread && thread.revision === hit.revision))
+        return;
+      selected = hit.thread;
+      await tick();
+      owner.assertCurrent(token);
+      document
+        .getElementById(hit.message < 0 ? 'thread-title' : `thread-message-${hit.message}`)
+        ?.focus();
+    } catch (error) {
+      failure(error);
+    }
+  }
   async function loadRecords() {
     if (!store) throw new Error('locked');
     const profile = await store.read('personal', 'name', 'name');
@@ -348,12 +362,13 @@
               disabled={busy || pending !== null}
               onchange={importArchive}
             />
-            <label for="thread-search">{m.ownerWorkspaceSearch()}</label><input
-              id="thread-search"
-              type="search"
-              bind:value={query}
-              disabled={busy}
-            />
+            {#if owner}<ThreadSearch
+                records={threads}
+                {owner}
+                disabled={busy}
+                bind:query
+                onselect={selectHit}
+              />{/if}
             {#if threads.length === 0}<p>{m.ownerVaultEmpty()}</p>{/if}
             <div class="product-actions">
               {#each visibleThreads as thread (thread.id)}<button
@@ -361,7 +376,7 @@
                 >{/each}
             </div>
             {#if active}<article>
-                <h3>{active.archive.title}</h3>
+                <h3 id="thread-title" tabindex="-1">{active.archive.title}</h3>
                 <button
                   class="product-danger"
                   disabled={busy || pending !== null}
@@ -369,7 +384,11 @@
                     active && remove('threads', active.id, 'thread-archive', active.revision)}
                   >{m.vaultDelete()}</button
                 >
-                {#each active.archive.messages as message}<div class="archive-message">
+                {#each active.archive.messages as message, index}<div
+                    class="archive-message"
+                    id={`thread-message-${index}`}
+                    tabindex="-1"
+                  >
                     <strong>{message.speaker}{message.actor === 'ai' ? ' · AI' : ''}</strong><time
                       datetime={message.timestamp}
                       >{new Date(message.timestamp).toLocaleString(locale)}</time

@@ -266,7 +266,7 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Referrer-Policy", "no-referrer")?
-        .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
+        .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
         .from_html(html)
 }
 
@@ -280,6 +280,36 @@ pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Res
         .with_header("Cache-Control", "no-store")?
         .with_header("X-Content-Type-Options", "nosniff")?
         .fixed(script.as_bytes().to_vec()))
+}
+
+// Public, immutable build inputs only. No owner data or authentication material.
+pub async fn search_script(
+    _request: Request,
+    context: RouteContext<()>,
+) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    Ok(Response::builder()
+        .with_header("Content-Type", "text/javascript; charset=utf-8")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .with_header(
+            "Content-Security-Policy",
+            "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'",
+        )?
+        .fixed(include_bytes!(concat!(env!("OUT_DIR"), "/search.js")).to_vec()))
+}
+
+pub async fn search_wasm(_request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    Ok(Response::builder()
+        .with_header("Content-Type", "application/wasm")?
+        .with_header("Cache-Control", "no-store")?
+        .with_header("X-Content-Type-Options", "nosniff")?
+        .fixed(include_bytes!(concat!(env!("OUT_DIR"), "/sqlite3.wasm")).to_vec()))
 }
 
 pub(crate) fn same_origin(request: &Request) -> worker::Result<bool> {

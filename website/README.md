@@ -4,6 +4,8 @@ The public site at https://mikaki.org uses Sorane 0.5 for Japanese and English M
 
 `build.mjs` keeps the existing shared woven renderer, stylesheet, hero and sign-in links, then `sorane.mjs` combines Sorane metadata and rendered Markdown with that visual shell. JSON-LD scripts use CSP hashes. Generated output is ignored by Git.
 
+The broad `/*` CSP includes only the Japanese root page's hashes. Other canonical pages detach it and set a policy containing only their own hashes; the exact `/` route never overrides CSP. This avoids the [Workers Assets deployment-only root-detachment defect](https://github.com/cloudflare/workers-sdk/issues/11351), which local `wrangler dev` does not reproduce. Non-script restrictions are identical for every route, and the build enforces Cloudflare's 2,000-character line and 100-rule limits. Deterministic tests inspect the generated policies and model the retained-default defect; the audit checks the intersection of repeated CSP fields, not just the presence of a hash anywhere. Local and CI browser checks do not prove deployed header behavior; the production response audit remains the deployment check.
+
 Articles with at least three level-two headings get a localized table of contents before their first section. It uses Sorane's rendered heading IDs, works without JavaScript and highlights the selected heading. The landing pages keep their existing hero layout.
 
 ```sh

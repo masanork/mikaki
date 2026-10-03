@@ -5,6 +5,10 @@
   "ownerWorkspaceDeleteConfirm": "Delete this saved information?",
   "ownerWorkspaceImport": "Import a conversation archive",
   "ownerWorkspaceSearch": "Find a conversation",
+  "threadSearchLoading": "Searching conversations…",
+  "threadSearchFailed": "Search is unavailable. Please try again.",
+  "threadSearchEmpty": "No matching conversations.",
+  "threadSearchLimited": "Showing the first 50 matches. Narrow your search.",
   "ownerWorkspaceSharingPending": "Manage connections here. Sharing this profile or these conversations is not supported yet.",
   "title": "Sign in to mikaki",
   "intro": "Use your passkey to sign in securely.",
@@ -346,5 +350,6 @@
   "ownerVaultSaved": "Saved and verified. Vault stays open.",
   "ownerVaultRefreshFailed": "The write was confirmed, but the saved content could not be rechecked. Reload before editing again.",
   "ownerVaultRetrySave": "Retry the same save",
-  "ownerVaultRetryDelete": "Retry the same deletion"
+  "ownerVaultRetryDelete": "Retry the same deletion",
+  "threadSearchInvalidQuery": "Use up to 8 space-separated search terms (256 characters maximum)."
 }

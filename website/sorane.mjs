@@ -155,12 +155,21 @@ const headers = join(site, 'public/_headers');
 const defaults = readFileSync(headers, 'utf8');
 const policy = defaults.match(/^  Content-Security-Policy: (.+)$/m)?.[1];
 if (!policy) throw new Error('Missing default Content-Security-Policy');
-const rules = [...pageHashes].map(
-  ([path, hashes]) =>
-    `${path}\n  ! Content-Security-Policy\n  Content-Security-Policy: ${policy.replace("script-src 'self'", `script-src 'self' ${[...hashes].join(' ')}`)}\n`,
-);
+const withHashes = (hashes) =>
+  policy.replace("script-src 'self'", `script-src 'self' ${[...hashes].join(' ')}`);
+const rootHashes = pageHashes.get('/');
+if (!rootHashes?.size) throw new Error('Missing root-page Content-Security-Policy hashes');
+// Deployed Workers Assets can retain the broad policy when an exact / rule detaches it:
+// https://github.com/cloudflare/workers-sdk/issues/11351 (not reproduced by wrangler dev).
+// Authorize only the root's hashes in the broad policy and never override CSP at /.
+const rules = [...pageHashes]
+  .filter(([path]) => path !== '/')
+  .map(
+    ([path, hashes]) =>
+      `${path}\n  ! Content-Security-Policy\n  Content-Security-Policy: ${withHashes(hashes)}\n`,
+  );
 // Global rules still cover non-HTML assets and 404s. .html aliases redirect before headers.
-const output = defaults + '\n' + rules.join('\n');
+const output = defaults.replace(policy, withHashes(rootHashes)) + '\n' + rules.join('\n');
 if (rules.length + 1 > 100 || output.split('\n').some((line) => line.length > 2000))
   throw new Error('Static-asset header rules exceed Cloudflare limits');
 writeFileSync(headers, output);

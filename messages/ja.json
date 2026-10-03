@@ -5,6 +5,10 @@
   "ownerWorkspaceDeleteConfirm": "保存した情報を削除しますか？",
   "ownerWorkspaceImport": "会話履歴を取り込む",
   "ownerWorkspaceSearch": "会話を探す",
+  "threadSearchLoading": "会話を検索中…",
+  "threadSearchFailed": "検索できませんでした。もう一度お試しください。",
+  "threadSearchEmpty": "該当する会話はありません。",
+  "threadSearchLimited": "先頭の50件を表示しています。検索語を絞ってください。",
   "ownerWorkspaceSharingPending": "接続の管理ができます。この画面のプロフィールや会話の共有には、まだ対応していません。",
   "title": "mikakiにログイン",
   "intro": "Passkeyで安全にログインします。",
@@ -346,5 +350,6 @@
   "ownerVaultSaved": "保存内容を確認しました。Vaultは開いたままです。",
   "ownerVaultRefreshFailed": "書き込みは確認できましたが、保存内容を再確認できませんでした。編集を続ける前に再読み込みしてください。",
   "ownerVaultRetrySave": "同じ保存を再試行",
-  "ownerVaultRetryDelete": "同じ削除を再試行"
+  "ownerVaultRetryDelete": "同じ削除を再試行",
+  "threadSearchInvalidQuery": "検索語は空白区切りで8語、全体で256文字以内にしてください。"
 }

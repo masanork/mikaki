@@ -27,3 +27,4 @@ AND e.account_id=v.account_id AND e.attribute_id='name'
 AND e.attribute_revision=h.revision AND e.recipient_service='userinfo'
 AND k.service_id='userinfo' AND k.state='active'
 AND k.generation=e.recipient_generation
+AND r.source_storage_version=1
