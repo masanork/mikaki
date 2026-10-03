@@ -1,4 +1,4 @@
-/** One reviewed D1 migration only. No deploy, credentials, data export, or restore. */
+/** Only reviewed D1 migrations 0031 + 0032. No deploy, credentials, data export, or restore. */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -16,9 +16,17 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 export const APPROVED = {
-  source: 'fd55932eee716c2c623cbbb45d1c8b68ec8c354e',
-  migration: '0031_vault_owner_keys.sql',
-  sha256: '310c0f20250e5088224ab99c0ee31a9f36f23ba9476d220f3000ec379206125c',
+  source: '7473da7f5c4c1a336499907d6858dcd893fdbf5b',
+  migrations: [
+    {
+      name: '0031_vault_owner_keys.sql',
+      sha256: '310c0f20250e5088224ab99c0ee31a9f36f23ba9476d220f3000ec379206125c',
+    },
+    {
+      name: '0032_vault_owner_records.sql',
+      sha256: '1a1b1d8e8932305091360acafe8c890a4edbc6c0ed2de7f0a0bb73df0e871c5b',
+    },
+  ],
   config: 'crates/worker/wrangler.production.jsonc',
   config_sha256: '145772fc877d6442509deddd5e29e35308fa9f2a36644b44f63b64c44f6c1efd',
   account: '4b749427a0c80c547e726a42aff4b6fc',
@@ -26,11 +34,14 @@ export const APPROVED = {
   database_id: 'f9299d62-2dbf-4bae-ae49-8b75674572d4',
   wrangler: '4.144.0',
 } as const;
-export const CONFIRMATION = 'APPLY 0031 TO mikaki-auth';
+export const CONFIRMATION = 'APPLY 0031 AND 0032 TO mikaki-auth';
 export const LEDGER_SQL = 'SELECT id, name FROM d1_migrations ORDER BY id';
+export const CURSOR_SQL = 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id';
 export const SCHEMA_SQL = `SELECT type, name, tbl_name, sql FROM sqlite_master
-WHERE tbl_name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap')
-OR name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap')
+WHERE tbl_name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap',
+'vault_owner_record_head', 'vault_owner_record_mutation', 'vault_owner_record_gc_cursor')
+OR name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap',
+'vault_owner_record_head', 'vault_owner_record_mutation', 'vault_owner_record_gc_cursor')
 ORDER BY type, name`;
 const ledgerDDL = `CREATE TABLE "d1_migrations"(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +50,11 @@ const ledgerDDL = `CREATE TABLE "d1_migrations"(
 );`;
 type Row = Record<string, unknown>;
 export type Run = (args: string[]) => string;
-export type Inputs = { names: string[]; migration: string; before: Row[]; after: Row[] };
+export type Inputs = {
+  names: string[];
+  migrations: Record<string, string>;
+  schemas: Record<number, Row[]>;
+};
 type State = { pending: string[]; schema_sha256: string; plan_sha256: string };
 type Plan = {
   approved: typeof APPROVED;
@@ -100,32 +115,46 @@ export function expectedInputs(root: string): Inputs {
   const directory = join(root, 'crates/worker/migrations');
   const names = readdirSync(directory).sort();
   gate(
-    names.length === 31 &&
+    names.length === 32 &&
       names.every(
         (name, index) =>
           name.startsWith(`${String(index + 1).padStart(4, '0')}_`) &&
           /^\d{4}_[a-z0-9_]+\.sql$/.test(name),
       ),
-    'Expected exactly the reviewed 0001–0031 migration files.',
+    'Expected exactly the reviewed 0001–0032 migration files.',
   );
-  gate(names.at(-1) === APPROVED.migration, 'Unexpected last migration.');
-  const migration = readFileSync(join(directory, APPROVED.migration), 'utf8');
-  gate(digest(migration) === APPROVED.sha256, 'Reviewed migration hash differs.');
+  gate(
+    equal(
+      names.slice(30),
+      APPROVED.migrations.map((item) => item.name),
+    ),
+    'Unexpected approved migration suffix.',
+  );
+  const migrations: Record<string, string> = {};
+  for (const item of APPROVED.migrations) {
+    const sql = readFileSync(join(directory, item.name), 'utf8');
+    gate(digest(sql) === item.sha256, 'Reviewed migration hash differs.');
+    migrations[item.name] = sql;
+  }
   const db = new DatabaseSync(':memory:');
   try {
-    for (const name of names.slice(0, -1)) db.exec(readFileSync(join(directory, name), 'utf8'));
+    for (const name of names.slice(0, 30)) db.exec(readFileSync(join(directory, name), 'utf8'));
     db.exec(ledgerDDL);
-    const before = db.prepare(SCHEMA_SQL).all();
-    db.exec(migration);
-    return { names, migration, before, after: db.prepare(SCHEMA_SQL).all() };
+    const schemas: Record<number, Row[]> = { 30: db.prepare(SCHEMA_SQL).all() };
+    for (const [index, item] of APPROVED.migrations.entries()) {
+      db.exec(migrations[item.name]!);
+      schemas[31 + index] = db.prepare(SCHEMA_SQL).all();
+    }
+    return { names, migrations, schemas };
   } finally {
     db.close();
   }
 }
+
 export function inspectState(inputs: Inputs, ledger: Row[], schema: Row[]): State {
   gate(
-    ledger.length === 30 || ledger.length === 31,
-    'Ledger is not the reviewed 0001–0030/0031 prefix; stop for review.',
+    [30, 31, 32].includes(ledger.length),
+    'Ledger is not the reviewed 0001–0030/0031/0032 prefix; stop for review.',
   );
   let previous = 0;
   for (const [index, row] of ledger.entries()) {
@@ -141,7 +170,7 @@ export function inspectState(inputs: Inputs, ledger: Row[], schema: Row[]): Stat
   }
   const pending = inputs.names.slice(ledger.length);
   const actual = canonicalSchema(schema);
-  const expected = canonicalSchema(pending.length ? inputs.before : inputs.after);
+  const expected = canonicalSchema(inputs.schemas[ledger.length]!);
   gate(
     equal(actual, expected),
     'Migration ledger/table state disagrees with reviewed schema; no automatic repair.',
@@ -167,7 +196,14 @@ export function inspect(run: Run, inputs: Inputs): State {
         sql,
       ]),
     );
-  return inspectState(inputs, query(LEDGER_SQL), query(SCHEMA_SQL));
+  const state = inspectState(inputs, query(LEDGER_SQL), query(SCHEMA_SQL));
+  if (state.pending.length === 0) {
+    gate(
+      equal(query(CURSOR_SQL), [{ id: 1 }]),
+      '0032 GC cursor initialization differs; no automatic repair.',
+    );
+  }
+  return state;
 }
 export function bookmarkAt(run: Run, timestamp: string): string {
   const value = json(
@@ -205,18 +241,35 @@ export function applicationGate(
     'Fresh preflight does not match the reviewed plan digest.',
   );
   gate(
-    equal(state.pending, [APPROVED.migration]),
-    'Apply requires exactly 0031 pending; use plan to inspect an already-applied database.',
+    isApprovedSuffix(state.pending),
+    'Apply requires a nonempty approved 0031–0032 suffix; use plan to inspect an already-applied database.',
   );
 }
-export function applyOnly0031(run: Run, migration: string, temp: string) {
-  gate(digest(migration) === APPROVED.sha256, 'Staged migration hash differs.');
+export function isApprovedSuffix(pending: string[]) {
+  const names = APPROVED.migrations.map((item) => item.name);
+  return (
+    pending.length > 0 &&
+    pending.length <= names.length &&
+    equal(pending, names.slice(-pending.length))
+  );
+}
+export function applyApprovedSuffix(run: Run, inputs: Inputs, pending: string[], temp: string) {
+  gate(isApprovedSuffix(pending), 'Only the missing approved suffix may be staged.');
+  for (const name of pending) {
+    const approved = APPROVED.migrations.find((item) => item.name === name)!;
+    gate(
+      typeof inputs.migrations[name] === 'string' &&
+        digest(inputs.migrations[name]!) === approved.sha256,
+      'Staged migration hash differs.',
+    );
+  }
   const directory = mkdtempSync(join(temp, 'mikaki-0031-'));
   try {
     mkdirSync(join(directory, 'migrations'));
-    writeFileSync(join(directory, 'migrations', APPROVED.migration), migration, { mode: 0o600 });
+    for (const name of pending)
+      writeFileSync(join(directory, 'migrations', name), inputs.migrations[name]!, { mode: 0o600 });
     // Minimal derivative of the pinned production config: same account/DB/ledger,
-    // with a directory containing only the approved SQL, even if the ledger races.
+    // with only the missing approved suffix, even if the ledger races.
     const config = join(directory, 'wrangler.json');
     writeFileSync(
       config,
@@ -342,8 +395,8 @@ async function main() {
   };
   const artifacts = join(implementation, 'artifacts');
   mkdirSync(artifacts, { recursive: true });
-  const planPath = join(artifacts, 'migration-0031-plan.json');
-  const resultPath = join(artifacts, 'migration-0031-result.json');
+  const planPath = join(artifacts, 'migration-0031-0032-plan.json');
+  const resultPath = join(artifacts, 'migration-0031-0032-result.json');
   const identity = {
     workflow_commit: process.env.GITHUB_SHA!,
     run_id: process.env.GITHUB_RUN_ID!,
@@ -352,7 +405,7 @@ async function main() {
   try {
     if (mode === 'plan') {
       const state = inspect(run, inputs);
-      if (process.env.RECONCILE_MODE === 'apply-0031')
+      if (process.env.RECONCILE_MODE === 'apply-reviewed')
         applicationGate(state, process.env.APPROVED_PLAN_SHA256, process.env.CONFIRM_APPLY);
       const captured_at = new Date().toISOString();
       const bookmark = bookmarkAt(run, captured_at);
@@ -362,12 +415,12 @@ async function main() {
       );
       const plan: Plan = { approved: APPROVED, ...identity, captured_at, bookmark, state };
       save(planPath, plan);
-      const summary = `0031 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
+      const summary = `0031 + 0032 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
       console.log(summary);
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
       return;
     }
-    gate(process.env.RECONCILE_MODE === 'apply-0031', 'Apply mode was not selected.');
+    gate(process.env.RECONCILE_MODE === 'apply-reviewed', 'Apply mode was not selected.');
     const plan = JSON.parse(readFileSync(planPath, 'utf8')) as Plan;
     gate(
       equal(plan.approved, APPROVED) &&
@@ -393,17 +446,18 @@ async function main() {
       ...identity,
       preflight: plan,
       outcome: 'application_attempted_outcome_unverified',
+      attempted_migrations: state.pending,
     };
     save(resultPath, result);
     // The workflow must successfully retain the preflight artifact before this step.
-    applyOnly0031(run, inputs.migration, temporary);
+    applyApprovedSuffix(run, inputs, state.pending, temporary);
     const after = inspect(run, inputs);
     gate(after.pending.length === 0, 'Post-application migrations remain pending.');
     result.outcome = 'applied_and_schema_verified';
     result.after = after;
     save(resultPath, result);
     const summary =
-      '0031 applied; the full reviewed 0001–0031 ledger and both exact STRICT table definitions match. No migrations pending. No Worker was deployed.\n';
+      'Approved pending suffix applied; the full reviewed 0001–0032 ledger and exact table/index definitions match. No migrations pending. No Worker was deployed.\n';
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   } finally {
