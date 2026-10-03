@@ -7,7 +7,8 @@ pub async fn route(mut request: Request, context: RouteContext<()>) -> worker::R
     let Some(path) = context.param("operation") else {
         return error(404, "not_found");
     };
-    let read = request.method() == Method::Get && path == "status";
+    let read =
+        request.method() == Method::Get && ["status", "connections"].contains(&path.as_str());
     let write = request.method() == Method::Post
         && [
             "grants",

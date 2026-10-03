@@ -159,7 +159,13 @@ export async function denied(db: D1Database, grant: Grant, op: Operation) {
     .run();
 }
 
-export async function ownerStatus(db: D1Database, owner: Owner, keyId: string, resource: string) {
+export async function ownerStatus(
+  db: D1Database,
+  owner: Owner,
+  keyId: string,
+  resource: string,
+  connectionsOnly = false,
+) {
   if (!(await ownerActive(db, owner))) throw new Error('Access denied');
   const session = db.withSession('first-primary');
   const grants = await session
@@ -183,6 +189,11 @@ export async function ownerStatus(db: D1Database, owner: Owner, keyId: string, r
     )
     .bind(owner.account)
     .all();
+  // The v2 connection manager never loads legacy proposal or draft plaintext.
+  if (connectionsOnly) {
+    if (!(await ownerActive(db, owner))) throw new Error('Access denied');
+    return { grants: grants.results, audit: audit.results, proposals: [], drafts: [] };
+  }
   const proposals = await session
     .prepare(
       `SELECT p.* FROM agent_proposal p JOIN agent_grant g ON g.grant_id=p.grant_id

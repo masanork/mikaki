@@ -1,22 +1,30 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, setContext } from 'svelte';
   import { restoreActionFocus } from './action-focus.js';
-  import { vaultContext } from './vault-context.js';
+  import { vaultContext, OWNER_VAULT_CONTEXT, type OwnerVaultContext } from './vault-context.js';
   import ProductHeader from './ProductHeader.svelte';
   import AgentPanel from './AgentPanel.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
-  import { openOwnerVault } from './vault-owner-store.ts';
-  import type { OwnerKeySession } from './vault-owner-session.ts';
-  import { evaluateOwnerPrf as evaluate } from './vault-owner-controller.ts';
-  import { OwnerRecordStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
+  import { OwnerVaultController, evaluateOwnerPrf as evaluate } from './vault-owner-controller.ts';
+  import { OWNER_NOTE } from './vault-owner-record-store.ts';
+  import OwnerRecordEditor from './OwnerRecordEditor.svelte';
+  import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url, decodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
   let { locale }: { locale: Locale } = $props();
   const context = vaultContext(),
     scope = context.current();
-  let session: OwnerKeySession | null = null,
-    store: OwnerRecordStore | null = null;
+  let owner: OwnerVaultController | null = null,
+    store: OwnerWorkspaceStore | null = null;
+  setContext<OwnerVaultContext>(OWNER_VAULT_CONTEXT, {
+    current: () => {
+      if (!owner) throw new Error('owner_key_locked');
+      return owner;
+    },
+    registerDraft: context.registerDraft,
+    lock: context.lock,
+  });
   let ownerId = $state(''),
     credentialId = $state<Uint8Array<ArrayBuffer> | null>(null),
     agentBusy = $state(false);
@@ -41,20 +49,14 @@
   const active = $derived(threads.find((t) => t.id === selected));
   async function loadRecords() {
     if (!store) throw new Error('locked');
-    const profile = await store.read('personal', 'profile', 'profile');
+    const profile = await store.read('personal', 'name', 'name');
     try {
-      const v: unknown = profile.plaintext
-        ? JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(profile.plaintext))
-        : { name: '' };
-      if (
-        !v ||
-        typeof v !== 'object' ||
-        !('name' in v) ||
-        typeof v.name !== 'string' ||
-        v.name.length > 256
-      )
-        throw new Error('invalid profile');
-      name = savedName = v.name;
+      const value = profile.plaintext
+        ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(profile.plaintext)
+        : '';
+      if (profile.plaintext && (!value.length || value.length > 256))
+        throw new Error('invalid name');
+      name = savedName = value;
       profileRevision = profile.revision;
     } finally {
       profile.plaintext?.fill(0);
@@ -98,15 +100,15 @@
     try {
       await scope.verify();
       await scope.ensure();
-      const result = await openOwnerVault(scope, location.origin, evaluate);
-      session = result.session;
-      store = new OwnerRecordStore(scope, session, result.stored);
+      owner = new OwnerVaultController(scope, location.origin, evaluate);
+      await owner.open();
+      store = new OwnerWorkspaceStore(owner);
       await loadRecords();
       opened = true;
       status = m.productUnlocked();
     } catch (error) {
-      session?.dispose();
-      session = null;
+      owner?.dispose();
+      owner = null;
       store = null;
       name = savedName = '';
       threads = [];
@@ -129,9 +131,9 @@
     busy = true;
     try {
       if (!pending) {
-        const bytes = new TextEncoder().encode(JSON.stringify({ name }));
+        const bytes = new TextEncoder().encode(name);
         try {
-          pending = await store.prepare('personal', 'profile', 'profile', profileRevision, bytes);
+          pending = await store.prepare('personal', 'name', 'name', profileRevision, bytes);
         } finally {
           bytes.fill(0);
         }
@@ -254,8 +256,8 @@
       .catch(() => scope.end('unconfirmed'));
     const unregister = context.registerDraft(() => dirty || busy || agentBusy);
     const clear = () => {
-      session?.dispose();
-      session = null;
+      owner?.dispose();
+      owner = null;
       store = null;
       opened = false;
       name = savedName = '';
@@ -268,8 +270,8 @@
     };
     scope.signal.addEventListener('abort', clear, { once: true });
     const visibility = () => {
-      if (document.visibilityState === 'hidden') session?.suspend();
-      else if (session) void session.resume().catch(() => scope.end('unconfirmed'));
+      if (document.visibilityState === 'hidden') owner?.suspend();
+      else if (owner) void owner.resume().catch(() => scope.end('unconfirmed'));
     };
     document.addEventListener('visibilitychange', visibility);
     return () => {
@@ -297,9 +299,10 @@
     {:else}
       <div class="product-workspace">
         <nav class="product-nav" aria-label={m.vaultHeading()}>
-          <a href="#profile">{m.productProfile()}</a><a href="#threads"
-            >{m.ownerWorkspaceThreads()}</a
-          ><a href="#connections">{m.productSharing()}</a>
+          <a href="#profile">{m.productProfile()}</a><a href="#owner-note">{m.vaultNoteHeading()}</a
+          ><a href="#threads">{m.ownerWorkspaceThreads()}</a><a href="#connections"
+            >{m.productSharing()}</a
+          >
         </nav>
         <div class="product-content">
           <section id="profile" aria-labelledby="profile-heading" aria-busy={busy}>
@@ -331,10 +334,11 @@
               id="delete"
               class="product-danger"
               disabled={busy || pending !== null || !savedName}
-              onclick={() => remove('personal', 'profile', 'profile', profileRevision)}
+              onclick={() => remove('personal', 'name', 'name', profileRevision)}
               >{m.vaultDelete()}</button
             >
           </section>
+          <OwnerRecordEditor target={OWNER_NOTE} />
           <section id="threads" aria-labelledby="threads-heading" aria-busy={busy}>
             <h2 id="threads-heading">{m.ownerWorkspaceThreads()}</h2>
             <label for="archive-file">{m.ownerWorkspaceImport()}</label><input
@@ -389,7 +393,9 @@
       >
         <summary>{m.productSharing()}</summary>
         <p>{m.ownerWorkspaceSharingPending()}</p>
+        <p><a href={`/vault?lang=${locale}&storage=legacy-v1`}>{m.ownerWorkspaceLegacy()}</a></p>
         <AgentPanel
+          connectionsOnly
           {locale}
           onBusy={(value) => {
             agentBusy = value;
