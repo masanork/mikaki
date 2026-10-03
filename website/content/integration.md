@@ -91,4 +91,7 @@ Access TokenはUserInfo取得用であり、アプリ自身のAPI認可やセッ
 
 標準の手順は[OpenID Connect Core](https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth)と[PKCE仕様](https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2)を参照してください。mikakiの設定と検証の詳細は[RP連携ガイド](https://github.com/masanork/mikaki/blob/main/docs/rp-integration.md)、[クライアント登録手順](https://github.com/masanork/mikaki/blob/main/docs/rp-client-operations.md)、[セッション確認の契約](https://github.com/masanork/mikaki/blob/main/docs/rp-session-check.md)を参照してください。
 
-[セキュリティと対応状況](security.md)も確認してください。
+## 次に読む
+
+- [セキュリティと対応状況](security.md)：導入前に、必要な機能の試験範囲と正式認定の状況を確認します。
+- [はじめ方](getting-started.md)：連携アプリを使う人の登録・ログインの流れを確認します。

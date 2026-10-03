@@ -65,4 +65,9 @@ FIDO Allianceの[FIDO2 Server認定](https://fidoalliance.org/certification/func
 3. アプリ連携では、登録したコールバック、セッション確認、失効、ログアウト、OP停止時の挙動をそのアプリから検証します。
 4. 認定が利用条件になっている場合は、必要な製品・版・プロファイルの正式認定を確認します。このページの開発試験だけで要件を満たすとは判断しないでください。
 
-利用手順は[はじめ方](getting-started.md)、接続手順は[アプリ連携ガイド](integration.md)、実装と課題は[ソースコード](https://github.com/masanork/mikaki)と[セッションの制約](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md)を参照してください。
+実装と課題は[ソースコード](https://github.com/masanork/mikaki)と[セッションの制約](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md)を参照してください。
+
+## 次に読む
+
+- [はじめ方](getting-started.md)：利用上の制約を確認したら、登録とWeb版の操作へ進みます。
+- [アプリ連携ガイド](integration.md)：導入を検討する構成の接続手順と検証事項を確認します。

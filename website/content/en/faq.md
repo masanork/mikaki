@@ -45,3 +45,8 @@ No. Conformance evidence is published, but test results and formal certification
 ## Where can I find known issues?
 
 The [source code and documentation](https://github.com/masanork/mikaki) are public, with known work recorded in [Issues](https://github.com/masanork/mikaki/issues). Do not include invitation codes, login codes, tokens or personal data in public reports.
+
+## Read next
+
+- [Getting started](getting-started.md): Register with an invitation and start using the Web interface.
+- [Application integration guide](integration.md): Check registration and implementation for your own application.

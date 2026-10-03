@@ -91,4 +91,7 @@ Registration alone does not establish interoperability. Test code exchange, inva
 
 For the standard flow, see [OpenID Connect Core](https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth) and the [PKCE specification](https://www.rfc-editor.org/rfc/rfc7636.html#section-4.2). mikaki-specific details are in the [RP integration guide](https://github.com/masanork/mikaki/blob/main/docs/rp-integration.md), [client registration instructions](https://github.com/masanork/mikaki/blob/main/docs/rp-client-operations.md) and [session-check contract](https://github.com/masanork/mikaki/blob/main/docs/rp-session-check.md).
 
-Read [security and implementation status](security.md) before adopting mikaki.
+## Read next
+
+- [Security and implementation status](security.md): Review test scope and formal certification status before adoption.
+- [Getting started](getting-started.md): Review registration and sign-in from the user’s perspective.

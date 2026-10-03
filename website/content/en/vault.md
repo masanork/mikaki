@@ -75,3 +75,8 @@ Recovery is not guaranteed if every usable unlock method is lost. Real-device re
 ## Implementation details
 
 Read the [FAQ](faq.md) and [security and implementation status](security.md). Technical contracts are available in the [Vault design](https://github.com/masanork/mikaki/blob/main/docs/personal-vault.md), [passkey transfer](https://github.com/masanork/mikaki/blob/main/docs/vault-passkey-transfer.md) and [session and lock contract](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md).
+
+## Read next
+
+- [Passkeys and unlocking Vault](passkeys.md): Check an item that will not open, or prepare to change devices.
+- [Security and implementation status](security.md): Review encryption, test evidence and remaining verification.

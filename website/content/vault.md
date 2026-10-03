@@ -75,3 +75,8 @@ Vaultのロックとmikakiからのログアウトは別の操作です。共有
 ## 詳しい対応範囲
 
 [よくある質問](faq.md)と[セキュリティ・対応状況](security.md)を参照してください。技術的な仕様は[Vaultの設計](https://github.com/masanork/mikaki/blob/main/docs/personal-vault.md)、[パスキー移行](https://github.com/masanork/mikaki/blob/main/docs/vault-passkey-transfer.md)、[セッションとロック](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md)に公開しています。
+
+## 次に読む
+
+- [パスキーとVaultの解錠](passkeys.md)：項目が開けないときや、端末を変更する前に確認します。
+- [セキュリティと対応状況](security.md)：暗号化、試験記録、未検証の範囲を確認します。

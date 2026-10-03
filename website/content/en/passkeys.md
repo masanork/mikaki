@@ -46,3 +46,8 @@ Current Vault transfer works item by item. Transferring the name does not automa
 ## Specifications and verification scope
 
 W3C describes the general mechanism in the [WebAuthn PRF specification](https://www.w3.org/TR/webauthn-3/#prf-extension) and [biometric verification section](https://www.w3.org/TR/webauthn-3/#sctn-biometric-privacy). For mikaki's implementation and real-device evidence, see [implementation status](security.md), the [device compatibility record](https://github.com/masanork/mikaki/blob/main/docs/webauthn-device-compatibility.md) and [passkey transfer design](https://github.com/masanork/mikaki/blob/main/docs/vault-passkey-transfer.md).
+
+## Read next
+
+- [Using Vault](vault.md): After checking support, follow the saving, unlocking and transfer steps.
+- [Frequently asked questions](faq.md): Review invitations, app access and recovery limits.
