@@ -63,3 +63,5 @@ cargo llvm-cov report --locked --ignore-filename-regex '/tests\.rs$' --lcov --ou
 ```
 
 Next gates are broader browser journeys and risk-based Svelte thresholds informed by this source-mapped evidence, supported-browser/device qualification, actual production RP/callback/logout evidence, accessibility checks and operational restore/rollback drills. Coverage reports guide additions; they do not certify security or production readiness.
+
+The [2026-10-03 mobile and keyboard review](ui-experience-review.md) adds independent-read barriers, offscreen animation pause/resume assertions, asynchronous action focus checks and Chrome accessibility-tree name/landmark/reference checks to the browser suites. A separate opt-in HTTPS performance probe records repeatable lab timing and screenshots without CI wall-clock thresholds. These checks do not establish audible VoiceOver/TalkBack behavior or physical-device performance.
