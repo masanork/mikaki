@@ -1,4 +1,11 @@
 {
+  "ownerWorkspaceLegacy": "既存の旧形式の名前・ノートを開く",
+  "ownerWorkspaceThreads": "会話",
+  "ownerWorkspaceSaved": "保存しました。",
+  "ownerWorkspaceDeleteConfirm": "保存した情報を削除しますか？",
+  "ownerWorkspaceImport": "会話履歴を取り込む",
+  "ownerWorkspaceSearch": "会話を探す",
+  "ownerWorkspaceSharingPending": "接続の管理ができます。この画面のプロフィールや会話の共有には、まだ対応していません。",
   "title": "mikakiにログイン",
   "intro": "Passkeyで安全にログインします。",
   "invite": "招待コード",

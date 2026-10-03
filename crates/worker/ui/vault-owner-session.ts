@@ -1,7 +1,7 @@
 import { parseApprovedRecordNote, type ApprovedRecordNote } from './vault-record-approval.ts';
 import { sealApprovedOwnerRecord, type PreparedApprovedOwnerRecord } from './vault-owner-crypto.ts';
 import type { AgentRecipient } from './agent-crypto.ts';
-// Candidate owner-key lease. No production caller yet; never persists secrets.
+// Bounded owner-key lease; never persists secrets.
 import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 import {

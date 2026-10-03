@@ -2,7 +2,7 @@
   import { restoreActionFocus } from './action-focus.js';
   import { onMount, setContext, tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
-  import Vault from './Vault.svelte';
+  import Vault from './VaultRouter.svelte';
   import ProductHeader from './ProductHeader.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';

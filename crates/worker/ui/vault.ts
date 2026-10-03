@@ -6,8 +6,8 @@ import { initializeLocale } from './locale.js';
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid Vault page');
 
-// Explicit qualification preview; the existing default stays isolated until v2
-// disclosure/proposal/transfer adapters are independently qualified.
+// Preserve the explicit name/note qualification preview. The default presentation
+// is server-selected by VaultRouter; neither choice changes API authorization.
 const component =
   new URL(location.href).searchParams.get('storage') === 'owner-v2'
     ? OwnerVaultSession

@@ -282,16 +282,16 @@ CREATE TRIGGER vault_claim_release_record_grant_change AFTER UPDATE ON vault_rec
 BEGIN UPDATE vault_claim_release SET status='revoked',version=version+1,updated_at=NEW.updated_at
  WHERE account_id=NEW.account_id AND source_storage_version=2 AND source_vault_id=NEW.vault_id
  AND source_collection_id=NEW.collection_id AND source_record_id=NEW.record_id AND status='active'; END;
-CREATE TRIGGER vault_record_share_head_change AFTER UPDATE ON vault_owner_record_head 
+CREATE TRIGGER vault_record_share_head_change AFTER UPDATE ON vault_owner_record_head
 BEGIN UPDATE vault_record_grant SET status='revoked',version=version+1,updated_at=unixepoch()
  WHERE status='active' AND account_id=NEW.account_id AND vault_id=NEW.vault_id AND collection_id=NEW.collection_id AND record_id=NEW.record_id; END;
-CREATE TRIGGER vault_record_share_root_change AFTER UPDATE ON vault_owner_key_head 
+CREATE TRIGGER vault_record_share_root_change AFTER UPDATE ON vault_owner_key_head
 BEGIN UPDATE vault_record_grant SET status='revoked',version=version+1,updated_at=unixepoch()
  WHERE status='active' AND account_id=NEW.account_id; END;
-CREATE TRIGGER vault_record_share_policy_change AFTER UPDATE ON vault_record_share_policy 
+CREATE TRIGGER vault_record_share_policy_change AFTER UPDATE ON vault_record_share_policy
 BEGIN UPDATE vault_record_grant SET status='revoked',version=version+1,updated_at=unixepoch()
  WHERE status='active' AND 1; END;
-CREATE TRIGGER vault_record_share_recipient_change AFTER UPDATE ON vault_recipient_key 
+CREATE TRIGGER vault_record_share_recipient_change AFTER UPDATE ON vault_recipient_key
 BEGIN UPDATE vault_record_grant SET status='revoked',version=version+1,updated_at=unixepoch()
  WHERE status='active' AND envelope_id IN (SELECT envelope_id FROM vault_record_recipient_envelope WHERE recipient_key_id=NEW.key_id); END;
 CREATE TRIGGER vault_record_share_account_change AFTER UPDATE ON account_security WHEN NEW.active!=OLD.active OR NEW.epoch!=OLD.epoch

@@ -24,6 +24,7 @@
 
   let {
     opened,
+    connectionsOnly = false,
     sourceRevision,
     ownerId,
     loadName,
@@ -35,6 +36,8 @@
   }: {
     onBusy?: (busy: boolean) => void;
     opened: boolean;
+    // v2 callers may manage existing connections, but cannot act on v1 data.
+    connectionsOnly?: boolean;
     sourceRevision: number;
     ownerId: string;
     loadName: () => Promise<string>;
@@ -132,6 +135,14 @@
   }
   async function checkSources(account = ownerId): Promise<boolean> {
     if (!account) return false;
+    if (connectionsOnly) {
+      try {
+        const response = await fetch('/vault/session', { cache: 'no-store' });
+        return response.ok && (await response.json()).account_id === account && ownerId === account;
+      } catch {
+        return false;
+      }
+    }
     const sequence = ++checkSequence;
     checkingSources = true;
     const observations = await Promise.allSettled([
@@ -223,7 +234,8 @@
     owner: string;
   } | null = $state(null);
   const allowed = $derived(
-    opened &&
+    !connectionsOnly &&
+      opened &&
       sourceRevision > 0 &&
       selected &&
       !selectedNote &&
@@ -232,7 +244,8 @@
       provider.trim().length > 0,
   );
   const localAllowed = $derived(
-    ownerId.length > 0 &&
+    !connectionsOnly &&
+      ownerId.length > 0 &&
       credentialId !== null &&
       (selected || selectedNote) &&
       (!selected || (opened && sourceRevision > 0)) &&
@@ -349,6 +362,7 @@
 
   async function commitNote(proposal: AttributeProposal): Promise<void> {
     if (
+      connectionsOnly ||
       busy ||
       !credentialId ||
       !remote ||
@@ -438,7 +452,9 @@
       return;
     }
     try {
-      const response = await fetch('/vault/agents/status', { cache: 'no-store' });
+      const response = await fetch(`/vault/agents/${connectionsOnly ? 'connections' : 'status'}`, {
+        cache: 'no-store',
+      });
       if (ownerId !== account || sequence !== statusSequence) return;
       if (!response.ok) {
         remote = null;
@@ -630,7 +646,7 @@
   }
 
   function downloadLocal(): void {
-    if (!local) return;
+    if (connectionsOnly || !local) return;
     download('agent-export.json', local.bundle);
     if (!exports.some((item) => item.id === local!.id)) {
       exports = [
@@ -646,6 +662,7 @@
   }
 
   function download(name: string, body: string): void {
+    if (connectionsOnly) return;
     scope.assert();
     const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
     const anchor = document.createElement('a');
@@ -729,7 +746,7 @@
     path: 'revoke' | 'decide' | 'attribute-capability' | 'attribute-decide',
     body: unknown,
   ): Promise<void> {
-    if (busy) return;
+    if (busy || (connectionsOnly && path !== 'revoke')) return;
     busy = true;
     try {
       const response = await fetch(`/vault/agents/${path}`, {
@@ -756,6 +773,14 @@
   }
 
   $effect(() => {
+    if (connectionsOnly) {
+      notePending = null;
+      local = null;
+      pending = null;
+      credential = '';
+      noteConsent = false;
+      consent = false;
+    }
     if (notePending && notePending.owner !== ownerId) notePending = null;
     if (local && local.selection !== selection) local = null;
     if (!opened || sourceRevision < 1) {
@@ -807,162 +832,166 @@
       oauthBusy = value;
     }}
   />
-  <section aria-label={m.agentSourcesHeading()}>
-    <h3>{m.agentSourcesHeading()}</h3>
-    <p>{m.agentSourcesExplanation()}</p>
-    <button
-      type="button"
-      disabled={busy || checkingSources || !ownerId}
-      onclick={() => {
-        void checkSources();
-      }}>{m.agentCheckSources()}</button
-    >
-    {#each sourceAttributes as attribute}
-      <div data-source={attribute}>
-        <h4>{sourceLabel(attribute)}</h4>
-        {#if sources[attribute].head}
-          {#if sources[attribute].head!.revision > 0}
-            <p>{m.agentSourceObserved({ revision: sources[attribute].head!.revision })}</p>
+  {#if !connectionsOnly}
+    <section aria-label={m.agentSourcesHeading()}>
+      <h3>{m.agentSourcesHeading()}</h3>
+      <p>{m.agentSourcesExplanation()}</p>
+      <button
+        type="button"
+        disabled={busy || checkingSources || !ownerId}
+        onclick={() => {
+          void checkSources();
+        }}>{m.agentCheckSources()}</button
+      >
+      {#each sourceAttributes as attribute}
+        <div data-source={attribute}>
+          <h4>{sourceLabel(attribute)}</h4>
+          {#if sources[attribute].head}
+            {#if sources[attribute].head!.revision > 0}
+              <p>{m.agentSourceObserved({ revision: sources[attribute].head!.revision })}</p>
+            {/if}
+            <p>
+              {m.agentSourceChecked({
+                time: new Date(sources[attribute].head!.checkedAt).toLocaleString(locale),
+              })}
+            </p>
           {/if}
           <p>
-            {m.agentSourceChecked({
-              time: new Date(sources[attribute].head!.checkedAt).toLocaleString(locale),
-            })}
+            {checkingSources
+              ? m.agentSourceChecking()
+              : sources[attribute].failed
+                ? m.agentSourceUnknown()
+                : sources[attribute].head?.state === 'saved'
+                  ? m.agentSourceSaved()
+                  : relation(attribute, 0)}
           </p>
-        {/if}
-        <p>
-          {checkingSources
-            ? m.agentSourceChecking()
-            : sources[attribute].failed
-              ? m.agentSourceUnknown()
-              : sources[attribute].head?.state === 'saved'
-                ? m.agentSourceSaved()
-                : relation(attribute, 0)}
-        </p>
-        {#if (attribute === 'name' ? sourceRevision : noteRevision) > 0}
-          <p>
-            {m.agentEditorRevision({
-              revision: attribute === 'name' ? sourceRevision : noteRevision,
-            })} · {relation(attribute, attribute === 'name' ? sourceRevision : noteRevision)}
-          </p>
-        {/if}
-      </div>
-    {/each}
-  </section>
-  <fieldset disabled={busy || pending !== null}>
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={selected}
-        disabled={(!opened || sourceRevision < 1) && !selected}
-      />{m.agentSelectName()}</label
-    >
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={selectedNote}
-        disabled={!credentialId || (noteRevision < 1 && !selectedNote)}
-      />{m.agentSelectLocalNote()}</label
-    >
-    <p>{m.agentLocalNoteScope()}</p>
-    <label>{m.agentDelegate()}<input type="text" maxlength="80" bind:value={delegate} /></label>
-    <label>{m.agentProvider()}<input type="text" maxlength="160" bind:value={provider} /></label>
-    <label
-      >{m.agentLifetime()}<select bind:value={ttl}
-        ><option value={3600}>{m.agentOneHour()}</option><option value={14400}
-          >{m.agentFourHours()}</option
-        ><option value={86400}>{m.agentOneDay()}</option></select
-      ></label
-    >
-    <p>{m.agentReadScope()}</p>
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={actions}
-        disabled={selectedNote}
-      />{m.agentActionScope()}</label
-    >
-    <label><input type="checkbox" bind:checked={consent} />{m.agentConsent()}</label>
-  </fieldset>
-  <p>{m.agentLocalDisclosure()}</p>
-  <button
-    class="product-primary"
-    type="button"
-    disabled={!localAllowed || busy || pending !== null}
-    onclick={prepareLocal}>{m.agentPrepareLocal()}</button
-  >
-  {#if local}
-    <h3>{m.agentLocalPreview()}</h3>
-    <p>
-      {m.agentLocalRecipient({
-        delegate: delegate.trim(),
-        provider: provider.trim(),
-        expiry: local.expiry,
-      })}
-    </p>
-    {#each local.preview as item}
-      <h4>{item.label}</h4>
-      <pre style="white-space: pre-wrap; overflow-wrap: anywhere;">{item.text}</pre>
-    {/each}
-    <button type="button" onclick={downloadLocal}>{m.agentDownloadExport()}</button>
-    <button type="button" onclick={() => local && download('agent-grant.json', local.grant)}
-      >{m.agentDownloadGrant()}</button
-    >
-  {/if}
-  {#if exports.length}
-    <section aria-label={m.agentExportHistoryHeading()}>
-      <h3>{m.agentExportHistoryHeading()}</h3>
-      <p>{m.agentExportHistoryExplanation()}</p>
-      {#each exports as item (item.id)}
-        <div>
-          <p>{m.agentExportStarted({ time: new Date(item.copiedAt).toLocaleString(locale) })}</p>
-          <p>{m.agentUntil({ expiry: item.expiry })}</p>
-          {#each item.documents as document}
+          {#if (attribute === 'name' ? sourceRevision : noteRevision) > 0}
             <p>
-              {sourceLabel(document.attribute)} · {m.agentSnapshotRevision({
-                revision: document.revision,
-              })} · {relation(document.attribute, document.revision)}
+              {m.agentEditorRevision({
+                revision: attribute === 'name' ? sourceRevision : noteRevision,
+              })} · {relation(attribute, attribute === 'name' ? sourceRevision : noteRevision)}
             </p>
-            <p>
-              {m.agentSourceChecked({ time: new Date(document.checkedAt).toLocaleString(locale) })}
-            </p>
-          {/each}
+          {/if}
         </div>
       {/each}
     </section>
-  {/if}
-  {#if remote}
-    <p>{remote.recipient.resource}</p>
+    <fieldset disabled={busy || pending !== null}>
+      <label
+        ><input
+          type="checkbox"
+          bind:checked={selected}
+          disabled={(!opened || sourceRevision < 1) && !selected}
+        />{m.agentSelectName()}</label
+      >
+      <label
+        ><input
+          type="checkbox"
+          bind:checked={selectedNote}
+          disabled={!credentialId || (noteRevision < 1 && !selectedNote)}
+        />{m.agentSelectLocalNote()}</label
+      >
+      <p>{m.agentLocalNoteScope()}</p>
+      <label>{m.agentDelegate()}<input type="text" maxlength="80" bind:value={delegate} /></label>
+      <label>{m.agentProvider()}<input type="text" maxlength="160" bind:value={provider} /></label>
+      <label
+        >{m.agentLifetime()}<select bind:value={ttl}
+          ><option value={3600}>{m.agentOneHour()}</option><option value={14400}
+            >{m.agentFourHours()}</option
+          ><option value={86400}>{m.agentOneDay()}</option></select
+        ></label
+      >
+      <p>{m.agentReadScope()}</p>
+      <label
+        ><input
+          type="checkbox"
+          bind:checked={actions}
+          disabled={selectedNote}
+        />{m.agentActionScope()}</label
+      >
+      <label><input type="checkbox" bind:checked={consent} />{m.agentConsent()}</label>
+    </fieldset>
+    <p>{m.agentLocalDisclosure()}</p>
     <button
       class="product-primary"
       type="button"
-      disabled={!remote.recipient.enabled || !allowed || busy}
-      onclick={createRemote}>{pending ? m.agentRetryRemote() : m.agentCreateRemote()}</button
+      disabled={!localAllowed || busy || pending !== null}
+      onclick={prepareLocal}>{m.agentPrepareLocal()}</button
     >
-  {:else}<p>{m.agentRemoteUnavailable()}</p>{/if}
-  {#if credential}
-    <label>{m.agentCredential()}<input type="password" readonly value={credential} /></label>
-    <button
-      type="button"
-      onclick={() => {
-        void scope
-          .ensure()
-          .then(() => {
-            scope.assert();
-            return navigator.clipboard.writeText(credential);
-          })
-          .catch(() => {
-            status = m.agentFailed();
-          });
-      }}>{m.agentCopyCredential()}</button
-    >
-    <button
-      class="product-danger"
-      type="button"
-      onclick={() => {
-        credential = '';
-      }}>{m.agentForgetCredential()}</button
-    >
+    {#if local}
+      <h3>{m.agentLocalPreview()}</h3>
+      <p>
+        {m.agentLocalRecipient({
+          delegate: delegate.trim(),
+          provider: provider.trim(),
+          expiry: local.expiry,
+        })}
+      </p>
+      {#each local.preview as item}
+        <h4>{item.label}</h4>
+        <pre style="white-space: pre-wrap; overflow-wrap: anywhere;">{item.text}</pre>
+      {/each}
+      <button type="button" onclick={downloadLocal}>{m.agentDownloadExport()}</button>
+      <button type="button" onclick={() => local && download('agent-grant.json', local.grant)}
+        >{m.agentDownloadGrant()}</button
+      >
+    {/if}
+    {#if exports.length}
+      <section aria-label={m.agentExportHistoryHeading()}>
+        <h3>{m.agentExportHistoryHeading()}</h3>
+        <p>{m.agentExportHistoryExplanation()}</p>
+        {#each exports as item (item.id)}
+          <div>
+            <p>{m.agentExportStarted({ time: new Date(item.copiedAt).toLocaleString(locale) })}</p>
+            <p>{m.agentUntil({ expiry: item.expiry })}</p>
+            {#each item.documents as document}
+              <p>
+                {sourceLabel(document.attribute)} · {m.agentSnapshotRevision({
+                  revision: document.revision,
+                })} · {relation(document.attribute, document.revision)}
+              </p>
+              <p>
+                {m.agentSourceChecked({
+                  time: new Date(document.checkedAt).toLocaleString(locale),
+                })}
+              </p>
+            {/each}
+          </div>
+        {/each}
+      </section>
+    {/if}
+    {#if remote}
+      <p>{remote.recipient.resource}</p>
+      <button
+        class="product-primary"
+        type="button"
+        disabled={!remote.recipient.enabled || !allowed || busy}
+        onclick={createRemote}>{pending ? m.agentRetryRemote() : m.agentCreateRemote()}</button
+      >
+    {:else}<p>{m.agentRemoteUnavailable()}</p>{/if}
+    {#if credential}
+      <label>{m.agentCredential()}<input type="password" readonly value={credential} /></label>
+      <button
+        type="button"
+        onclick={() => {
+          void scope
+            .ensure()
+            .then(() => {
+              scope.assert();
+              return navigator.clipboard.writeText(credential);
+            })
+            .catch(() => {
+              status = m.agentFailed();
+            });
+        }}>{m.agentCopyCredential()}</button
+      >
+      <button
+        class="product-danger"
+        type="button"
+        onclick={() => {
+          credential = '';
+        }}>{m.agentForgetCredential()}</button
+      >
+    {/if}
   {/if}
   <p role="status">{busy ? m.agentBusy() : status}</p>
   <button type="button" disabled={busy || checkingSources || !ownerId} onclick={refresh}
@@ -977,15 +1006,17 @@
       disabled={busy}
       onclick={() => mutate('revoke', { grant_id: null })}>{m.agentRevokeAll()}</button
     >
-    <p>{m.agentNoteScope()}</p>
-    <p>{m.agentNoteRevision({ revision: String(remote.note_revision) })}</p>
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={noteConsent}
-        disabled={busy}
-      />{m.agentNoteConsent()}</label
-    >
+    {#if !connectionsOnly}
+      <p>{m.agentNoteScope()}</p>
+      <p>{m.agentNoteRevision({ revision: String(remote.note_revision) })}</p>
+      <label
+        ><input
+          type="checkbox"
+          bind:checked={noteConsent}
+          disabled={busy}
+        />{m.agentNoteConsent()}</label
+      >
+    {/if}
     {#each remote.grants as grant (grant.grant_id)}
       <div>
         <p>{grant.delegate} · {grant.provider} · {grant.resource}</p>
@@ -1000,7 +1031,7 @@
           {m.agentShareCreated({ time: new Date(grant.created_at * 1000).toLocaleString(locale) })}
         </p>
         {#if grant.operations.includes('"execute"')}<p>{m.agentActionScope()}</p>{/if}
-        {#if grant.active && grant.operations.includes('"propose"')}
+        {#if !connectionsOnly && grant.active && grant.operations.includes('"propose"')}
           <button
             type="button"
             disabled={busy || !noteConsent}
@@ -1030,111 +1061,113 @@
           {new Date(event.created_at * 1000).toLocaleString(locale)} · {event.operation} · {event.outcome}
         </li>{/each}
     </ul>
-    <h3>{m.agentProposalHeading()}</h3>
-    {#each remote.proposals as proposal (proposal.proposal_id)}
-      <div>
-        <h4>{proposal.title}</h4>
-        <pre>{proposal.text ?? ''}</pre>
-        {#if proposal.state === 'pending' && proposal.expires_at * 1000 > Date.now()}
-          <button
-            class="product-primary"
-            type="button"
-            disabled={busy}
-            onclick={() =>
-              mutate('decide', {
-                proposal_id: proposal.proposal_id,
-                request_hash: proposal.request_hash,
-                approve: true,
-              })}>{m.agentApprove()}</button
-          >
-          <button
-            class="product-danger"
-            type="button"
-            disabled={busy}
-            onclick={() =>
-              mutate('decide', {
-                proposal_id: proposal.proposal_id,
-                request_hash: proposal.request_hash,
-                approve: false,
-              })}>{m.agentReject()}</button
-          >
-        {/if}
-      </div>
-    {/each}
-    <h3>{m.agentDraftHeading()}</h3>
-    {#each remote.drafts as draft (draft.draft_id)}<div>
-        <h4>{draft.title}</h4>
-        <pre>{draft.text}</pre>
-      </div>{/each}
-    <h3>{m.agentNoteProposalHeading()}</h3>
-    <p>{m.agentNoteDecisionOnly()}</p>
-    {#each remote.attribute_proposals as proposal (proposal.proposal_id)}
-      <div>
-        <p>{proposal.delegate} · {proposal.provider}</p>
-        <p>
-          {m.agentNoteRevision({ revision: String(proposal.base_revision) })} · {proposal.state}
-        </p>
-        <p>
-          {m.agentUntil({ expiry: new Date(proposal.expires_at * 1000).toLocaleString(locale) })}
-        </p>
-        {#if proposal.payload !== null}
-          <h4>{proposalValue(proposal.payload).title}</h4>
-          <pre>{proposalValue(proposal.payload).text}</pre>
-        {/if}
-        {#if proposal.state === 'pending' && proposal.expires_at * 1000 > Date.now() && proposal.base_revision === remote.note_revision}
-          <button
-            class="product-primary"
-            type="button"
-            disabled={busy}
-            onclick={() =>
-              mutate('attribute-decide', {
-                proposal_id: proposal.proposal_id,
-                request_hash: proposal.request_hash,
-                approve: true,
-              })}>{m.agentNoteApprove()}</button
-          >
-          <button
-            class="product-danger"
-            type="button"
-            disabled={busy}
-            onclick={() =>
-              mutate('attribute-decide', {
-                proposal_id: proposal.proposal_id,
-                request_hash: proposal.request_hash,
-                approve: false,
-              })}>{m.agentReject()}</button
-          >
-        {/if}
-        {#if proposal.state === 'approved' && proposal.payload !== null && proposal.expires_at * 1000 > Date.now() && proposal.base_revision === remote.note_revision}
-          <button
-            class="product-primary"
-            type="button"
-            disabled={busy ||
-              !credentialId ||
-              (notePending !== null && notePending.proposal.proposal_id !== proposal.proposal_id)}
-            onclick={() => commitNote(proposal)}>{m.agentNoteCommit()}</button
-          >
-        {/if}
-        {#if proposal.state === 'committed'}<p>
-            {m.agentNoteCommittedRevision({ revision: String(proposal.result_revision) })}
-          </p>{/if}
-      </div>
-    {/each}
-    {#if notePending}
-      <button
-        type="button"
-        disabled={busy}
-        onclick={() => notePending && commitNote(notePending.proposal)}
-        >{m.agentNoteCommitRetry()}</button
-      >
-      <button
-        type="button"
-        disabled={busy}
-        onclick={() => {
-          notePending = null;
-          void refresh();
-        }}>{m.agentNoteCommitForget()}</button
-      >
+    {#if !connectionsOnly}
+      <h3>{m.agentProposalHeading()}</h3>
+      {#each remote.proposals as proposal (proposal.proposal_id)}
+        <div>
+          <h4>{proposal.title}</h4>
+          <pre>{proposal.text ?? ''}</pre>
+          {#if proposal.state === 'pending' && proposal.expires_at * 1000 > Date.now()}
+            <button
+              class="product-primary"
+              type="button"
+              disabled={busy}
+              onclick={() =>
+                mutate('decide', {
+                  proposal_id: proposal.proposal_id,
+                  request_hash: proposal.request_hash,
+                  approve: true,
+                })}>{m.agentApprove()}</button
+            >
+            <button
+              class="product-danger"
+              type="button"
+              disabled={busy}
+              onclick={() =>
+                mutate('decide', {
+                  proposal_id: proposal.proposal_id,
+                  request_hash: proposal.request_hash,
+                  approve: false,
+                })}>{m.agentReject()}</button
+            >
+          {/if}
+        </div>
+      {/each}
+      <h3>{m.agentDraftHeading()}</h3>
+      {#each remote.drafts as draft (draft.draft_id)}<div>
+          <h4>{draft.title}</h4>
+          <pre>{draft.text}</pre>
+        </div>{/each}
+      <h3>{m.agentNoteProposalHeading()}</h3>
+      <p>{m.agentNoteDecisionOnly()}</p>
+      {#each remote.attribute_proposals as proposal (proposal.proposal_id)}
+        <div>
+          <p>{proposal.delegate} · {proposal.provider}</p>
+          <p>
+            {m.agentNoteRevision({ revision: String(proposal.base_revision) })} · {proposal.state}
+          </p>
+          <p>
+            {m.agentUntil({ expiry: new Date(proposal.expires_at * 1000).toLocaleString(locale) })}
+          </p>
+          {#if proposal.payload !== null}
+            <h4>{proposalValue(proposal.payload).title}</h4>
+            <pre>{proposalValue(proposal.payload).text}</pre>
+          {/if}
+          {#if proposal.state === 'pending' && proposal.expires_at * 1000 > Date.now() && proposal.base_revision === remote.note_revision}
+            <button
+              class="product-primary"
+              type="button"
+              disabled={busy}
+              onclick={() =>
+                mutate('attribute-decide', {
+                  proposal_id: proposal.proposal_id,
+                  request_hash: proposal.request_hash,
+                  approve: true,
+                })}>{m.agentNoteApprove()}</button
+            >
+            <button
+              class="product-danger"
+              type="button"
+              disabled={busy}
+              onclick={() =>
+                mutate('attribute-decide', {
+                  proposal_id: proposal.proposal_id,
+                  request_hash: proposal.request_hash,
+                  approve: false,
+                })}>{m.agentReject()}</button
+            >
+          {/if}
+          {#if proposal.state === 'approved' && proposal.payload !== null && proposal.expires_at * 1000 > Date.now() && proposal.base_revision === remote.note_revision}
+            <button
+              class="product-primary"
+              type="button"
+              disabled={busy ||
+                !credentialId ||
+                (notePending !== null && notePending.proposal.proposal_id !== proposal.proposal_id)}
+              onclick={() => commitNote(proposal)}>{m.agentNoteCommit()}</button
+            >
+          {/if}
+          {#if proposal.state === 'committed'}<p>
+              {m.agentNoteCommittedRevision({ revision: String(proposal.result_revision) })}
+            </p>{/if}
+        </div>
+      {/each}
+      {#if notePending}
+        <button
+          type="button"
+          disabled={busy}
+          onclick={() => notePending && commitNote(notePending.proposal)}
+          >{m.agentNoteCommitRetry()}</button
+        >
+        <button
+          type="button"
+          disabled={busy}
+          onclick={() => {
+            notePending = null;
+            void refresh();
+          }}>{m.agentNoteCommitForget()}</button
+        >
+      {/if}
     {/if}
   {/if}
 </section>

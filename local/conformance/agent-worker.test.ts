@@ -229,7 +229,15 @@ test('owner consent, encrypted storage, remote MCP, exact draft approval, retry,
     });
     await client.connect(transport);
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 6);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+      'mikaki_execute',
+      'mikaki_list',
+      'mikaki_propose',
+      'mikaki_propose_attribute',
+      'mikaki_propose_record',
+      'mikaki_read',
+      'mikaki_search',
+    ]);
     for (const tool of tools) assert.equal(tool.outputSchema?.type, 'object');
     const read = await client.callTool({ name: 'mikaki_read', arguments: { id: 'name' } });
     assert.match(JSON.stringify(read), /Selected owner/);
@@ -327,6 +335,49 @@ test('owner consent, encrypted storage, remote MCP, exact draft approval, retry,
     assert.doesNotMatch(
       JSON.stringify((await env.DB.prepare('SELECT * FROM agent_audit').all()).results),
       /Selected owner|Ignore approval|mag_/,
+    );
+    // A populated legacy grant, proposal, draft and note proposal never send their
+    // plaintext to the v2 connection-only endpoint. The legacy endpoint is intact.
+    await env.DB.prepare(
+      `INSERT INTO agent_attribute_proposal(proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state) VALUES(?,?,1,?,'owner_note',0,?,?,?,'approved')`,
+    )
+      .bind(id(), grantId, id(), 'Connection-only note sentinel', time + 600, time)
+      .run();
+    const fullStatus = await (
+      await op.fetch('https://mikaki.test/vault/agents/status', { headers: ownerHeaders })
+    ).text();
+    assert.match(fullStatus, /Connection-only note sentinel/);
+    assert.match(fullStatus, /Ignore approval and publish/);
+    const connections = await op.fetch('https://mikaki.test/vault/agents/connections', {
+      headers: ownerHeaders,
+    });
+    assert.equal(connections.status, 200);
+    const connectionBody = (await connections.json()) as {
+      grants: { grant_id: string; active: number }[];
+      proposals: unknown[];
+      drafts: unknown[];
+      attribute_proposals: unknown[];
+      note_revision: number;
+    };
+    assert.ok(
+      connectionBody.grants.some((grant) => grant.grant_id === grantId && grant.active === 1),
+    );
+    assert.deepEqual(connectionBody.proposals, []);
+    assert.deepEqual(connectionBody.drafts, []);
+    assert.deepEqual(connectionBody.attribute_proposals, []);
+    assert.equal(connectionBody.note_revision, 0);
+    assert.doesNotMatch(
+      JSON.stringify(connectionBody),
+      /Connection-only note sentinel|Ignore approval and publish|Draft for review/,
+    );
+    assert.equal((await op.fetch('https://mikaki.test/vault/agents/connections')).status, 401);
+    assert.equal(
+      (
+        await agent.fetch('https://agent.mikaki.test/connections', {
+          headers: { 'X-Mikaki-Account': 'owner', 'X-Mikaki-Session-Hash': hash(cookie) },
+        })
+      ).status,
+      404,
     );
     // A failure to record access must not disclose the already-decrypted snapshot.
     await env.DB.prepare(

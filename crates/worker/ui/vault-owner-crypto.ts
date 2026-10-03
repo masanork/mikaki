@@ -2,7 +2,7 @@ import { parseApprovedRecordNote, type ApprovedRecordNote } from './vault-record
 import { sealApprovedRecordProof } from './agent-record-proof.ts';
 import type { AgentRecipient } from './agent-crypto.ts';
 import type { RecordAgentEnvelope } from './agent-record-crypto.ts';
-// Candidate v2 owner-key format. Not wired to production Vault storage/UI.
+// Versioned owner-key and record crypto for the owner Vault.
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 import { sealRecordUserInfoDataKey } from './vault-record-recipient-envelope.ts';
 import type { RecordUserInfoRecipient } from './recipient-directory-v2.ts';
