@@ -30,6 +30,7 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 自分のWebアプリにパスキー認証を組み込みたい方へ。OpenID Connectの登録、Authorization CodeとPKCE、セッション確認の手順を案内します。
 
 - [アプリ連携ガイドを読む](integration.md)
+- [仕様・対応標準を確認する](specifications.md)
 - [GitHubで実装を確認する](https://github.com/masanork/mikaki)
 
 ## 安全性を評価したい方へ
@@ -37,4 +38,5 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 採用前に、何を検証できていて、何が残っているか確認したい方へ。暗号化と復旧の制約、OpenID・FAPI・FIDOの試験記録と正式認定の状況を説明します。
 
 - [セキュリティと対応状況を確認する](security.md)
+- [Conformance試験結果の一覧を見る](conformance.md)
 - [Vaultの共有と復旧の制約を読む](vault.md)

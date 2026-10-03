@@ -1,9 +1,65 @@
 [
-  { "slug": "index", "labels": { "ja": "概要", "en": "Overview" } },
-  { "slug": "getting-started", "labels": { "ja": "はじめ方", "en": "Getting started" } },
-  { "slug": "passkeys", "labels": { "ja": "パスキーと解錠", "en": "Passkeys" } },
-  { "slug": "vault", "labels": { "ja": "Vaultの使い方", "en": "Using Vault" } },
-  { "slug": "faq", "labels": { "ja": "よくある質問", "en": "FAQ" } },
-  { "slug": "integration", "labels": { "ja": "アプリ連携", "en": "Integration" } },
-  { "slug": "security", "labels": { "ja": "対応状況", "en": "Status" } }
+  {
+    "slug": "index",
+    "labels": {
+      "ja": "概要",
+      "en": "Overview"
+    }
+  },
+  {
+    "slug": "getting-started",
+    "labels": {
+      "ja": "はじめ方",
+      "en": "Getting started"
+    }
+  },
+  {
+    "slug": "passkeys",
+    "labels": {
+      "ja": "パスキーと解錠",
+      "en": "Passkeys"
+    }
+  },
+  {
+    "slug": "vault",
+    "labels": {
+      "ja": "Vaultの使い方",
+      "en": "Using Vault"
+    }
+  },
+  {
+    "slug": "faq",
+    "labels": {
+      "ja": "よくある質問",
+      "en": "FAQ"
+    }
+  },
+  {
+    "slug": "integration",
+    "labels": {
+      "ja": "アプリ連携",
+      "en": "Integration"
+    }
+  },
+  {
+    "slug": "security",
+    "labels": {
+      "ja": "対応状況",
+      "en": "Status"
+    }
+  },
+  {
+    "slug": "specifications",
+    "labels": {
+      "ja": "仕様・対応標準",
+      "en": "Specifications"
+    }
+  },
+  {
+    "slug": "conformance",
+    "labels": {
+      "ja": "試験結果一覧",
+      "en": "Conformance"
+    }
+  }
 ]
