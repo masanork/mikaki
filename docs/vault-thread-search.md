@@ -61,3 +61,19 @@ For an AI, select the actual plaintext-processing endpoint and allowed threads/a
 After the owner-key session and first thread archive exist, build a disposable browser probe using fictional conversations and a pinned SQLite WASM runtime. Check exact Japanese short/mixed-term behavior, update/retraction/deletion/rebuild, matching anchors and scope isolation. Verify exported-image round trips, stale/corrupt snapshots, aborted unlocks and no results after lock. Inspect browser storage to ensure plaintext/index/key bytes are not persisted.
 
 Measure 1,000 / 10,000 / 100,000 fictional messages on intended desktop/mobile browsers: image/index size, unlock-to-first-use latency, delta application, peak Worker memory and p50/p95 query latency for long and short terms. Keep the normal Vault opening path usable while indexing, expose incomplete coverage, and agree corpus/device budgets before choosing persistent partitions or a custom tokenizer. The small Node probe above does not qualify any of those gates.
+
+## Browser probe evidence and consequence
+
+The [reproducible browser probe](../design/probes/vault-search/README.md) and [raw results](../design/probes/vault-search/results.json) qualify the basic mechanics locally with `@sqlite.org/sqlite-wasm` 3.53.4-build2. One Apple M3 / 24 GiB development-machine run exercised Chromium 153, Firefox 155 and Playwright WebKit 26.6, each at 1440px and 390px viewport widths. Both viewports use desktop engines/hardware; no smartphone performance claim follows.
+
+| Fictional messages | SQLite image | Initial build, engine range | Restore, engine range | WASM heap capacity | Missing one-character search p95 |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 | 1.5 MiB | 42–64 ms | 1–3 ms | 8 MiB | 0.5–2 ms |
+| 10,000 | 14.2 MiB | 302–439 ms | 5–12 ms | 30.2 MiB | 5.6–9 ms |
+| 100,000 | 142.4 MiB | 2.95–4.35 s | 35–82 ms | 319.2 MiB | 63–93 ms |
+
+Matching long-term FTS query p95 at 100,000 messages was 3.4–5 ms. The fixture is repetitive ~200-character Japanese text; image size includes original and normalized bodies plus FTS. Restore excludes network, Passkey unwrap and fresh runtime startup. Heap capacity is not peak process memory and excludes extra JS/crypto buffers. Each term has 15 measured samples, so the reported p95 is the largest sample. These are exploratory measurements, not production budgets.
+
+Japanese one/two-character, mixed AND, literal punctuation/quotes, normalization and Unicode cases passed. Selected-thread projection/filter rejection, edit/delete/rebuild, identical restored anchors and tampered-ciphertext/wrong-AAD rejection passed. Closed DB access and terminated pending requests were rejected; late results did not repopulate the DOM. localStorage/sessionStorage/IndexedDB/CacheStorage stayed empty. OPFS directories were empty where inspected in Chromium/Firefox; WebKit's inspection API returned `UnknownError`, so OPFS inspection remains unqualified there. Physical erasure, production owner grants and hostile database parsing are not established by these checks.
+
+This supports SQLite as the local engine but argues against a monolithic ever-growing snapshot. Start with a bounded archive/pack, measure actual phones, then qualify collection/time partitions with explicit coverage and source-delta replay before broad import. Optimize duplicate text/FTS representation only with measured query/size tradeoffs. Unified owner-key unlock and authoritative thread/event storage remain prerequisites; the probe does not complete U1–U3 or enable a production feature.
