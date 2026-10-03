@@ -118,7 +118,7 @@ The final reusable `production-smoke` job checks the exact OP version, clean sou
 
 ## Vault schema reconciliation recovery boundary
 
-The [bounded 0031 and 0032 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migrations-0031-and-0032)
+The [bounded 0033 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migration-0033)
 records its source/DB/migration hashes, pending state, schema fingerprint,
 Time Travel timestamp and bookmark before applying. The same timestamp is read
 back to confirm the service returns the same bookmark. The apply step checks
@@ -137,11 +137,13 @@ not establish this account's plan or usable retention window; verify and record
 those independently. A bookmark is not an access credential, but keep recovery
 records under the existing operations access rules.
 
-0031 and 0032 are additive and do not modify prior application rows; 0032 also
-inserts its GC cursor initialization row. Each migration commits separately, so
-0031 may remain applied after a 0032 failure. Inspect with a fresh plan and
-review its new digest before attempting the missing suffix; never retry or
-restore automatically. A code rollback
+0033 adds source-identity columns and validation/revocation triggers. Existing
+grants remain v1 and existing rows/authority are preserved at application, but
+future revocation clears encrypted snapshots irreversibly. A code rollback does
+not restore those snapshots or grant authority. If an application fails or times
+out, 0033 may already have committed. Inspect with a fresh read-only plan and
+review its state/digest before any further authorized action; never retry or
+restore automatically. An already-applied state is plan-only. A code rollback
 normally leaves these tables and the current migration ledger in place, subject
 to the existing code/schema compatibility review. A database restore would
 overwrite the whole database and could lose later legitimate writes or revive

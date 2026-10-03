@@ -22,6 +22,7 @@ import {
   applicationGate,
   applyApprovedSuffix,
   bookmarkAt,
+  canonicalSql,
   expectedInputs,
   inspect,
   inspectState,
@@ -29,60 +30,54 @@ import {
 } from './reconcile-production-0031.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-// This one-off production gate intentionally becomes obsolete at 0033. Keep its
+// This one-off production gate intentionally becomes obsolete at 0034. Keep its
 // supported-state fixtures stable so later migrations do not break normal CI.
-const fixture = mkdtempSync(join(tmpdir(), 'mikaki-reviewed-0031-'));
+const fixture = mkdtempSync(join(tmpdir(), 'mikaki-reviewed-0033-'));
 const fixtureMigrations = join(fixture, 'crates/worker/migrations');
 mkdirSync(fixtureMigrations, { recursive: true });
-for (const name of readdirSync(join(root, 'crates/worker/migrations')).sort().slice(0, 32)) {
+for (const name of readdirSync(join(root, 'crates/worker/migrations')).sort().slice(0, 33)) {
   copyFileSync(join(root, 'crates/worker/migrations', name), join(fixtureMigrations, name));
 }
 after(() => rmSync(fixture, { recursive: true, force: true }));
 const inputs = expectedInputs(fixture);
 const approvedNames = APPROVED.migrations.map((item) => item.name);
-const ledger = (count = 30) =>
+const ledger = (count = 32) =>
   inputs.names.slice(0, count).map((name, index) => ({ id: index + 1, name }));
 const response = (rows: unknown[]) => JSON.stringify([{ success: true, results: rows }]);
 const bookmark = '00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683';
 
-test('only the reviewed missing suffix is a pending candidate, or safely already applied', () => {
-  const plan = inspectState(inputs, ledger(), inputs.schemas[30]!);
+test('only 0033 is a pending candidate, or safely already applied', () => {
+  const plan = inspectState(inputs, ledger(), inputs.schemas[32]!);
   assert.deepEqual(plan.pending, approvedNames);
   assert.match(plan.plan_sha256, /^[a-f0-9]{64}$/);
-  assert.deepEqual(inspectState(inputs, ledger(32), inputs.schemas[32]!).pending, []);
   applicationGate(plan, plan.plan_sha256, CONFIRMATION);
-  const partial = inspectState(inputs, ledger(31), inputs.schemas[31]!);
-  assert.deepEqual(partial.pending, [approvedNames[1]]);
-  applicationGate(partial, partial.plan_sha256, CONFIRMATION);
-  assert.notEqual(partial.plan_sha256, plan.plan_sha256);
-  assert.throws(() => applicationGate(partial, plan.plan_sha256, CONFIRMATION), /reviewed plan/);
-  assert.throws(
-    () => applicationGate(plan, plan.plan_sha256, 'APPLY 0031 TO mikaki-auth'),
-    /confirmation/,
-  );
-  assert.throws(() => applicationGate(plan, plan.plan_sha256, ''), /confirmation/);
+  for (const old of ['', 'APPLY 0031 TO mikaki-auth', 'APPLY 0031 AND 0032 TO mikaki-auth'])
+    assert.throws(() => applicationGate(plan, plan.plan_sha256, old), /confirmation/);
   assert.throws(() => applicationGate(plan, 'a'.repeat(64), CONFIRMATION), /reviewed plan/);
-  const done = inspectState(inputs, ledger(32), inputs.schemas[32]!);
+  const done = inspectState(inputs, ledger(33), inputs.schemas[33]!);
+  assert.deepEqual(done.pending, []);
+  assert.notEqual(done.plan_sha256, plan.plan_sha256);
   assert.throws(() => applicationGate(done, done.plan_sha256, CONFIRMATION), /nonempty approved/);
+  assert.throws(() => applicationGate(done, plan.plan_sha256, CONFIRMATION), /reviewed plan/);
 });
 
 test('missing, unknown, duplicate, reordered or malformed ledger never becomes an apply plan', () => {
-  for (const count of [0, 29])
-    assert.throws(() => inspectState(inputs, ledger(count), inputs.schemas[30]!), /prefix/);
+  for (const count of [0, 29, 30, 31])
+    assert.throws(() => inspectState(inputs, ledger(count), inputs.schemas[32]!), /prefix/);
   for (const rows of [
-    [...ledger(), { id: 31, name: '0032_unreviewed.sql' }],
-    [...ledger(32), { id: 33, name: '0033_unreviewed.sql' }],
+    [...ledger(), { id: 33, name: '0033_unreviewed.sql' }],
+    [...ledger(33), { id: 34, name: '0034_unreviewed.sql' }],
     ledger().map((row, i) => (i === 29 ? { ...row, name: inputs.names[0] } : row)),
     ledger().reverse(),
     ledger().map((row, i) => (i === 29 ? { ...row, id: 0 } : row)),
   ])
-    assert.throws(() => inspectState(inputs, rows, inputs.schemas[30]!));
+    assert.throws(() => inspectState(inputs, rows, inputs.schemas[32]!));
 });
 
 test('absent ledger, preexisting/partial tables, altered STRICT schema and extra triggers fail closed', () => {
   assert.throws(() => inspectState(inputs, ledger(), []), /schema/);
-  assert.throws(() => inspectState(inputs, ledger(), inputs.schemas[32]!), /schema/);
-  assert.throws(() => inspectState(inputs, ledger(31), inputs.schemas[30]!), /schema/);
+  assert.throws(() => inspectState(inputs, ledger(), inputs.schemas[33]!), /schema/);
+  assert.throws(() => inspectState(inputs, ledger(33), inputs.schemas[32]!), /schema/);
   assert.throws(
     () =>
       inspectState(
@@ -107,7 +102,7 @@ test('absent ledger, preexisting/partial tables, altered STRICT schema and extra
   assert.throws(
     () =>
       inspectState(inputs, ledger(), [
-        ...inputs.schemas[30]!,
+        ...inputs.schemas[32]!,
         { type: 'trigger', name: 'extra', tbl_name: 'd1_migrations', sql: 'CREATE TRIGGER extra' },
       ]),
     /schema/,
@@ -118,9 +113,15 @@ test('default inspection executes SELECT only and rejects unsuccessful or ambigu
   const commands: string[][] = [];
   inspect((args) => {
     commands.push(args);
-    return response(args.at(-1) === LEDGER_SQL ? ledger() : inputs.schemas[30]!);
+    return response(
+      args.at(-1) === LEDGER_SQL
+        ? ledger()
+        : args.at(-1) === SCHEMA_SQL
+          ? inputs.schemas[32]!
+          : [{ id: 1 }],
+    );
   }, inputs);
-  assert.equal(commands.length, 2);
+  assert.equal(commands.length, 3);
   for (const args of commands) {
     assert.deepEqual(args.slice(0, 8), [
       'd1',
@@ -171,10 +172,10 @@ test('bookmark is a strict validated timestamp lookup, never a restore', () => {
 });
 
 test('application exposes only pinned missing suffix; local SQL rehearsal preserves data and exact post-state', () => {
-  const temp = mkdtempSync(join(tmpdir(), 'mikaki-0031-test-'));
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-0033-test-'));
   const db = new DatabaseSync(':memory:');
   try {
-    for (const name of inputs.names.slice(0, 30))
+    for (const name of inputs.names.slice(0, 32))
       db.exec(readFileSync(join(root, 'crates/worker/migrations', name), 'utf8'));
     db.exec(
       'CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)',
@@ -240,7 +241,7 @@ test('application exposes only pinned missing suffix; local SQL rehearsal preser
             ...inputs,
             migrations: {
               ...inputs.migrations,
-              [approvedNames[1]!]: inputs.migrations[approvedNames[1]!] + '\n',
+              [approvedNames[0]!]: inputs.migrations[approvedNames[0]!] + '\n',
             },
           },
           approvedNames,
@@ -255,7 +256,7 @@ test('application exposes only pinned missing suffix; local SQL rehearsal preser
 });
 
 test('failed application cleans temporary material and propagates without retry', () => {
-  const temp = mkdtempSync(join(tmpdir(), 'mikaki-0031-test-'));
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-0033-test-'));
   let calls = 0;
   try {
     assert.throws(
@@ -288,7 +289,7 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /group: production-deployment/);
   assert.match(workflow, /name: production/);
-  assert.match(workflow, /ref: 7473da7f5c4c1a336499907d6858dcd893fdbf5b/);
+  assert.match(workflow, /ref: 0fc3ad859e6668461d36388fb3a6f93e7c18cd06/);
   assert.ok(
     workflow.indexOf('if-no-files-found: error') <
       workflow.indexOf('run: node scripts/reconcile-production-0031.ts apply'),
@@ -299,8 +300,8 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
   );
 });
 
-test('production input loader rejects a later 0033 without breaking the stable test fixture', () => {
-  const later = join(fixtureMigrations, '0033_unreviewed.sql');
+test('production input loader rejects a later 0034 without breaking the stable test fixture', () => {
+  const later = join(fixtureMigrations, '0034_unreviewed.sql');
   try {
     writeFileSync(later, 'CREATE TABLE later(id INTEGER);');
     assert.throws(() => expectedInputs(fixture), /exactly the reviewed/);
@@ -310,75 +311,38 @@ test('production input loader rejects a later 0033 without breaking the stable t
   assert.deepEqual(expectedInputs(fixture).names, inputs.names);
 });
 
-test('partial success keeps 0031 and a new plan exposes only 0032; never retries automatically', () => {
-  const temp = mkdtempSync(join(tmpdir(), 'mikaki-partial-test-'));
-  const db = new DatabaseSync(':memory:');
+test('uncertain completed 0033 is inspected as complete, never reapplied or restored', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-uncertain-test-'));
+  const db = database32();
+  let calls = 0;
   try {
-    for (const name of inputs.names.slice(0, 30))
-      db.exec(readFileSync(join(fixtureMigrations, name), 'utf8'));
-    db.exec(
-      'CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)',
-    );
-    for (const row of ledger())
-      db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(row.name);
-    const original = inspectState(
-      inputs,
-      db.prepare(LEDGER_SQL).all(),
-      db.prepare(SCHEMA_SQL).all(),
-    );
-    let calls = 0;
+    const before = inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all());
     assert.throws(
       () =>
         applyApprovedSuffix(
           () => {
             calls++;
-            // Wrangler commits each migration separately. Simulate 0031 success then
-            // a 0032 transaction failure; no automatic application retry follows.
-            db.exec('BEGIN');
-            db.exec(inputs.migrations[approvedNames[0]!]!);
-            db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(approvedNames[0]!);
-            db.exec('COMMIT');
-            db.exec('BEGIN');
-            db.exec(inputs.migrations[approvedNames[1]!]!);
-            db.exec('ROLLBACK');
-            throw new Error('second migration failed');
+            applyLocal(db);
+            throw new Error('response lost after commit');
           },
           inputs,
-          original.pending,
+          before.pending,
           temp,
         ),
-      /second migration failed/,
+      /response lost/,
     );
     assert.equal(calls, 1);
-    const partial = inspectState(
-      inputs,
-      db.prepare(LEDGER_SQL).all(),
-      db.prepare(SCHEMA_SQL).all(),
-    );
-    assert.deepEqual(partial.pending, [approvedNames[1]]);
-    assert.throws(
-      () => applicationGate(partial, original.plan_sha256, CONFIRMATION),
-      /reviewed plan/,
-    );
-    applicationGate(partial, partial.plan_sha256, CONFIRMATION);
-    applyApprovedSuffix(
-      (args) => {
-        const configPath = args.at(-1)!;
-        const config = JSON.parse(readFileSync(configPath, 'utf8'));
-        const directory = join(configPath, '..', config.d1_databases[0].migrations_dir);
-        assert.deepEqual(readdirSync(directory), [approvedNames[1]]);
-        return '';
-      },
-      inputs,
-      partial.pending,
-      temp,
-    );
+    const done = inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all());
+    assert.deepEqual(done.pending, []);
+    assert.throws(() => applicationGate(done, before.plan_sha256, CONFIRMATION), /reviewed plan/);
+    assert.throws(() => applicationGate(done, done.plan_sha256, CONFIRMATION), /nonempty/);
     for (const invalid of [
       [],
-      [approvedNames[0]!],
-      ['0033_unreviewed.sql'],
-      approvedNames.slice().reverse(),
-    ]) {
+      ['0031_vault_owner_keys.sql'],
+      ['0032_vault_owner_records.sql'],
+      ['0034_unreviewed.sql'],
+      [...approvedNames, ...approvedNames],
+    ])
       assert.throws(
         () =>
           applyApprovedSuffix(
@@ -391,40 +355,358 @@ test('partial success keeps 0031 and a new plan exposes only 0032; never retries
           ),
         /approved suffix/,
       );
-    }
   } finally {
     db.close();
     rmSync(temp, { recursive: true, force: true });
   }
 });
 
-test('0032 requires exactly its initialized GC cursor id without reading the cursor value', () => {
-  for (const rows of [[], [{ id: 2 }], [{ id: 1 }, { id: 2 }]]) {
-    assert.throws(
-      () =>
-        inspect((args) => {
-          const sql = args.at(-1);
-          if (sql === LEDGER_SQL) return response(ledger(32));
-          if (sql === SCHEMA_SQL) return response(inputs.schemas[32]!);
-          assert.equal(sql, CURSOR_SQL);
-          assert.equal(sql, 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id');
-          return response(rows);
-        }, inputs),
-      /cursor initialization/,
+test('both supported states require the initialized GC cursor id without reading its value', () => {
+  for (const count of [32, 33]) {
+    for (const rows of [[], [{ id: 2 }], [{ id: 1 }, { id: 2 }]]) {
+      assert.throws(
+        () =>
+          inspect((args) => {
+            const sql = args.at(-1);
+            if (sql === LEDGER_SQL) return response(ledger(count));
+            if (sql === SCHEMA_SQL) return response(inputs.schemas[count]!);
+            assert.equal(sql, CURSOR_SQL);
+            assert.equal(sql, 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id');
+            return response(rows);
+          }, inputs),
+        /cursor initialization/,
+      );
+    }
+    assert.deepEqual(
+      inspect(
+        (args) =>
+          response(
+            args.at(-1) === LEDGER_SQL
+              ? ledger(count)
+              : args.at(-1) === SCHEMA_SQL
+                ? inputs.schemas[count]!
+                : [{ id: 1 }],
+          ),
+        inputs,
+      ).pending,
+      count === 32 ? approvedNames : [],
     );
   }
-  assert.deepEqual(
-    inspect(
-      (args) =>
-        response(
-          args.at(-1) === LEDGER_SQL
-            ? ledger(32)
-            : args.at(-1) === SCHEMA_SQL
-              ? inputs.schemas[32]!
-              : [{ id: 1 }],
-        ),
-      inputs,
-    ).pending,
-    [],
+});
+
+function database32() {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys=ON');
+  for (const name of inputs.names.slice(0, 32))
+    db.exec(readFileSync(join(fixtureMigrations, name), 'utf8'));
+  db.exec(
+    'CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)',
   );
+  for (const row of ledger()) db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(row.name);
+  return db;
+}
+function applyLocal(db: DatabaseSync) {
+  db.exec('BEGIN');
+  db.exec(inputs.migrations[approvedNames[0]!]!);
+  db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(approvedNames[0]!);
+  db.exec('COMMIT');
+}
+function seedLegacy(db: DatabaseSync) {
+  db.exec(`INSERT INTO account_security VALUES('owner',1,1);
+    INSERT INTO credential VALUES('key','owner',1);
+    INSERT INTO agent_recipient_key VALUES('recipient','active');`);
+  for (const [id, revoked] of [
+    ['legacy', 0],
+    ['already-revoked', 1],
+  ] as const)
+    db.prepare(
+      `INSERT INTO agent_grant(grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,created_at,expires_at,revoked)
+    VALUES(?,'owner',1,'key','fixture','fixture','https://agent.test/mcp',1,'recipient','["read"]','["name"]','synthetic-envelope',?,'synthetic-request',100,200,?)`,
+    ).run(id, id, revoked);
+  db.exec(`INSERT INTO vault_attribute_head VALUES('owner','name',1,1,'legacy-object','legacy-hash','legacy-envelope',0,100);
+    INSERT INTO agent_attribute_capability VALUES('legacy','owner_note',0,1,100,200);
+    INSERT INTO agent_attribute_proposal(proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at)
+    VALUES('proposal','legacy',1,'hash','owner_note',0,'synthetic-payload',200,100);`);
+  db.prepare(
+    `INSERT INTO vault_owner_key_head VALUES('owner','vault','https://owner.test',1,1,2,'fixture',?,?,100)`,
+  ).run('o'.repeat(43), 'q'.repeat(43));
+  for (const id of ['name', 'owner_note'])
+    db.prepare(
+      `INSERT INTO vault_owner_record_head VALUES('owner','vault','personal',?,?,1,1,2,?,?,?,0,100)`,
+    ).run(id, id, `object:${id}`, 'a'.repeat(43), 'k'.repeat(82));
+}
+function seedV2(db: DatabaseSync) {
+  for (const id of ['name', 'owner_note'])
+    db.prepare(
+      `INSERT INTO agent_grant(grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,created_at,expires_at,storage_version,source_origin,source_vault_id,source_collection_id,source_record_id,source_kind,source_ciphertext_sha256,source_key_generation,source_owner_key_revision)
+      VALUES(?,'owner',1,'key','fixture','fixture','https://agent.test/mcp',1,'recipient','["read"]',?,'synthetic-v2',?,'synthetic-request',100,200,2,'https://owner.test','vault','personal',?,?,?,1,1)`,
+    ).run(`v2:${id}`, JSON.stringify([id]), `token:${id}`, id, id, 'a'.repeat(43));
+}
+
+test('0033 preserves all existing rows and authority, defaulting existing grants to v1', () => {
+  const db = database32();
+  try {
+    seedLegacy(db);
+    const snapshots = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','d1_migrations') ORDER BY name",
+      )
+      .all()
+      .map(({ name }) => ({
+        name: String(name),
+        columns: db
+          .prepare(`PRAGMA table_info("${name}")`)
+          .all()
+          .map((r) => `"${r.name}"`)
+          .join(','),
+        rows: db.prepare(`SELECT * FROM "${name}"`).all(),
+      }));
+    applyLocal(db);
+    for (const { name, columns, rows } of snapshots)
+      assert.deepEqual(db.prepare(`SELECT ${columns} FROM "${name}"`).all(), rows, name);
+    const grants = db
+      .prepare(
+        'SELECT storage_version,source_origin,source_vault_id,source_collection_id,source_record_id,source_kind,source_ciphertext_sha256,source_key_generation,source_owner_key_revision FROM agent_grant',
+      )
+      .all();
+    assert.equal(grants.length, 2);
+    for (const grant of grants) {
+      assert.equal(grant.storage_version, 1);
+      assert.ok(
+        Object.entries(grant)
+          .filter(([key]) => key !== 'storage_version')
+          .every(([, value]) => value === null),
+      );
+    }
+    assert.deepEqual(
+      inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all()).pending,
+      [],
+    );
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    assert.equal(db.prepare('PRAGMA integrity_check').get()!.integrity_check, 'ok');
+    db.exec("UPDATE agent_grant SET revoked=1 WHERE grant_id='legacy'");
+    assert.equal(
+      db.prepare("SELECT encrypted_snapshot FROM agent_grant WHERE grant_id='legacy'").get()!
+        .encrypted_snapshot,
+      null,
+    );
+    assert.throws(
+      () => db.exec("UPDATE agent_grant SET revoked=0 WHERE grant_id='legacy'"),
+      /cannot be restored/,
+    );
+    assert.throws(
+      () => db.exec("UPDATE agent_grant SET encrypted_snapshot='restored' WHERE grant_id='legacy'"),
+      /cannot be restored/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('v2 record changes revoke only their exact selected source; key changes revoke only v2', () => {
+  for (const mutation of [
+    "UPDATE vault_owner_record_head SET revision=2 WHERE record_id='name'",
+    "UPDATE vault_owner_record_head SET ciphertext_sha256=replace(ciphertext_sha256,'a','b') WHERE record_id='name'",
+    "UPDATE vault_owner_record_head SET key_generation=2 WHERE record_id='name'",
+    "UPDATE vault_owner_record_head SET deleted=1,object_key=NULL,ciphertext_sha256=NULL,key_envelope=NULL WHERE record_id='name'",
+    "DELETE FROM vault_owner_record_head WHERE record_id='name'",
+    'UPDATE vault_owner_key_head SET revision=2',
+    "UPDATE vault_owner_key_head SET origin='https://changed.test'",
+  ]) {
+    const db = database32();
+    try {
+      seedLegacy(db);
+      applyLocal(db);
+      seedV2(db);
+      db.exec(mutation);
+      const rows = db.prepare('SELECT grant_id,revoked,encrypted_snapshot FROM agent_grant').all();
+      for (const row of rows) {
+        const expected =
+          row.grant_id === 'already-revoked' ||
+          row.grant_id === 'v2:name' ||
+          (mutation.includes('vault_owner_key_head') && row.grant_id === 'v2:owner_note');
+        assert.equal(row.revoked, Number(expected), `${mutation}: ${row.grant_id}`);
+        if (String(row.grant_id).startsWith('v2:') && expected)
+          assert.equal(row.encrypted_snapshot, null);
+      }
+      assert.throws(() =>
+        db.exec("UPDATE agent_grant SET encrypted_snapshot='restored' WHERE grant_id='v2:name'"),
+      );
+    } finally {
+      db.close();
+    }
+  }
+});
+
+test('literal-preserving SQL canonicalization accepts layout/comments, never changed literal bytes or token boundaries', () => {
+  const sql =
+    "SELECT 'per sonal', 'it''s -- /* literal */', \"quoted name\", `column name`, [other name] FROM t WHERE x IS NOT NULL;";
+  assert.deepEqual(
+    canonicalSql(sql),
+    canonicalSql('/* before */\n' + sql.replace(' FROM ', '\t/* layout */ FROM\n') + ' -- end'),
+  );
+  for (const changed of [
+    sql.replace('per sonal', 'personal'),
+    sql.replace('IS NOT', 'ISNOT'),
+    sql.replace("it''s", 'its'),
+    sql.replace('quoted name', 'quotedname'),
+    sql.replace('column name', 'columnname'),
+    sql.replace('other name', 'othername'),
+  ])
+    assert.notDeepEqual(canonicalSql(sql), canonicalSql(changed));
+  assert.notDeepEqual(canonicalSql("SELECT X'AB'"), canonicalSql("SELECT X 'AB'"));
+  assert.notDeepEqual(canonicalSql('SELECT x - - y'), canonicalSql('SELECT x -- y'));
+  for (const bad of [
+    "SELECT 'unterminated",
+    'SELECT /* unterminated',
+    'SELECT [unterminated',
+    'SELECT ?',
+  ])
+    assert.throws(() => canonicalSql(bad));
+  const schema = inputs.schemas[33]!;
+  const changed = schema.map((row) => ({
+    ...row,
+    sql: typeof row.sql === 'string' ? row.sql.replace("='personal'", "='per sonal'") : row.sql,
+  }));
+  assert.notDeepEqual(changed, schema);
+  assert.throws(() => inspectState(inputs, ledger(33), changed), /schema/);
+  const formatted = schema.map((row) => ({
+    ...row,
+    sql:
+      typeof row.sql === 'string'
+        ? '/* layout */\n' + row.sql.replace('CREATE ', 'CREATE\n/* layout */ ') + '; -- end'
+        : row.sql,
+  }));
+  assert.deepEqual(
+    inspectState(inputs, ledger(33), formatted),
+    inspectState(inputs, ledger(33), schema),
+  );
+});
+
+test('every affected table/index/trigger is captured, and each missing definition fails closed', () => {
+  const required = [
+    'agent_grant',
+    'agent_attribute_capability',
+    'agent_attribute_proposal',
+    'vault_attribute_head',
+    'vault_owner_record_head',
+    'vault_owner_key_head',
+  ];
+  for (const table of required)
+    assert.ok(
+      inputs.schemas[33]!.some((r) => r.type === 'table' && r.name === table),
+      table,
+    );
+  for (const count of [32, 33]) {
+    for (const row of inputs.schemas[count]!)
+      assert.throws(
+        () =>
+          inspectState(
+            inputs,
+            ledger(count),
+            inputs.schemas[count]!.filter((r) => r !== row),
+          ),
+        /schema/,
+        String(row.name),
+      );
+  }
+});
+
+test('legacy source changes revoke only v1 grants; unrelated record metadata leaves v2 grants live', () => {
+  for (const mutation of [
+    "UPDATE vault_attribute_head SET revision=2 WHERE attribute_id='name'",
+    "UPDATE vault_attribute_head SET deleted=1,object_key=NULL,ciphertext_sha256=NULL,owner_envelope=NULL WHERE attribute_id='name'",
+    "DELETE FROM vault_attribute_head WHERE attribute_id='name'",
+  ]) {
+    const db = database32();
+    try {
+      seedLegacy(db);
+      applyLocal(db);
+      seedV2(db);
+      db.exec(mutation);
+      assert.equal(
+        db.prepare("SELECT revoked FROM agent_grant WHERE grant_id='legacy'").get()!.revoked,
+        1,
+      );
+      assert.equal(
+        db.prepare("SELECT encrypted_snapshot FROM agent_grant WHERE grant_id='legacy'").get()!
+          .encrypted_snapshot,
+        null,
+      );
+      assert.equal(
+        db
+          .prepare(
+            'SELECT count(*) n FROM agent_grant WHERE storage_version=2 AND revoked=0 AND encrypted_snapshot IS NOT NULL',
+          )
+          .get()!.n,
+        2,
+      );
+    } finally {
+      db.close();
+    }
+  }
+  const db = database32();
+  try {
+    seedLegacy(db);
+    applyLocal(db);
+    seedV2(db);
+    db.exec(
+      "UPDATE vault_owner_record_head SET updated_at=101,object_key=object_key || ':changed'; UPDATE vault_owner_key_head SET created_at=101",
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) n FROM agent_grant WHERE storage_version=2 AND revoked=0').get()!
+        .n,
+      2,
+    );
+    // Remove parent-dependent records before deleting the root; unrelated legacy grants survive.
+    db.exec('DELETE FROM vault_owner_record_head; DELETE FROM vault_owner_key_head');
+    assert.equal(
+      db.prepare("SELECT revoked FROM agent_grant WHERE grant_id='legacy'").get()!.revoked,
+      0,
+    );
+    assert.equal(
+      db
+        .prepare(
+          'SELECT count(*) n FROM agent_grant WHERE storage_version=2 AND revoked=1 AND encrypted_snapshot IS NULL',
+        )
+        .get()!.n,
+      2,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('0033 rollback leaves the original schema/ledger and no implicit retry', () => {
+  const db = database32();
+  const temp = mkdtempSync(join(tmpdir(), 'mikaki-rollback-test-'));
+  let calls = 0;
+  try {
+    seedLegacy(db);
+    const before = inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all());
+    assert.throws(
+      () =>
+        applyApprovedSuffix(
+          () => {
+            calls++;
+            db.exec('BEGIN');
+            db.exec(inputs.migrations[approvedNames[0]!]!);
+            db.exec('ROLLBACK');
+            throw new Error('transaction failed');
+          },
+          inputs,
+          before.pending,
+          temp,
+        ),
+      /transaction failed/,
+    );
+    assert.equal(calls, 1);
+    assert.deepEqual(
+      inspectState(inputs, db.prepare(LEDGER_SQL).all(), db.prepare(SCHEMA_SQL).all()),
+      before,
+    );
+  } finally {
+    db.close();
+    rmSync(temp, { recursive: true, force: true });
+  }
 });

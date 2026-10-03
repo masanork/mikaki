@@ -1,4 +1,4 @@
-/** Only reviewed D1 migrations 0031 + 0032. No deploy, credentials, data export, or restore. */
+/** Only reviewed D1 migration 0033. No deploy, credentials, data export, or restore. */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -16,15 +16,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 export const APPROVED = {
-  source: '7473da7f5c4c1a336499907d6858dcd893fdbf5b',
+  source: '0fc3ad859e6668461d36388fb3a6f93e7c18cd06',
   migrations: [
     {
-      name: '0031_vault_owner_keys.sql',
-      sha256: '310c0f20250e5088224ab99c0ee31a9f36f23ba9476d220f3000ec379206125c',
-    },
-    {
-      name: '0032_vault_owner_records.sql',
-      sha256: '1a1b1d8e8932305091360acafe8c890a4edbc6c0ed2de7f0a0bb73df0e871c5b',
+      name: '0033_agent_record_sources.sql',
+      sha256: '4afb23458731123b33ebf4902983d06bd66051c920342c320788075646dc5f35',
     },
   ],
   config: 'crates/worker/wrangler.production.jsonc',
@@ -34,15 +30,33 @@ export const APPROVED = {
   database_id: 'f9299d62-2dbf-4bae-ae49-8b75674572d4',
   wrangler: '4.144.0',
 } as const;
-export const CONFIRMATION = 'APPLY 0031 AND 0032 TO mikaki-auth';
+export const CONFIRMATION = 'APPLY 0033 TO mikaki-auth';
 export const LEDGER_SQL = 'SELECT id, name FROM d1_migrations ORDER BY id';
 export const CURSOR_SQL = 'SELECT id FROM vault_owner_record_gc_cursor ORDER BY id';
+// Include each changed table and the grant/revocation dependencies, not just owner tables.
+// tbl_name includes every index/trigger attached to these tables, including unknown extras.
+const schemaTables = [
+  'd1_migrations',
+  'account_security',
+  'credential',
+  'agent_recipient_key',
+  'agent_grant',
+  'agent_audit',
+  'agent_proposal',
+  'agent_draft',
+  'agent_attribute_capability',
+  'agent_attribute_proposal',
+  'vault_attribute_head',
+  'vault_owner_key_head',
+  'vault_owner_key_wrap',
+  'vault_owner_record_head',
+  'vault_owner_record_mutation',
+  'vault_owner_record_gc_cursor',
+]
+  .map((name) => `'${name}'`)
+  .join(', ');
 export const SCHEMA_SQL = `SELECT type, name, tbl_name, sql FROM sqlite_master
-WHERE tbl_name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap',
-'vault_owner_record_head', 'vault_owner_record_mutation', 'vault_owner_record_gc_cursor')
-OR name IN ('d1_migrations', 'vault_owner_key_head', 'vault_owner_key_wrap',
-'vault_owner_record_head', 'vault_owner_record_mutation', 'vault_owner_record_gc_cursor')
-ORDER BY type, name`;
+WHERE tbl_name IN (${schemaTables}) OR name IN (${schemaTables}) ORDER BY type, name`;
 const ledgerDDL = `CREATE TABLE "d1_migrations"(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
@@ -88,6 +102,67 @@ export function resultRows(text: string): Row[] {
   gate(value[0].results.every(record), 'Malformed D1 result rows.');
   return value[0].results;
 }
+/** Conservative SQLite tokenization: ignore layout/comments, never bytes inside quotes.
+ * Token boundaries remain explicit, so `IS NOT` cannot equal `ISNOT`, nor `- -` a comment.
+ * This is not a semantic SQL rewriter: case, operators, numbers and quoted bytes stay exact.
+ */
+export function canonicalSql(sql: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < sql.length) {
+    const rest = sql.slice(i);
+    const whitespace = /^[ \t\r\n\f]+/.exec(rest);
+    if (whitespace) {
+      i += whitespace[0].length;
+      continue;
+    }
+    if (rest.startsWith('--')) {
+      const end = sql.indexOf('\n', i + 2);
+      i = end < 0 ? sql.length : end + 1;
+      continue;
+    }
+    if (rest.startsWith('/*')) {
+      const end = sql.indexOf('*/', i + 2);
+      gate(end >= 0, 'Unterminated schema SQL comment.');
+      i = end + 2;
+      continue;
+    }
+    // SQLite blob literals are one token: X'AB' must differ from X 'AB'.
+    const blob = /^[xX]'[0-9a-fA-F]*'/.exec(rest);
+    if (blob) {
+      tokens.push(blob[0]);
+      i += blob[0].length;
+      continue;
+    }
+    const quote = sql[i]!;
+    if (["'", '"', '`', '['].includes(quote)) {
+      const start = i++;
+      const close = quote === '[' ? ']' : quote;
+      let closed = false;
+      while (i < sql.length) {
+        if (sql[i++] !== close) continue;
+        if (quote !== '[' && sql[i] === close) {
+          i++;
+          continue;
+        }
+        closed = true;
+        break;
+      }
+      gate(closed, 'Unterminated schema SQL quote.');
+      tokens.push(sql.slice(start, i));
+      continue;
+    }
+    const token =
+      /^(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9$\u0080-\uffff]*|0[xX][0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|->>|->|<=|>=|!=|==|<>|\|\||<<|>>|[(),.;+*\/%<>=~&|!-])/.exec(
+        rest,
+      );
+    gate(token, 'Unsupported schema SQL token.');
+    tokens.push(token[0]);
+    i += token[0].length;
+  }
+  if (tokens.at(-1) === ';') tokens.pop();
+  return tokens;
+}
 function canonicalSchema(rows: Row[]) {
   return rows.map((row) => {
     gate(
@@ -99,15 +174,17 @@ function canonicalSchema(rows: Row[]) {
       'Malformed schema object.',
     );
     gate(row.sql === null || typeof row.sql === 'string', 'Malformed schema SQL.');
-    // These reviewed definitions have no string literals with significant whitespace.
-    // Only the ledger's optional identifier quoting and whitespace are normalized.
-    const sql =
-      row.sql === null
-        ? null
-        : (row.sql as string)
-            .replace(/"d1_migrations"/g, 'd1_migrations')
-            .replace(/\s+/g, '')
-            .replace(/;$/, '');
+    const sql = row.sql === null ? null : canonicalSql(row.sql as string);
+    // Wrangler's ledger may quote only this table identifier. Never rewrite a literal.
+    if (
+      row.type === 'table' &&
+      row.name === 'd1_migrations' &&
+      row.tbl_name === 'd1_migrations' &&
+      sql?.[0] === 'CREATE' &&
+      sql[1] === 'TABLE' &&
+      sql[2] === '"d1_migrations"'
+    )
+      sql[2] = 'd1_migrations';
     return { type: row.type, name: row.name, tbl_name: row.tbl_name, sql };
   });
 }
@@ -115,17 +192,17 @@ export function expectedInputs(root: string): Inputs {
   const directory = join(root, 'crates/worker/migrations');
   const names = readdirSync(directory).sort();
   gate(
-    names.length === 32 &&
+    names.length === 33 &&
       names.every(
         (name, index) =>
           name.startsWith(`${String(index + 1).padStart(4, '0')}_`) &&
           /^\d{4}_[a-z0-9_]+\.sql$/.test(name),
       ),
-    'Expected exactly the reviewed 0001–0032 migration files.',
+    'Expected exactly the reviewed 0001–0033 migration files.',
   );
   gate(
     equal(
-      names.slice(30),
+      names.slice(32),
       APPROVED.migrations.map((item) => item.name),
     ),
     'Unexpected approved migration suffix.',
@@ -138,12 +215,12 @@ export function expectedInputs(root: string): Inputs {
   }
   const db = new DatabaseSync(':memory:');
   try {
-    for (const name of names.slice(0, 30)) db.exec(readFileSync(join(directory, name), 'utf8'));
+    for (const name of names.slice(0, 32)) db.exec(readFileSync(join(directory, name), 'utf8'));
     db.exec(ledgerDDL);
-    const schemas: Record<number, Row[]> = { 30: db.prepare(SCHEMA_SQL).all() };
+    const schemas: Record<number, Row[]> = { 32: db.prepare(SCHEMA_SQL).all() };
     for (const [index, item] of APPROVED.migrations.entries()) {
       db.exec(migrations[item.name]!);
-      schemas[31 + index] = db.prepare(SCHEMA_SQL).all();
+      schemas[33 + index] = db.prepare(SCHEMA_SQL).all();
     }
     return { names, migrations, schemas };
   } finally {
@@ -153,8 +230,8 @@ export function expectedInputs(root: string): Inputs {
 
 export function inspectState(inputs: Inputs, ledger: Row[], schema: Row[]): State {
   gate(
-    [30, 31, 32].includes(ledger.length),
-    'Ledger is not the reviewed 0001–0030/0031/0032 prefix; stop for review.',
+    [32, 33].includes(ledger.length),
+    'Ledger is not the reviewed 0001–0032/0033 prefix; stop for review.',
   );
   let previous = 0;
   for (const [index, row] of ledger.entries()) {
@@ -197,12 +274,10 @@ export function inspect(run: Run, inputs: Inputs): State {
       ]),
     );
   const state = inspectState(inputs, query(LEDGER_SQL), query(SCHEMA_SQL));
-  if (state.pending.length === 0) {
-    gate(
-      equal(query(CURSOR_SQL), [{ id: 1 }]),
-      '0032 GC cursor initialization differs; no automatic repair.',
-    );
-  }
+  gate(
+    equal(query(CURSOR_SQL), [{ id: 1 }]),
+    '0032 GC cursor initialization differs; no automatic repair.',
+  );
   return state;
 }
 export function bookmarkAt(run: Run, timestamp: string): string {
@@ -242,7 +317,7 @@ export function applicationGate(
   );
   gate(
     isApprovedSuffix(state.pending),
-    'Apply requires a nonempty approved 0031–0032 suffix; use plan to inspect an already-applied database.',
+    'Apply requires a nonempty approved 0033 suffix; use plan to inspect an already-applied database.',
   );
 }
 export function isApprovedSuffix(pending: string[]) {
@@ -263,7 +338,7 @@ export function applyApprovedSuffix(run: Run, inputs: Inputs, pending: string[],
       'Staged migration hash differs.',
     );
   }
-  const directory = mkdtempSync(join(temp, 'mikaki-0031-'));
+  const directory = mkdtempSync(join(temp, 'mikaki-0033-'));
   try {
     mkdirSync(join(directory, 'migrations'));
     for (const name of pending)
@@ -395,8 +470,8 @@ async function main() {
   };
   const artifacts = join(implementation, 'artifacts');
   mkdirSync(artifacts, { recursive: true });
-  const planPath = join(artifacts, 'migration-0031-0032-plan.json');
-  const resultPath = join(artifacts, 'migration-0031-0032-result.json');
+  const planPath = join(artifacts, 'migration-0033-plan.json');
+  const resultPath = join(artifacts, 'migration-0033-result.json');
   const identity = {
     workflow_commit: process.env.GITHUB_SHA!,
     run_id: process.env.GITHUB_RUN_ID!,
@@ -415,7 +490,7 @@ async function main() {
       );
       const plan: Plan = { approved: APPROVED, ...identity, captured_at, bookmark, state };
       save(planPath, plan);
-      const summary = `0031 + 0032 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
+      const summary = `0033 migration preflight (no database writes)\nSource: ${APPROVED.source}\nDatabase: ${APPROVED.database} (${APPROVED.database_id})\nPending: ${state.pending.join(', ') || 'none'}\nSchema: reviewed state matches\nPlan SHA-256: ${state.plan_sha256}\nBookmark timestamp: ${captured_at}\nBookmark (read back): ${bookmark}\nThis is a D1 recovery coordinate, not a complete Vault backup or a tested restore.\n`;
       console.log(summary);
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
       return;
@@ -457,7 +532,7 @@ async function main() {
     result.after = after;
     save(resultPath, result);
     const summary =
-      'Approved pending suffix applied; the full reviewed 0001–0032 ledger and exact table/index definitions match. No migrations pending. No Worker was deployed.\n';
+      'Approved pending suffix applied; the full reviewed 0001–0033 ledger and exact table/index/trigger definitions match. No migrations pending. No Worker was deployed.\n';
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   } finally {
