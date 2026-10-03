@@ -160,6 +160,8 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
       });
     });
     await page.goto(`${origin}/vault?lang=en`);
+    await expect(page.locator('#note-unlock')).toBeEnabled();
+    await expect(page.locator('body')).toBeFocused();
     await page.getByRole('button', { name: 'Unlock with passkey', exact: true }).click();
     await expect(page.locator('#name')).toHaveValue('Legacy owner name');
     const panel = page.getByRole('region', { name: 'Owner note', exact: true });
@@ -320,7 +322,16 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
       'Your change was applied, but the updated note could not be loaded. Reload to verify it.',
     );
     await expect(save).toBeDisabled();
-    await reload.click();
+    failNextNoteRead = true;
+    await reload.focus();
+    await page.keyboard.press('Enter');
+    await expect(panel.getByRole('status')).toHaveText('Your note could not be loaded.');
+    await expect(unlock).toBeDisabled();
+    await expect(reload).toBeEnabled();
+    await expect(reload).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(unlock).toBeEnabled();
+    await expect(unlock).toBeFocused();
     assert.equal((await current()).revision, 5);
     // Unsupported encrypted data remains opaque and cannot be overwritten via this UI.
     await write(

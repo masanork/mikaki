@@ -95,7 +95,7 @@
       revision = Number(match[1]);
     }
     if (response.status !== 404) {
-      if (!response.ok) throw new Error(m.vaultReadFailed());
+      if (!response.ok) throw new Error(m.vaultNoteReadFailed());
       const data: unknown = await response.json();
       if (
         typeof data !== 'object' ||
@@ -335,18 +335,24 @@
     }
   }
 
-  async function reload() {
+  async function reload(event?: Event) {
     if (busy || transferBusy) return;
     if (dirty && !confirm(m.productNoteDiscard())) return;
+    // Initial loading is automatic; only an explicit reload may move focus.
+    const previousFocus = event ? document.activeElement : null;
     busy = true;
     pending = null;
     transferGeneration += 1;
     try {
       await load();
     } catch {
-      status = m.vaultReadFailed();
+      status = m.vaultNoteReadFailed();
     } finally {
       busy = false;
+      if (event)
+        await restoreActionFocus(previousFocus, () =>
+          document.getElementById(loaded && credentialId ? 'note-unlock' : 'note-reload'),
+        );
     }
   }
   onMount(() => {

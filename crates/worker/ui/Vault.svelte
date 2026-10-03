@@ -127,6 +127,7 @@
     if (busy || transferBusy || loading) return;
     if ((pending || (opened && name !== originalName)) && !confirm(m.productProfileDiscard()))
       return;
+    const previousFocus = document.activeElement;
     busy = true;
     try {
       await load();
@@ -134,6 +135,9 @@
       message(errorMessage(error, m.vaultLoadFailed()));
     } finally {
       busy = false;
+      await restoreActionFocus(previousFocus, () =>
+        document.getElementById(loadFailed ? 'reload-profile' : 'unlock'),
+      );
     }
   }
 
