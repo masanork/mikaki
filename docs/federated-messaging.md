@@ -2,6 +2,8 @@
 
 This is a planned development goal, not a completed protocol or implementation. Separate Mikaki instances deployed under different Cloudflare accounts should exchange end to end encrypted messages between DID identified users. The [implementation specification](implementation-spec.md) defines the proposed device and delivery contracts.
 
+The [2026-10-03 Vault product model](vault-product-model.md) makes human/human and human/AI threads the first intended retained content, with later linked application/approval events. It keeps live messaging keys separate from owner archive keys, identifies the AI plaintext-processing endpoint, and distinguishes conversational assertions from authenticated submission receipts and decisions. Its fictional interaction preview does not implement E2EE or a submission service; the live protocol and independent-instance pilot gates below remain open.
+
 ## Identity and trust
 
 Each instance may have a separate operator, Cloudflare account, D1, R2, and secrets. Cross instance delivery uses authenticated HTTPS, not a shared DB or account level Service Binding. Distinguish infrastructure account, instance DID, user DID, device/key IDs, and app subject. Internal IDs follow the [identifier policy](identifier-policy.md); a DID is used where key control and resolution matter, not for every database row. A DID alone proves neither real world identity, permission to send, nor Vault access.

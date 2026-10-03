@@ -1,0 +1,478 @@
+:root {
+  color-scheme: light;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #26372e;
+  background: #eae9de;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+[hidden] {
+  display: none !important;
+}
+button,
+input {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid #bac6b1;
+  border-radius: 3px;
+  background: #faf9f0;
+  min-height: 44px;
+  padding: 10px 17px;
+  font-weight: 600;
+}
+button:hover {
+  background: #eeefe1;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+:focus-visible {
+  outline: 3px solid #aa843b;
+  outline-offset: 4px;
+}
+.preview-label {
+  background: #243029;
+  color: #d4d9c9;
+  text-align: center;
+  padding: 10px 18px;
+  font-size: 12px;
+  letter-spacing: 0.025em;
+}
+.skip {
+  position: absolute;
+  left: 15px;
+  top: -100px;
+  z-index: 5;
+  background: #fffbe9;
+  color: #26372e;
+  padding: 12px;
+}
+.skip:focus {
+  top: 48px;
+}
+header {
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+  background: #101a19;
+}
+header canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.68;
+}
+.header-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: 1040px;
+  margin: 24px auto;
+  padding: 18px 25px;
+  background: linear-gradient(120deg, #4e5e4bea, #253e36e8);
+  border: 1px solid #81907170;
+  box-shadow: 0 8px 20px #020e0b55;
+  color: #e5ead8;
+}
+.header-inner::before {
+  content: '';
+  position: absolute;
+  inset: 9px 16px auto;
+  height: 1px;
+  background: #b5ba9570;
+}
+.brand {
+  font-size: 19px;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+}
+.origin {
+  border-left: 1px solid #8f9d7c60;
+  padding-left: 24px;
+  display: grid;
+  gap: 5px;
+}
+.origin span {
+  font-size: 11px;
+  color: #c5ceb7;
+}
+.origin strong {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+#lock {
+  margin-left: auto;
+  color: #e5ead8;
+  border-color: #a2ae8860;
+  background: #1e302959;
+}
+main {
+  max-width: 1040px;
+  margin: auto;
+  padding: 40px 28px 75px;
+}
+.closed {
+  max-width: 570px;
+  margin: 60px auto 90px;
+  text-align: center;
+  background: linear-gradient(150deg, #fdfcf3, #f0f0e3);
+  padding: 65px 25px;
+  border-top: 3px solid #829375;
+  box-shadow: 0 10px 50px #354d2810;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  color: #72806b;
+}
+h1 {
+  font-size: 35px;
+  font-weight: 550;
+  letter-spacing: 0.045em;
+  margin: 12px 0 20px;
+}
+h2 {
+  font-size: 23px;
+  font-weight: 600;
+  margin: 0;
+}
+h3 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+p {
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.closed p {
+  color: #66755d;
+  margin-bottom: 32px;
+}
+.primary {
+  background: linear-gradient(#657956, #39553f);
+  color: #fffdf0;
+  border-color: #4a6548;
+  box-shadow: 0 3px 7px #263c2420;
+}
+.primary:hover {
+  background: #3d5a42;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.page-heading h1 {
+  margin-bottom: 0;
+}
+.open-state,
+.badge {
+  font-size: 12px;
+  border: 1px solid #c2ccae;
+  padding: 6px 9px;
+  border-radius: 2px;
+  background: #edf1de;
+  color: #526943;
+  white-space: nowrap;
+}
+nav {
+  display: flex;
+  border-bottom: 1px solid #aab59c;
+  gap: 4px;
+  margin-bottom: 28px;
+}
+nav button {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  color: #6b7964;
+  padding: 15px 20px;
+  border-bottom: 3px solid transparent;
+}
+nav button[aria-current] {
+  color: #2e4635;
+  border-bottom-color: #5f7750;
+  background: #f4f4e980;
+}
+.panel {
+  background: #fffef4;
+  border: 1px solid #c5cdb8;
+  border-top: 3px solid #8b9d78;
+  padding: 28px;
+  box-shadow: 0 10px 30px #263c2710;
+  margin-bottom: 22px;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 23px;
+}
+.section-head button {
+  font-size: 13px;
+}
+.muted,
+.source {
+  color: #74816c;
+  font-size: 13px;
+}
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 25px;
+}
+label {
+  display: grid;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+input {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 14px;
+  color: #27392e;
+  background: #fbfaf3;
+  border: 1px solid #c4cdb7;
+  border-radius: 3px;
+  margin-bottom: 18px;
+}
+.fact {
+  padding: 18px 0;
+  border-top: 1px solid #e1e4d7;
+}
+.fact span {
+  display: block;
+  color: #7c876f;
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+.fact strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.aside {
+  background: #e8ecda;
+  border-left: 3px solid #93a47e;
+  padding: 22px;
+  align-self: start;
+}
+.aside p {
+  font-size: 14px;
+}
+.rows {
+  display: grid;
+}
+.record {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e0e4d5;
+  border-radius: 0;
+  padding: 19px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+.record:hover {
+  background: #f6f6e9;
+}
+.record small {
+  display: block;
+  margin-top: 8px;
+  color: #7a866f;
+  font-weight: 400;
+}
+.record .arrow {
+  color: #7a8c69;
+  font-size: 22px;
+}
+.task {
+  padding: 20px;
+  background: #f1ecda;
+  border-left: 3px solid #a98e4e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.task small {
+  display: block;
+  margin-top: 7px;
+  color: #7b725a;
+}
+.reading {
+  max-width: 700px;
+}
+.reading h2 {
+  margin: 20px 0 12px;
+}
+.reading p {
+  white-space: pre-line;
+}
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+.review-text {
+  background: #f4f5e9;
+  border-left: 3px solid #91a77b;
+  padding: 18px 22px;
+  margin: 24px 0;
+  white-space: pre-line;
+  line-height: 1.9;
+}
+.permission {
+  border-top: 1px solid #e0e4d5;
+  padding: 22px 0 0;
+  margin-top: 20px;
+}
+.permission dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 13px;
+  margin: 20px 0;
+  font-size: 14px;
+}
+.permission dt {
+  color: #6c7b60;
+}
+.permission dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#status {
+  font-size: 14px;
+  color: #536745;
+  min-height: 25px;
+}
+.messages {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+  display: grid;
+  gap: 18px;
+}
+.message {
+  background: #edf0e2;
+  border-left: 2px solid #a2b392;
+  padding: 16px 20px;
+  margin-right: 40px;
+}
+.message.own {
+  margin-right: 0;
+  margin-left: 40px;
+  background: #f5f3e4;
+  border-left-color: #baa67c;
+}
+.message span {
+  color: #68775f;
+  font-size: 12px;
+}
+.message p {
+  font-size: 14px;
+  margin-bottom: 0;
+}
+.linked-artifact {
+  background: #f5f5e9;
+  border: 1px solid #d4ddc6;
+  padding: 19px 22px;
+}
+.history {
+  margin-top: 28px;
+}
+.history ol {
+  list-style: none;
+  padding: 0;
+  border-left: 2px solid #bcc9aa;
+}
+.history li {
+  display: grid;
+  gap: 6px;
+  padding: 9px 0 14px 19px;
+}
+.history li span {
+  color: #6b7b60;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.history .pending {
+  color: #82795d;
+}
+@media (max-width: 700px) {
+  .preview-label {
+    font-size: 10px;
+  }
+  .header-inner {
+    margin: 18px 16px;
+    padding: 18px 16px;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+  .origin {
+    padding-left: 14px;
+  }
+  .brand {
+    font-size: 16px;
+  }
+  main {
+    padding: 30px 20px 55px;
+  }
+  .closed {
+    padding: 45px 18px;
+    margin: 35px 0 55px;
+  }
+  h1 {
+    font-size: 28px;
+  }
+  nav {
+    gap: 0;
+  }
+  nav button {
+    padding: 14px 7px;
+    flex: 1;
+    font-size: 13px;
+  }
+  .panel {
+    padding: 23px 20px;
+  }
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+  .task {
+    align-items: start;
+    flex-direction: column;
+  }
+  .section-head {
+    flex-wrap: wrap;
+  }
+  .permission dl {
+    grid-template-columns: 95px 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
+}

@@ -1,0 +1,1011 @@
+{
+  "date": "2026-10-03T02:06:28.978Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M3",
+    "ramBytes": 25769803776
+  },
+  "fixture": "synthetic repeated Japanese messages (~200 characters), not real conversations",
+  "results": [
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 27,
+      "buildMs": 44.80000001192093,
+      "bytes": 1581056,
+      "exportMs": 0.4000000059604645,
+      "encryptionMs": 1.2000000029802322,
+      "restoreMs": 1.4000000059604645,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0.19999998807907104,
+          "p95Ms": 0.3999999910593033
+        },
+        "住所": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.6000000089406967
+        },
+        "申請": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.6000000089406967
+        },
+        "住所変更 申請": {
+          "p50Ms": 0.09999999403953552,
+          "p95Ms": 0.20000000298023224
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.10000000894069672
+        },
+        "無": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.5
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 17.299999997019768,
+      "buildMs": 346.59999999403954,
+      "bytes": 14884864,
+      "exportMs": 3.8999999910593033,
+      "encryptionMs": 6.700000002980232,
+      "restoreMs": 12,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0.3999999910593033,
+          "p95Ms": 0.5
+        },
+        "住所": {
+          "p50Ms": 0.5,
+          "p95Ms": 0.7000000029802322
+        },
+        "申請": {
+          "p50Ms": 0.5999999940395355,
+          "p95Ms": 0.6000000089406967
+        },
+        "住所変更 申請": {
+          "p50Ms": 0.30000001192092896,
+          "p95Ms": 0.5
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.10000000894069672
+        },
+        "無": {
+          "p50Ms": 5.200000002980232,
+          "p95Ms": 6.299999997019768
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 17.5,
+      "buildMs": 3493.5,
+      "bytes": 149299200,
+      "exportMs": 31.700000002980232,
+      "encryptionMs": 56.5,
+      "restoreMs": 72.79999999701977,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 2.5,
+          "p95Ms": 3.5
+        },
+        "住所": {
+          "p50Ms": 0.5,
+          "p95Ms": 0.699999988079071
+        },
+        "申請": {
+          "p50Ms": 0.5,
+          "p95Ms": 0.7000000029802322
+        },
+        "住所変更 申請": {
+          "p50Ms": 2.7000000029802322,
+          "p95Ms": 3.5999999940395355
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.20000000298023224
+        },
+        "無": {
+          "p50Ms": 60.099999994039536,
+          "p95Ms": 62.8999999910593
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 18.399999991059303,
+      "buildMs": 42.1000000089407,
+      "bytes": 1581056,
+      "exportMs": 0.29999999701976776,
+      "encryptionMs": 0.6000000089406967,
+      "restoreMs": 1.3999999910593033,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0.10000000894069672,
+          "p95Ms": 0.20000000298023224
+        },
+        "住所": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.5
+        },
+        "申請": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.7000000029802322
+        },
+        "住所変更 申請": {
+          "p50Ms": 0.10000000894069672,
+          "p95Ms": 0.20000000298023224
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.10000000894069672
+        },
+        "無": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.5
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 17.099999994039536,
+      "buildMs": 347.1000000089407,
+      "bytes": 14884864,
+      "exportMs": 3.2999999970197678,
+      "encryptionMs": 6.5,
+      "restoreMs": 11.5,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0.4000000059604645,
+          "p95Ms": 0.5
+        },
+        "住所": {
+          "p50Ms": 0.5,
+          "p95Ms": 0.7000000029802322
+        },
+        "申請": {
+          "p50Ms": 0.5999999940395355,
+          "p95Ms": 0.800000011920929
+        },
+        "住所変更 申請": {
+          "p50Ms": 0.3999999910593033,
+          "p95Ms": 0.5
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.10000000894069672
+        },
+        "無": {
+          "p50Ms": 4.799999997019768,
+          "p95Ms": 5.600000008940697
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "chromium",
+      "version": "153.0.8010.12",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 16.899999991059303,
+      "buildMs": 3522.7999999970198,
+      "bytes": 149299200,
+      "exportMs": 32.79999999701977,
+      "encryptionMs": 54.900000005960464,
+      "restoreMs": 70.29999999701977,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 2.7000000029802322,
+          "p95Ms": 3.4000000059604645
+        },
+        "住所": {
+          "p50Ms": 0.5999999940395355,
+          "p95Ms": 0.7000000029802322
+        },
+        "申請": {
+          "p50Ms": 0.5999999940395355,
+          "p95Ms": 0.6000000089406967
+        },
+        "住所変更 申請": {
+          "p50Ms": 2.7000000029802322,
+          "p95Ms": 3.5999999940395355
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0.10000000894069672
+        },
+        "無": {
+          "p50Ms": 60.8999999910593,
+          "p95Ms": 63.1000000089407
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 26,
+      "buildMs": 52,
+      "bytes": 1581056,
+      "exportMs": 0,
+      "encryptionMs": 1,
+      "restoreMs": 1,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 3
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "無": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 22,
+      "buildMs": 413,
+      "bytes": 14884864,
+      "exportMs": 6,
+      "encryptionMs": 6,
+      "restoreMs": 7,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 8,
+          "p95Ms": 9
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 21,
+      "buildMs": 4315,
+      "bytes": 149299200,
+      "exportMs": 28,
+      "encryptionMs": 69,
+      "restoreMs": 82,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 3,
+          "p95Ms": 5
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "住所変更 申請": {
+          "p50Ms": 3,
+          "p95Ms": 5
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "無": {
+          "p50Ms": 91,
+          "p95Ms": 93
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 22,
+      "buildMs": 48,
+      "bytes": 1581056,
+      "exportMs": 0,
+      "encryptionMs": 2,
+      "restoreMs": 1,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 22,
+      "buildMs": 439,
+      "bytes": 14884864,
+      "exportMs": 6,
+      "encryptionMs": 6,
+      "restoreMs": 7,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 8,
+          "p95Ms": 9
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 22,
+      "buildMs": 4346,
+      "bytes": 149299200,
+      "exportMs": 28,
+      "encryptionMs": 57,
+      "restoreMs": 77,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 4,
+          "p95Ms": 5
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "住所変更 申請": {
+          "p50Ms": 4,
+          "p95Ms": 5
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "無": {
+          "p50Ms": 90,
+          "p95Ms": 91
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 20,
+      "buildMs": 51,
+      "bytes": 1581056,
+      "exportMs": 1,
+      "encryptionMs": 1,
+      "restoreMs": 2,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 14,
+      "buildMs": 302,
+      "bytes": 14884864,
+      "exportMs": 3,
+      "encryptionMs": 10,
+      "restoreMs": 5,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 6,
+          "p95Ms": 7
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": false,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 15,
+      "buildMs": 2959,
+      "bytes": 149299200,
+      "exportMs": 28,
+      "encryptionMs": 101,
+      "restoreMs": 35,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 2,
+          "p95Ms": 5
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 3,
+          "p95Ms": 4
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 72,
+          "p95Ms": 73
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 1000,
+      "indexed": 1000,
+      "startupMs": 25,
+      "buildMs": 64,
+      "bytes": 1581056,
+      "exportMs": 0,
+      "encryptionMs": 2,
+      "restoreMs": 3,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 6
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "無": {
+          "p50Ms": 1,
+          "p95Ms": 2
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 8388608,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 10000,
+      "indexed": 10000,
+      "startupMs": 24,
+      "buildMs": 335,
+      "bytes": 14884864,
+      "exportMs": 3,
+      "encryptionMs": 11,
+      "restoreMs": 5,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 1
+        },
+        "無": {
+          "p50Ms": 6,
+          "p95Ms": 7
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 31653888,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    },
+    {
+      "browser": "webkit",
+      "version": "26.6",
+      "mobileViewport": true,
+      "sqlite": "3.53.4",
+      "size": 100000,
+      "indexed": 100000,
+      "startupMs": 15,
+      "buildMs": 2949,
+      "bytes": 149299200,
+      "exportMs": 37,
+      "encryptionMs": 145,
+      "restoreMs": 37,
+      "queries": {
+        "住所変更": {
+          "p50Ms": 2,
+          "p95Ms": 4
+        },
+        "住所": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "申請": {
+          "p50Ms": 1,
+          "p95Ms": 1
+        },
+        "住所変更 申請": {
+          "p50Ms": 3,
+          "p95Ms": 3
+        },
+        "存在しない検索語": {
+          "p50Ms": 0,
+          "p95Ms": 0
+        },
+        "無": {
+          "p50Ms": 73,
+          "p95Ms": 76
+        }
+      },
+      "threads": [
+        "ai",
+        "human"
+      ],
+      "wasmHeapCapacityBytes": 334692352,
+      "checks": [
+        "short/mixed/literal/Unicode queries",
+        "scope rejection",
+        "edit/delete/rebuild",
+        "authenticated snapshot round trip"
+      ]
+    }
+  ],
+  "storage": [
+    {
+      "browser": "chromium",
+      "mobileViewport": false,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "inspected",
+        "entries": 0
+      }
+    },
+    {
+      "browser": "chromium",
+      "mobileViewport": true,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "inspected",
+        "entries": 0
+      }
+    },
+    {
+      "browser": "firefox",
+      "mobileViewport": false,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "inspected",
+        "entries": 0
+      }
+    },
+    {
+      "browser": "firefox",
+      "mobileViewport": true,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "inspected",
+        "entries": 0
+      }
+    },
+    {
+      "browser": "webkit",
+      "mobileViewport": false,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "unavailable",
+        "reason": "UnknownError"
+      }
+    },
+    {
+      "browser": "webkit",
+      "mobileViewport": true,
+      "local": 0,
+      "session": 0,
+      "idb": 0,
+      "caches": 0,
+      "opfs": {
+        "status": "unavailable",
+        "reason": "UnknownError"
+      }
+    }
+  ],
+  "checks": [
+    "all Worker assertions",
+    "selected-thread projection",
+    "terminate pending request/no late DOM result",
+    "empty localStorage/sessionStorage/IndexedDB/CacheStorage; OPFS status recorded separately",
+    "loopback assets only"
+  ]
+}
