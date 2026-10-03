@@ -1,4 +1,11 @@
 {
+  "ownerWorkspaceLegacy": "Open existing legacy names and notes",
+  "ownerWorkspaceThreads": "Conversations",
+  "ownerWorkspaceSaved": "Saved.",
+  "ownerWorkspaceDeleteConfirm": "Delete this saved information?",
+  "ownerWorkspaceImport": "Import a conversation archive",
+  "ownerWorkspaceSearch": "Find a conversation",
+  "ownerWorkspaceSharingPending": "Manage connections here. Sharing this profile or these conversations is not supported yet.",
   "title": "Sign in to mikaki",
   "intro": "Use your passkey to sign in securely.",
   "invite": "Invitation code",

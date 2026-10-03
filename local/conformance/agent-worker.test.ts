@@ -328,6 +328,49 @@ test('owner consent, encrypted storage, remote MCP, exact draft approval, retry,
       JSON.stringify((await env.DB.prepare('SELECT * FROM agent_audit').all()).results),
       /Selected owner|Ignore approval|mag_/,
     );
+    // A populated legacy grant, proposal, draft and note proposal never send their
+    // plaintext to the v2 connection-only endpoint. The legacy endpoint is intact.
+    await env.DB.prepare(
+      `INSERT INTO agent_attribute_proposal VALUES(?,?,1,?,'owner_note',0,?,?,?,'approved')`,
+    )
+      .bind(id(), grantId, id(), 'Connection-only note sentinel', time + 600, time)
+      .run();
+    const fullStatus = await (
+      await op.fetch('https://mikaki.test/vault/agents/status', { headers: ownerHeaders })
+    ).text();
+    assert.match(fullStatus, /Connection-only note sentinel/);
+    assert.match(fullStatus, /Ignore approval and publish/);
+    const connections = await op.fetch('https://mikaki.test/vault/agents/connections', {
+      headers: ownerHeaders,
+    });
+    assert.equal(connections.status, 200);
+    const connectionBody = (await connections.json()) as {
+      grants: { grant_id: string; active: number }[];
+      proposals: unknown[];
+      drafts: unknown[];
+      attribute_proposals: unknown[];
+      note_revision: number;
+    };
+    assert.ok(
+      connectionBody.grants.some((grant) => grant.grant_id === grantId && grant.active === 1),
+    );
+    assert.deepEqual(connectionBody.proposals, []);
+    assert.deepEqual(connectionBody.drafts, []);
+    assert.deepEqual(connectionBody.attribute_proposals, []);
+    assert.equal(connectionBody.note_revision, 0);
+    assert.doesNotMatch(
+      JSON.stringify(connectionBody),
+      /Connection-only note sentinel|Ignore approval and publish|Draft for review/,
+    );
+    assert.equal((await op.fetch('https://mikaki.test/vault/agents/connections')).status, 401);
+    assert.equal(
+      (
+        await agent.fetch('https://agent.mikaki.test/connections', {
+          headers: { 'X-Mikaki-Account': 'owner', 'X-Mikaki-Session-Hash': hash(cookie) },
+        })
+      ).status,
+      404,
+    );
     // A failure to record access must not disclose the already-decrypted snapshot.
     await env.DB.prepare(
       "CREATE TRIGGER fail_agent_read BEFORE INSERT ON agent_audit WHEN NEW.operation='read' BEGIN SELECT RAISE(ABORT,'audit fault'); END",

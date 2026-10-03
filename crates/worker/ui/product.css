@@ -120,6 +120,19 @@ a {
   color: #fff;
   text-decoration: underline;
 }
+.archive-message {
+  border-top: 1px solid var(--product-border, #64766b);
+  padding-block: 1rem;
+}
+.archive-message time {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+.archive-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .product-main {
   width: min(100% - 6rem, 1240px);
   margin: 3.5rem auto;

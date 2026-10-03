@@ -112,6 +112,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
+    await context.addInitScript(() => {
+      const get = navigator.credentials.get.bind(navigator.credentials);
+      let count = 0;
+      Object.defineProperty(window, 'vaultCeremonyCount', { get: () => count });
+      navigator.credentials.get = (options) => {
+        count++;
+        return get(options);
+      };
+    });
     await cdp.send('WebAuthn.enable', { enableUI: false });
     let ownerAssertions = 0;
     cdp.on('WebAuthn.credentialAsserted', () => {
@@ -143,19 +152,25 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.locator('#unlock').click();
     await page.locator('#name').fill('Journey owner');
     await page.locator('#save').click();
-    await expect(page.locator('#status')).toHaveText(
-      'Saved. Unlock with your passkey to verify it.',
+    await expect(page.locator('#status')).toHaveText('Saved.');
+    await page.locator('#reload-profile').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    assert.equal(
+      await page.evaluate(
+        () => (window as unknown as { vaultCeremonyCount: number }).vaultCeremonyCount,
+      ),
+      1,
     );
     await page.reload();
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
     // The opt-in hierarchy uses one actual virtual WebAuthn/PRF ceremony for
-    // both supported records and repeated saves. The legacy route stays separate.
+    // both supported records and repeated saves. The default uses the same name/note records.
     const beforeOwner = ownerAssertions;
     await page.goto(`${issuer}/vault?lang=en&storage=owner-v2`);
     await expect(page.locator('#owner-name')).toHaveCount(0);
     await page.locator('#owner-unlock').click();
-    await expect(page.locator('#owner-name')).toBeEnabled();
+    await expect(page.locator('#owner-name')).toHaveValue('Journey owner');
     assert.equal(ownerAssertions, beforeOwner + 1);
     await page.locator('#owner-name').fill('Unified journey owner');
     await page.locator('#owner-profile-save').click();
@@ -184,16 +199,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     assert.equal(ownerAssertions, beforeOwner + 2);
     await page.goto(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     // Traverse actual HTTPS history; the default automation browser reloads the page.
     // Saved plaintext must require a new Passkey/PRF unlock after returning.
     await page.goto(`${issuer}/?lang=en`);
     await page.goBack();
-    await expect(page.locator('#name')).toHaveValue('');
-    await expect(page.locator('#name')).toBeDisabled();
-    await expect(page.locator('#save')).toBeDisabled();
+    await expect(page.locator('#name')).toHaveCount(0);
+    await expect(page.locator('#save')).toHaveCount(0);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     await page.goto(rpOrigin);
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
     // Chromium's virtual authenticator can satisfy the normal automatic login.
@@ -222,7 +236,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     assert.equal((await page.goto(`${rpOrigin}/protected`))?.status(), 200);
     await page.goto(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     await page.getByRole('link', { name: 'Log out', exact: false }).click();
     await page.getByRole('button', { name: 'Log out', exact: true }).click();
     await expect(
@@ -287,7 +301,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
     await page.waitForURL(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     assert.equal(
       (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first()).n,
       connectionsBefore,
@@ -331,7 +345,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.goto(`${issuer}/signin?lang=en`);
     await page.waitForURL(`${issuer}/vault?lang=en`);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     await page.goto(`${issuer}/?lang=en`);
     const formerSso = (await context.cookies(issuer)).find(
       (cookie) => cookie.name === '__Host-op-sso',

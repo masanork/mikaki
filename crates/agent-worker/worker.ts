@@ -311,7 +311,11 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
             : await oauth.decide(this.env.DB, owner, body, this.env),
         );
       }
-      if (['/status', '/record-status'].includes(path) && request.method === 'GET') {
+      if (
+        ['/status', '/record-status', '/connections'].includes(path) &&
+        request.method === 'GET'
+      ) {
+        const connectionsOnly = path === '/connections';
         const key = await recipient(this.env);
         const status = await store.ownerStatus(
           this.env.DB,
@@ -319,15 +323,20 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
           key.key_id,
           key.resource,
           path === '/record-status' ? 2 : 1,
+          connectionsOnly,
         );
         return json({
           ...status,
-          ...(path === '/status'
-            ? {
-                attribute_proposals: await attributes.status(this.env.DB, owner),
-                note_revision: await attributes.currentRevision(this.env.DB, owner),
-              }
-            : { storage_version: 2 }),
+          ...(path === '/record-status'
+            ? { storage_version: 2 }
+            : {
+                attribute_proposals: connectionsOnly
+                  ? []
+                  : await attributes.status(this.env.DB, owner),
+                note_revision: connectionsOnly
+                  ? 0
+                  : await attributes.currentRevision(this.env.DB, owner),
+              }),
           recipient: {
             public_jwk: key.public_jwk,
             key_id: key.key_id,

@@ -1,4 +1,4 @@
-// Candidate v2 owner-key format. Not wired to production Vault storage/UI.
+// Versioned owner-key and record crypto for the owner Vault.
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 
 type Bytes = Uint8Array<ArrayBuffer>;

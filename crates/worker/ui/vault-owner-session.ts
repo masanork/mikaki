@@ -1,4 +1,4 @@
-// Candidate owner-key lease. No production caller yet; never persists secrets.
+// Bounded owner-key lease; never persists secrets.
 import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 import {

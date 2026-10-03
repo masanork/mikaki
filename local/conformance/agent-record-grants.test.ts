@@ -812,6 +812,15 @@ test('legacy and record status are isolated and use the same live source/recipie
       [v1.input.grant_id],
     );
     assert.ok(legacyStatus.audit.every((a: any) => a.grant_id === v1.input.grant_id));
+    const connections = (await (await f.ownerRequest('/connections')).json()) as any;
+    assert.deepEqual(
+      connections.grants.map((g: any) => g.grant_id),
+      [v1.input.grant_id],
+    );
+    assert.deepEqual(connections.proposals, []);
+    assert.deepEqual(connections.drafts, []);
+    assert.deepEqual(connections.attribute_proposals, []);
+    assert.equal(connections.note_revision, 0);
     const recordStatus = (await (await f.ownerRequest('/record-status')).json()) as any;
     assert.equal(recordStatus.storage_version, 2);
     assert.equal(recordStatus.attribute_proposals, undefined);
