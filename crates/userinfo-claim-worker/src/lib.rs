@@ -1,6 +1,7 @@
 //! Dedicated recipient key boundary. No secret is returned to the OP Worker.
 
 pub mod envelope;
+pub mod envelope_v2;
 
 #[cfg(any(test, target_arch = "wasm32"))]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -87,6 +88,16 @@ struct NameRequest {
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
 struct NameRelease {
+    storage_version: i64,
+    source_origin: String,
+    vault_id: String,
+    collection_id: String,
+    record_id: String,
+    kind: String,
+    key_generation: i64,
+    owner_key_revision: i64,
+    system_grant_version: i64,
+    envelope_id: String,
     account_id: String,
     client_id: String,
     revision: i64,
@@ -113,6 +124,10 @@ const ACTIVE_NAME_RELEASE: &str = include_str!("active_name_release.sql");
 
 #[cfg(target_arch = "wasm32")]
 const AUDIT_NAME_RELEASE: &str = include_str!("audit_name_release.sql");
+#[cfg(target_arch = "wasm32")]
+const ACTIVE_NAME_RECORD_RELEASE: &str = include_str!("active_name_record_release.sql");
+#[cfg(target_arch = "wasm32")]
+const AUDIT_NAME_RECORD_RELEASE: &str = include_str!("audit_name_record_release.sql");
 
 #[cfg(target_arch = "wasm32")]
 async fn release_name(
@@ -141,9 +156,17 @@ async fn release_name(
         return unavailable();
     }
     let db = env.d1("DB")?;
+    // One statement selects one ledger row's explicit version, never a guessed
+    // source or a second consent ledger. Both arms use the same token and RP.
     let query = format!(
         "SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version, \
-      h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation {ACTIVE_NAME_RELEASE}"
+        h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation, \
+        1 AS storage_version,'' AS source_origin,'' AS vault_id,'' AS collection_id,'' AS record_id,'' AS kind, \
+        0 AS key_generation,0 AS owner_key_revision,g.version AS system_grant_version,e.envelope_id {ACTIVE_NAME_RELEASE} \
+        UNION ALL SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version, \
+        h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation, \
+        2 AS storage_version,g.origin AS source_origin,g.vault_id,g.collection_id,g.record_id,g.kind, \
+        g.key_generation,g.owner_key_revision,g.version AS system_grant_version,e.envelope_id {ACTIVE_NAME_RECORD_RELEASE}"
     );
     let row = db
         .prepare(&query)
@@ -194,25 +217,60 @@ async fn release_name(
     if !public_key_matches(&row.key_id, &row.public_key, &secret) {
         return unavailable();
     }
-    let binding = envelope::UserInfoBinding {
-        origin: &issuer,
-        account_id: &row.account_id,
-        revision: row.revision as u64,
-        ciphertext: &ciphertext,
+    let name = if row.storage_version == 1 {
+        let binding = envelope::UserInfoBinding {
+            origin: &issuer,
+            account_id: &row.account_id,
+            revision: row.revision as u64,
+            ciphertext: &ciphertext,
+        };
+        let Some(key) = envelope::open_userinfo_data_key(
+            &seed,
+            &row.public_key,
+            &row.key_id,
+            row.generation as u64,
+            &row.frame,
+            &binding,
+        ) else {
+            return unavailable();
+        };
+        envelope::decrypt_name_ciphertext(&key, &issuer, row.revision as u64, &ciphertext)
+    } else if row.storage_version == 2 && row.source_origin == issuer {
+        let source = envelope_v2::RecordSource {
+            storage_version: 2,
+            origin: row.source_origin.clone(),
+            owner_id: row.account_id.clone(),
+            vault_id: row.vault_id.clone(),
+            collection_id: row.collection_id.clone(),
+            record_id: row.record_id.clone(),
+            kind: row.kind.clone(),
+            revision: row.revision as u64,
+            ciphertext_sha256: row.ciphertext_sha256.clone(),
+        };
+        let authority = envelope_v2::RecordAuthority {
+            key_generation: row.key_generation as u64,
+            owner_key_revision: row.owner_key_revision as u64,
+        };
+        let binding = envelope_v2::RecordBinding {
+            source: &source,
+            authority: &authority,
+            ciphertext: &ciphertext,
+        };
+        let Some(key) = envelope_v2::open_record_data_key(
+            &seed,
+            &row.public_key,
+            &row.key_id,
+            row.generation as u64,
+            &row.frame,
+            &binding,
+        ) else {
+            return unavailable();
+        };
+        envelope_v2::decrypt_record_name(&key, &source, &ciphertext)
+    } else {
+        None
     };
-    let Some(data_key) = envelope::open_userinfo_data_key(
-        &seed,
-        &row.public_key,
-        &row.key_id,
-        row.generation as u64,
-        &row.frame,
-        &binding,
-    ) else {
-        return unavailable();
-    };
-    let Some(name) =
-        envelope::decrypt_name_ciphertext(&data_key, &issuer, row.revision as u64, &ciphertext)
-    else {
+    let Some(name) = name else {
         return unavailable();
     };
 
@@ -231,18 +289,38 @@ async fn release_name(
 
     // The audit insert re-runs every live grant predicate immediately before
     // disclosure. A concurrent revoke before this point prevents a result.
-    let audit = AUDIT_NAME_RELEASE.replace("{ACTIVE_NAME_RELEASE}", ACTIVE_NAME_RELEASE);
+    let (template, active) = if row.storage_version == 1 {
+        (AUDIT_NAME_RELEASE, ACTIVE_NAME_RELEASE)
+    } else {
+        (AUDIT_NAME_RECORD_RELEASE, ACTIVE_NAME_RECORD_RELEASE)
+    };
+    let audit = template.replace("{ACTIVE_NAME_RELEASE}", active);
+    let mut params = vec![
+        JsValue::from_str(&input.access_hash),
+        JsValue::from_str(&row.account_id),
+        JsValue::from_str(&row.client_id),
+        JsValue::from_f64(row.revision as f64),
+        JsValue::from_f64(row.release_version as f64),
+        JsValue::from_str(&row.ciphertext_sha256),
+        JsValue::from_str(&row.key_id),
+    ];
+    if row.storage_version == 2 {
+        params.extend([
+            JsValue::from_str(&row.source_origin),
+            JsValue::from_str(&row.vault_id),
+            JsValue::from_str(&row.collection_id),
+            JsValue::from_str(&row.record_id),
+            JsValue::from_str(&row.kind),
+            JsValue::from_f64(row.key_generation as f64),
+            JsValue::from_f64(row.owner_key_revision as f64),
+            JsValue::from_f64(row.system_grant_version as f64),
+            JsValue::from_f64(row.generation as f64),
+            JsValue::from_str(&row.envelope_id),
+        ]);
+    }
     let accepted = db
         .prepare(&audit)
-        .bind(&[
-            JsValue::from_str(&input.access_hash),
-            JsValue::from_str(&row.account_id),
-            JsValue::from_str(&row.client_id),
-            JsValue::from_f64(row.revision as f64),
-            JsValue::from_f64(row.release_version as f64),
-            JsValue::from_str(&row.ciphertext_sha256),
-            JsValue::from_str(&row.key_id),
-        ])?
+        .bind(&params)?
         .first::<i64>(Some("id"))
         .await?;
     if accepted.is_none() {
@@ -403,6 +481,101 @@ async fn validate_envelope(
     ))
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordEnvelopeValidation {
+    source: envelope_v2::RecordSource,
+    authority: envelope_v2::RecordAuthority,
+    ciphertext: String,
+    frame: String,
+}
+#[cfg(target_arch = "wasm32")]
+async fn validate_record_envelope(
+    mut request: worker::Request,
+    env: &worker::Env,
+    key_id: &str,
+) -> worker::Result<bool> {
+    if key_id.len() != 43
+        || !key_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Ok(false);
+    }
+    // This Worker has no public route. The OP service binding sends at most 40 KiB.
+    let body = request.bytes().await?;
+    if body.len() > 40 * 1024 {
+        return Ok(false);
+    }
+    let Ok(value) = serde_json::from_slice::<RecordEnvelopeValidation>(&body) else {
+        return Ok(false);
+    };
+    if !value.source.valid() || !value.authority.valid() {
+        return Ok(false);
+    }
+    let (Ok(frame), Ok(ciphertext)) = (
+        URL_SAFE_NO_PAD.decode(&value.frame),
+        URL_SAFE_NO_PAD.decode(&value.ciphertext),
+    ) else {
+        return Ok(false);
+    };
+    if frame.len() != 1187
+        || ciphertext.len() > 24 * 1024
+        || URL_SAFE_NO_PAD.encode(&frame) != value.frame
+        || URL_SAFE_NO_PAD.encode(&ciphertext) != value.ciphertext
+    {
+        return Ok(false);
+    }
+    let db = env.d1("DB")?;
+    let row = db
+        .prepare(
+            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
+         FROM vault_recipient_key WHERE key_id=?1 AND state='active'",
+        )
+        .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
+        .first::<RecipientKey>(None)
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    if row.key_id != key_id
+        || row.service_id != "userinfo"
+        || row.algorithm != "ML-KEM-768"
+        || row.state != "active"
+        || row.generation < 1
+        || !valid_binding(&row.secret_ref)
+    {
+        return Ok(false);
+    }
+    let secret = match env.secret_store(&row.secret_ref) {
+        Ok(binding) => match binding.get().await {
+            Ok(Some(secret)) => Zeroizing::new(secret),
+            _ => return Ok(false),
+        },
+        Err(_) => return Ok(false),
+    };
+    let Some(seed) = decode_seed(&secret) else {
+        return Ok(false);
+    };
+    let binding = envelope_v2::RecordBinding {
+        source: &value.source,
+        authority: &value.authority,
+        ciphertext: &ciphertext,
+    };
+    let Some(key) = envelope_v2::open_record_data_key(
+        &seed,
+        &row.public_key,
+        key_id,
+        row.generation as u64,
+        &frame,
+        &binding,
+    ) else {
+        return Ok(false);
+    };
+    Ok(envelope_v2::decrypt_record_name(&key, &value.source, &ciphertext).is_some())
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 #[worker::event(fetch)]
 pub async fn main(
@@ -434,6 +607,18 @@ pub async fn main(
         }
         return Ok(worker::Response::builder()
             .with_status(if ready.is_ok() { 204 } else { 503 })
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
+    let record_validation = path
+        .strip_prefix("/internal/recipient-keys/")
+        .and_then(|p| p.strip_suffix("/validate-record-envelope"));
+    if request.method() == worker::Method::Post && record_validation.is_some() {
+        let valid = validate_record_envelope(request, &env, record_validation.unwrap_or(""))
+            .await
+            .unwrap_or(false);
+        return Ok(worker::Response::builder()
+            .with_status(if valid { 204 } else { 503 })
             .with_header("Cache-Control", "no-store")?
             .empty());
     }

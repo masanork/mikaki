@@ -17,6 +17,9 @@ pub async fn route(mut request: Request, context: RouteContext<()>) -> worker::R
             "attribute-capability",
             "attribute-decide",
             "attribute-prepare",
+            "record-capability",
+            "record-decide",
+            "record-prepare",
             "oauth-request",
             "oauth-decide",
         ]

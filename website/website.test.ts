@@ -4,7 +4,105 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { auditPublicWebsite } from './audit-public.ts';
+import { createHash } from 'node:crypto';
+import { auditPublicWebsite, permitsScriptHash } from './audit-public.ts';
+
+type HeaderRule = { path: string; lines: string[] };
+const parseHeaderRules = (headers: string): HeaderRule[] =>
+  headers
+    .trim()
+    .split(/\n\s*\n/)
+    .map((block) => {
+      const [path, ...lines] = block.split('\n');
+      return { path, lines: lines.map((line) => line.trim()) };
+    });
+
+function policyForPath(rules: HeaderRule[], path: string, retainRootDefault = false) {
+  let policies: string[] = [];
+  for (const rule of rules) {
+    if (rule.path !== '/*' && rule.path !== path) continue;
+    for (const line of rule.lines) {
+      if (line === '! Content-Security-Policy' && !(retainRootDefault && rule.path === '/'))
+        policies = [];
+      if (line.startsWith('Content-Security-Policy: '))
+        policies.push(line.slice('Content-Security-Policy: '.length));
+    }
+  }
+  return policies.join(', ');
+}
+
+test('generated website CSP avoids the deployed root detach bug and stays page-scoped', async () => {
+  const headers = await readFile(new URL('public/_headers', import.meta.url), 'utf8');
+  const rules = parseHeaderRules(headers);
+  const manifest = JSON.parse(await readFile(new URL('pages.json', import.meta.url), 'utf8')) as {
+    slug: string;
+  }[];
+  const paths = ['', 'en/'].flatMap((prefix) =>
+    manifest.map(({ slug }) => `/${prefix}${slug === 'index' ? '' : slug}`),
+  );
+  assert.equal(rules[0].path, '/*');
+  assert.deepEqual(
+    rules.slice(1).map((rule) => rule.path),
+    paths.filter((path) => path !== '/'),
+  );
+  assert.ok(rules.length <= 100);
+  assert.ok(headers.split('\n').every((line) => line.length <= 2000));
+  const baseline =
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+  for (const path of paths) {
+    const file = path.endsWith('/') ? `${path}index.html` : `${path}.html`;
+    const html = await readFile(new URL(`public${file}`, import.meta.url), 'utf8');
+    const hashes = [
+      ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
+    assert.ok(hashes.length > 0, path);
+    for (const retainRootDefault of [false, true]) {
+      const csp = policyForPath(rules, path, retainRootDefault);
+      assert.equal(csp.split(',').length, 1, `${path}: no intersecting default policy`);
+      assert.equal(csp.replace(/ 'sha256-[^']+'/g, ''), baseline, path);
+      assert.deepEqual(
+        [...csp.matchAll(/'sha256-[^']+'/g)].map(([hash]) => hash).sort(),
+        hashes.sort(),
+        path,
+      );
+      for (const hash of hashes) assert.ok(permitsScriptHash(csp, hash), path);
+    }
+  }
+  // Assets and missing pages retain all restrictions and only the root's required hashes.
+  const rootPolicy = policyForPath(rules, '/', true);
+  for (const path of ['/site.js', '/style.css', '/404.html', '/not-a-page'])
+    assert.equal(policyForPath(rules, path, true), rootPolicy, path);
+  const appHeaders = await readFile(new URL('app-public/_headers', import.meta.url), 'utf8');
+  assert.equal(policyForPath(parseHeaderRules(appHeaders), '/'), baseline);
+});
+
+test('website CSP audit checks every policy and the effective script directive', () => {
+  const hash = "'sha256-abc='";
+  const allowed = `default-src 'none'; script-src 'self' ${hash}`;
+  assert.ok(permitsScriptHash(allowed, hash));
+  assert.ok(permitsScriptHash(`${allowed}, ${allowed}`, hash));
+  assert.ok(permitsScriptHash(`${allowed}, frame-ancestors 'none'`, hash));
+  assert.ok(permitsScriptHash(`default-src ${hash}`, hash));
+  assert.ok(permitsScriptHash(`script-src 'none'; script-src-elem ${hash}`, hash));
+  for (const csp of [
+    null,
+    '',
+    `script-src 'self', ${allowed}`,
+    `${allowed}, default-src 'none'`,
+    `${allowed}; script-src-elem 'self'`,
+    `script-src 'self'; script-src ${hash}`,
+    `script-src 'self'; img-src ${hash}`,
+    "script-src 'unsafe-inline'",
+  ])
+    assert.equal(permitsScriptHash(csp, hash), false, csp ?? 'missing CSP');
+
+  // The old generated form passes local detach semantics but fails the deployed defect.
+  const oldRules = parseHeaderRules(
+    `/*\n  Content-Security-Policy: script-src 'self'\n\n/\n  ! Content-Security-Policy\n  Content-Security-Policy: ${allowed}\n`,
+  );
+  assert.ok(permitsScriptHash(policyForPath(oldRules, '/'), hash));
+  assert.equal(permitsScriptHash(policyForPath(oldRules, '/', true), hash), false);
+});
 
 test('public websites keep app callbacks code-free and render the woven material', async () => {
   const servers: ReturnType<typeof spawn>[] = [];
@@ -157,6 +255,19 @@ test('public websites keep app callbacks code-free and render the woven material
       }, paths),
       /JSON-LD blocked by CSP/,
     );
+    for (const retainedPolicy of ["script-src 'self'", "default-src 'none'"]) {
+      await assert.rejects(
+        auditPublicWebsite(async (url) => {
+          const response = fixtures.get(new URL(url).pathname)!.clone();
+          if (new URL(url).pathname !== '/') return response;
+          const headers = new Headers(response.headers);
+          // Reproduce a deployed duplicate field, not wrangler dev's successful detachment.
+          headers.append('Content-Security-Policy', retainedPolicy);
+          return new Response(await response.arrayBuffer(), { headers });
+        }, paths),
+        /JSON-LD blocked by CSP/,
+      );
+    }
     for (const path of paths) {
       const response = await site.fetch(`https://mikaki.org${path}`);
       assert.equal(response.status, 200, path);
@@ -186,6 +297,9 @@ test('public websites keep app callbacks code-free and render the woven material
     const page = await browser.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (/content security policy/i.test(message.text())) errors.push(message.text());
+    });
     await page.route('https://**.mikaki.org/**', async (route) => {
       const req = route.request();
       const worker = new URL(req.url()).host === 'app.mikaki.org' ? app : site;

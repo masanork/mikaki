@@ -45,9 +45,13 @@ mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_resource;
 #[cfg(target_arch = "wasm32")]
+mod vault_owner_approved;
+#[cfg(target_arch = "wasm32")]
 mod vault_owner_keys;
 #[cfg(target_arch = "wasm32")]
 mod vault_owner_records;
+#[cfg(target_arch = "wasm32")]
+mod vault_record_sharing;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -3175,8 +3179,9 @@ async fn discovery_route(
             .d1("DB")?
             .prepare(
                 "SELECT 1 AS active FROM vault_claim_release_policy rp \
-             JOIN vault_share_policy sp ON sp.id=rp.id \
-             WHERE rp.id=1 AND rp.enabled=1 AND sp.enabled=1",
+             WHERE rp.id=1 AND rp.enabled=1 AND ( \
+             EXISTS(SELECT 1 FROM vault_share_policy WHERE id=1 AND enabled=1) OR \
+             EXISTS(SELECT 1 FROM vault_record_share_policy WHERE id=1 AND enabled=1))",
             )
             .first::<i64>(Some("active"))
             .await?
@@ -3751,6 +3756,38 @@ pub async fn main(
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
         .get_async("/vault/session", vault_attributes::session)
+        .get_async(
+            "/vault/record-recipient-keys/userinfo",
+            vault_record_sharing::recipient,
+        )
+        .get_async(
+            "/vault/records/personal/name/sharing",
+            vault_record_sharing::status,
+        )
+        .post_async(
+            "/vault/records/personal/name/sharing",
+            vault_record_sharing::share,
+        )
+        .delete_async(
+            "/vault/records/personal/name/sharing",
+            vault_record_sharing::revoke,
+        )
+        .get_async(
+            "/vault/records/personal/name/releases",
+            vault_claim_releases::status_record,
+        )
+        .post_async(
+            "/vault/records/personal/name/releases",
+            vault_claim_releases::grant_record,
+        )
+        .delete_async(
+            "/vault/records/personal/name/releases",
+            vault_claim_releases::revoke,
+        )
+        .post_async(
+            "/vault/records/:collection/:record/approved",
+            vault_owner_records::approved,
+        )
         .get_async("/vault/records/:collection", vault_owner_records::list)
         .get_async(
             "/vault/records/:collection/:record",

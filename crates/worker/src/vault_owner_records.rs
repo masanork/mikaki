@@ -1,4 +1,4 @@
-//! Bounded owner-only v2 records. No recipient, proposal or root-custody authority.
+//! Bounded owner-only v2 records, including separately authorized approved notes.
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use mikaki_oidc::CryptographicRandom;
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ struct DeleteBody {
     kind: String,
     revision: i64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PutBody {
     format_version: u8,
@@ -133,6 +133,18 @@ async fn still_authorized(db: &D1Database, owner: &Owner, root: &Root) -> worker
         .await?
         .is_some_and(|current| current.same(root)))
 }
+async fn receipt_authorized(
+    db: &D1Database,
+    owner: &Owner,
+    root: &Root,
+    approved: bool,
+) -> worker::Result<bool> {
+    if approved {
+        crate::vault_owner_approved::retry_owner(db, owner).await
+    } else {
+        still_authorized(db, owner, root).await
+    }
+}
 async fn head(
     db: &D1Database,
     account: &str,
@@ -151,6 +163,20 @@ async fn mutation(
 ) -> worker::Result<Option<Mutation>> {
     db.prepare("SELECT request_hash,result_revision,deleted FROM vault_owner_record_mutation WHERE account_id=?1 AND operation_id=?2 AND created_at>=unixepoch()-7776000")
         .bind(&[JsValue::from_str(account), JsValue::from_str(operation)])?.first::<Mutation>(None).await
+}
+async fn approved_retry(
+    db: &D1Database,
+    owner: &Owner,
+    operation: &str,
+    hash: &str,
+) -> worker::Result<Option<Response>> {
+    let Some(previous) = mutation(db, &owner.account_id, operation).await? else {
+        return Ok(None);
+    };
+    if !crate::vault_owner_approved::retry_owner(db, owner).await? {
+        return error(401, "authentication_required").map(Some);
+    }
+    outcome(previous, hash).map(Some)
 }
 fn outcome(previous: Mutation, hash: &str) -> worker::Result<Response> {
     if previous.request_hash != hash {
@@ -308,22 +334,43 @@ pub async fn list(request: Request, context: RouteContext<()>) -> worker::Result
 }
 
 pub async fn put(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    write(&mut request, &context, false).await
+    write(&mut request, &context, false, false).await
 }
 pub async fn delete(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    write(&mut request, &context, true).await
+    write(&mut request, &context, true, false).await
+}
+
+pub async fn approved(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
+    write(&mut request, &context, false, true).await
 }
 
 async fn write(
     request: &mut Request,
     context: &RouteContext<()>,
     deleted: bool,
+    approved: bool,
 ) -> worker::Result<Response> {
     let Ok(bucket) = context.env.bucket("VAULT_BLOBS") else {
         return error(404, "not_found");
     };
     let Some((collection, record)) = target(context) else {
         return error(400, "invalid_record");
+    };
+    let approval = if approved {
+        if collection != "personal" || record != "owner_note" {
+            return error(400, "invalid_approved_target");
+        }
+        let Some(approval) = crate::vault_approved::Approval::read(request)? else {
+            return error(400, "approval_required");
+        };
+        if decode(&approval.proposal_id, 32, 32).is_none()
+            || decode(&approval.request_hash, 32, 32).is_none()
+        {
+            return error(400, "approval_required");
+        }
+        Some(approval)
+    } else {
+        None
     };
     if !same_origin(request)? {
         return error(403, "origin_required");
@@ -361,6 +408,10 @@ async fn write(
         let Ok(value) = serde_json::from_str::<PutBody>(&body) else {
             return error(400, "invalid_body");
         };
+        // The verified preparation pins this strict field order and exact bytes.
+        if approved && serde_json::to_string(&value).ok().as_deref() != Some(&body) {
+            return error(400, "invalid_candidate_encoding");
+        }
         let (Some(ciphertext), Some(_)) = (
             frame(&value.ciphertext, 29, MAX_CIPHERTEXT),
             frame(&value.key_envelope, 61, 61),
@@ -387,25 +438,43 @@ async fn write(
         || !(1..=9_007_199_254_740_991).contains(&value.key_generation)
         || !(1..=9_007_199_254_740_991).contains(&value.owner_key_revision)
         || value.revision != revision
+        || (approved && value.kind != "owner_note")
     {
         return error(400, "invalid_record");
     }
-    let Some(root) = authority(&db, &owner).await? else {
-        return error(409, "owner_key_unavailable");
-    };
     let origin = request.url()?.origin().ascii_serialization();
-    if !root.supported(&origin) || root.vault_id != value.vault_id {
-        return error(409, "owner_key_changed");
-    }
+    let method = approval
+        .as_ref()
+        .map(|value| format!("V2-APPROVED/{}/{}", value.proposal_id, value.request_hash));
     let hash = request_hash(
-        if deleted { "V2-DELETE" } else { "V2-PUT" },
+        method
+            .as_deref()
+            .unwrap_or(if deleted { "V2-DELETE" } else { "V2-PUT" }),
         &format!("{collection}/{record}"),
         expected,
         body.as_bytes(),
     );
+    // Approved retries are historical acknowledgments independent of retained
+    // proposal metadata and current grant/root authority. Only a live same-owner
+    // session and the exact mutation identity can observe the original outcome.
+    if approved && let Some(response) = approved_retry(&db, &owner, &operation, &hash).await? {
+        return Ok(response);
+    }
+    let selected_root = authority(&db, &owner).await?;
+    // A matching commit may finish while authority is being read. Reconcile its
+    // receipt before rejecting a now-replaced root or removed credential wrap.
+    if approved && let Some(response) = approved_retry(&db, &owner, &operation, &hash).await? {
+        return Ok(response);
+    }
+    let Some(root) = selected_root else {
+        return error(409, "owner_key_unavailable");
+    };
+    if !root.supported(&origin) || root.vault_id != value.vault_id {
+        return error(409, "owner_key_changed");
+    }
     // Historical acknowledgment only; old context/body can never be reapplied.
     if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
-        if !still_authorized(&db, &owner, &root).await? {
+        if !receipt_authorized(&db, &owner, &root, approved).await? {
             return error(409, "owner_key_changed");
         }
         return outcome(previous, &hash);
@@ -416,7 +485,7 @@ async fn write(
     let current = head(&db, &owner.account_id, &root.vault_id, collection, record).await?;
     if deleted && current.as_ref().is_some_and(|head| head.deleted != 0) {
         if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
-            if !still_authorized(&db, &owner, &root).await? {
+            if !receipt_authorized(&db, &owner, &root, approved).await? {
                 return error(409, "owner_key_changed");
             }
             return outcome(previous, &hash);
@@ -433,18 +502,48 @@ async fn write(
     {
         // A concurrent matching request may have committed while this request was reading.
         if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
-            if !still_authorized(&db, &owner, &root).await? {
+            if !receipt_authorized(&db, &owner, &root, approved).await? {
                 return error(409, "owner_key_changed");
             }
             return outcome(previous, &hash);
         }
         return error(409, "revision_conflict");
     }
+    let candidate_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(body.as_bytes()));
+    let commit = approval
+        .as_ref()
+        .map(|approval| crate::vault_owner_approved::Commit {
+            approval,
+            account: &owner.account_id,
+            session_hash: &owner.secret_hash,
+            credential: &owner.credential_id,
+            operation: &operation,
+            candidate_hash: &candidate_hash,
+            candidate: &body,
+            origin: &origin,
+            vault: &root.vault_id,
+            key_generation: root.key_generation,
+            owner_key_revision: root.revision,
+            base_revision: if expected == -1 { 0 } else { expected },
+            result_revision: revision,
+            mutation_hash: &hash,
+        });
+    if let Some(commit) = &commit
+        && !commit.ready(&db).await?
+    {
+        if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
+            if !receipt_authorized(&db, &owner, &root, approved).await? {
+                return error(409, "owner_key_changed");
+            }
+            return outcome(previous, &hash);
+        }
+        return error(409, "approval_unavailable");
+    }
     let limits = db.prepare("SELECT (SELECT COUNT(*) FROM vault_owner_record_mutation WHERE account_id=?1 AND created_at>unixepoch()-60) AS recent,(SELECT COUNT(*) FROM vault_owner_record_head WHERE account_id=?1) AS slots")
         .bind(&[JsValue::from_str(&owner.account_id)])?.first::<Limits>(None).await?.ok_or_else(||worker::Error::RustError("record_limits_unavailable".into()))?;
     if limits.recent >= 20 || (expected == -1 && limits.slots >= 256) {
         if let Some(previous) = mutation(&db, &owner.account_id, &operation).await? {
-            if !still_authorized(&db, &owner, &root).await? {
+            if !receipt_authorized(&db, &owner, &root, approved).await? {
                 return error(409, "owner_key_changed");
             }
             return outcome(previous, &hash);
@@ -514,9 +613,22 @@ async fn write(
             JsValue::from_f64(revision as f64),
             JsValue::from_f64(i64::from(deleted) as f64),
         ])?;
-    let committed = db.batch(vec![statement, ledger]).await;
+    let mut statements = Vec::new();
+    if let Some(commit) = &commit {
+        statements.push(commit.consume(&db)?);
+    }
+    // Keep head and ledger adjacent: the latter uses changes() from the head.
+    statements.extend([statement, ledger]);
+    if let Some(commit) = &commit {
+        statements.extend(commit.finish(&db)?);
+    }
+    let committed = db.batch(statements).await;
     let previous = mutation(&db, &owner.account_id, &operation).await?;
-    if !still_authorized(&db, &owner, &root).await? {
+    if approved && previous.is_some() {
+        if !crate::vault_owner_approved::retry_owner(&db, &owner).await? {
+            return error(401, "authentication_required");
+        }
+    } else if !still_authorized(&db, &owner, &root).await? {
         return error(409, "owner_key_changed");
     }
     if let Some(previous) = previous {

@@ -638,7 +638,9 @@ test('approved note commits exact ciphertext once; proof, failures, retries, con
         time - 100,
       )
       .run();
-    await env.DB.prepare('INSERT INTO agent_attribute_commit VALUES(?,?,?,?,?,?,?,NULL)')
+    await env.DB.prepare(
+      'INSERT INTO agent_attribute_commit(proposal_id,account_id,operation_id,candidate,candidate_sha256,origin,prepared_at,result_revision) VALUES(?,?,?,?,?,?,?,NULL)',
+    )
       .bind(
         expired.proposal_id,
         'owner',

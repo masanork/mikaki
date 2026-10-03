@@ -229,7 +229,15 @@ test('owner consent, encrypted storage, remote MCP, exact draft approval, retry,
     });
     await client.connect(transport);
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 6);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+      'mikaki_execute',
+      'mikaki_list',
+      'mikaki_propose',
+      'mikaki_propose_attribute',
+      'mikaki_propose_record',
+      'mikaki_read',
+      'mikaki_search',
+    ]);
     for (const tool of tools) assert.equal(tool.outputSchema?.type, 'object');
     const read = await client.callTool({ name: 'mikaki_read', arguments: { id: 'name' } });
     assert.match(JSON.stringify(read), /Selected owner/);
@@ -331,7 +339,7 @@ test('owner consent, encrypted storage, remote MCP, exact draft approval, retry,
     // A populated legacy grant, proposal, draft and note proposal never send their
     // plaintext to the v2 connection-only endpoint. The legacy endpoint is intact.
     await env.DB.prepare(
-      `INSERT INTO agent_attribute_proposal VALUES(?,?,1,?,'owner_note',0,?,?,?,'approved')`,
+      `INSERT INTO agent_attribute_proposal(proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state) VALUES(?,?,1,?,'owner_note',0,?,?,?,'approved')`,
     )
       .bind(id(), grantId, id(), 'Connection-only note sentinel', time + 600, time)
       .run();

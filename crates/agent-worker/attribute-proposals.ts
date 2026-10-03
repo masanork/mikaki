@@ -17,7 +17,7 @@ import {
 } from './store.js';
 
 // Recheck expiry on the durable database clock as well as the handler snapshot.
-const activeJoin = `${grantJoin} AND g.expires_at>unixepoch()`;
+const activeJoin = `${grantJoin} AND g.expires_at>unixepoch() AND g.storage_version=1`;
 const ownerJoin = `${sessionJoin} AND ss.expires_at>unixepoch()`;
 
 const revision = z
@@ -65,7 +65,7 @@ const target = `COALESCE((SELECT revision FROM vault_attribute_head
  WHERE account_id=g.account_id AND attribute_id='owner_note'),0)`;
 const scope = `AND EXISTS(SELECT 1 FROM json_each(g.operations) WHERE value='propose')
  AND EXISTS(SELECT 1 FROM agent_attribute_capability cap WHERE cap.grant_id=g.grant_id
-   AND cap.grant_revision=g.revision AND cap.attribute_id='owner_note'
+   AND cap.storage_version=1 AND cap.grant_revision=g.revision AND cap.attribute_id='owner_note'
    AND cap.base_revision=${target} AND cap.expires_at>? AND cap.expires_at>unixepoch())`;
 
 export async function allow(
@@ -81,7 +81,7 @@ export async function allow(
   const statements = [
     session
       .prepare(
-        `INSERT INTO agent_attribute_capability
+        `INSERT INTO agent_attribute_capability(grant_id,attribute_id,base_revision,grant_revision,created_at,expires_at)
       SELECT g.grant_id,?, ?,g.revision,?,MIN(g.expires_at,?) ${activeJoin}
       AND g.grant_id=? AND g.account_id=? AND ${target}=?
       AND EXISTS(SELECT 1 FROM json_each(g.operations) WHERE value='propose')
@@ -317,7 +317,7 @@ export async function status(db: D1Database, owner: Owner) {
         `SELECT p.*,g.delegate,g.provider,ac.operation_id,ac.candidate,ac.result_revision,
     'owner-vault' AS destination FROM agent_attribute_proposal p JOIN agent_grant g ON g.grant_id=p.grant_id
     LEFT JOIN agent_attribute_commit ac ON ac.proposal_id=p.proposal_id
-    WHERE g.account_id=? AND (p.state='committed' OR (p.expires_at>? AND p.expires_at>unixepoch()))
+    WHERE g.account_id=? AND p.storage_version=1 AND (p.state='committed' OR (p.expires_at>? AND p.expires_at>unixepoch()))
       AND EXISTS(SELECT 1 ${ownerJoin}) ORDER BY p.created_at DESC LIMIT 20`,
       )
       .bind(owner.account, now(), owner.secretHash, owner.account, now())
@@ -357,7 +357,7 @@ export async function prepare(
   const p = await session
     .prepare(
       `SELECT p.* FROM agent_attribute_proposal p
-    WHERE p.proposal_id=? AND p.request_hash=? AND p.state='approved' AND p.payload IS NOT NULL
+    WHERE p.proposal_id=? AND p.request_hash=? AND p.storage_version=1 AND p.state='approved' AND p.payload IS NOT NULL
       AND p.expires_at>unixepoch() AND EXISTS(SELECT 1 ${activeJoin}
         AND g.grant_id=p.grant_id AND g.account_id=? AND g.revision=p.grant_revision
         ${scope} AND ${target}=p.base_revision AND EXISTS(SELECT 1 ${ownerJoin}))`,

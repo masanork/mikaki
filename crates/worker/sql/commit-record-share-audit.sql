@@ -1,0 +1,1 @@
+INSERT INTO vault_record_share_audit(account_id,operation_id,request_hash,action,envelope_id,grant_version,occurred_at) SELECT account_id,?2,?3,'share',envelope_id,version,unixepoch() FROM vault_record_grant WHERE account_id=?1 AND envelope_id=?2 AND status='active'

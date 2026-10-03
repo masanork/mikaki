@@ -32,6 +32,13 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerRecordEditor.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-controller.ts");
+    println!("cargo:rerun-if-changed=ui/vault-record-source.ts");
+    println!("cargo:rerun-if-changed=ui/agent-record-crypto.ts");
+    println!("cargo:rerun-if-changed=ui/agent-record-proof.ts");
+    println!("cargo:rerun-if-changed=ui/vault-record-approval.ts");
+    println!("cargo:rerun-if-changed=ui/vault-record-content.ts");
+    println!("cargo:rerun-if-changed=ui/vault-record-recipient-envelope.ts");
+    println!("cargo:rerun-if-changed=ui/recipient-directory-v2.ts");
     println!("cargo:rerun-if-changed=ui/vault-lifecycle.ts");
     println!("cargo:rerun-if-changed=ui/vault-context.ts");
     println!("cargo:rerun-if-changed=ui/session-events.ts");
