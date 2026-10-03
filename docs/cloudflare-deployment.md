@@ -90,6 +90,76 @@ After activating a version with the `CF_VERSION_METADATA` binding, fetch `/versi
 
 The retained tossa.app test deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
+## Manual reconciliation of reviewed migration 0031
+
+The [reconcile-production-0031 workflow](../.github/workflows/reconcile-production-0031.yml)
+is a one-migration operation using the existing `production` environment and
+`CLOUDFLARE_API_TOKEN`. It does not deploy Workers. It shares the production
+deployment concurrency group; coordinate with operators so no external schema
+changes or restore run concurrently. Do not change protection settings or create
+or widen credentials to make a failed run pass. Repository configuration alone
+does not prove current environment review requirements or the token's D1 write
+scope; an authorized operator must check them before execution.
+
+The workflow implementation is reviewed on `main`. Its separate, immutable input
+checkout is `fd55932eee716c2c623cbbb45d1c8b68ec8c354e`, and it rejects differences
+between that checkout and the workflow revision's migration/config inputs:
+
+- D1: `mikaki-auth`, ID `f9299d62-2dbf-4bae-ae49-8b75674572d4`
+- Production config: `crates/worker/wrangler.production.jsonc`, SHA-256
+  `145772fc877d6442509deddd5e29e35308fa9f2a36644b44f63b64c44f6c1efd`
+- Only candidate: `0031_vault_owner_keys.sql`, SHA-256
+  `310c0f20250e5088224ab99c0ee31a9f36f23ba9476d220f3000ec379206125c`
+
+This SQL creates `vault_owner_key_head` and `vault_owner_key_wrap` as STRICT
+tables. It has no application-data update/delete/backfill. Wrangler also records
+the migration in the existing migration ledger. Existing Workers continue using
+the current database; schema work and Worker activation are separate operations.
+
+1. After explicit approval to add and use this bounded mechanism, run the
+   workflow on `main` with `mode=plan` (the default). Review the full-source pending
+   list, exact schema-match result, plan SHA-256, timestamp and Time Travel
+   bookmark in the run summary and `migration-0031-preflight-<run>-<attempt>`
+   artifact. A successful plan performs only SELECT queries and Time Travel
+   metadata reads. Pinned Wrangler 4.144.0's `migrations list` initializes its
+   ledger and has no JSON output option, so this workflow instead reads the
+   existing ledger with `d1 execute --remote --json`. An absent ledger fails.
+2. Confirm the result has exactly `0031_vault_owner_keys.sql` pending, the two
+   target tables are absent, and the recorded recovery boundary is appropriate.
+   Only then authorize application. Run again with `mode=apply-0031`, the reviewed
+   `approved_plan_sha256`, and `confirm_apply=APPLY 0031 TO mikaki-auth`. These
+   inputs do not bypass the existing environment protections. If the plan shows
+   no pending migrations and the exact new schema, no apply run is necessary.
+3. The application run repeats the preflight, checks the approved digest, obtains
+   and reads back a fresh timestamped bookmark, and successfully uploads that
+   record before its apply step. It rejects a record older than two minutes,
+   checks the same timestamp/bookmark again, and rechecks ledger/schema before
+   writing. Its temporary config preserves the pinned account, D1 ID and ledger
+   but exposes only the reviewed 0031 file. Thus even a ledger change cannot make
+   Wrangler apply another migration. Unexpected migrations, partial tables,
+   altered schema, lost read access or failed bookmark readback stop the run.
+4. Verify `applied_and_schema_verified` in the sanitized result artifact, an
+   empty pending list across the full 0001–0031 source, and both exact table
+   definitions. Only then resume the existing attested production deployment
+   flow. An earlier CI run can skip promotion when newer non-metrics files are
+   on `main`; select/rerun the appropriate current-source CI deployment instead
+   of weakening that source-freshness gate.
+
+Wrangler's documented noninteractive CI behavior supplies migration confirmation;
+`migrations apply` has neither `--yes` nor `--json` in the pinned version. Only
+`d1 execute` and `time-travel info` JSON responses are parsed. No raw CLI responses,
+credential values, private rows or dumps are printed or uploaded. The retained
+records contain reviewed identifiers/hashes, validated migration names, schema
+fingerprints, and the recovery coordinate. Temporary CLI logs/configs are removed.
+The workflow never receives the signing or readiness secrets.
+
+A failed/timed-out apply is an **uncertain result**, not permission to retry or
+restore. Preserve its preflight artifact, run a new read-only plan to establish
+actual ledger/schema state, and stop for reviewed repair if they disagree. Never
+insert a ledger entry manually to hide an error, drop these tables, or restore
+D1 automatically. See [the 0031 recovery boundary](release-and-recovery.md#0031-reconciliation-recovery-boundary)
+for bookmark retention and Vault recovery limits.
+
 ## Local changes awaiting activation
 
 The 2026-09-29 [Vault and account UI](product-ui-preview.md), additional Passkey/typed-note flows, agent/OAuth endpoints, and optional DPoP/PAR work originally had local evidence only. The 2026-09-30 native-client activation below deployed the committed OP code and applied migrations `0014`–`0029`. Intended-device PRF, completed RP callback/logout, agent user flows and native Vault unlock still require their separate qualification gates in [product quality](product-quality.md). Native Vault OAuth remains disabled.
