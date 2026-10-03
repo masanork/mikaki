@@ -112,6 +112,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
+    await context.addInitScript(() => {
+      const get = navigator.credentials.get.bind(navigator.credentials);
+      let count = 0;
+      Object.defineProperty(window, 'vaultCeremonyCount', { get: () => count });
+      navigator.credentials.get = (options) => {
+        count++;
+        return get(options);
+      };
+    });
     await cdp.send('WebAuthn.enable', { enableUI: false });
     const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
@@ -139,8 +148,14 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.locator('#unlock').click();
     await page.locator('#name').fill('Journey owner');
     await page.locator('#save').click();
-    await expect(page.locator('#status')).toHaveText(
-      'Saved. Unlock with your passkey to verify it.',
+    await expect(page.locator('#status')).toHaveText('Saved.');
+    await page.locator('#reload-profile').click();
+    await expect(page.locator('#name')).toHaveValue('Journey owner');
+    assert.equal(
+      await page.evaluate(
+        () => (window as unknown as { vaultCeremonyCount: number }).vaultCeremonyCount,
+      ),
+      1,
     );
     await page.reload();
     await page.locator('#unlock').click();
@@ -149,9 +164,8 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     // Saved plaintext must require a new Passkey/PRF unlock after returning.
     await page.goto(`${issuer}/?lang=en`);
     await page.goBack();
-    await expect(page.locator('#name')).toHaveValue('');
-    await expect(page.locator('#name')).toBeDisabled();
-    await expect(page.locator('#save')).toBeDisabled();
+    await expect(page.locator('#name')).toHaveCount(0);
+    await expect(page.locator('#save')).toHaveCount(0);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
     await page.goto(rpOrigin);
