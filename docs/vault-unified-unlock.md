@@ -39,3 +39,5 @@ The [new Worker/Chromium suite](../local/conformance/vault-owner-ui-browser.test
 Local browser execution in this task was blocked before browser startup: system Chromium's required local singleton socket returned `Operation not permitted`, including after the supported execution escalation. No local DOM/visual/virtual-authenticator pass is claimed for these additions. Exact-head CI must run these browser gates before readiness; physical intended-device PRF and recovery remain separate gates. A successful build/type check is not browser evidence.
 
 Default activation remains gated on coherent, tested v2 recipient/AI/proposal/transfer behavior. Those adapters must bind the complete v2 source/target tuple and current authority, never fall back silently to old format-1 values or receive the owner root. Conversation/archive/search work is a subsequent slice, not part of this two-record preview.
+
+The draft [selected v2 disclosure foundation](vault-selected-record-disclosure.md) adds separately versioned preparation and local-adapter contracts. It does not mount sharing controls or enable remote/recipient/proposal authority in this preview.
