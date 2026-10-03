@@ -28,7 +28,7 @@ After sign-in, you enter Vault. Authentication confirms your account; unlocking 
 
 Use the item's unlock action and confirm the passkey. Decryption needs the corresponding passkey used for the saved data and WebAuthn PRF support. Successful ordinary sign-in does not establish that this device and browser can unlock the item.
 
-Names and notes are separate items. Read [Using Vault](vault.md) before saving, sharing or transferring data. Recovery qualification is incomplete, so review the limitations before using Vault as the only copy of information you cannot afford to lose.
+The screen calls the name “Display name” in “Profile”, and the note “Owner note”. “Unlock with passkey” and “Open note” are separate actions. For a first check, use a short note you can afford to lose, save it and reopen it. [Using Vault](vault.md) explains the screen sections and the steps. Recovery qualification is incomplete, so review the limitations before using Vault as the only copy of information you cannot afford to lose.
 
 For compatibility and unlock troubleshooting, follow the checks in [Passkeys and unlocking Vault](passkeys.md).
 
