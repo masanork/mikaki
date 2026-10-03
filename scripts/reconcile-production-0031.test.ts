@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  readFileSync,
+  readdirSync,
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  copyFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   APPROVED,
@@ -20,7 +28,16 @@ import {
 } from './reconcile-production-0031.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const inputs = expectedInputs(root);
+// This one-off production gate intentionally becomes obsolete at 0032. Keep its
+// supported-state fixtures stable so later migrations do not break normal CI.
+const fixture = mkdtempSync(join(tmpdir(), 'mikaki-reviewed-0031-'));
+const fixtureMigrations = join(fixture, 'crates/worker/migrations');
+mkdirSync(fixtureMigrations, { recursive: true });
+for (const name of readdirSync(join(root, 'crates/worker/migrations')).sort().slice(0, 31)) {
+  copyFileSync(join(root, 'crates/worker/migrations', name), join(fixtureMigrations, name));
+}
+after(() => rmSync(fixture, { recursive: true, force: true }));
+const inputs = expectedInputs(fixture);
 const ledger = (count = 30) =>
   inputs.names.slice(0, count).map((name, index) => ({ id: index + 1, name }));
 const response = (rows: unknown[]) => JSON.stringify([{ success: true, results: rows }]);
@@ -257,4 +274,15 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
     workflow,
     /OP_PRIVATE_JWK|MIKAKI_READY_TOKEN|workflow_call:|pull_request:|push:|contents: write/,
   );
+});
+
+test('production input loader rejects a later 0032 without breaking the stable test fixture', () => {
+  const later = join(fixtureMigrations, '0032_unreviewed.sql');
+  try {
+    writeFileSync(later, 'CREATE TABLE later(id INTEGER);');
+    assert.throws(() => expectedInputs(fixture), /exactly the reviewed/);
+  } finally {
+    rmSync(later);
+  }
+  assert.deepEqual(expectedInputs(fixture).names, inputs.names);
 });
