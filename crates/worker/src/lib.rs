@@ -44,6 +44,8 @@ mod vault_gc;
 mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_resource;
+#[cfg(target_arch = "wasm32")]
+mod vault_owner_keys;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -3747,6 +3749,8 @@ pub async fn main(
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
         .get_async("/vault/session", vault_attributes::session)
+        .get_async("/vault/owner-key", vault_owner_keys::get)
+        .put_async("/vault/owner-key", vault_owner_keys::create)
         .get_async("/vault/passkeys", owner_passkeys::list)
         .post_async("/vault/passkeys/start", owner_passkeys::start)
         .post_async("/vault/passkeys/finish", owner_passkeys::finish)

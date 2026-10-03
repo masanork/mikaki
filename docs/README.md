@@ -17,6 +17,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Review UI and product quality | [Login preview](login-ui-preview.md), [product screens](product-ui-preview.md), and [quality gates](product-quality.md) |
 | Review the next Vault experience | [Human/agent journeys, data semantics and unified unlock](vault-product-model.md), with a [fictional interactive preview](vault-usage-preview/README.md) |
 | Review encrypted conversation search | [Sorane-inspired SQLite/FTS5 investigation and implementation gates](vault-thread-search.md) |
+| Review unified Vault key opening | [Candidate owner-key format, bounded lease and adoption gates](vault-owner-key-contract.md) |
 | Review tests and coverage | [Product test coverage and CI evidence](test-quality.md) |
 | Work on the code | [Development guide](contributing.md) |
 | Connect an AI agent and review remaining work | [Agent integration and local MCP](agent-integration.md) |
