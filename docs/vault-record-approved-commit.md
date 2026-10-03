@@ -1,0 +1,34 @@
+# Selected v2 approved-note service
+
+**Status:** draft service and operation-only browser API, 2026-10-03. Migration `0035` follows the [selected agent grant](vault-record-agent-grants.md) and record UserInfo schema. The owner-v2 preview still does not mount sharing or proposal controls. No production migration, live grant, recipient provisioning, browser-consent qualification or deployment is implied.
+
+## Separate, exact owner authority
+
+A v2 snapshot grant has no write authority by itself. The owner must issue one immutable `record-capability` for one exact `personal/owner_note` target on that grant, for at most one hour and no longer than the grant. The complete target includes storage version, origin, owner, Vault, collection, record, kind, content revision/digest and deletion state. A distinct authority includes root generation and current registry revision. A missing target is revision zero with no digest and no tombstone; recreating a deleted note requires the actual tombstone revision and an explicit owner decision.
+
+The source selected for reading remains independently checked. It may be the name or the note, but never a broader archive, collection or root. V1 attributes cannot satisfy v2 source or target predicates. The unchanged canonical `mikaki.owner-note` version-1 document schema, including self-asserted provenance, is the only proposal payload accepted. This document version is not the storage version.
+
+The delegated `mikaki_propose_record` tool and `/record-proposals` endpoint create reviewable proposals only. `mikaki_execute` retains its private-draft behavior. Owner decisions and preparation are reachable only through the authenticated OP service binding. Each proposal retry and final delegated receipt rechecks the exact live grant, capability, target, source, recipient, account, credential and effective access token. Metadata is not returned as a stale delegated acknowledgment.
+
+## Candidate proof and atomic commit
+
+`OwnerKeySession.sealApprovedNote` seals the exact approved canonical bytes as the next record revision, with a fresh content key and the existing owner-root wrapping operation. It returns only the encrypted candidate and a distinct `mikaki-approved-record-proof` v2 envelope. Its plaintext is exactly the new candidate's 32-byte content key encrypted to the configured agent recipient; neither the owner root nor any old source key is exported. The proof binds proposal/request/operation, grant, recipient/resource, deadline, complete target/authority, and candidate digest/source. Input snapshots precede asynchronous work; temporary byte buffers are cleared; a suspended, locked or replaced lease cannot release late results.
+
+The agent service decrypts the proof, authenticates the candidate's v2 content AAD, validates its canonical schema, and compares the resulting bytes exactly with the approved payload. Preparation pins the candidate's canonical JSON, operation, digest and full proposal identity. Changed ciphertext, target, authority or operation cannot reuse that preparation.
+
+The owner POSTs this prepared candidate to `/vault/records/personal/owner_note/approved` with `X-Operation-ID`, `X-Attribute-Proposal`, `X-Proposal-Hash` and the exact expected revision (`If-None-Match: *` only for a never-created record; `If-Match` for existing records and tombstones). An ordinary PUT cannot consume the approval or later masquerade as an approved operation.
+
+R2 stores immutable encrypted bytes first. One D1 batch then consumes the live approval, writes the conditional record head, writes the immutable mutation receipt, finishes the prepared commit, and enforces a final assertion. The decision audit is a trigger in the same batch. Any failed statement or guard rolls back approval, head, receipt and audit together. The final assertion deliberately does not recheck the now-changed source: writing a selected source note can revoke its grant during the successful transaction. Unreferenced encrypted R2 objects are handled by the existing bounded record garbage collector.
+
+## Historical acknowledgment and recovery
+
+A successful approved mutation's receipt is immutable and retained for 90 days. A byte-identical retry under the same owner account and live SSO can receive only `{revision, deleted}` from that receipt, even after the root, grant, recipient or proposal metadata has changed. It does not decrypt/read any record or reapply the candidate. Session/account/credential validity is still checked on the database clock, and a changed operation/proposal/hash/body/conditional identity fails. This narrower acknowledgment rule intentionally differs from a new write and from a delegated proposal receipt.
+
+The owner status endpoint returns a prepared candidate and operation so an interrupted browser can retry the exact operation. The UI must preserve that candidate instead of silently resealing a different candidate for the same prepared proposal. A later UI adapter must also surface root/source changes, explicit tombstone recreation, disposal, duplicate actions and uncertain outcomes before enabling controls.
+
+## Verification
+
+- [Native exact-SQL tests](../scripts/test_vault_record_approval_sql.test.ts) execute the same readiness, consumption, head, receipt, finish and guard statements, including rollback injection and historical retry boundaries.
+- [Independent crypto and lease tests](../local/conformance/vault-record-approval.test.ts) open the product proof and candidate with independent Node RSA/GCM, exercise binding substitutions and asynchronous input mutation, and inspect byte cleanup after late-result rejection.
+- [Bundled service/SQLite tests](../local/conformance/agent-record-grants.test.ts) cover post-audit and repeated-request invalidation of delegated proposal metadata.
+- [Paired workerd tests](../local/conformance/record-attribute-commit.test.ts), included in `test:attribute-commit`, cover real OP/agent service binding, D1 transaction rollback, R2 failure and post-upload authority races, concurrent identical retries, v1 isolation, tombstones and historical acknowledgments. The local paired-workerd run passed all seven lifecycle subtests after independent review and D1 expression-depth fixes. Exact-head CI still qualifies the integrated tree and real browser paths; native SQL is not a substitute for those checks.

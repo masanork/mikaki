@@ -125,6 +125,7 @@ jobs:
           npm run test:worker-browser
           npm run test:agent-integration
           npm run test:vault-transfer
+          npm run test:vault-disclosure
           npm run test:vault-notes
           npm run test:attribute-proposals
           npm run test:attribute-commit

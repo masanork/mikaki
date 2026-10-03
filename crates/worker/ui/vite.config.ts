@@ -29,6 +29,10 @@ export default defineConfig({
       fileName: () => `${entry}.js`,
       cssFileName: entry,
     },
-    rolldownOptions: { output: { inlineDynamicImports: true } },
+    // Vite's ES library output normally preserves whitespace. The Vault entry
+    // uses the supported final output minifier without splitting or adding assets.
+    rolldownOptions: {
+      output: { inlineDynamicImports: true, ...(entry === 'vault' ? { minify: true } : {}) },
+    },
   },
 });
