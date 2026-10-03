@@ -108,6 +108,11 @@ test('SQLite Worker searches bounded archive snapshots and destroys pending work
       check((await client.search('住所 不在語', ['human'])).hits.length===0, 'AND');
       check((await client.search('OR', ['human'])).hits.length===0, 'literal operator');
       check((await client.search('架空の会話', ['human'])).hits[0].message===-1, 'title anchor');
+      await client.replace([record('human', 4, ['前置き'.repeat(300)+'ＡＢＣ🐈住所変更'+'後'.repeat(300)]), record('ai', 1, ['ＡＢＣ住所変更'])]);
+      const late = await client.search('abc 住所', ['human']);
+      check(late.hits.length===1 && late.hits[0].message===0 && late.hits[0].revision===4, 'scoped late anchor');
+      check(late.hits[0].text.includes('ＡＢＣ🐈住所変更') && [...late.hits[0].text].length<=240, 'late original excerpt');
+      await client.replace(snapshot);
       check((await client.search('', ['human'])).hits.length===0, 'empty query');
       check((await client.search('住所', [])).hits.length===0, 'empty scope');
       check(await rejected(client.search('住所', ['forbidden'])), 'scope denied');

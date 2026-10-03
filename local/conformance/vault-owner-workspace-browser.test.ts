@@ -313,7 +313,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         {
           speaker: 'Alice',
           actor: 'human',
-          text: '保育園の申請について相談したい',
+          text: '前の説明。'.repeat(100) + '保育園の申請について相談したい',
           timestamp: '2026-10-03T00:00:00.000Z',
         },
         {
@@ -333,6 +333,19 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '申請の相談', exact: true }).click();
     await expect(page.getByText('必要な情報を整理しましょう', { exact: true })).toBeVisible();
+    await page.locator('#archive-file').setInputFiles({
+      name: 'other-conversation.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({
+          ...archive,
+          title: '別の相談',
+          messages: [{ ...archive.messages[0], text: '保育園の申請を別の会話で相談' }],
+        }),
+      ),
+    });
+    await expect(page.getByRole('button', { name: '別の相談', exact: true })).toBeVisible();
+    await page.locator('#thread-search-scope').selectOption({ label: '申請の相談' });
     assert.equal(searchAssets.length, 0, 'SQLite loads only for a search');
     await page.locator('#thread-search').fill('園 園 園 園 園 園 園 園 園');
     await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'true');
@@ -346,6 +359,20 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await expect(page.locator('#thread-search-results button')).toHaveCount(1);
     await page.locator('#thread-search').fill('園 申請');
     const results = page.locator('#thread-search-results');
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await expect(results.getByRole('button')).toContainText('保育園の申請について相談したい');
+    assert.ok(
+      (await results.getByRole('button').textContent())!.length < 350,
+      'late match uses a bounded excerpt',
+    );
+    await expect(results.getByRole('button')).toContainText('Alice');
+    await page.locator('#thread-search-scope').selectOption('');
+    await expect(results.getByRole('button')).toHaveCount(2);
+    await page.locator('#thread-search-scope').selectOption({ label: '別の相談' });
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await expect(results.getByRole('button')).toContainText('別の相談');
+    await expect(results.getByText('申請の相談', { exact: true })).toHaveCount(0);
+    await page.locator('#thread-search-scope').selectOption({ label: '申請の相談' });
     await expect(results.getByRole('button')).toHaveCount(1);
     assert.ok(searchAssets.includes('/vault/search.js'));
     assert.ok(searchAssets.includes('/vault/sqlite3.wasm'));
@@ -438,12 +465,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '申請の相談', exact: true }).click();
     await page.locator('#thread-search').fill('申請');
+    await page.locator('#thread-search-scope').selectOption({ label: '申請の相談' });
     await expect(page.locator('#thread-search-results button')).toHaveCount(2);
     await page.locator('#threads .product-danger').click();
-    await expect(page.locator('#thread-search-results [role=status]')).toHaveText(
-      'No matching conversations.',
-    );
+    await expect(page.locator('#thread-search')).toHaveValue('');
+    await expect(page.locator('#thread-search-scope')).toHaveValue('');
     await expect(page.locator('#thread-search-results button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('申請');
+    await expect(page.locator('#thread-search-results button')).toHaveCount(1);
+    await expect(page.locator('#thread-search-results button')).toContainText('別の相談');
     await page.locator('#thread-search').fill('');
     await page.locator('#connections summary').click();
     await assertConnectionsOnly();

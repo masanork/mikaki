@@ -6,6 +6,8 @@
   "ownerWorkspaceImport": "会話履歴を取り込む",
   "ownerWorkspaceSearch": "会話を探す",
   "threadSearchLoading": "会話を検索中…",
+  "threadSearchScope": "検索範囲",
+  "threadSearchAll": "すべての会話",
   "threadSearchFailed": "検索できませんでした。もう一度お試しください。",
   "threadSearchEmpty": "該当する会話はありません。",
   "threadSearchLimited": "先頭の50件を表示しています。検索語を絞ってください。",
