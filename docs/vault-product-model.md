@@ -87,6 +87,8 @@ The [WebAuthn PRF specification](https://www.w3.org/TR/webauthn-3/#prf-extension
 
 Before enabling the owner-key session, specify and test the versioned key/envelope format, stable PRF input, KDF/AAD domain separation, owner/origin/Vault/key-generation binding, per-Passkey wrapping and loss/recovery behavior. Prefer non-extractable browser key handles for the in-memory lease; clear retained byte arrays and drop key/state references on lock. This is bounded lifetime management, not a guarantee that JavaScript/browser memory can be physically erased.
 
+The [candidate owner-key contract](vault-owner-key-contract.md) now has locally tested client crypto and lease modules with synthetic PRF/browser evidence. They have no production callers; root registry/storage, actual WebAuthn/controller integration and verified migration remain prerequisites for U1/U2 completion.
+
 Retain the current idle/absolute/session-replacement/logout/pagehide protections. A hidden tab masks content and suspends operations; verified return within the lease should not add another prompt. An expired or invalid owner session destroys the unlock lease; late authenticator/network results cannot recreate it. Do not persist owner keys or PRF output in localStorage, sessionStorage, IndexedDB, URLs or service Worker caches. Adding offline custody requires its own explicit design.
 
 Ordinary RP sign-in remains usable without PRF. Combining an owner-facing sign-in with Vault opening is a later measured improvement: it must preserve login on non-PRF credentials, bind the authenticated owner/credential and keep owner secrets across navigation through a defined same-origin lifecycle. An SSO cookie alone must never produce decrypted Vault content.

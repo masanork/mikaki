@@ -28,6 +28,8 @@
     "complete.ts",
     "locale.ts",
     "vault-crypto.ts",
+    "vault-owner-crypto.ts",
+    "vault-owner-session.ts",
     "vault-note.ts",
     "attribute-commit.ts",
     "agent-crypto.ts",
