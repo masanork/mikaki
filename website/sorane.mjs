@@ -82,7 +82,13 @@ for (const lang of ['ja', 'en']) {
       (link, slug, suffix = '') =>
         slugs.has(slug) ? `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"` : link,
     );
-    if (!home) {
+    if (home) {
+      // Keep the introduction before the three purpose-based guide sections.
+      const [introduction, ...guides] = content.split(/(?=<h2\b)/);
+      content = `${introduction}<div class="guide-grid">${guides
+        .map((guide) => `<section class="guide-card">${guide}</section>`)
+        .join('')}</div>`;
+    } else {
       // Reuse Sorane's rendered heading IDs, including duplicate-heading suffixes.
       const headings = [...content.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<\/h2>/g)];
       if (headings.length >= 3) {
@@ -99,7 +105,7 @@ for (const lang of ['ja', 'en']) {
         content = content.replace(/(?=<h2\b)/, contents);
       }
     }
-    const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose">${nav}${content}</section>`;
+    const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose${home ? ' home-prose' : ''}">${nav}${content}</section>`;
     const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
     const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${home ? '' : 'small'}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="/${prefix}">mikaki</a><span class="plaque">mikaki.org</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="${signin}">${ja ? 'サインイン' : 'Sign in'}</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;
     writeFileSync(join(site, 'public', rel), html);

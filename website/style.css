@@ -284,3 +284,42 @@ footer {
   font-weight: 600;
   color: #edf0ed;
 }
+
+.home-prose {
+  max-width: none;
+}
+.home-prose > p {
+  max-width: 68ch;
+}
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+.guide-card {
+  padding: 24px;
+  border: 1px solid #ffffff24;
+  border-radius: 8px;
+  background: #07101399;
+}
+.guide-card h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+.guide-card p,
+.guide-card li {
+  font-size: 0.9rem;
+}
+.guide-card ul {
+  padding-inline-start: 1.2em;
+  margin-bottom: 0;
+}
+.guide-card li {
+  margin-block: 12px;
+}
+@media (max-width: 1000px) {
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
