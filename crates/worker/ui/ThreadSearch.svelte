@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { ThreadSearchClient } from './vault-thread-search-client.ts';
   import type { SearchArchive, SearchHit } from './vault-thread-search.ts';
+  import { threadSearchTerms } from './vault-thread-search-query.ts';
   import type { OwnerVaultController } from './vault-owner-controller.ts';
   import { vaultScope } from './vault-context.ts';
   import * as m from './paraglide/messages.js';
@@ -20,7 +21,7 @@
   } = $props();
   const scope = vaultScope();
   let hits: SearchHit[] = $state([]),
-    phase = $state<'idle' | 'loading' | 'ready' | 'error'>('idle'),
+    phase = $state<'idle' | 'loading' | 'ready' | 'error' | 'invalid'>('idle'),
     truncated = $state(false);
   let client: ThreadSearchClient | null = null,
     indexed = false,
@@ -39,13 +40,23 @@
     phase = 'idle';
     clearTimeout(timer);
   }
+  function validQuery() {
+    try {
+      threadSearchTerms(query);
+      return true;
+    } catch {
+      phase = 'invalid';
+      return false;
+    }
+  }
   function schedule() {
     clearTimeout(timer);
-    if (!disabled && query.trim() && !scope.signal.aborted)
+    if (!disabled && query.trim() && !scope.signal.aborted && validQuery())
       timer = setTimeout(() => void run(), 180);
   }
   async function run() {
     if (running || disabled || !query.trim() || document.visibilityState === 'hidden') return;
+    if (!validQuery()) return;
     running = true;
     const generation = epoch,
       ticket = serial,
@@ -136,19 +147,23 @@
   {disabled}
   bind:value={query}
   aria-controls="thread-search-results"
+  aria-invalid={phase === 'invalid'}
+  aria-describedby={query.trim() ? 'thread-search-status' : undefined}
 />
 <div id="thread-search-results" aria-busy={phase === 'loading'}>
   {#if query.trim()}
-    <p role="status" aria-live="polite">
+    <p id="thread-search-status" role="status" aria-live="polite">
       {phase === 'loading'
         ? m.threadSearchLoading()
-        : phase === 'error'
-          ? m.threadSearchFailed()
-          : phase === 'ready' && !hits.length
-            ? m.threadSearchEmpty()
-            : truncated
-              ? m.threadSearchLimited()
-              : ''}
+        : phase === 'invalid'
+          ? m.threadSearchInvalidQuery()
+          : phase === 'error'
+            ? m.threadSearchFailed()
+            : phase === 'ready' && !hits.length
+              ? m.threadSearchEmpty()
+              : truncated
+                ? m.threadSearchLimited()
+                : ''}
     </p>
     {#if phase === 'error'}<button {disabled} onclick={() => void run()}>{m.agentRefresh()}</button
       >{/if}

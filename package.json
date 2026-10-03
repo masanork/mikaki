@@ -14,7 +14,7 @@
     "test:agents": "node --test local/test/agent-mcp.test.ts local/test/agent-tool-results.test.ts",
     "test:agent-integration": "node --test --test-concurrency=1 local/conformance/vault-freshness.test.ts local/conformance/agent-worker.test.ts local/conformance/agent-browser.test.ts local/conformance/owner-note-agent-browser.test.ts",
     "test:vault-transfer": "node --test --test-concurrency=1 local/conformance/vault-crypto.test.ts local/conformance/vault-owner-key.test.ts local/conformance/vault-owner-controller.test.ts local/conformance/vault-owner-key-browser.test.ts local/conformance/vault-owner-key-store.test.ts local/conformance/vault-owner-record-store.test.ts local/conformance/vault-transfer.test.ts local/conformance/vault-note-transfer.test.ts",
-    "test:vault-thread-search": "node --test local/conformance/vault-thread-search-browser.test.ts",
+    "test:vault-thread-search": "node --test local/conformance/vault-thread-search-query.test.ts local/conformance/vault-thread-search-browser.test.ts",
     "mcp:local": "node local/agent-mcp.ts",
     "test:account-pages-browser": "node --test --test-concurrency=1 local/conformance/account-pages-browser.test.ts",
     "check:node": "node_modules/@typescript/native/bin/tsc --project tsconfig.node.json",

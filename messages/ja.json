@@ -350,5 +350,6 @@
   "ownerVaultSaved": "保存内容を確認しました。Vaultは開いたままです。",
   "ownerVaultRefreshFailed": "書き込みは確認できましたが、保存内容を再確認できませんでした。編集を続ける前に再読み込みしてください。",
   "ownerVaultRetrySave": "同じ保存を再試行",
-  "ownerVaultRetryDelete": "同じ削除を再試行"
+  "ownerVaultRetryDelete": "同じ削除を再試行",
+  "threadSearchInvalidQuery": "検索語は空白区切りで8語、全体で256文字以内にしてください。"
 }

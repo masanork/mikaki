@@ -350,5 +350,6 @@
   "ownerVaultSaved": "Saved and verified. Vault stays open.",
   "ownerVaultRefreshFailed": "The write was confirmed, but the saved content could not be rechecked. Reload before editing again.",
   "ownerVaultRetrySave": "Retry the same save",
-  "ownerVaultRetryDelete": "Retry the same deletion"
+  "ownerVaultRetryDelete": "Retry the same deletion",
+  "threadSearchInvalidQuery": "Use up to 8 space-separated search terms (256 characters maximum)."
 }

@@ -334,6 +334,16 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await page.getByRole('button', { name: '申請の相談', exact: true }).click();
     await expect(page.getByText('必要な情報を整理しましょう', { exact: true })).toBeVisible();
     assert.equal(searchAssets.length, 0, 'SQLite loads only for a search');
+    await page.locator('#thread-search').fill('園 園 園 園 園 園 園 園 園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#thread-search-results [role=status]')).toHaveText(
+      'Use up to 8 space-separated search terms (256 characters maximum).',
+    );
+    await expect(page.locator('#thread-search-results button')).toHaveCount(0);
+    assert.equal(searchAssets.length, 0, 'Invalid query does not load SQLite or offer retry');
+    await page.locator('#thread-search').fill('園　園　園　園　園　園　園　園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'false');
+    await expect(page.locator('#thread-search-results button')).toHaveCount(1);
     await page.locator('#thread-search').fill('園 申請');
     const results = page.locator('#thread-search-results');
     await expect(results.getByRole('button')).toHaveCount(1);
@@ -341,6 +351,12 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     assert.ok(searchAssets.includes('/vault/sqlite3.wasm'));
     await results.getByRole('button').click();
     await expect(page.locator('#thread-message-0')).toBeFocused();
+    await page.locator('#thread-search').fill('園 園 園 園 園 園 園 園 園');
+    await expect(page.locator('#thread-search')).toHaveAttribute('aria-invalid', 'true');
+    await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('園 申請');
+    await expect(results.getByRole('button')).toHaveCount(1);
+
     await mkdir('artifacts', { recursive: true });
     await page.screenshot({ path: 'artifacts/mikaki-owner-search-mobile.png', fullPage: true });
     await page.locator('#thread-search').fill('absent');

@@ -1,3 +1,7 @@
+import {
+  normalizeThreadSearchText as normalize,
+  threadSearchTerms,
+} from './vault-thread-search-query.ts';
 import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
 
 export type SearchArchive = { id: string; revision: number; archive: ThreadArchive };
@@ -19,7 +23,6 @@ export interface SearchDatabase {
   close(): void;
 }
 export type SearchDatabaseFactory = () => SearchDatabase;
-const normalize = (text: string) => text.normalize('NFKC').toLowerCase();
 const schema = `
 PRAGMA temp_store=MEMORY;
 CREATE TABLE items(id INTEGER PRIMARY KEY, thread TEXT NOT NULL, revision INTEGER NOT NULL,
@@ -32,7 +35,10 @@ CREATE VIRTUAL TABLE ft USING fts5(normalized, content=items, content_rowid=id,
 export class ThreadSearchProjection {
   private db: SearchDatabase | null = null;
   private allowed: string[] = [];
-  constructor(private readonly createDatabase: SearchDatabaseFactory) {}
+  private readonly createDatabase: SearchDatabaseFactory;
+  constructor(createDatabase: SearchDatabaseFactory) {
+    this.createDatabase = createDatabase;
+  }
 
   replace(input: unknown): SearchCoverage {
     // A failed replacement must not leave a seemingly current, stale projection.
@@ -54,6 +60,13 @@ export class ThreadSearchProjection {
         throw new Error('invalid record');
       ids.add(v['id']);
       const archive = parseThreadArchive(v['archive']);
+      if (
+        [
+          archive.title,
+          ...archive.messages.flatMap((message) => [message.speaker, message.text]),
+        ].some((text) => /[\uD800-\uDFFF]/u.test(text))
+      )
+        throw new Error('invalid archive unicode');
       if (new TextEncoder().encode(JSON.stringify(archive)).length > 24000)
         throw new Error('archive too large');
       return { id: v['id'], revision: v['revision'] as number, archive };
@@ -90,17 +103,15 @@ export class ThreadSearchProjection {
   search(query: unknown, scope: unknown): SearchResult {
     if (!this.db) throw new Error('locked');
     if (
-      typeof query !== 'string' ||
-      query.length > 256 ||
       !Array.isArray(scope) ||
       scope.length > 256 ||
       scope.some((id: unknown) => typeof id !== 'string' || !this.allowed.includes(id))
     )
       throw new Error('invalid query');
-    const terms = normalize(query).trim().split(/\s+/u).filter(Boolean);
-    if (terms.length > 8) throw new Error('invalid query');
+    const terms = threadSearchTerms(query);
     if (!terms.length || !scope.length) return { hits: [], truncated: false };
-    const long = terms.filter((term) => [...term].length >= 3);
+    // MATCH expressions cannot represent embedded NUL; bounded instr remains literal.
+    const long = terms.filter((term) => [...term].length >= 3 && !term.includes('\0'));
     const bind: (string | number)[] = [...new Set(scope as string[])];
     const conditions = [`i.thread IN (${bind.map(() => '?').join(',')})`];
     if (long.length) {

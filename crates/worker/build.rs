@@ -23,6 +23,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault-owner-record-store.ts");
     println!("cargo:rerun-if-changed=ui/vault-thread-archive.ts");
     println!("cargo:rerun-if-changed=ui/vault-thread-search.ts");
+    println!("cargo:rerun-if-changed=ui/vault-thread-search-query.ts");
     println!("cargo:rerun-if-changed=ui/vault-thread-search-client.ts");
     println!("cargo:rerun-if-changed=ui/vault-thread-search-worker.ts");
     println!("cargo:rerun-if-changed=ui/search.ts");
