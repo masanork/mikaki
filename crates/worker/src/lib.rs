@@ -3299,7 +3299,9 @@ async fn ready_route(
         )
         .await
         {
-            futures_util::future::Either::Left((result, _)) => { result?; }
+            futures_util::future::Either::Left((result, _)) => {
+                result?;
+            }
             futures_util::future::Either::Right(_) => {
                 return Err(worker::Error::RustError("R2 readiness timed out".into()));
             }
@@ -3331,7 +3333,9 @@ async fn ready_route(
             .first::<SigningPublicKeyRow>(None)
             .await?;
         if !signing_key.is_some_and(|row| signer.matches_public_jwk(&row.public_jwk)) {
-            return Err(worker::Error::RustError("signing key is unavailable".into()));
+            return Err(worker::Error::RustError(
+                "signing key is unavailable".into(),
+            ));
         }
         let response = context
             .env
@@ -3344,8 +3348,19 @@ async fn ready_route(
             ));
         }
         Ok::<(), worker::Error>(())
-    }
-    .await;
+    };
+    // Bound the complete read-only probe, including D1 and the Claim Worker.
+    let ready = match futures_util::future::select(
+        Box::pin(ready),
+        Box::pin(worker::Delay::from(std::time::Duration::from_secs(5))),
+    )
+    .await
+    {
+        futures_util::future::Either::Left((result, _)) => result,
+        futures_util::future::Either::Right(_) => {
+            Err(worker::Error::RustError("readiness timed out".into()))
+        }
+    };
     if ready.is_err() {
         worker::console_warn!("readiness unavailable");
     }
