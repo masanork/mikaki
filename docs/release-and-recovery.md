@@ -116,9 +116,9 @@ Pending D1 migrations stop promotion before upload. Reconcile the schema using t
 
 The final reusable `production-smoke` job checks the exact OP version, clean source commit, signed login asset hashes, readiness, Discovery/JWKS and native association. A failed smoke marks CI red after activation and requires investigation; it does not qualify an owner Passkey ceremony or a completed relying-party login. Deployment and smoke artifacts are retained for 30 days.
 
-## 0031 reconciliation recovery boundary
+## Vault schema reconciliation recovery boundary
 
-The [bounded 0031 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migration-0031)
+The [bounded 0031 and 0032 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migrations-0031-and-0032)
 records its source/DB/migration hashes, pending state, schema fingerprint,
 Time Travel timestamp and bookmark before applying. The same timestamp is read
 back to confirm the service returns the same bookmark. The apply step checks
@@ -137,7 +137,11 @@ not establish this account's plan or usable retention window; verify and record
 those independently. A bookmark is not an access credential, but keep recovery
 records under the existing operations access rules.
 
-0031 is additive and does not modify prior application rows. A code rollback
+0031 and 0032 are additive and do not modify prior application rows; 0032 also
+inserts its GC cursor initialization row. Each migration commits separately, so
+0031 may remain applied after a 0032 failure. Inspect with a fresh plan and
+review its new digest before attempting the missing suffix; never retry or
+restore automatically. A code rollback
 normally leaves these tables and the current migration ledger in place, subject
 to the existing code/schema compatibility review. A database restore would
 overwrite the whole database and could lose later legitimate writes or revive
