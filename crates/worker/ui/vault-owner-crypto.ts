@@ -31,6 +31,7 @@ export type OwnerRecord = Readonly<{
 const KEY = 32;
 const NONCE = 12;
 const TAG = 16;
+export const OWNER_KEY_SUITE = 'PRF-HKDF-SHA256-AES256GCM-v2';
 // This first contract covers bounded records, not large SQLite images.
 export const OWNER_RECORD_MAX_BYTES = 24 * 1024;
 const random = (length: number): Bytes => crypto.getRandomValues(new Uint8Array(length));
@@ -101,14 +102,13 @@ function wrapContext(
 }
 function recordAad(purpose: string, context: OwnerKeyContext, item: OwnerRecordContext): Bytes {
   const r = recordContext(item);
-  return fields([
-    purpose,
-    ...contextFields(context),
-    r.collectionId,
-    r.recordId,
-    r.kind,
-    String(r.revision),
-  ]);
+  const c = ownerKeyContext(context);
+  // Content identity stays stable when only the parent wrapping key rotates.
+  const ownerFields =
+    purpose === 'mikaki-vault-record-content'
+      ? ['2', c.origin, c.ownerId, c.vaultId]
+      : contextFields(c);
+  return fields([purpose, ...ownerFields, r.collectionId, r.recordId, r.kind, String(r.revision)]);
 }
 function decode(value: string, min: number, max = min): Bytes {
   if (typeof value !== 'string' || value.length > Math.ceil((max * 4) / 3))
@@ -398,6 +398,66 @@ export async function openOwnerRecord(
         body.slice(1 + NONCE),
       ),
     );
+  } finally {
+    raw.fill(0);
+  }
+}
+
+// Parent-key rotation: verify the original body, then wrap its same content key
+// under the next parent generation. A content-key/suite change needs resealing.
+export async function rewrapOwnerRecord(
+  value: OwnerRecord,
+  sourceKey: CryptoKey,
+  sourceContext: OwnerKeyContext,
+  targetKey: CryptoKey,
+  targetContext: OwnerKeyContext,
+  item: OwnerRecordContext,
+): Promise<OwnerRecord> {
+  sourceContext = ownerKeyContext(sourceContext);
+  targetContext = ownerKeyContext(targetContext);
+  item = recordContext(item);
+  if (
+    sourceContext.origin !== targetContext.origin ||
+    sourceContext.ownerId !== targetContext.ownerId ||
+    sourceContext.vaultId !== targetContext.vaultId ||
+    targetContext.keyGeneration !== sourceContext.keyGeneration + 1
+  )
+    throw new Error('invalid rotation context');
+  ownerHandle(targetKey);
+  const snapshot = Object.freeze({ ...value });
+  const plaintext = await openOwnerRecord(snapshot, sourceKey, sourceContext, item);
+  plaintext.fill(0);
+  const envelope = decode(snapshot.key_envelope, 1 + NONCE + KEY + TAG);
+  const raw = new Uint8Array(
+    await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: envelope.slice(1, 1 + NONCE),
+        additionalData: recordAad('mikaki-vault-record-key', sourceContext, item),
+      },
+      sourceKey,
+      envelope.slice(1 + NONCE),
+    ),
+  );
+  try {
+    if (raw.length !== KEY) throw new Error('invalid content key');
+    const nonce = random(NONCE);
+    const wrapped = new Uint8Array(
+      await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: nonce,
+          additionalData: recordAad('mikaki-vault-record-key', targetContext, item),
+        },
+        targetKey,
+        raw,
+      ),
+    );
+    return Object.freeze({
+      format_version: 2,
+      ciphertext: snapshot.ciphertext,
+      key_envelope: encodeBase64Url(concat(new Uint8Array([2]), nonce, wrapped)),
+    });
   } finally {
     raw.fill(0);
   }

@@ -10,7 +10,7 @@ test('browser WebCrypto owner lease opens many records once and rejects late unl
     stdin: {
       resolveDir: fileURLToPath(new URL('../../', import.meta.url)),
       contents: `
-import { createOwnerKey, rewrapOwnerKey, openOwnerKey, openOwnerRecord } from './crates/worker/ui/vault-owner-crypto.ts';
+import { createOwnerKey, rewrapOwnerKey, rewrapOwnerRecord, openOwnerKey, openOwnerRecord } from './crates/worker/ui/vault-owner-crypto.ts';
 import { OwnerKeySession } from './crates/worker/ui/vault-owner-session.ts';
 import { VaultScope } from './crates/worker/ui/vault-lifecycle.ts';
 import { encodeBase64Url } from './crates/worker/ui/vault-crypto.ts';
@@ -44,6 +44,12 @@ window.ownerKeyProbe = async () => {
   const targetWrap=await rewrapOwnerKey(envelope,context,credential,secret.slice(),target,bytes(),targetSecret.slice());
   const targetKey=await openOwnerKey(targetWrap,context,target,targetSecret.slice());
   const targetOpened=await openOwnerRecord(record,targetKey,context,item);require(targetOpened.length>0,'additional key');targetOpened.fill(0);
+  const nextContext={...context,keyGeneration:2};
+  const next=await createOwnerKey(nextContext,credential,bytes(),secret.slice());
+  const rotated=await rewrapOwnerRecord(record,targetKey,context,next.key,nextContext,item);
+  require(rotated.ciphertext===record.ciphertext,'rotation preserves ciphertext');
+  const rotatedOpened=await openOwnerRecord(rotated,next.key,nextContext,item);require(rotatedOpened.length>0,'rotation round trip');rotatedOpened.fill(0);
+  await rejected(()=>openOwnerRecord(rotated,targetKey,context,item),'old parent rejected');
   const pendingRead=session.open(record,item);session.lock();await rejected(()=>pendingRead,'late read');
   require(!session.opened,'locked');
   const lateSession=new OwnerKeySession(makeScope(),context);

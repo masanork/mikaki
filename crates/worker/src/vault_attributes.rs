@@ -51,7 +51,7 @@ struct WriteLimits {
 pub(crate) struct Owner {
     pub(crate) account_id: String,
     pub(crate) secret_hash: String,
-    credential_id: String,
+    pub(crate) credential_id: String,
 }
 
 #[derive(Serialize)]

@@ -30,6 +30,7 @@
     "vault-crypto.ts",
     "vault-owner-crypto.ts",
     "vault-owner-session.ts",
+    "vault-owner-store.ts",
     "vault-note.ts",
     "attribute-commit.ts",
     "agent-crypto.ts",

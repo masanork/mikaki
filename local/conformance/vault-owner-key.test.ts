@@ -5,6 +5,7 @@ import {
   createOwnerKey,
   openOwnerKey,
   rewrapOwnerKey,
+  rewrapOwnerRecord,
   parseOwnerKeyEnvelope,
   sealOwnerRecord,
   openOwnerRecord,
@@ -162,7 +163,12 @@ test('independent Node HKDF/AES-GCM vector agrees with specified v2 field encodi
     ciphertext: Buffer.concat([
       Buffer.from([2]),
       dataNonce,
-      encrypt(dek, dataNonce, encode(['mikaki-vault-record-content', ...recordCommon]), p),
+      encrypt(
+        dek,
+        dataNonce,
+        encode(['mikaki-vault-record-content', ...recordCommon.filter((_, i) => i !== 4)]),
+        p,
+      ),
     ]).toString('base64url'),
     key_envelope: Buffer.concat([
       Buffer.from([2]),
@@ -288,6 +294,45 @@ test('additional credential wraps the same owner key without rewriting record ci
   );
 });
 
+test('parent rotation keeps ciphertext while changing its envelope; content-key rotation reseals it', async () => {
+  const f = fixture(),
+    first = await createOwnerKey(context, f.credential, bytes(), f.output.slice());
+  const nextContext = { ...context, keyGeneration: 2 };
+  const next = await createOwnerKey(nextContext, f.credential, bytes(), f.output.slice());
+  const record = await sealOwnerRecord(text('retained body'), first.key, context, item);
+  const rotated = await rewrapOwnerRecord(record, first.key, context, next.key, nextContext, item);
+  assert.equal(rotated.ciphertext, record.ciphertext);
+  assert.notEqual(rotated.key_envelope, record.key_envelope);
+  assert.deepEqual(
+    await openOwnerRecord(rotated, next.key, nextContext, item),
+    text('retained body'),
+  );
+  await assert.rejects(openOwnerRecord(rotated, first.key, context, item));
+  await assert.rejects(openOwnerRecord(record, next.key, nextContext, item));
+  await assert.rejects(
+    rewrapOwnerRecord(
+      { ...record, ciphertext: corrupt(record.ciphertext) },
+      first.key,
+      context,
+      next.key,
+      nextContext,
+      item,
+    ),
+  );
+  for (const bad of [
+    { ...nextContext, ownerId: 'other' },
+    { ...nextContext, origin: 'https://other.example' },
+    { ...nextContext, vaultId: 'other' },
+    { ...nextContext, keyGeneration: 3 },
+  ])
+    await assert.rejects(rewrapOwnerRecord(record, first.key, context, next.key, bad, item));
+  const replacement = await sealOwnerRecord(text('retained body'), next.key, nextContext, {
+    ...item,
+    revision: 2,
+  });
+  assert.notEqual(replacement.ciphertext, record.ciphertext);
+});
+
 test('lock while PRF is pending consumes late output and cannot restore key; duplicate unlock is rejected', async () => {
   const f = fixture(),
     created = await createOwnerKey(context, f.credential, bytes(), f.output.slice());
@@ -341,6 +386,32 @@ test('wrong credential and canceled/unsupported PRF never open an owner lease', 
       output: new Uint8Array(0),
     })),
   );
+  assert.equal(session.opened, false);
+});
+
+test('initialization also rejects and clears a late PRF result after disposal', async () => {
+  const f = fixture(),
+    session = new OwnerKeySession(f.scope, context);
+  let resolve!: (value: {
+    credentialId: Uint8Array<ArrayBuffer>;
+    output: Uint8Array<ArrayBuffer>;
+  }) => void;
+  let entered!: () => void;
+  const started = new Promise<void>((r) => (entered = r));
+  const response = new Promise<{
+    credentialId: Uint8Array<ArrayBuffer>;
+    output: Uint8Array<ArrayBuffer>;
+  }>((r) => (resolve = r));
+  const pending = session.initialize(async () => {
+    entered();
+    return response;
+  });
+  await started;
+  session.dispose();
+  const output = f.output.slice();
+  resolve({ credentialId: f.credential, output });
+  await assert.rejects(pending);
+  assert(output.every((v) => v === 0));
   assert.equal(session.opened, false);
 });
 

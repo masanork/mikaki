@@ -3,11 +3,13 @@ import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 import {
   openOwnerKey,
+  createOwnerKey,
   openOwnerRecord,
   ownerKeyContext,
   parseOwnerKeyEnvelope,
   sealOwnerRecord,
   type OwnerKeyContext,
+  type OwnerKeyEnvelope,
   type OwnerRecord,
   type OwnerRecordContext,
 } from './vault-owner-crypto.ts';
@@ -93,6 +95,35 @@ export class OwnerKeySession {
       this.assert();
       if (generation !== this.generation) throw new Error('stale unlock');
       this.key = key;
+    } finally {
+      output?.fill(0);
+      this.pending = false;
+    }
+  }
+  async initialize(evaluate: OwnerPrfEvaluator): Promise<OwnerKeyEnvelope> {
+    this.assert();
+    if (this.pending || this.key) throw new Error('owner key already open/pending');
+    const credential = decodeBase64Url(this.scope.identity!.credential_id);
+    const input = crypto.getRandomValues(new Uint8Array(32));
+    const generation = this.generation;
+    this.pending = true;
+    let output: Bytes | undefined;
+    try {
+      await this.scope.ensure();
+      this.assert();
+      const result = await evaluate(credential, input, this.scope.signal);
+      output = result.output;
+      this.assert();
+      if (
+        generation !== this.generation ||
+        encodeBase64Url(result.credentialId) !== encodeBase64Url(credential)
+      )
+        throw new Error('stale/wrong credential');
+      const created = await createOwnerKey(this.context, credential, input, output);
+      this.assert();
+      if (generation !== this.generation) throw new Error('stale initialization');
+      this.key = created.key;
+      return created.envelope;
     } finally {
       output?.fill(0);
       this.pending = false;
