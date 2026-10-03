@@ -289,6 +289,13 @@ test('workflow keeps manual/default-read-only production gate and durable prefli
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /group: production-deployment/);
   assert.match(workflow, /name: production/);
+  assert.match(
+    workflow,
+    /github.ref == 'refs\/heads\/main' && github.repository == 'masanork\/mikaki'/,
+  );
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /APPLY 0033 TO mikaki-auth/);
+  assert.match(workflow, /migration-0033-plan\.json/);
   assert.match(workflow, /ref: 0fc3ad859e6668461d36388fb3a6f93e7c18cd06/);
   assert.ok(
     workflow.indexOf('if-no-files-found: error') <
@@ -510,13 +517,22 @@ test('v2 record changes revoke only their exact selected source; key changes rev
     "UPDATE vault_owner_record_head SET key_generation=2 WHERE record_id='name'",
     "UPDATE vault_owner_record_head SET deleted=1,object_key=NULL,ciphertext_sha256=NULL,key_envelope=NULL WHERE record_id='name'",
     "DELETE FROM vault_owner_record_head WHERE record_id='name'",
+    "UPDATE vault_owner_record_head SET collection_id='other' WHERE record_id='name'",
+    "UPDATE vault_owner_record_head SET kind='changed' WHERE record_id='name'",
     'UPDATE vault_owner_key_head SET revision=2',
+    'UPDATE vault_owner_key_head SET key_generation=2',
+    "UPDATE vault_owner_key_head SET suite='changed'",
+    'DELETE FROM vault_owner_key_head',
     "UPDATE vault_owner_key_head SET origin='https://changed.test'",
   ]) {
     const db = database32();
     try {
       seedLegacy(db);
       applyLocal(db);
+      // For the root-delete case, keep only the root before creating synthetic grants,
+      // so record-delete triggers cannot satisfy the assertion on behalf of root deletion.
+      if (mutation === 'DELETE FROM vault_owner_key_head')
+        db.exec('DELETE FROM vault_owner_record_head');
       seedV2(db);
       db.exec(mutation);
       const rows = db.prepare('SELECT grant_id,revoked,encrypted_snapshot FROM agent_grant').all();
@@ -555,6 +571,8 @@ test('literal-preserving SQL canonicalization accepts layout/comments, never cha
   ])
     assert.notDeepEqual(canonicalSql(sql), canonicalSql(changed));
   assert.notDeepEqual(canonicalSql("SELECT X'AB'"), canonicalSql("SELECT X 'AB'"));
+  assert.notDeepEqual(canonicalSql('SELECT 1_000'), canonicalSql('SELECT 1 _000'));
+  assert.notDeepEqual(canonicalSql('SELECT 0xAB_CD'), canonicalSql('SELECT 0xAB _CD'));
   assert.notDeepEqual(canonicalSql('SELECT x - - y'), canonicalSql('SELECT x -- y'));
   for (const bad of [
     "SELECT 'unterminated",

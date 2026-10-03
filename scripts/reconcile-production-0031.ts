@@ -153,7 +153,7 @@ export function canonicalSql(sql: string): string[] {
       continue;
     }
     const token =
-      /^(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9$\u0080-\uffff]*|0[xX][0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|->>|->|<=|>=|!=|==|<>|\|\||<<|>>|[(),.;+*\/%<>=~&|!-])/.exec(
+      /^(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9$\u0080-\uffff]*|0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*|(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:[eE][+-]?\d(?:_?\d)*)?|->>|->|<=|>=|!=|==|<>|\|\||<<|>>|[(),.;+*\/%<>=~&|!-])/.exec(
         rest,
       );
     gate(token, 'Unsupported schema SQL token.');
