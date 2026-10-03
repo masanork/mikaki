@@ -43,3 +43,8 @@ Developers should use the [application integration guide](integration.md).
 The Web interface runs in your browser. The [mikaki app](https://app.mikaki.org) is being developed for operations that use device capabilities; general distribution is still being prepared. Installing it does not automatically transfer every passkey or unlock all saved Vault data.
 
 For troubleshooting, read the [FAQ](faq.md). For adoption decisions, review [security and implementation status](security.md).
+
+## Read next
+
+- [Using Vault](vault.md): Follow the save-and-reopen steps, then review sharing and transfer.
+- [Passkeys and unlocking Vault](passkeys.md): Check what to do when sign-in or decryption fails.

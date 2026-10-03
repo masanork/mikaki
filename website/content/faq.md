@@ -45,3 +45,8 @@ OpenID Connectによる連携には、管理者によるクライアントの事
 ## 不具合や対応状況はどこで確認できますか？
 
 [GitHubのソースコードとドキュメント](https://github.com/masanork/mikaki)を公開しています。[Issues](https://github.com/masanork/mikaki/issues)には既知の課題があります。公開の報告に招待コード、ログインURL中のコード、トークン、個人データを含めないでください。
+
+## 次に読む
+
+- [はじめ方](getting-started.md)：招待から登録し、Webで使い始める手順へ進みます。
+- [アプリ連携ガイド](integration.md)：自分のアプリを接続するための登録と実装を確認します。

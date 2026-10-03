@@ -65,4 +65,9 @@ The FIDO Alliance's [FIDO2 Server certification](https://fidoalliance.org/certif
 3. From the actual connected application, test registered callbacks, session checks, revocation, logout and OP outages.
 4. If certification is an adoption requirement, check the required product, version and profile. These development records alone do not meet that requirement.
 
-For user instructions, read [Getting started](getting-started.md). For integration, read the [application guide](integration.md). The [source code](https://github.com/masanork/mikaki) and [session limitations](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md) describe implementation details and open work.
+The [source code](https://github.com/masanork/mikaki) and [session limitations](https://github.com/masanork/mikaki/blob/main/docs/session-lifecycle.md) describe implementation details and open work.
+
+## Read next
+
+- [Getting started](getting-started.md): After reviewing the limits, follow registration and Web-use instructions.
+- [Application integration guide](integration.md): Review connection steps and validation for your intended setup.
