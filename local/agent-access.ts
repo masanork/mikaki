@@ -2,13 +2,23 @@
 import { createHash } from 'node:crypto';
 import { open, appendFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { vaultSourceInfo, unknownSource } from '../crates/agent-worker/tool-results.ts';
+import {
+  vaultSourceInfo,
+  vaultRecordSourceInfo,
+  recordSelection,
+  unknownSource,
+} from '../crates/agent-worker/tool-results.ts';
+import {
+  parseVaultRecordSource,
+  equalVaultSource,
+} from '../crates/worker/ui/vault-record-source.ts';
+import { decodeOwnerNote } from '../crates/worker/ui/vault-note.ts';
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const label = z.string().min(1).max(160);
 const operation = z.enum(['list', 'search', 'read']);
 export type Operation = z.infer<typeof operation>;
-const grantSchema = z.strictObject({
+const legacyGrantSchema = z.strictObject({
   version: z.literal(1),
   id,
   owner: id,
@@ -22,7 +32,7 @@ const grantSchema = z.strictObject({
   expires_at: z.number().int().nonnegative(),
   revoked: z.boolean(),
 });
-const exportSchema = z.strictObject({
+const legacyExportSchema = z.strictObject({
   version: z.literal(1),
   owner: id,
   collection: id,
@@ -38,6 +48,35 @@ const exportSchema = z.strictObject({
     )
     .max(100),
 });
+const recordExportSchema = z.strictObject({
+  version: z.literal(2),
+  owner: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  collection: z.literal('vault-records'),
+  documents: z
+    .array(
+      z.strictObject({
+        id: z.enum(['name', 'owner_note']),
+        title: label,
+        source: label,
+        source_info: vaultRecordSourceInfo,
+        text: z.string().refine((value) => Buffer.byteLength(value) <= 16384),
+      }),
+    )
+    .min(1)
+    .max(2),
+});
+const recordGrantSchema = legacyGrantSchema.extend({
+  version: z.literal(2),
+  owner: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  collection: z.literal('vault-records'),
+  document_ids: z
+    .array(z.enum(['name', 'owner_note']))
+    .min(1)
+    .max(2),
+  sources: z.array(recordSelection).min(1).max(2),
+});
+const exportSchema = z.discriminatedUnion('version', [legacyExportSchema, recordExportSchema]);
+const grantSchema = z.discriminatedUnion('version', [legacyGrantSchema, recordGrantSchema]);
 
 async function boundedFile(path: string, limit: number): Promise<Buffer> {
   const file = await open(path, 'r');
@@ -96,6 +135,7 @@ export class AgentAccess {
     const bytes = await boundedFile(options.exportPath, 1024 * 1024);
     const bundle = exportSchema.parse(JSON.parse(bytes.toString('utf8')));
     if (
+      bundle.version === 1 &&
       bundle.documents.some(
         (doc) =>
           doc.source_info &&
@@ -103,6 +143,15 @@ export class AgentAccess {
       )
     )
       throw new Error('Invalid source binding');
+    if (bundle.version === 2) {
+      for (const doc of bundle.documents) {
+        const source = parseVaultRecordSource(doc.source_info.source);
+        if (source.owner_id !== bundle.owner || source.record_id !== doc.id)
+          throw new Error('Invalid record source binding');
+        if (doc.id === 'owner_note') decodeOwnerNote(new TextEncoder().encode(doc.text));
+        else if (!doc.text.length || doc.text.length > 256) throw new Error('Invalid saved name');
+      }
+    }
     if (new Set(bundle.documents.map((doc) => doc.id)).size !== bundle.documents.length)
       throw new Error('Duplicate document ID');
     const grant = grantSchema.parse(
@@ -129,6 +178,7 @@ export class AgentAccess {
     const now = this.clock();
     if (
       grant.revoked ||
+      grant.version !== this.bundle.version ||
       now < grant.not_before ||
       now >= grant.expires_at ||
       grant.not_before >= grant.expires_at ||
@@ -144,6 +194,27 @@ export class AgentAccess {
       grant.document_ids.some((target) => !this.bundle.documents.some((doc) => doc.id === target))
     )
       throw new Error('Access denied');
+    if (grant.version === 2) {
+      if (this.bundle.version !== 2 || grant.sources.length !== grant.document_ids.length)
+        throw new Error('Access denied');
+      const selected = this.bundle.documents.filter((doc) =>
+        grant.document_ids.some((target) => target === doc.id),
+      );
+      const sourceIds = grant.sources.map((item) => item.source.record_id);
+      if (
+        new Set(sourceIds).size !== sourceIds.length ||
+        selected.some((doc) => {
+          const actual = grant.sources.find((item) => item.source.record_id === doc.id);
+          return (
+            !actual ||
+            !equalVaultSource(actual.source, doc.source_info.source) ||
+            actual.authority.key_generation !== doc.source_info.authority.key_generation ||
+            actual.authority.owner_key_revision !== doc.source_info.authority.owner_key_revision
+          );
+        })
+      )
+        throw new Error('Access denied');
+    }
     return { value: grant, checkedAt: now };
   }
 
@@ -152,7 +223,9 @@ export class AgentAccess {
     try {
       const { value: grant } = await this.grant();
       if (!grant.operations.includes(op)) throw new Error('Access denied');
-      const visible = this.bundle.documents.filter((doc) => grant.document_ids.includes(doc.id));
+      const visible = this.bundle.documents.filter((doc) =>
+        grant.document_ids.some((target) => target === doc.id),
+      );
       let result: Record<string, unknown>;
       if (op === 'read') {
         const input = z.strictObject({ id }).parse(args);
