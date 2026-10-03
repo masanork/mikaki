@@ -4,10 +4,15 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { openAgentSnapshot, type AgentBinding } from '../worker/ui/agent-crypto.js';
+import { openRecordAgentSnapshot } from '../worker/ui/agent-record-crypto.js';
 import {
   boundedJson,
   digest,
   documentsSchema,
+  recordDocuments,
+  recordEnvelopeSchema,
+  grantRecordSource,
+  grantRecordAuthority,
   envelopeSchema,
   grantInput,
   json,
@@ -18,7 +23,12 @@ import {
   type Operation,
   type Owner,
 } from './model.js';
-import { toolOutputs, toolResult, type VaultSourceInfo } from './tool-results.js';
+import {
+  toolOutputs,
+  toolResult,
+  type VaultSourceInfo,
+  type VaultRecordSourceInfo,
+} from './tool-results.js';
 import * as store from './store.js';
 import * as attributes from './attribute-proposals.js';
 import * as oauth from './oauth.js';
@@ -35,6 +45,24 @@ function binding(grant: Grant): AgentBinding {
 }
 async function snapshot(grant: Grant, key: CryptoKey) {
   if (!grant.encrypted_snapshot) throw new Error('Access denied');
+  if (grant.storage_version === 2) {
+    const source = grantRecordSource(grant),
+      authority = grantRecordAuthority(grant);
+    const envelope = recordEnvelopeSchema.parse(JSON.parse(grant.encrypted_snapshot));
+    return recordDocuments(
+      await openRecordAgentSnapshot(envelope, key, {
+        owner: grant.account_id,
+        grant_id: grant.grant_id,
+        key_id: grant.recipient_key_id,
+        resource: grant.resource,
+        expires_at: grant.expires_at,
+        source,
+        authority,
+      }),
+      source,
+    );
+  }
+  if (grant.storage_version !== 1) throw new Error('Access denied');
   const envelope = envelopeSchema.parse(JSON.parse(grant.encrypted_snapshot));
   return documentsSchema.parse(await openAgentSnapshot(envelope, key, binding(grant)));
 }
@@ -54,13 +82,14 @@ async function call(
     let result: Record<string, unknown>;
     let documentId: string | undefined;
     if (op === 'propose_attribute') {
+      if (grant.storage_version !== 1) throw new Error('Access denied');
       documentId = 'owner_note';
       result = await attributes.propose(env.DB, grant, args);
     } else if (op === 'propose') {
       const input = z
         .strictObject({
           proposal_id: opaque,
-          document_id: z.literal('name'),
+          document_id: z.enum(['name', 'owner_note']),
           title: z.string().trim().min(1).max(160),
           text: z.string().min(1).max(4096),
         })
@@ -106,16 +135,29 @@ async function call(
       await store.auditAccess(env.DB, grant, grantOperation, documentId);
     const fresh = await store.active(env.DB, tokenHash, key.key_id, key.resource);
     const checkedAt = now();
-    if (fresh.revision !== grant.revision || checkedAt >= grant.expires_at)
+    if (
+      fresh.revision !== grant.revision ||
+      checkedAt >= grant.expires_at ||
+      !JSON.parse(fresh.operations).includes(grantOperation)
+    )
       throw new Error('Access denied');
     if (['list', 'search', 'read'].includes(op)) {
-      const source_info: VaultSourceInfo = {
-        kind: 'vault',
-        attribute: 'name',
-        revision: grant.source_revision,
-        provenance: 'self-asserted',
-        confirmed_at: checkedAt,
-      };
+      const source_info: VaultSourceInfo | VaultRecordSourceInfo =
+        grant.storage_version === 2
+          ? {
+              kind: 'vault-record',
+              source: grantRecordSource(grant),
+              authority: grantRecordAuthority(grant),
+              provenance: 'self-asserted',
+              confirmed_at: checkedAt,
+            }
+          : {
+              kind: 'vault',
+              attribute: 'name',
+              revision: grant.source_revision,
+              provenance: 'self-asserted',
+              confirmed_at: checkedAt,
+            };
       if (op === 'read') result.source_info = source_info;
       else
         result.documents = z
@@ -124,7 +166,7 @@ async function call(
           .map((document) => ({ ...document, source_info }));
       result.access = {
         mode: 'remote-snapshot',
-        source_check: 'revision-matched',
+        source_check: grant.storage_version === 2 ? 'record-matched' : 'revision-matched',
         checked_at: checkedAt,
         grant_expires_at: grant.expires_at,
       };
@@ -165,7 +207,7 @@ async function mcp(request: Request, env: Env): Promise<Response> {
     read: { id: z.string().min(1).max(80) },
     propose: {
       proposal_id: opaque,
-      document_id: z.literal('name'),
+      document_id: z.enum(['name', 'owner_note']),
       title: z.string().trim().min(1).max(160),
       text: z.string().min(1).max(4096),
     },
@@ -269,13 +311,23 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
             : await oauth.decide(this.env.DB, owner, body, this.env),
         );
       }
-      if (path === '/status' && request.method === 'GET') {
+      if (['/status', '/record-status'].includes(path) && request.method === 'GET') {
         const key = await recipient(this.env);
-        const status = await store.ownerStatus(this.env.DB, owner, key.key_id, key.resource);
+        const status = await store.ownerStatus(
+          this.env.DB,
+          owner,
+          key.key_id,
+          key.resource,
+          path === '/record-status' ? 2 : 1,
+        );
         return json({
           ...status,
-          attribute_proposals: await attributes.status(this.env.DB, owner),
-          note_revision: await attributes.currentRevision(this.env.DB, owner),
+          ...(path === '/status'
+            ? {
+                attribute_proposals: await attributes.status(this.env.DB, owner),
+                note_revision: await attributes.currentRevision(this.env.DB, owner),
+              }
+            : { storage_version: 2 }),
           recipient: {
             public_jwk: key.public_jwk,
             key_id: key.key_id,
@@ -293,16 +345,34 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
           input.resource !== key.resource
         )
           throw new Error('Recipient mismatch');
-        documentsSchema.parse(
-          await openAgentSnapshot(input.envelope, key.key, {
-            owner: account,
-            grant_id: input.grant_id,
-            key_id: key.key_id,
-            resource: key.resource,
-            expires_at: input.expires_at,
-            source_revision: input.source_revision,
-          }),
-        );
+        if (input.storage_version === 2) {
+          const origin = request.headers.get('X-Mikaki-Origin');
+          if (input.source.owner_id !== account || input.source.origin !== origin)
+            throw new Error('Source owner mismatch');
+          recordDocuments(
+            await openRecordAgentSnapshot(input.envelope, key.key, {
+              owner: account,
+              grant_id: input.grant_id,
+              key_id: key.key_id,
+              resource: key.resource,
+              expires_at: input.expires_at,
+              source: input.source,
+              authority: input.authority,
+            }),
+            input.source,
+          );
+        } else {
+          documentsSchema.parse(
+            await openAgentSnapshot(input.envelope, key.key, {
+              owner: account,
+              grant_id: input.grant_id,
+              key_id: key.key_id,
+              resource: key.resource,
+              expires_at: input.expires_at,
+              source_revision: input.source_revision,
+            }),
+          );
+        }
         await store.createGrant(this.env.DB, owner, input);
         return json({ grant_id: input.grant_id, expires_at: input.expires_at });
       }
@@ -312,6 +382,12 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
       ) {
         const input = await boundedJson(request, 1024);
         const key = await recipient(this.env);
+        await store.requireLegacyAttributeGrant(
+          this.env.DB,
+          owner,
+          input,
+          path === '/attribute-capability',
+        );
         const result =
           path === '/attribute-capability'
             ? await attributes.allow(this.env.DB, owner, input, key.key_id, key.resource)
@@ -323,9 +399,9 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         if (!origin || new URL(origin).origin !== origin || !origin.startsWith('https://'))
           throw new Error('Invalid owner origin');
         const key = await recipient(this.env);
-        return json(
-          await attributes.prepare(this.env.DB, owner, await boundedJson(request), key, origin),
-        );
+        const input = await boundedJson(request);
+        await store.requireLegacyAttributeGrant(this.env.DB, owner, input, false);
+        return json(await attributes.prepare(this.env.DB, owner, input, key, origin));
       }
       if (path === '/revoke' && request.method === 'POST') {
         const input = z
