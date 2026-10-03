@@ -6,6 +6,8 @@
   "ownerWorkspaceImport": "Import a conversation archive",
   "ownerWorkspaceSearch": "Find a conversation",
   "threadSearchLoading": "Searching conversations…",
+  "threadSearchScope": "Search in",
+  "threadSearchAll": "All conversations",
   "threadSearchFailed": "Search is unavailable. Please try again.",
   "threadSearchEmpty": "No matching conversations.",
   "threadSearchLimited": "Showing the first 50 matches. Narrow your search.",

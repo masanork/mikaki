@@ -35,6 +35,7 @@
     "vault-owner-workspace-store.ts",
     "vault-thread-archive.ts",
     "vault-thread-search.ts",
+    "vault-thread-search-excerpt.ts",
     "vault-thread-search-worker.ts",
     "vault-thread-search-client.ts",
     "search.ts",

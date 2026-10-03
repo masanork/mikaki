@@ -3,6 +3,7 @@ import {
   threadSearchTerms,
 } from './vault-thread-search-query.ts';
 import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
+import { threadSearchExcerpt } from './vault-thread-search-excerpt.ts';
 
 export type SearchArchive = { id: string; revision: number; archive: ThreadArchive };
 export type SearchHit = {
@@ -135,7 +136,7 @@ export class ThreadSearchProjection {
         thread: row['thread'] as string,
         revision: row['revision'] as number,
         message: row['message'] as number,
-        text: (row['body'] as string).slice(0, 240),
+        text: threadSearchExcerpt(row['body'] as string, terms),
       })),
     };
   }

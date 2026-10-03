@@ -23,6 +23,7 @@
   let hits: SearchHit[] = $state([]),
     phase = $state<'idle' | 'loading' | 'ready' | 'error' | 'invalid'>('idle'),
     truncated = $state(false);
+  let threadScope = $state('');
   let client: ThreadSearchClient | null = null,
     indexed = false,
     running = false,
@@ -61,6 +62,7 @@
     const generation = epoch,
       ticket = serial,
       words = query,
+      selectedThread = threadScope,
       snapshot = $state.snapshot(records);
     const current = () =>
       generation === epoch && ticket === serial && !scope.signal.aborted && !disabled;
@@ -80,7 +82,7 @@
       }
       const result = await client.search(
         words,
-        snapshot.map((record) => record.id),
+        selectedThread ? [selectedThread] : snapshot.map((record) => record.id),
       );
       await owner.verifyAuthority();
       owner.assertCurrent(token);
@@ -106,12 +108,17 @@
     owner;
     disabled;
     untrack(() => {
+      if (threadScope && !records.some((record) => record.id === threadScope)) {
+        threadScope = '';
+        query = '';
+      }
       invalidate();
       schedule();
     });
   });
   $effect(() => {
     query;
+    threadScope;
     untrack(() => {
       serial++;
       hits = [];
@@ -124,6 +131,7 @@
     const clear = () => {
       invalidate();
       query = '';
+      threadScope = '';
     };
     const hidden = () => {
       if (document.visibilityState === 'hidden') clear();
@@ -140,6 +148,15 @@
   });
 </script>
 
+<label for="thread-search-scope">{m.threadSearchScope()}</label><select
+  id="thread-search-scope"
+  bind:value={threadScope}
+  disabled={disabled || !records.length}
+>
+  <option value="">{m.threadSearchAll()}</option>
+  {#each records as record (record.id)}<option value={record.id}>{record.archive.title}</option
+    >{/each}
+</select>
 <label for="thread-search">{m.ownerWorkspaceSearch()}</label><input
   id="thread-search"
   type="search"
@@ -173,9 +190,12 @@
           (record) => record.id === hit.thread && record.revision === hit.revision,
         )}
         {#if thread}
+          {@const message = hit.message >= 0 ? thread.archive.messages[hit.message] : undefined}
           <li>
             <button {disabled} onclick={() => void onselect(hit)}
-              ><strong>{thread.archive.title}</strong><span>{hit.text}</span></button
+              ><strong>{thread.archive.title}</strong>{#if message}<small
+                  >{message.speaker}{message.actor === 'ai' ? ' · AI' : ''}</small
+                >{/if}<span>{hit.text}</span></button
             >
           </li>
         {/if}
