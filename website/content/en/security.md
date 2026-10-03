@@ -44,6 +44,8 @@ These are dated development and local test records for specific configurations. 
 
 **FIDO2 Server — September 29, 2026:** Development runs with Tools 1.9.2 recorded 167 passes and 0 failures each for isolated native and Wasm adapters. Their test configuration supports broader algorithms and attestation than the normal product configuration. These are not official submission results. The MDS profile was `mds3.0`; the tool's ES256K case remained pending and unexecuted. See the [certification preparation and scope](https://github.com/masanork/mikaki/blob/main/docs/webauthn-certification-readiness.md).
 
+The [conformance index](conformance.md) also covers logout and bounded OID4VC tests, with tool versions, verdicts and untested scope. See [specifications](specifications.md) for public deployment capabilities.
+
 ## Reading results and remaining gaps
 
 `REVIEW` needs human assessment; `SKIPPED` was not executed for the selected configuration. Neither is counted as PASSED. `WARNING` also remains a separate result.

@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { digest, json, now, opaque, operation, randomId, recipient, type Owner } from './model.js';
 import { activeJoin, ownerJoin } from './store.js';
-import { parseAuthorizationDetails } from './authorization-details.js';
+import {
+  parseAuthorizationDetails,
+  authorizationDetailsCondition,
+} from './authorization-details.js';
 
 type Registration = { client_id: string; client_name: string; redirect_uris: string };
 type Pending = {
@@ -233,10 +236,7 @@ export async function decide(db: D1Database, owner: Owner, raw: unknown, env: En
   const liveGrant = `EXISTS(SELECT 1 ${activeJoin} AND g.grant_id=? AND g.account_id=?
     AND g.expires_at>unixepoch() AND g.encrypted_snapshot IS NOT NULL AND NOT EXISTS(SELECT 1 FROM json_each(agent_oauth_request.scopes) s
       WHERE NOT EXISTS(SELECT 1 FROM json_each(g.operations) o WHERE o.value=s.value))
-    AND (agent_oauth_request.authorization_details IS NULL OR
-      (json_extract(agent_oauth_request.authorization_details,'$[0].source_revision')=g.source_revision
-       AND json_extract(agent_oauth_request.authorization_details,'$[0].document_id')='name'
-       AND EXISTS(SELECT 1 FROM json_each(g.document_ids) d WHERE d.value='name'))))`;
+    AND ${authorizationDetailsCondition('agent_oauth_request.authorization_details')})`;
   const query = input.approve
     ? `UPDATE agent_oauth_request SET decision='approved',grant_id=?,
     grant_revision=(SELECT revision FROM agent_grant WHERE grant_id=?),code_hash=?,code_expires_at=min(expires_at,unixepoch()+120)
@@ -337,7 +337,10 @@ export async function token(request: Request, env: Env) {
     const condition = `r.code_hash=? AND r.client_id=? AND r.redirect_uri=? AND r.resource=? AND r.challenge=?
       AND r.decision='approved' AND r.redeemed_at IS NULL AND r.code_expires_at>unixepoch()
       AND r.expires_at>unixepoch() AND g.expires_at>unixepoch() AND r.grant_revision=g.revision AND g.encrypted_snapshot IS NOT NULL
-      AND EXISTS(SELECT 1 FROM agent_oauth_client oc WHERE oc.client_id=r.client_id AND oc.active=1)`;
+      AND EXISTS(SELECT 1 FROM agent_oauth_client oc WHERE oc.client_id=r.client_id AND oc.active=1)
+      AND ${authorizationDetailsCondition('r.authorization_details')}
+      AND NOT EXISTS(SELECT 1 FROM json_each(r.scopes) s
+        WHERE NOT EXISTS(SELECT 1 FROM json_each(g.operations) o WHERE o.value=s.value))`;
     const exchangeJoin = activeJoin.replace(
       'FROM agent_grant g',
       'FROM agent_oauth_request r JOIN agent_grant g ON g.grant_id=r.grant_id',
@@ -376,9 +379,16 @@ export async function token(request: Request, env: Env) {
     ]);
     const row = await session
       .prepare(
-        'SELECT scopes,expires_at,authorization_details FROM agent_oauth_token WHERE token_hash=?',
+        `SELECT t.scopes,t.expires_at,t.authorization_details ${activeJoin}
+        AND EXISTS(SELECT 1 FROM agent_oauth_client oc WHERE oc.client_id=t.client_id AND oc.active=1)
+        AND t.token_hash=? AND t.grant_id=g.grant_id AND t.grant_revision=g.revision
+        AND t.resource=g.resource AND t.revoked=0 AND t.expires_at>unixepoch()
+        AND ${authorizationDetailsCondition('t.authorization_details')}`.replace(
+          'FROM agent_grant g',
+          'FROM agent_oauth_token t JOIN agent_grant g ON g.grant_id=t.grant_id',
+        ),
       )
-      .bind(tokenHash)
+      .bind(now(), key.key_id, key.resource, tokenHash)
       .first<{ scopes: string; expires_at: number; authorization_details: string | null }>();
     if (!row) throw new Error('Invalid code');
     return json({
