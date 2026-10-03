@@ -218,6 +218,27 @@ footer {
 .prose h2 {
   margin-top: 2em;
   font-size: 1.35rem;
+  scroll-margin-top: 24px;
+}
+.prose h2:target {
+  text-decoration: underline;
+  text-underline-offset: 6px;
+}
+.prose .contents {
+  margin-block: 24px 32px;
+  padding-block: 16px;
+  border-block: 1px solid #ffffff24;
+}
+.prose .contents-title {
+  margin: 0;
+  font-weight: 600;
+}
+.contents ul {
+  margin-bottom: 0;
+  padding-inline-start: 1.5em;
+}
+.contents li {
+  margin-block: 6px;
 }
 .prose p {
   font-size: 1rem;

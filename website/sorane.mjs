@@ -77,11 +77,28 @@ for (const lang of ['ja', 'en']) {
     const signin = `https://auth.mikaki.org/signin${ja ? '' : '?lang=en'}`;
     const hero = `<div class="kicker">Your identity. Your choice.</div><h1>${ja ? '自分の情報を、<br>自分の手元に。' : 'Your information.<br>In your hands.'}</h1><p>${ja ? 'Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。' : 'Sign in with a passkey.<br>Share only what you choose, with whom you choose.'}</p><div class="actions"><a class="bolt" href="${signin}">${ja ? 'Webでサインイン' : 'Sign in on the Web'} ↗</a><a class="quiet" href="/${prefix}getting-started">${ja ? 'はじめての方へ' : 'Getting started'}</a><a class="quiet" href="https://app.mikaki.org">${ja ? 'アプリについて' : 'About the app'} ↗</a></div><section class="details"><div><h2>Passkey</h2><p>${ja ? 'パスワードを使わず、いつもの端末で。' : 'Use your device, without a password.'}</p></div><div><h2>Vault</h2><p>${ja ? '保存した情報は、Passkeyで開く。' : 'Open your stored information with a passkey.'}</p></div><div><h2>${ja ? '選んで共有' : 'Choose what to share'}</h2><p>${ja ? '共有する情報と相手を、自分で選ぶ。' : 'You choose the information and the recipient.'}</p></div></section>`;
     // Sorane renders Markdown sibling links as .html; emit the public routes directly.
-    const content = renderMarkdown(concept.body).replace(
+    let content = renderMarkdown(concept.body).replace(
       /href="([a-z0-9-]+)\.html([?#][^"]*)?"/g,
       (link, slug, suffix = '') =>
         slugs.has(slug) ? `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"` : link,
     );
+    if (!home) {
+      // Reuse Sorane's rendered heading IDs, including duplicate-heading suffixes.
+      const headings = [...content.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<\/h2>/g)];
+      if (headings.length >= 3) {
+        const items = headings
+          .map(([, id, heading]) => {
+            const label = heading
+              .replace(/<a class="heading-anchor"[\s\S]*?<\/a>/g, '')
+              .replace(/<[^>]*>/g, '');
+            return `<li><a href="#${id}">${label}</a></li>`;
+          })
+          .join('');
+        const label = ja ? 'このページの内容' : 'On this page';
+        const contents = `<nav class="contents" aria-label="${label}"><p class="contents-title">${label}</p><ul>${items}</ul></nav>`;
+        content = content.replace(/(?=<h2\b)/, contents);
+      }
+    }
     const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose">${nav}${content}</section>`;
     const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
     const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${home ? '' : 'small'}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="/${prefix}">mikaki</a><span class="plaque">mikaki.org</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="${signin}">${ja ? 'サインイン' : 'Sign in'}</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;

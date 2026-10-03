@@ -4,6 +4,8 @@ The public site at https://mikaki.org uses Sorane 0.5 for Japanese and English M
 
 `build.mjs` keeps the existing shared woven renderer, stylesheet, hero and sign-in links, then `sorane.mjs` combines Sorane metadata and rendered Markdown with that visual shell. JSON-LD scripts use CSP hashes. Generated output is ignored by Git.
 
+Articles with at least three level-two headings get a localized table of contents before their first section. It uses Sorane's rendered heading IDs, works without JavaScript and highlights the selected heading. The landing pages keep their existing hero layout.
+
 ```sh
 npm ci
 npm run build:website

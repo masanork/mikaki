@@ -302,6 +302,23 @@ test('public websites keep app callbacks code-free and render the woven material
     assert.equal(new URL(staticPage.url()).pathname, '/getting-started');
     assert.equal(await staticPage.locator('nav [aria-current="page"]').textContent(), 'はじめ方');
     assert.ok((await staticPage.locator('main').textContent())?.includes('招待コード'));
+    // Section navigation must work with JavaScript disabled in both locales.
+    for (const [path, label, title] of [
+      ['/integration', 'このページの内容', '接続できないときの確認順序'],
+      ['/en/integration', 'On this page', 'When integration fails'],
+    ]) {
+      await staticPage.goto(`https://mikaki.org${path}`);
+      const contents = staticPage.getByRole('navigation', { name: label, exact: true });
+      const link = contents.getByRole('link', { name: title, exact: true });
+      await link.focus();
+      await staticPage.keyboard.press('Enter');
+      const target = staticPage.locator('h2:target');
+      assert.equal(await target.innerText(), `${title}#`);
+      assert.ok(await target.evaluate((heading) => heading.getBoundingClientRect().top >= 0));
+      assert.ok(
+        await target.evaluate((heading) => heading.getBoundingClientRect().top < innerHeight),
+      );
+    }
   } finally {
     await browser?.close();
     await Promise.all(
