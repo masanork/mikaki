@@ -308,8 +308,15 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       exact: true,
     });
     await expect(reload).toBeEnabled();
-    await reload.click();
+    failLoad = true;
+    await reload.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#status')).toHaveText('Loading failed.');
+    await expect(reload).toBeEnabled();
+    await expect(reload).toBeFocused();
+    await page.keyboard.press('Enter');
     await expect(page.locator('#unlock')).toBeEnabled();
+    await expect(page.locator('#unlock')).toBeFocused();
     await expect(page.locator('#connections')).not.toHaveAttribute('open', '');
     await expect(page.locator('#security')).not.toHaveAttribute('open', '');
     await expect(page.getByRole('button', { name: 'Open note', exact: true })).toBeVisible();

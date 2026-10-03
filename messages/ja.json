@@ -56,6 +56,7 @@
   "vaultRevisionInvalid": "保存データの版を確認できません。",
   "vaultRecordInvalid": "保存データの形式を確認できません。",
   "vaultReadFailed": "表示名を読み込めません。",
+  "vaultNoteReadFailed": "メモを読み込めません。",
   "vaultOpenFailed": "Passkeyで開けませんでした。",
   "vaultInvalidName": "表示名を1〜256文字で入力してください。",
   "vaultRetryChanged": "前の保存結果を確認できません。ページを再読み込みしてください。",

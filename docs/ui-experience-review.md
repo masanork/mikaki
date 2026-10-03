@@ -56,6 +56,12 @@ The deterministic keyboard, request-barrier, offscreen pause/resume and browser-
 
 Local validation after integrating main: `test:worker-browser` passed 17 tests, `test:vault-notes` passed 3 tests, and `test:frontend-coverage` passed 13 tests plus the existing five-module regression gate. `check:node`, `check:worker-ui` (zero errors/warnings), `check:worker-budgets`, `check:docs` and `format:check` passed. The release Worker build succeeded. These results are local; remote PR CI is separate.
 
+### Reload recovery follow-up
+
+Explicit profile/note reloads also restore focus after their controls are disabled: another failed read returns to the reload button; a successful read focuses unlock/open. Initial automatic note loading does not move focus. Regression checks reproduce focus loss with the previous implementation, then exercise repeated read failure and recovery using Enter, as well as initial automatic loading with focus still on the document body. Draft-discard confirmation, data/retry handling and the existing protection against stealing moved focus remain in place. This is browser keyboard evidence, not audible assistive-technology qualification.
+
+Note read failures now use note-specific Japanese/English messages instead of incorrectly referring to the display name. The retry test waits for that failure status before checking focus and retrying.
+
 ## Remaining qualification
 
 VoiceOver/TalkBack speech, OS Passkey dialogs, real iPhone/Safari and Android behavior, synced credentials, device tilt and physical-device performance remain unqualified. Browser semantics and synthetic PRF do not substitute for those checks. The assistive-technology and intended-device activation gates remain open in [product quality](product-quality.md). Production transport compression, edge caching, field Web Vitals and sustained battery/thermal behavior require separate measurement.

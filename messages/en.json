@@ -56,6 +56,7 @@
   "vaultRevisionInvalid": "The stored revision could not be verified.",
   "vaultRecordInvalid": "The stored data format could not be verified.",
   "vaultReadFailed": "Your display name could not be loaded.",
+  "vaultNoteReadFailed": "Your note could not be loaded.",
   "vaultOpenFailed": "The passkey could not unlock this value.",
   "vaultInvalidName": "Enter a display name of 1 to 256 characters.",
   "vaultRetryChanged": "The prior save result is unknown. Reload this page before changing it.",
