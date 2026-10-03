@@ -31,6 +31,8 @@ Add passkey sign-in to your Web application. Follow the OpenID Connect guide for
 
 - [Read the application integration guide](integration.md)
 - [Check specifications and standards](specifications.md)
+- [Look up API requests and responses](api.md)
+- [Run the local integration example](integration-example.md)
 - [Inspect the implementation on GitHub](https://github.com/masanork/mikaki)
 
 ## For security evaluation
@@ -39,4 +41,5 @@ Check what has been tested and what still needs verification before adoption. Re
 
 - [Review security and implementation status](security.md)
 - [Browse conformance results](conformance.md)
+- [Check operations and service conditions](operations.md)
 - [Read Vault sharing and recovery limits](vault.md)

@@ -31,6 +31,8 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 
 - [アプリ連携ガイドを読む](integration.md)
 - [仕様・対応標準を確認する](specifications.md)
+- [API referenceで要求・応答を確認する](api.md)
+- [ローカルの連携例を動かす](integration-example.md)
 - [GitHubで実装を確認する](https://github.com/masanork/mikaki)
 
 ## 安全性を評価したい方へ
@@ -39,4 +41,5 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 
 - [セキュリティと対応状況を確認する](security.md)
 - [Conformance試験結果の一覧を見る](conformance.md)
+- [運用・サービスの条件を確認する](operations.md)
 - [Vaultの共有と復旧の制約を読む](vault.md)
