@@ -1,0 +1,40 @@
+name: Invitation request
+description: Ask about an invitation to evaluate the Web service.
+title: '[Invitation] '
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This issue is public. Do not post invitations, passwords, private keys, OAuth codes/tokens
+        or callback URLs issued during login, personal contact details or Vault contents. A request
+        does not guarantee an invitation, registration or response deadline. If accepted, arrange a
+        separate private delivery channel with an administrator.
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What would you like to try?
+      description: Briefly describe your evaluation without personal information.
+      placeholder: 'Example: Try Web passkey login and save a sample note.'
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device and browser
+      description: OS and browser names are enough; do not include device identifiers.
+      placeholder: 'Example: macOS / Chrome'
+    validations:
+      required: false
+  - type: checkboxes
+    id: public-request
+    attributes:
+      label: Public request and experimental status
+      options:
+        - label: >-
+            I included only information suitable for a public issue, without secrets or personal
+            data.
+          required: true
+        - label: >-
+            I understand that mikaki is experimental and this request alone does not create an
+            invitation or client registration.
+          required: true

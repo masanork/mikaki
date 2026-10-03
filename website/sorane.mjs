@@ -30,6 +30,10 @@ const canonicalUrls = (text) =>
   text.replace(/https:\/\/mikaki\.org\/((?:en\/)?)([a-z0-9-]+)\.html/g, (url, prefix, slug) =>
     slugs.has(slug) ? `https://mikaki.org/${prefix}${slug === 'index' ? '' : slug}` : url,
   );
+const screenshotDir = join(site, 'screenshots/onboarding');
+mkdirSync(join(site, 'public/screenshots/onboarding'), { recursive: true });
+for (const file of readdirSync(screenshotDir).filter((file) => file.endsWith('.png')))
+  copyFileSync(join(screenshotDir, file), join(site, 'public/screenshots/onboarding', file));
 const pageHashes = new Map();
 for (const lang of ['ja', 'en']) {
   const prefix = lang === 'ja' ? '' : 'en/';
@@ -83,6 +87,15 @@ for (const lang of ['ja', 'en']) {
       /href="([a-z0-9-]+)\.html([?#][^"]*)?"/g,
       (link, slug, suffix = '') =>
         slugs.has(slug) ? `href="/${prefix}${slug === 'index' ? '' : slug}${suffix}"` : link,
+    );
+    content = content.replace(
+      /<img src="(?:\.\.\/){1,2}(screenshots\/onboarding\/([a-z-]+\.png))"([^>]*)>/g,
+      (_, src, file, attributes) => {
+        const png = readFileSync(join(screenshotDir, file));
+        if (png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
+          throw new Error(`Invalid PNG: ${file}`);
+        return `<img src="/${src}"${attributes} width="${png.readUInt32BE(16)}" height="${png.readUInt32BE(20)}" loading="lazy" decoding="async">`;
+      },
     );
     if (home) {
       // Keep the introduction before the three purpose-based guide sections.

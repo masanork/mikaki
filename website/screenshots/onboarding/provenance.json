@@ -1,0 +1,92 @@
+{
+  "checked_at": "2026-10-03T22:46:59.844Z",
+  "issuer": "https://auth.mikaki.org",
+  "source_commit": "04b94d951465f5f5ab02a3c71eaa55bbfe117448",
+  "version_id": "c9138630-23fb-4652-abb4-3fbebbb95a4d",
+  "source_clean": true,
+  "rebuilt_inputs": [
+    "npm run build:policy",
+    "worker-build --release crates/worker"
+  ],
+  "assets": {
+    "/login/login.js": {
+      "public_sha256": "d72d60465628823777b5bfdf4b13d7d4fbbd9125346e3c5c274b572a11bebc1e",
+      "local_sha256": "a6ce28666f2fc97c7c22965e832011432413086db0cf7975d74857815ff9319e"
+    },
+    "/login/login.css": {
+      "public_sha256": "288b687e0ef435880e516934294621dd0e9e449c6e5cb7b7aed7d8955265c565",
+      "local_sha256": "288b687e0ef435880e516934294621dd0e9e449c6e5cb7b7aed7d8955265c565"
+    },
+    "/vault/vault.js": {
+      "public_sha256": "62d7522f535fa0b9efb3605658f67affbed7bf9970fb63a302ae6e8f750f1538",
+      "local_sha256": "4a7f471841587ffa5d3f3b979fbc3202670459d2b5207030f795d5c69b03354f"
+    },
+    "/ui/product.css": {
+      "public_sha256": "23a02777303b61d2710005347ff47f4e62945cfcb6d92a6e760d5b08d08e7244",
+      "local_sha256": "23a02777303b61d2710005347ff47f4e62945cfcb6d92a6e760d5b08d08e7244"
+    }
+  },
+  "images": [
+    {
+      "file": "enroll-ja.png",
+      "sha256": "ba5545f4cd885b90709cadb4d1e4037eb1babe3855ca48805428aa47ca8e90bc",
+      "kind": "public-get"
+    },
+    {
+      "file": "signin-ja.png",
+      "sha256": "ef648009235bc6f737699595d1663821d16b0dae6622f2bb163642b62e611b45",
+      "kind": "public-get"
+    },
+    {
+      "file": "enroll-en.png",
+      "sha256": "9ab8f42a57765954f0f704f293662acea2b4d365f023d0b4346e461c69a3cc88",
+      "kind": "public-get"
+    },
+    {
+      "file": "signin-en.png",
+      "sha256": "8c8ac414dff6756eb684a43daee416682d338ad45966d33ba5f0688a4efc4481",
+      "kind": "public-get"
+    },
+    {
+      "file": "vault-locked-ja.png",
+      "sha256": "afedef953813272bce3e322f4ced7ad65b23d183ea93d86b9dc31c1c0bbf6796",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-edit-ja.png",
+      "sha256": "d7e913244b71efb83ad2b1650cd479841dbf12c270143076e4f35f1190cced87",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-saved-ja.png",
+      "sha256": "0d3a86dd33aff61e1e7432f02b413fd7a1c5820ae9bea0aa33e7c9841cf8492d",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-reopened-ja.png",
+      "sha256": "486672f2fed4440554e56a379b1a5dff55629f5525ae5e4d4bd692abca012576",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "vault-locked-en.png",
+      "sha256": "6e9ce2d1e7be59e6954f911c29046aaa68ded2b9b9296d400d5f7da3a525df48",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-edit-en.png",
+      "sha256": "065ac2c2a8c06dbb59a179b49cefaadfeae01c3035d62a6145e47c0232b0e17e",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-saved-en.png",
+      "sha256": "7dfc3dfb54504c875c52876617e73ce217b4778c8f2b12eb58f4ff4bdcc8ca82",
+      "kind": "local-synthetic"
+    },
+    {
+      "file": "note-reopened-en.png",
+      "sha256": "448dd6a3517492d9bd6bfdc5a49af31edea55710e17159e8ea1bbd82663a98de",
+      "kind": "local-synthetic"
+    }
+  ],
+  "scope": "Public enrollment/sign-in GET screens; downloaded deployed UI assets with disposable local Vault data and mocked PRF. No production registration, save or physical-device qualification."
+}

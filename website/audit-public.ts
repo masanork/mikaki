@@ -78,6 +78,7 @@ export async function auditPublicWebsite(
   const llms = await (await get('/llms.txt', 'text/plain')).text();
   const pages = new Map<string, { title: string; html: string; links: string[] }>();
   const titles = new Set<string>();
+  const images = new Map<string, { width: number; height: number }>();
   for (const path of paths) {
     const response = await get(path, 'text/html');
     const html = await response.text();
@@ -135,6 +136,21 @@ export async function auditPublicWebsite(
         permitsScriptHash(response.headers.get('content-security-policy'), `'sha256-${hash}'`),
         `${path}: JSON-LD blocked by CSP`,
       );
+    }
+    for (const image of tags(html, 'img')) {
+      assert.ok(image.alt?.trim(), `${path}: image alt`);
+      const url = new URL(image.src, `${origin}${path}`);
+      assert.equal(url.origin, origin, `${path}: image origin`);
+      assert.equal(url.search + url.hash, '', `${path}: image URL`);
+      if (!images.has(url.pathname)) {
+        assert.ok(images.size < 100, 'bounded content images');
+        const png = Buffer.from(await (await get(url.pathname, 'image/png')).arrayBuffer());
+        assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+        images.set(url.pathname, { width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
+      }
+      const dimensions = images.get(url.pathname)!;
+      assert.equal(Number(image.width), dimensions.width, `${path}: image width`);
+      assert.equal(Number(image.height), dimensions.height, `${path}: image height`);
     }
     const anchors = tags(html, 'a').map((a) => new URL(a.href, `${origin}${path}`));
     for (const link of anchors) {
@@ -206,6 +222,7 @@ export async function auditPublicWebsite(
       'robots',
       'catalog',
       'social-images',
+      'content-images',
     ],
   };
 }

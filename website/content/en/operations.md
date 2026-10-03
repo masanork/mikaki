@@ -26,6 +26,8 @@ User registration requires an invitation. Administrators register application cl
 
 The [security policy](https://github.com/masanork/mikaki/blob/main/SECURITY.md) states that there are no supported releases and that the local implementation is not intended to protect real accounts or data. Evaluate with test accounts and synthetic data. Avoid entrusting irreplaceable information to this experimental setup, including the public service.
 
+Find the request channel and required information in [invitation and integration requests](contact.md).
+
 ## Availability and failure behavior
 
 There is no availability SLA, performance/capacity guarantee, support response deadline or security bounty. HTTP reachability and CI success do not guarantee every login, notification or Vault recovery.

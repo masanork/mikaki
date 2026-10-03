@@ -46,6 +46,24 @@ Start with a short piece of information you can afford to lose to check your dev
 
 If it will not open, follow the [passkey troubleshooting steps](passkeys.md). If the save outcome is unconfirmed, do not assume success; check the error and retry instructions on the screen.
 
+### Entering text does not save it
+
+![Sample title and text entered in the note editor with an unsaved-changes message](../../screenshots/onboarding/note-edit-en.png)
+
+The sample title and text are drafts until you choose Save note.
+
+### Confirm the save result
+
+![Closed note fields with the Note encrypted and saved message](../../screenshots/onboarding/note-saved-en.png)
+
+A successful save closes the note. Complete the passkey step and read the save result.
+
+### Reopen the same content
+
+![The sample title and text shown again after choosing Open note](../../screenshots/onboarding/note-reopened-en.png)
+
+Reopen with the same passkey and check that the title and text return. These images use the deployed UI with synthetic data and mocked PRF in an isolated environment, not a production account saving/recovery test.
+
 ## Locking and signing out
 
 The current Vault display has a 15-minute idle limit and a one-hour absolute limit. Open saved items again after a lock. Leaving the page or failing a session check also locks the view.

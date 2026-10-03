@@ -1,0 +1,73 @@
+name: Application integration request
+description: Discuss application integration and client registration.
+title: '[Integration] '
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This issue is public. Do not post invitations, passwords, private keys, OAuth codes/tokens
+        or callback URLs issued during login, personal contact details or Vault contents. A request
+        does not guarantee an invitation, registration or response deadline. If accepted, arrange a
+        separate private delivery channel with an administrator.
+  - type: input
+    id: application
+    attributes:
+      label: Application name
+      description: Use a name that may be published.
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Integration purpose
+      description: Describe the login behavior or attributes you need.
+    validations:
+      required: true
+  - type: dropdown
+    id: client-profile
+    attributes:
+      label: Client profile
+      description: Registration and authentication depend on the profile.
+      options:
+        - サーバー側Webアプリ / Server-side Web application
+        - ネイティブ公開クライアント / Native public client
+        - 未定 / Not decided
+    validations:
+      required: true
+  - type: textarea
+    id: public-endpoints
+    attributes:
+      label: Public URLs and configuration
+      description: >-
+        List a public HTTPS origin, proposed callback and logout destinations. Never paste a
+        callback URL issued during login with code/state queries. For private URLs, write only that
+        details need a private channel.
+      placeholder: |-
+        https://rp.example
+        https://rp.example/oidc/callback
+    validations:
+      required: true
+  - type: dropdown
+    id: key-readiness
+    attributes:
+      label: RP-specific ES256 key readiness
+      description: Web clients register a public JWK with an administrator. Do not paste a private key here.
+      options:
+        - 公開JWKを用意できる / Can provide a public JWK
+        - これから生成する / Will generate a key
+        - 公開クライアントまたは未定 / Public client or undecided
+    validations:
+      required: true
+  - type: checkboxes
+    id: public-request
+    attributes:
+      label: Public request and experimental status
+      options:
+        - label: >-
+            I included only information suitable for a public issue, without secrets or personal
+            data.
+          required: true
+        - label: >-
+            I understand that mikaki is experimental and this request alone does not create an
+            invitation or client registration.
+          required: true
