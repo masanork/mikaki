@@ -21,6 +21,7 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 招待から登録し、いつもの端末で使い始めたい方へ。パスキーでのログインと、Vaultの解錠をそれぞれ確認できます。
 
 - [招待からはじめる](getting-started.md)
+- [招待について相談する](contact.md)
 - [パスキーと端末の対応を確認する](passkeys.md)
 - [Vaultの保存と共有を知る](vault.md)
 - [よくある質問を見る](faq.md)
@@ -30,6 +31,7 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 自分のWebアプリにパスキー認証を組み込みたい方へ。OpenID Connectの登録、Authorization CodeとPKCE、セッション確認の手順を案内します。
 
 - [アプリ連携ガイドを読む](integration.md)
+- [アプリの接続・登録を相談する](contact.md)
 - [仕様・対応標準を確認する](specifications.md)
 - [API referenceで要求・応答を確認する](api.md)
 - [ローカルの連携例を動かす](integration-example.md)

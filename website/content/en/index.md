@@ -21,6 +21,7 @@ mikaki is an experimental project. Review implementation status and operational 
 Start with an invitation and your usual device. Check passkey sign-in and unlocking Vault as separate operations.
 
 - [Get started with an invitation](getting-started.md)
+- [Ask about an invitation](contact.md)
 - [Check passkeys and device support](passkeys.md)
 - [Explore saving and sharing with Vault](vault.md)
 - [Read frequently asked questions](faq.md)
@@ -30,6 +31,7 @@ Start with an invitation and your usual device. Check passkey sign-in and unlock
 Add passkey sign-in to your Web application. Follow the OpenID Connect guide for registration, Authorization Code with PKCE and session checks.
 
 - [Read the application integration guide](integration.md)
+- [Discuss application registration](contact.md)
 - [Check specifications and standards](specifications.md)
 - [Look up API requests and responses](api.md)
 - [Run the local integration example](integration-example.md)

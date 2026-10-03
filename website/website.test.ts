@@ -93,6 +93,12 @@ test('public websites keep app callbacks code-free and render the woven material
     assert.equal(audit.pages.length, paths.length);
     for (const failure of [
       {
+        path: '/getting-started',
+        from: '/screenshots/onboarding/enroll-ja.png',
+        to: '/screenshots/onboarding/missing.png',
+        error: /expected 200/,
+      },
+      {
         path: '/en/',
         from: 'rel="canonical" href="https://mikaki.org/en/"',
         to: 'rel="canonical" href="https://mikaki.org/"',
@@ -126,7 +132,7 @@ test('public websites keep app callbacks code-free and render the woven material
       await assert.rejects(
         auditPublicWebsite(async (url) => {
           const path = new URL(url).pathname;
-          const response = fixtures.get(path)!.clone();
+          const response = fixtures.get(path)?.clone() ?? new Response('', { status: 404 });
           if (path !== failure.path) return response;
           const html = await response.text();
           assert.ok(html.includes(failure.from));
@@ -223,6 +229,12 @@ test('public websites keep app callbacks code-free and render the woven material
         await page.waitForFunction(
           () => document.querySelector('.scene')?.getAttribute('data-renderer') === 'canvas',
         );
+        for (const image of await page.locator('.prose img').all()) {
+          await image.scrollIntoViewIfNeeded();
+          await image.evaluate((element: HTMLImageElement) => element.decode());
+          assert.ok(await image.evaluate((element: HTMLImageElement) => element.naturalWidth > 0));
+        }
+        await page.evaluate(() => scrollTo(0, 0));
         assert.equal(await page.locator('.plaque').textContent(), host);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({

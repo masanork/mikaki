@@ -1,0 +1,66 @@
+name: アプリ連携の相談
+description: アプリ連携とクライアント登録を相談します。
+title: '[Integration] '
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        このIssueは公開されます。招待コード、パスワード、秘密鍵、OAuthのcode・token・callback
+        URL、個人連絡先、Vault内容は投稿しないでください。受付は相談の入口であり、招待・登録・応答期限を保証しません。招待コードや登録に必要な非公開情報は、対応可能な場合に管理者と別の受け渡し経路を調整します。
+  - type: input
+    id: application
+    attributes:
+      label: アプリ名
+      description: 公開してよい表示名を記入してください。
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 連携の目的
+      description: ログインや必要な属性など、実現したい動作を説明してください。
+    validations:
+      required: true
+  - type: dropdown
+    id: client-profile
+    attributes:
+      label: クライアントの種類
+      description: 種類ごとに登録・認証方法が異なります。
+      options:
+        - サーバー側Webアプリ / Server-side Web application
+        - ネイティブ公開クライアント / Native public client
+        - 未定 / Not decided
+    validations:
+      required: true
+  - type: textarea
+    id: public-endpoints
+    attributes:
+      label: 公開できるURLと接続構成
+      description: >-
+        公開してよいHTTPS origin、予定callback、ログアウト戻り先・通知受信先を記入します。実際のログインで発行されたquery付きcallback
+        URLは貼らないでください。非公開URLの場合は「非公開のため別途相談」とだけ書いてください。
+      placeholder: |-
+        https://rp.example
+        https://rp.example/oidc/callback
+    validations:
+      required: true
+  - type: dropdown
+    id: key-readiness
+    attributes:
+      label: RP専用のES256鍵の準備
+      description: Webアプリは公開JWKを管理者に登録します。このフォームへ秘密鍵を貼らないでください。
+      options:
+        - 公開JWKを用意できる / Can provide a public JWK
+        - これから生成する / Will generate a key
+        - 公開クライアントまたは未定 / Public client or undecided
+    validations:
+      required: true
+  - type: checkboxes
+    id: public-request
+    attributes:
+      label: 公開投稿と実験段階の確認
+      options:
+        - label: 公開してよい内容だけを記入し、秘密・個人情報を含めていません。
+          required: true
+        - label: mikakiは実験段階で、依頼だけでは招待・クライアント登録は完了しないことを確認しました。
+          required: true

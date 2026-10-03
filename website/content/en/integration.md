@@ -28,6 +28,8 @@ Use a separate client for each environment. Provide the operator with the applic
 
 Native public clients have separate registration, authentication and callback rules.
 
+Before requesting registration, use [application integration requests](contact.md) to prepare the needed information and review steps.
+
 ## 1. Start login
 
 Generate fresh random `state`, `nonce` and a PKCE `code_verifier` for each login. Store them in the backend with the start time and browser transaction. Restrict the post-login return path to a validated application-local destination.

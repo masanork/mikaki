@@ -82,5 +82,12 @@
       "ja": "運用情報",
       "en": "Operations"
     }
+  },
+  {
+    "slug": "contact",
+    "labels": {
+      "ja": "招待・連携相談",
+      "en": "Contact"
+    }
   }
 ]

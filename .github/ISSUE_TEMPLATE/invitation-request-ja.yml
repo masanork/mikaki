@@ -1,0 +1,34 @@
+name: 招待の相談
+description: Web版を試すための招待を相談します。
+title: '[Invitation] '
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        このIssueは公開されます。招待コード、パスワード、秘密鍵、OAuthのcode・token・callback
+        URL、個人連絡先、Vault内容は投稿しないでください。受付は相談の入口であり、招待・登録・応答期限を保証しません。招待コードや登録に必要な非公開情報は、対応可能な場合に管理者と別の受け渡し経路を調整します。
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 試したいこと
+      description: 個人情報を含めず、利用目的を簡潔に説明してください。
+      placeholder: 例：Webでパスキーログインとサンプルメモの保存を試したい。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 端末・ブラウザー
+      description: OSとブラウザーの種類だけで構いません。端末IDは不要です。
+      placeholder: 例：macOS / Chrome
+    validations:
+      required: false
+  - type: checkboxes
+    id: public-request
+    attributes:
+      label: 公開投稿と実験段階の確認
+      options:
+        - label: 公開してよい内容だけを記入し、秘密・個人情報を含めていません。
+          required: true
+        - label: mikakiは実験段階で、依頼だけでは招待・クライアント登録は完了しないことを確認しました。
+          required: true

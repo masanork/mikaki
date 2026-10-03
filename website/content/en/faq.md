@@ -12,6 +12,8 @@ updated: 2026-10-03
 
 New accounts currently require an invitation code. Invited users can follow [Getting started](getting-started.md). Unrestricted public registration is not available.
 
+If you do not have an invitation, see [invitation requests](contact.md).
+
 ## Do I need to install an app?
 
 You can start Web sign-in and enter Vault from a browser. General distribution of the native app is still being prepared. Read [Getting started](getting-started.md) for the distinction.
