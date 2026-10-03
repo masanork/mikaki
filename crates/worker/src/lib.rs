@@ -44,6 +44,7 @@ mod vault_gc;
 mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_resource;
+#[cfg(target_arch = "wasm32")]
 mod vault_owner_keys;
 
 #[cfg(target_arch = "wasm32")]
