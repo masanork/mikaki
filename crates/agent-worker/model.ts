@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { agentKeyId } from '../worker/ui/agent-crypto.js';
 import { encodeBase64Url } from '../worker/ui/vault-crypto.js';
+import { decodeOwnerNote } from '../worker/ui/vault-note.js';
+import {
+  parseVaultRecordSource,
+  parseVaultRecordAuthority,
+  type VaultRecordSource,
+  type VaultRecordAuthority,
+} from '../worker/ui/vault-record-source.js';
 
 export const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 export const operation = z.enum(['list', 'search', 'read', 'propose', 'execute']);
@@ -11,23 +18,59 @@ export const envelopeSchema = z.strictObject({
   nonce: z.string().regex(/^[A-Za-z0-9_-]{16}$/),
   ciphertext: z.string().regex(/^[A-Za-z0-9_-]{22,32800}$/),
 });
-export const grantInput = z.strictObject({
+const grantFields = {
   grant_id: opaque,
   delegate: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
   provider: z.string().trim().min(1).max(160),
   resource: z.string().url().max(256),
-  source_revision: z.number().int().positive(),
   recipient_key_id: opaque,
   operations: z
     .array(operation)
     .min(1)
     .max(5)
     .refine((items) => new Set(items).size === items.length),
+  token_hash: opaque,
+  expires_at: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+};
+function parsed<T>(parse: (value: unknown) => T) {
+  return z.unknown().transform((value, context): T => {
+    try {
+      return parse(value);
+    } catch {
+      context.addIssue({ code: 'custom', message: 'Invalid record source' });
+      return z.NEVER;
+    }
+  });
+}
+export const recordSourceSchema = parsed(parseVaultRecordSource);
+export const recordAuthoritySchema = parsed(parseVaultRecordAuthority);
+export const recordEnvelopeSchema = envelopeSchema.extend({ version: z.literal(2) });
+// Absent storage_version is the historical v1 request, including its request hash.
+const attributeGrantInput = z.strictObject({
+  grant_id: grantFields.grant_id,
+  delegate: grantFields.delegate,
+  provider: grantFields.provider,
+  resource: grantFields.resource,
+  source_revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  recipient_key_id: grantFields.recipient_key_id,
+  operations: grantFields.operations,
   document_ids: z.tuple([z.literal('name')]),
   envelope: envelopeSchema,
-  token_hash: opaque,
-  expires_at: z.number().int().positive(),
+  token_hash: grantFields.token_hash,
+  expires_at: grantFields.expires_at,
+  storage_version: z.literal(1).optional(),
 });
+const recordGrantInput = z
+  .strictObject({
+    ...grantFields,
+    storage_version: z.literal(2),
+    source: recordSourceSchema,
+    authority: recordAuthoritySchema,
+    document_ids: z.tuple([z.enum(['name', 'owner_note'])]),
+    envelope: recordEnvelopeSchema,
+  })
+  .refine((input) => input.document_ids[0] === input.source.record_id);
+export const grantInput = z.union([attributeGrantInput, recordGrantInput]);
 export const documentsSchema = z
   .array(
     z.strictObject({
@@ -57,8 +100,66 @@ export type Grant = {
   expires_at: number;
   revoked: number;
   revision: number;
+  storage_version: 1 | 2;
+  source_origin: string | null;
+  source_vault_id: string | null;
+  source_collection_id: string | null;
+  source_record_id: string | null;
+  source_kind: string | null;
+  source_ciphertext_sha256: string | null;
+  source_key_generation: number | null;
+  source_owner_key_revision: number | null;
   access_token_hash?: string;
 };
+// Metadata comes exclusively from the authenticated grant columns, never a label.
+export function grantRecordSource(grant: Grant): VaultRecordSource {
+  if (grant.storage_version !== 2) throw new Error('Record grant required');
+  return parseVaultRecordSource({
+    storage_version: 2,
+    origin: grant.source_origin,
+    owner_id: grant.account_id,
+    vault_id: grant.source_vault_id,
+    collection_id: grant.source_collection_id,
+    record_id: grant.source_record_id,
+    kind: grant.source_kind,
+    revision: grant.source_revision,
+    ciphertext_sha256: grant.source_ciphertext_sha256,
+  });
+}
+export function grantRecordAuthority(grant: Grant): VaultRecordAuthority {
+  return parseVaultRecordAuthority({
+    key_generation: grant.source_key_generation,
+    owner_key_revision: grant.source_owner_key_revision,
+  });
+}
+export function recordDocuments(value: unknown, source: VaultRecordSource) {
+  const documents = z
+    .array(
+      z.strictObject({
+        id: z.enum(['name', 'owner_note']),
+        title: z.string().min(1).max(160),
+        source: z.string().min(1).max(160),
+        text: z.string().min(1).max(16384),
+      }),
+    )
+    .length(1)
+    .parse(value);
+  const document = documents[0];
+  if (document.id !== source.record_id) throw new Error('Selected record mismatch');
+  const bytes = new Uint8Array(new TextEncoder().encode(document.text));
+  try {
+    // Preserve every valid code point including a name's leading BOM; reject
+    // lone UTF-16 surrogates rather than silently replacing them during UTF-8 encoding.
+    if (new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes) !== document.text)
+      throw new Error('Invalid record Unicode');
+    if (source.kind === 'name') {
+      if (document.text.length > 256) throw new Error('Name too large');
+    } else decodeOwnerNote(bytes);
+    return documents;
+  } finally {
+    bytes.fill(0);
+  }
+}
 export type Owner = { account: string; secretHash: string };
 export type Proposal = {
   proposal_id: string;

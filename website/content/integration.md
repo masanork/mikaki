@@ -93,5 +93,5 @@ Access TokenはUserInfo取得用であり、アプリ自身のAPI認可やセッ
 
 ## 次に読む
 
-- [セキュリティと対応状況](security.md)：導入前に、必要な機能の試験範囲と正式認定の状況を確認します。
-- [はじめ方](getting-started.md)：連携アプリを使う人の登録・ログインの流れを確認します。
+- [API reference](api.md)：個々のendpointの要求・応答・エラーを参照します。
+- [動かせるローカルRP例](integration-example.md)：登録からログインと失効までの実装を実行します。

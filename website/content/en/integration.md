@@ -93,5 +93,5 @@ For the standard flow, see [OpenID Connect Core](https://openid.net/specs/openid
 
 ## Read next
 
-- [Security and implementation status](security.md): Review test scope and formal certification status before adoption.
-- [Getting started](getting-started.md): Review registration and sign-in from the user’s perspective.
+- [API reference](api.md): Look up endpoint requests, responses and errors.
+- [Runnable local RP example](integration-example.md): Exercise registration, login and revocation.
