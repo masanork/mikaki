@@ -30,6 +30,7 @@ Start with an invitation and your usual device. Check passkey sign-in and unlock
 Add passkey sign-in to your Web application. Follow the OpenID Connect guide for registration, Authorization Code with PKCE and session checks.
 
 - [Read the application integration guide](integration.md)
+- [Check specifications and standards](specifications.md)
 - [Inspect the implementation on GitHub](https://github.com/masanork/mikaki)
 
 ## For security evaluation
@@ -37,4 +38,5 @@ Add passkey sign-in to your Web application. Follow the OpenID Connect guide for
 Check what has been tested and what still needs verification before adoption. Review encryption and recovery limits, OpenID, FAPI and FIDO test evidence, and formal certification status.
 
 - [Review security and implementation status](security.md)
+- [Browse conformance results](conformance.md)
 - [Read Vault sharing and recovery limits](vault.md)
