@@ -46,6 +46,8 @@ mod vault_oauth_consent;
 mod vault_oauth_resource;
 #[cfg(target_arch = "wasm32")]
 mod vault_owner_keys;
+#[cfg(target_arch = "wasm32")]
+mod vault_owner_records;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -3749,6 +3751,19 @@ pub async fn main(
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
         .get_async("/vault/session", vault_attributes::session)
+        .get_async("/vault/records/:collection", vault_owner_records::list)
+        .get_async(
+            "/vault/records/:collection/:record",
+            vault_owner_records::get,
+        )
+        .put_async(
+            "/vault/records/:collection/:record",
+            vault_owner_records::put,
+        )
+        .delete_async(
+            "/vault/records/:collection/:record",
+            vault_owner_records::delete,
+        )
         .get_async("/vault/owner-key", vault_owner_keys::get)
         .put_async("/vault/owner-key", vault_owner_keys::create)
         .get_async("/vault/passkeys", owner_passkeys::list)
@@ -3864,4 +3879,9 @@ pub async fn scheduled(
     logout_delivery::run_due(&env)
         .await
         .expect("Logout delivery failed");
+    if event.cron() == "* * * * *" {
+        vault_owner_records::collect(&env, event.schedule() as u64)
+            .await
+            .expect("Owner record garbage collection failed");
+    }
 }
