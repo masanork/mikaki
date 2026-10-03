@@ -61,5 +61,26 @@
       "ja": "試験結果一覧",
       "en": "Conformance"
     }
+  },
+  {
+    "slug": "api",
+    "labels": {
+      "ja": "API参照",
+      "en": "API reference"
+    }
+  },
+  {
+    "slug": "integration-example",
+    "labels": {
+      "ja": "連携実行例",
+      "en": "RP example"
+    }
+  },
+  {
+    "slug": "operations",
+    "labels": {
+      "ja": "運用情報",
+      "en": "Operations"
+    }
   }
 ]

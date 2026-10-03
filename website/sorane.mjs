@@ -30,7 +30,7 @@ const canonicalUrls = (text) =>
   text.replace(/https:\/\/mikaki\.org\/((?:en\/)?)([a-z0-9-]+)\.html/g, (url, prefix, slug) =>
     slugs.has(slug) ? `https://mikaki.org/${prefix}${slug === 'index' ? '' : slug}` : url,
   );
-const hashes = new Set();
+const pageHashes = new Map();
 for (const lang of ['ja', 'en']) {
   const prefix = lang === 'ja' ? '' : 'en/';
   const other = lang === 'ja' ? 'en/' : '';
@@ -64,8 +64,10 @@ for (const lang of ['ja', 'en']) {
         full.replace(url, new URL(url, 'https://mikaki.org/').pathname),
       );
     if (!head) throw new Error(`Missing Sorane metadata: ${rel}`);
+    const hashes = new Set();
     for (const match of head.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))
       hashes.add(`'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
+    pageHashes.set(`/${prefix}${slug === 'index' ? '' : slug}`, hashes);
     const links = pages
       .map(
         (page) =>
@@ -135,11 +137,18 @@ writeFileSync(
     '\n',
 );
 const headers = join(site, 'public/_headers');
-writeFileSync(
-  headers,
-  readFileSync(headers, 'utf8').replace(
-    "script-src 'self'",
-    `script-src 'self' ${[...hashes].join(' ')}`,
-  ),
+// Workers static assets allow at most 2,000 characters per header-file line.
+// A site-wide list grows with every translated page; authorize only each page's JSON-LD.
+const defaults = readFileSync(headers, 'utf8');
+const policy = defaults.match(/^  Content-Security-Policy: (.+)$/m)?.[1];
+if (!policy) throw new Error('Missing default Content-Security-Policy');
+const rules = [...pageHashes].map(
+  ([path, hashes]) =>
+    `${path}\n  ! Content-Security-Policy\n  Content-Security-Policy: ${policy.replace("script-src 'self'", `script-src 'self' ${[...hashes].join(' ')}`)}\n`,
 );
+// Global rules still cover non-HTML assets and 404s. .html aliases redirect before headers.
+const output = defaults + '\n' + rules.join('\n');
+if (rules.length + 1 > 100 || output.split('\n').some((line) => line.length > 2000))
+  throw new Error('Static-asset header rules exceed Cloudflare limits');
+writeFileSync(headers, output);
 console.log(`Sorane metadata and content ready: ${report.warning_count} validation warnings.`);
