@@ -4,7 +4,7 @@ Implemented in the working tree on 2026-10-04; deployment is not recorded. Migra
 
 ## Admission
 
-`/authorize`, `/token`, `/par`, `/signin`, `/enroll`, `/login*` and `/enroll/*` reserve a durable fixed-minute budget before protocol processing. Cloudflare's `CF-Connecting-IP` is hashed with a purpose prefix; absent addresses share an `unknown` source budget. No cookie can reset this source limit. D1 commits source and deployment counters atomically across isolates. Rejected/invalid requests also spend budget. Limits return HTTP 429, `Cache-Control: no-store`, `Retry-After: 60`, and `temporarily_unavailable` without identifiers.
+`/authorize`, `/token`, `/par`, `/signin`, `/enroll`, `/login`, its cue/finish/deny operations and `/enroll/complete` reserve a durable fixed-minute budget before protocol processing. Cloudflare's `CF-Connecting-IP` is hashed with a purpose prefix; absent addresses share an `unknown` source budget. Static JavaScript/CSS assets do not consume ceremony budget. No cookie can reset this source limit. D1 commits source and deployment counters atomically across isolates. Rejected/invalid requests also spend budget. Limits return HTTP 429, `Cache-Control: no-store`, `Retry-After: 60`, and `temporarily_unavailable` without identifiers.
 
 | Policy | Default | Adjustment bounds |
 | --- | --- | --- |

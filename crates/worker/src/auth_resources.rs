@@ -12,10 +12,17 @@ pub(super) async fn admit(request: &worker::Request, env: &worker::Env) -> worke
     let path = request.url()?.path().to_owned();
     if !matches!(
         path.as_str(),
-        "/authorize" | "/token" | "/par" | "/signin" | "/enroll"
-    ) && !path.starts_with("/login")
-        && !path.starts_with("/enroll/")
-    {
+        "/authorize"
+            | "/token"
+            | "/par"
+            | "/signin"
+            | "/enroll"
+            | "/login"
+            | "/login/cue"
+            | "/login/finish"
+            | "/login/deny"
+            | "/enroll/complete"
+    ) {
         return Ok(true);
     }
     let db = env.d1("DB")?;
