@@ -573,10 +573,11 @@ pub async fn grant_record(
         .await
         .is_err()
     {
-        if let Some(previous) = audit(&db, &owner.account_id, &operation).await? {
-            if previous.request_hash == hash && previous.action == "grant" {
-                return record_result(&previous);
-            }
+        if let Some(previous) = audit(&db, &owner.account_id, &operation).await?
+            && previous.request_hash == hash
+            && previous.action == "grant"
+        {
+            return record_result(&previous);
         }
         return error(409, "release_conflict");
     }

@@ -19,6 +19,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
+    await worker.applyD1Migrations('DB');
     for (const [path, contentType] of [
       ['/favicon.svg', 'image/svg+xml'],
       ['/favicon.ico', 'image/x-icon'],

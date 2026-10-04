@@ -149,6 +149,10 @@ function tombstone(db: DatabaseSync, overrides: Partial<Mutation> = {}): Mutatio
 }
 
 function commit(db: DatabaseSync, value: Mutation) {
+  if (value.objectKey)
+    db.prepare(
+      'INSERT OR IGNORE INTO vault_gc_candidate(object_key,eligible_at) VALUES(?,unixepoch()+86400)',
+    ).run(value.objectKey);
   db.exec('BEGIN IMMEDIATE');
   try {
     const head = db

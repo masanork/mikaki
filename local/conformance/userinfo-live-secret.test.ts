@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -123,6 +123,29 @@ test('live local Secrets Store decrypts consented name and writes disclosure aud
     let beforeClaimFetch: (() => Promise<void>) | undefined;
     let beforeDisclosureAudit: (() => Promise<void>) | undefined;
 
+    const authorityBuild = join(temporary, 'authority');
+    await mkdir(authorityBuild);
+    await build({
+      entryPoints: [join(root, 'crates/worker/service/entrypoint.ts')],
+      outfile: join(authorityBuild, 'index.js'),
+      bundle: true,
+      format: 'esm',
+      platform: 'browser',
+      target: 'es2022',
+      external: ['cloudflare:workers'],
+      loader: { '.sql': 'text' },
+      plugins: [
+        {
+          name: 'wasm-reference',
+          setup(builder) {
+            builder.onResolve({ filter: /\.wasm$/ }, () => ({
+              path: './index_bg.wasm',
+              external: true,
+            }));
+          },
+        },
+      ],
+    });
     const options = convertV4MiniflareOptions({
       name: 'mikaki-userinfo-claim-worker',
       compatibilityDate: '2026-09-23',
@@ -131,9 +154,8 @@ test('live local Secrets Store decrypts consented name and writes disclosure aud
       modulesRoot: claimBuild,
       resourcePersistencePath: join(temporary, 'v3'),
       bindings: { MIKAKI_ISSUER: 'https://mikaki.test' },
-      d1Databases: { DB: 'mikaki-userinfo-live' },
-      r2Buckets: { VAULT_BLOBS: 'mikaki-userinfo-live' },
       serviceBindings: {
+        CLAIM_STORE: { name: 'mikaki-op-worker', entrypoint: 'ClaimStore' },
         CONFORMANCE_GATE: async (request) => {
           assert.equal(new URL(request.url).pathname, '/after-decrypt');
           await beforeDisclosureAudit?.();
@@ -152,8 +174,8 @@ test('live local Secrets Store decrypts consented name and writes disclosure aud
       name: 'mikaki-op-worker',
       compatibilityDate: '2026-09-23',
       modules: true,
-      scriptPath: join(opBuild, 'index.js'),
-      modulesRoot: opBuild,
+      scriptPath: join(authorityBuild, 'index.js'),
+      modulesRoot: authorityBuild,
       bindings: { MIKAKI_ISSUER: 'https://mikaki.test', OP_PRIVATE_JWK: JSON.stringify(opPrivate) },
       d1Databases: { DB: 'mikaki-userinfo-live' },
       r2Buckets: { VAULT_BLOBS: 'mikaki-userinfo-live' },

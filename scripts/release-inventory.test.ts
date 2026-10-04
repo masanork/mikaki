@@ -26,6 +26,7 @@ async function fixture() {
     join(root, 'crates/worker/migrations/0001_initial.sql'),
     'CREATE TABLE example(id INTEGER);',
   );
+  await writeFile(join(root, 'build/worker/service.mjs'), 'fixture:worker/service.mjs');
   const archive = (names = entries) => {
     for (const name of ['mikaki-worker', 'mikaki-userinfo-claim-worker'])
       execFileSync('tar', [
@@ -34,6 +35,7 @@ async function fixture() {
         '-czf',
         join(root, `artifacts/${name}.tar.gz`),
         ...names,
+        ...(name === 'mikaki-worker' ? ['worker/service.mjs'] : []),
       ]);
   };
   archive();
@@ -58,8 +60,14 @@ test('upload preparation stages only verified archive members and records Wrangl
   try {
     const inventory = await collectRelease(root, source);
     const fakeBundle = (entry: string, _config: string, output: string) => {
-      assert.equal(execFileSync('cat', [entry], { encoding: 'utf8' }), 'fixture:worker/shim.mjs');
-      writeFileSync(join(output, 'shim.js'), 'bundled entry');
+      assert.equal(
+        execFileSync('cat', [entry], { encoding: 'utf8' }),
+        entry.endsWith('service.mjs') ? 'fixture:worker/service.mjs' : 'fixture:worker/shim.mjs',
+      );
+      writeFileSync(
+        join(output, entry.endsWith('service.mjs') ? 'service.js' : 'shim.js'),
+        'bundled entry',
+      );
       writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
     };
     const prepared = await prepareReleaseUpload(root, inventory, source, false, fakeBundle);
@@ -70,7 +78,10 @@ test('upload preparation stages only verified archive members and records Wrangl
       (await readFile(join(prepared.destination, 'op/input/index_bg.wasm'))).toString(),
       'fixture:index_bg.wasm',
     );
-    await writeFile(join(prepared.destination, 'op/bundle/shim.js'), 'changed after preparation');
+    await writeFile(
+      join(prepared.destination, 'op/bundle/service.js'),
+      'changed after preparation',
+    );
     await assert.rejects(
       verifyPreparedUpload(root, prepared.destination, prepared.result, source),
       { code: 'ERR_ASSERTION' },

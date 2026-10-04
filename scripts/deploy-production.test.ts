@@ -59,8 +59,7 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
     resources: {
       script_runtime: { compatibility_date: config.compatibility_date },
       bindings: [
-        { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
-        { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
+        { name: 'CLAIM_STORE', type: 'service', service: 'mikaki-auth', entrypoint: 'ClaimStore' },
         { name: 'MIKAKI_ISSUER', type: 'plain_text', text: 'https://auth.mikaki.org' },
         {
           name: 'VAULT_USERINFO_MLKEM_A',
@@ -72,6 +71,28 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
     },
   };
   checkBindings(version, config);
-  version.resources.bindings[3]!.secret_name = 'wrong-key';
+  version.resources.bindings[2]!.secret_name = 'wrong-key';
   assert.throws(() => checkBindings(version, config), /Binding VAULT_USERINFO_MLKEM_A/);
+});
+
+test('downstream production bindings exclude raw storage and preserve exact named authority', () => {
+  for (const path of [
+    'crates/agent-worker/wrangler.example.jsonc',
+    'crates/userinfo-claim-worker/wrangler.production.jsonc',
+  ]) {
+    const config = JSON.parse(readFileSync(path, 'utf8').replace(/,\s*([}\]])/g, '$1'));
+    assert.equal(config.d1_databases, undefined);
+    assert.equal(config.r2_buckets, undefined);
+    assert.equal(config.vars?.MIKAKI_LEGACY_CLAIM_STORE, undefined);
+  }
+  const config = JSON.parse(
+    readFileSync('crates/userinfo-claim-worker/wrangler.production.jsonc', 'utf8'),
+  );
+  const version = {
+    resources: {
+      script_runtime: { compatibility_date: config.compatibility_date },
+      bindings: [{ name: 'DB', type: 'd1', database_id: 'unapproved' }],
+    },
+  };
+  assert.throws(() => checkBindings(version, config), /Unexpected storage binding DB/);
 });

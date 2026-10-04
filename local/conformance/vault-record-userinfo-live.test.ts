@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -93,6 +93,29 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
     let beforeAudit: (() => Promise<void>) | undefined;
     const claimBuild = join(root, 'crates/userinfo-claim-worker/build-conformance');
     const opBuild = join(root, 'crates/worker/build');
+    const authorityBuild = join(temporary, 'authority');
+    await mkdir(authorityBuild);
+    await build({
+      entryPoints: [join(root, 'crates/worker/service/entrypoint.ts')],
+      outfile: join(authorityBuild, 'index.js'),
+      bundle: true,
+      format: 'esm',
+      platform: 'browser',
+      target: 'es2022',
+      external: ['cloudflare:workers'],
+      loader: { '.sql': 'text' },
+      plugins: [
+        {
+          name: 'wasm-reference',
+          setup(builder) {
+            builder.onResolve({ filter: /\.wasm$/ }, () => ({
+              path: './index_bg.wasm',
+              external: true,
+            }));
+          },
+        },
+      ],
+    });
     const options = convertV4MiniflareOptions({
       name: 'mikaki-userinfo-claim-worker',
       compatibilityDate: '2026-09-23',
@@ -101,9 +124,8 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
       modulesRoot: claimBuild,
       resourcePersistencePath: join(temporary, 'v3'),
       bindings: { MIKAKI_ISSUER: origin },
-      d1Databases: { DB: 'record-userinfo' },
-      r2Buckets: { VAULT_BLOBS: 'record-userinfo' },
       serviceBindings: {
+        CLAIM_STORE: { name: 'mikaki-op-worker', entrypoint: 'ClaimStore' },
         CONFORMANCE_GATE: async () => {
           await beforeAudit?.();
           return new Response(null, { status: 200 });
@@ -121,8 +143,8 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
       routes: ['mikaki.test/*'],
       compatibilityDate: '2026-09-23',
       modules: true,
-      scriptPath: join(opBuild, 'index.js'),
-      modulesRoot: opBuild,
+      scriptPath: join(authorityBuild, 'index.js'),
+      modulesRoot: authorityBuild,
       bindings: { MIKAKI_ISSUER: origin },
       d1Databases: { DB: 'record-userinfo' },
       r2Buckets: { VAULT_BLOBS: 'record-userinfo' },

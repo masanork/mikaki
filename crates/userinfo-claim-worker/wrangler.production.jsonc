@@ -8,20 +8,6 @@
   "vars": {
     "MIKAKI_ISSUER": "https://auth.mikaki.org"
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "mikaki-auth",
-      "database_id": "f9299d62-2dbf-4bae-ae49-8b75674572d4",
-      "remote": true
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "VAULT_BLOBS",
-      "bucket_name": "mikaki-auth-vault"
-    }
-  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
@@ -31,6 +17,13 @@
       "binding": "VAULT_USERINFO_MLKEM_A",
       "store_id": "0297c270b4b74bb19f6d8d513fd280f5",
       "secret_name": "VAULT_USERINFO_MLKEM_A"
+    }
+  ],
+  "services": [
+    {
+      "binding": "CLAIM_STORE",
+      "service": "mikaki-auth",
+      "entrypoint": "ClaimStore"
     }
   ]
 }

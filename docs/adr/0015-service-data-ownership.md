@@ -1,0 +1,32 @@
+# ADR 0015: OP-owned durable storage and bounded service capabilities
+
+**Status:** Accepted implementation direction, 2026-10-04. Locally verified; production migration and activation remain open.
+
+## Decision
+
+The OP is the runtime owner of the shared D1 database and Vault R2 bucket. The Agent Worker and UserInfo recipient Worker use distinct named service entrypoints in that OP deployment. Neither downstream production configuration carries a D1 or R2 binding. The recipient secret remains exclusively in the UserInfo Worker. Deployment administrators retain their separate administrative permissions.
+
+| Caller | OP entrypoint | Permitted operations |
+| --- | --- | --- |
+| Agent | `AgentStore` | Exact catalogued Agent domain statements, with bounded parameters and atomic batches |
+| UserInfo recipient | `ClaimStore` | Recipient metadata, eligible name ciphertext and envelope, readiness, conditional disclosure audit |
+| Public internet | Default Rust OP | Registered HTTP routes; named storage paths are unavailable |
+
+The Agent cannot send SQL, alter OP sessions, credentials, OIDC codes/tokens, owner heads or runtime policy, or read arbitrary R2 keys. The catalog is generated from actual Agent product SQL, reviewed with that implementation, and checked in CI. Only `agent_*` mutations are accepted by the generator. Batches contain at most 64 statements and the request stream is bounded to 64 KiB. This remains a trusted Agent domain authority: possession of its binding authorizes the catalogued Agent operations. It is not an untrusted general database client.
+
+The ClaimStore takes an access-token hash rather than an arbitrary account/object key. It selects the exact live code/session/scope, owner grant, RP release, head, envelope and recipient key using the same SQL contract as Rust claim delivery. Before plaintext can leave the recipient, a conditional audit repeats those predicates and the selected revision/digest/key. Revocation during decryption therefore fails closed. The OP returns ciphertext and public metadata; it never receives the recipient private seed.
+
+## Atomicity and compatibility
+
+Each Agent `DB.batch` becomes one OP D1 `batch`, including conditional guards and audit writes. It is never split into multiple fetches. Every invocation uses a primary D1 session; no stale read replica is used as authorization evidence. OP owner commits remain their existing Rust atomic transitions.
+
+The local Claim Worker config explicitly enables `MIKAKI_LEGACY_CLAIM_STORE=local-test` for isolated fixture tests. Missing service bindings fail closed in every other mode. Production/example configs omit that flag and all downstream storage bindings. The positive live-secret suite also runs the new service boundary, without legacy storage access.
+
+## Rollout and rollback
+
+1. Back up and rehearse migrations, including existing encrypted heads. Build the Rust OP and `npm run build:op-authority`; the release inventory includes `worker/service.mjs` alongside the Rust shim/Wasm and verifies all member hashes.
+2. Deploy the OP default handler plus named entrypoints first. Existing downstream code and bindings continue to function during this step. Qualify readiness and service operations against the exact OP version.
+3. Deploy downstream clients with their named service bindings. Remove their D1/R2 bindings in the same reviewed version configuration. Qualify Agent concurrency/audit rollback and UserInfo success/revocation races before enabling any sharing policy.
+4. For rollback, first restore a compatible downstream version and its reviewed binding configuration, then roll back the OP. Rolling back the OP first would remove required named entrypoints. Do not reverse migrations or restore revoked authorization state as a routine rollback.
+
+Feature flags and recipient/RP consent policies are unchanged by this migration. No production activation, physical-device qualification or standards certification follows from these local tests. See [architecture](../architecture.md) and [release and recovery](../release-and-recovery.md).

@@ -52,6 +52,7 @@ jobs:
           npm run check:worker-ui
           npm run check:agent-worker
           npm run check:product-sources
+          npm run check:service-authority
           npm run check:i18n
           npm run check:docs
       - name: Native tests and measured coverage
