@@ -6,6 +6,11 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseSource } from './release-inventory.ts';
 import { verifyPreparedUpload } from './prepare-release-upload.ts';
+import {
+  assertProductionBaseline,
+  BASELINE_NAME,
+  BASELINE_SCHEMA_QUERY,
+} from './production-baseline.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -124,6 +129,26 @@ async function main() {
   assert.ok(
     migrations.includes('No migrations to apply'),
     'Pending migrations require manual reconciliation before deployment',
+  );
+  const schemaProbe = JSON.parse(
+    wrangler([
+      'd1',
+      'execute',
+      'mikaki-auth',
+      '--remote',
+      '--config',
+      opConfig,
+      '--command',
+      `SELECT name FROM d1_migrations ORDER BY id; ${BASELINE_SCHEMA_QUERY};`,
+      '--json',
+    ]),
+  );
+  assert.equal(schemaProbe.length, 2, 'Expected ledger and schema results');
+  assert.ok(schemaProbe.every((result: { success: boolean }) => result.success === true));
+  assertProductionBaseline(
+    readFileSync(join(root, 'crates/worker/migrations', BASELINE_NAME), 'utf8'),
+    schemaProbe[0].results,
+    schemaProbe[1].results,
   );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
   assert.ok(process.env.OP_PRIVATE_JWK && process.env.MIKAKI_READY_TOKEN);
