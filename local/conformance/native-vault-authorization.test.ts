@@ -9,7 +9,7 @@ import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
 const issuer = 'https://issuer.example';
 const callback = 'https://app.example/oidc/callback';
-const resource = 'https://auth.mikaki.org/vault-api/';
+const resource = 'https://mikaki.tossa.app/vault-api/';
 const digest = (value: string) => createHash('sha256').update(value).digest('base64url');
 const secret = () => randomBytes(32).toString('base64url');
 
@@ -81,7 +81,7 @@ test('preview Vault authorization consumes exact owner consent with its code and
       resource,
       authorization_details: JSON.stringify([
         {
-          type: 'https://auth.mikaki.org/authorization-details/vault-read-v1',
+          type: 'https://mikaki.tossa.app/authorization-details/vault-read-v1',
           locations: [resource],
           actions: ['read_ciphertext'],
           attribute: 'owner_note',
@@ -213,7 +213,7 @@ test('preview Vault authorization consumes exact owner consent with its code and
     assert.equal(payload.scope, 'openid vault.read');
     assert.deepEqual(payload.authorization_details, [
       {
-        type: 'https://auth.mikaki.org/authorization-details/vault-read-v1',
+        type: 'https://mikaki.tossa.app/authorization-details/vault-read-v1',
         locations: [resource],
         actions: ['read_ciphertext'],
         attribute: 'owner_note',
