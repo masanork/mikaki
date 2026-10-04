@@ -79,10 +79,12 @@ export function assertProductionBaseline(
   baseline: string,
   ledger: { name: string }[],
   remoteSchema: SchemaRow[],
+  baselineName = BASELINE_NAME,
 ) {
+  assert.match(baselineName, /^0001_[a-z0-9_]+\.sql$/);
   assert.deepEqual(
     ledger.map((row) => row.name),
-    [BASELINE_NAME],
+    [baselineName],
     'Production must have the single reset baseline ledger',
   );
   const db = new DatabaseSync(':memory:');

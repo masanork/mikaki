@@ -62,3 +62,32 @@ test('schema comparison preserves literals and SQL token boundaries', () => {
   assert.notDeepEqual(canonicalSql("X'AB'"), canonicalSql("X 'AB'"));
   assert.throws(() => canonicalSql("CHECK(x='unfinished)"));
 });
+
+test('a separate RP baseline must use its own exact ledger and schema', () => {
+  const sql = 'CREATE TABLE rp_session(token_hash TEXT PRIMARY KEY);';
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(sql);
+    const schema = db.prepare(BASELINE_SCHEMA_QUERY).all() as Parameters<
+      typeof assertProductionBaseline
+    >[2];
+    assertProductionBaseline(sql, [{ name: '0001_initial.sql' }], schema, '0001_initial.sql');
+    assert.throws(
+      () => assertProductionBaseline(sql, [{ name: BASELINE_NAME }], schema, '0001_initial.sql'),
+      /single reset baseline ledger/,
+    );
+    db.exec('CREATE TABLE old_ticket(id TEXT);');
+    assert.throws(
+      () =>
+        assertProductionBaseline(
+          sql,
+          [{ name: '0001_initial.sql' }],
+          db.prepare(BASELINE_SCHEMA_QUERY).all() as typeof schema,
+          '0001_initial.sql',
+        ),
+      /schema differs/,
+    );
+  } finally {
+    db.close();
+  }
+});
