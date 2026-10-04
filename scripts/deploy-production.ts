@@ -121,7 +121,7 @@ async function main() {
     'd1',
     'migrations',
     'list',
-    'mikaki-auth',
+    'DB',
     '--remote',
     '--config',
     opConfig,
@@ -134,7 +134,7 @@ async function main() {
     wrangler([
       'd1',
       'execute',
-      'mikaki-auth',
+      'DB',
       '--remote',
       '--config',
       opConfig,
