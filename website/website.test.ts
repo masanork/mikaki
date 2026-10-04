@@ -133,9 +133,22 @@ test('public websites keep app callbacks code-free and render the woven material
       });
     });
     return {
-      fetch(url: string, init?: RequestInit) {
+      async fetch(url: string, init?: RequestInit) {
         const target = new URL(url);
-        return fetch(`${origin}${target.pathname}${target.search}`, init);
+        const response = await fetch(`${origin}${target.pathname}${target.search}`, init);
+        // Audits clone and retain fixtures, and some callers only inspect status.
+        // Drain the local HTTP body before handing out reusable in-memory responses.
+        // This keeps sockets/streams out of the later fault-injection and browser steps.
+        try {
+          const body = await response.arrayBuffer();
+          return new Response([204, 205, 304].includes(response.status) ? null : body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          });
+        } catch (cause) {
+          throw new Error(`${config}: reading ${target.pathname}`, { cause });
+        }
       },
     };
   }
@@ -582,6 +595,10 @@ test('public websites keep app callbacks code-free and render the woven material
       );
     }
   } finally {
+    // Navigation can leave intercepted image reads in flight, especially on CI.
+    // Finish their local fetch/fulfill work before closing pages or killing Workers.
+    for (const context of browser?.contexts() ?? [])
+      for (const page of context.pages()) await page.unrouteAll({ behavior: 'wait' });
     await browser?.close();
     await Promise.all(
       servers.map(async (child) => {

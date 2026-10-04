@@ -7,6 +7,15 @@ export interface NativeUiScenario {
   signedIn?: boolean;
   preview?: boolean;
   phase?: string;
+  identityReader?: boolean;
+  identityWallet?: boolean;
+  identityWalletPhase?: string;
+  identityInvocation?: boolean;
+  identityCompletion?: string;
+  identityFormat?: string;
+  identityNoClaims?: boolean;
+  identityBatch?: boolean;
+  identityFailure?: { code: string; remaining_retries?: number };
 }
 
 declare global {
@@ -17,8 +26,10 @@ declare global {
       attribute: string | null;
       failures: Record<string, string>;
       calls: string[];
+      arguments: { command: string; args?: Record<string, unknown> }[];
       hold: (command: string) => void;
       release: (command: string) => void;
+      emit: (event: string, payload: string) => void;
       complete: (phase?: string) => void;
     };
   }
@@ -82,12 +93,16 @@ export async function createNativeUiPage(
     const blocked = new Set<string>();
     const gates = new Map<string, Array<() => void>>();
     let generation = 0;
+    let invocation: string | null = initial.identityInvocation ? 'fixture-invocation' : null;
+    let walletPhase = initial.identityWalletPhase ?? 'idle';
+    let eventChannel: { onmessage?: (e: { event: string; id?: string }) => void } | undefined;
     const mock: Window['__nativeUiTest'] = {
       phase: initial.phase ?? (initial.signedIn ? 'complete' : 'idle'),
       subject: initial.signedIn ? 'synthetic-user' : null,
       attribute: null,
       failures: {},
       calls: [],
+      arguments: [],
       hold(command) {
         blocked.add(command);
       },
@@ -95,6 +110,14 @@ export async function createNativeUiPage(
         blocked.delete(command);
         for (const release of gates.get(command) ?? []) release();
         gates.delete(command);
+      },
+      emit(event, payload) {
+        if (event === 'identity-issuance-updated') walletPhase = payload;
+        if (event === 'identity-presentation-ready') invocation = payload;
+        if (['identity-presentation-ready', 'identity-issuance-updated'].includes(event))
+          eventChannel?.onmessage?.({ event });
+        else if (event === 'identity-proximity-ended')
+          eventChannel?.onmessage?.({ event, id: payload });
       },
       complete(phase = 'complete') {
         if (mock.phase !== 'pending' && mock.phase !== 'exchanging') return;
@@ -104,12 +127,135 @@ export async function createNativeUiPage(
       },
     };
     window.__nativeUiTest = mock;
-    async function invoke(command: string) {
+    async function invoke(command: string, args?: Record<string, unknown>) {
       mock.calls.push(command);
+      mock.arguments.push({ command, args });
       if (mock.failures[command]) throw new Error(mock.failures[command]);
       const currentGeneration = generation;
       let result: unknown;
       switch (command) {
+        case 'identity_wallet_issuance_status':
+          result = { available: initial.identityWallet ?? false, phase: walletPhase };
+          break;
+        case 'start_identity_wallet_issuance':
+          walletPhase = 'pending';
+          result = { available: true, phase: 'pending' };
+          break;
+        case 'cancel_identity_wallet_issuance':
+          walletPhase = 'cancelled';
+          break;
+        case 'receive_identity_wallet_credential':
+          result =
+            walletPhase === 'pending'
+              ? { state: 'pending' }
+              : {
+                  state: 'received',
+                  format: initial.identityFormat ?? 'dc+sd-jwt',
+                  expires_at: Math.floor(Date.now() / 1000) + 300,
+                };
+          if (walletPhase === 'ready') walletPhase = 'received';
+          break;
+        case 'subscribe_identity_updates':
+          eventChannel = args?.onEvent as typeof eventChannel;
+          break;
+        case 'identity_reader_supported':
+          result = initial.identityReader ?? false;
+          break;
+        case 'read_identity_card':
+          if (initial.identityFailure) throw initial.identityFailure;
+          result = {
+            name: '試験 太郎',
+            address: '東京都',
+            birth_date: '1990-02-28',
+            gender: '1',
+            verification: 'unverified',
+            document_type: args?.documentType ?? 'my_number_card',
+            expiry_date: args?.documentType === 'driving_license' ? '2030-01-01' : null,
+            backend_verifiable: args?.documentType !== 'driving_license' || !!args?.pin2,
+          };
+          break;
+        case 'start_identity_link':
+          result = { holder_thumbprint: 'synthetic-holder-key', expires_in: 600 };
+          break;
+        case 'receive_identity_credential':
+          result = {
+            state: 'received',
+            format: initial.identityFormat ?? 'dc+sd-jwt',
+            expires_at: Math.floor(Date.now() / 1000) + 300,
+          };
+          break;
+        case 'start_identity_proximity':
+          result = {
+            session_id: 'fixture-proximity',
+            engagement: args?.engagement ?? 'qr',
+            qr_modules: Array.from({ length: 21 }, () => Array(21).fill(true)),
+            expires_at: Math.floor(Date.now() / 1000) + 120,
+          };
+          break;
+        case 'review_identity_proximity':
+          result = {
+            review_id: 'fixture-proximity-review',
+            reader_name: '試験読み手',
+            values: { name: '試験 太郎', birthdate: '1990-02-28' },
+            retained_fields: ['name'],
+            expires_at: Math.floor(Date.now() / 1000) + 120,
+          };
+          break;
+        case 'confirm_identity_proximity':
+          result = { state: args?.approve ? 'presented' : 'denied' };
+          break;
+        case 'cancel_identity_proximity':
+          break;
+        case 'pending_identity_invocation':
+          result = invocation;
+          break;
+        case 'cancel_identity_presentation':
+          break;
+        case 'review_identity_invocation':
+          invocation = null;
+        // Both commands return the same native-validated consent description.
+        case 'review_identity_presentation':
+          result = {
+            ...(initial.identityBatch
+              ? {
+                  credentials: [
+                    {
+                      query_id: 'name',
+                      format: 'dc+sd-jwt',
+                      values: { name: '試験 太郎' },
+                      retained_fields: [],
+                    },
+                    {
+                      query_id: 'birth',
+                      format: 'mso_mdoc',
+                      values: { birthdate: '1990-02-28' },
+                      retained_fields: ['birthdate'],
+                    },
+                  ],
+                }
+              : {}),
+            review_id: 'fixture-review',
+            verifier_name: '試験提示先',
+            response_uri: 'https://verifier.example/response',
+            values: initial.identityNoClaims ? {} : { name: '試験 太郎', birthdate: '1990-02-28' },
+            retained_fields:
+              !initial.identityNoClaims && initial.identityFormat === 'mso_mdoc' ? ['name'] : [],
+            expires_at: Math.floor(Date.now() / 1000) + 120,
+          };
+          break;
+        case 'confirm_identity_presentation':
+          result = {
+            state: args?.approve ? 'presented' : 'denied',
+            completion: initial.identityCompletion ?? 'not_requested',
+          };
+          break;
+        case 'identity_credential_status':
+          result = { state: 'empty' };
+          break;
+        case 'clear_identity_evidence':
+        case 'clear_identity_credential':
+        case 'cancel_identity_card':
+          break;
         case 'native_platform':
           result = initial.platform ?? 'mobile';
           break;
@@ -165,7 +311,17 @@ export async function createNativeUiPage(
     }
     Object.defineProperty(window, '__TAURI__', {
       value: {
-        core: { invoke },
+        core: {
+          invoke,
+          Channel: class {
+            onmessage?: (e: { event: string; id?: string }) => void;
+          },
+        },
+        event: {
+          listen: async () => {
+            throw Error('Generic event listening denied');
+          },
+        },
         app: { getVersion: async () => '0.1.0', setTheme: async () => {} },
       },
     });

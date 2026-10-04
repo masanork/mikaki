@@ -27,3 +27,10 @@
 **/pkg
 **/pkg-web
 **/target
+
+# Android plugin and standalone verifier build outputs are local evidence.
+/apps/mikaki-client/plugins/*/android/build/
+/apps/mikaki-client/plugins/*/android/.tauri/
+/services/android-attestation-verifier/build/
+**/.gradle/
+**/.kotlin/

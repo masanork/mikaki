@@ -1,0 +1,17 @@
+[package]
+name = "tauri-plugin-identity-reader"
+version = "0.1.0"
+edition = "2021"
+links = "tauri-plugin-identity-reader"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
+
+[workspace]

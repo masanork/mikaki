@@ -9,7 +9,7 @@ import {
   transferAttribute,
 } from '../../crates/worker/ui/vault-crypto.ts';
 
-const origin = 'https://mikaki.tossa.app';
+const origin = 'https://auth.mikaki.org';
 const attribute = 'name';
 const bytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));
 

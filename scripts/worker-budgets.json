@@ -36,8 +36,8 @@
     "gzip": 420000
   },
   "crates/worker/build/index_bg.wasm": {
-    "raw": 4500000,
-    "gzip": 1600000
+    "raw": 8388608,
+    "gzip": 3145728
   },
   "crates/userinfo-claim-worker/build/index_bg.wasm": {
     "raw": 803840,

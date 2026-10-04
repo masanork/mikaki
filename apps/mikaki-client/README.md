@@ -20,7 +20,12 @@ The access token stays in Rust process memory. It does not decrypt the owner
 envelope. Mobile callback
 and Android app association and ordinary OIDC return/token validation have
 been tested in a signed installed app; iPhone remains unqualified.
-Wallet, NFC and PDS remain unimplemented. The icon uses mikaki's woven fence mark; a distribution
+Android reads My Number input-support attributes and traditional IC driving licences
+over NFC. A disabled-by-default backend path verifies static issuer signatures,
+links attributes after browser-owner consent, and issues a short-lived SD-JWT or mdoc through
+OID4VCI. Android encrypted receipt persistence and signed preregistered SD-JWT/mdoc OID4VP
+presentation and Android QR + BLE peripheral proximity are implemented locally.
+UserInfo verified attribute release requires separate owner consent; PDS remains unimplemented. The icon uses mikaki's woven fence mark; a distribution
 signing identity has not been selected. Android release signing can use an
 ignored local keystore configuration described in the activation checkpoint.
 
@@ -40,6 +45,106 @@ From the repository root, `npm run test:mobile-ui` checks the real bundled
 assets with a synthetic native bridge, and `npm run preview:mobile-ui`
 regenerates the screenshots. These browser checks do not establish OS callback
 delivery or device-specific layout.
+
+## Identity-card read, account linking and issuance
+
+Settings → Diagnostics reads My Number input-support four attributes or traditional
+IC driving licences on Android. Driver's licence PIN1 is sufficient for a local
+preview; PIN2 is required for backend signature verification because the signed
+hash also covers photo and registered domicile. Both PINs are verified once and
+never uploaded. The My Number personal-number EF is never read.
+
+The preview remains unverified until the user chooses to submit signed evidence.
+The backend verifies against operator-configured trusted issuer keys, opens an
+owner-consent page, and links only normalized attributes/provenance. The app can
+then receive an at-most-five-minute `dc+sd-jwt` or `mso_mdoc` through OID4VCI 1.0 using a separate holder
+key and validate it. Android keeps the holder in Keystore and encrypts the
+receipt in backup-excluded storage; restore revalidates the existing key, signature
+and expiration bounded by five minutes, linkage, evidence trust-key and document validity (plus the Document Signer certificate for mdoc). Other platforms retain receipts in process memory. An owner management page
+supports inspecting and deleting linkage. It does not claim liveness, current
+licence status or government issuance. Signed preregistered OID4VP requests can
+select supported attributes for explicit user-approved direct POST presentation.
+mdoc issuance also requires `IDENTITY_MDOC_CERT_DER` matching the issuer key.
+The verifier registry is empty by default; configure approved keys and exact
+HTTPS destinations using `MIKAKI_OID4VP_VERIFIERS` at build time.
+
+The browser can also link attributes without authorizing issuance to the reading app.
+A registered independent wallet can then obtain a separately approved credential through
+OID4VCI authorization code + S256 PKCE using its own holder key. This requires migration
+0038 and 0039, `IDENTITY_WALLET_ENABLED=true` and an exact HTTPS wallet callback registry.
+Optional PAR and ES256 DPoP tokens are supported. A pinned Multipaz JVM SDK has received
+both formats through PAR, PKCE and DPoP nonce challenge/retry against local workerd;
+see the [reproduction steps](../../docs/identity-card-issuance.md#reproduce-the-multipaz-host-sdk-issuance-test).
+Wallet app persistence/presentation E2E and HAIP certification remain unqualified.
+
+Android also has an opt-in native wallet flow configured at build time with
+`MIKAKI_HAIP_WALLET`: instance attestation, mandatory PAR, browser approval,
+PKCE and DPoP token exchange, holder-key attestation, encrypted credential
+delivery and validated receipt storage. Settings → Diagnostics exposes both
+SD-JWT and mdoc issuance when this configuration is present. Tokens, proofs,
+keys and authorization callbacks stay in native code. The build configuration
+must also provision separate SD-JWT credential CA and mdoc IACA roots; HAIP
+receipts verify their certificate paths at reception, restoration and presentation.
+Optional offline CRLs fail closed. Pending approval can be
+restored while the native process remains alive; cancellation invalidates late
+results. See the [configuration and verification boundary](../../docs/identity-card-issuance.md#opt-in-native-wallet-issuance-commands-and-ui)
+before enabling it. Physical Android and external wallet interoperability remain
+to be qualified.
+
+The host E2E now carries each actual workerd-issued SD-JWT/mdoc into an encrypted
+OID4VP response with the same Rust-held holder key. Independent Node JOSE/CBOR
+checks CA/IACA trust, selective disclosure and request binding. It also tests
+consent denial, request replay and tampering. This uses synthetic attestation,
+account approval and consent; Android device/UI and external Wallet presentation
+remain separate. See [reproduction and limits](../../docs/identity-card-issuance.md#issuance-to-presentation-host-e2e-checkpoint).
+
+Before device E2E, run `npm run check:identity-wallet-device -- --online
+--wallet-config /path/to/public-wallet-config.json --apk /path/to/signed-wallet.apk`.
+This reads public endpoints and checks the selected APK/device; it does not login,
+issue, install or change settings. Its passing prerequisites do not qualify E2E.
+See [the device qualification order](../../docs/identity-card-issuance.md#android-wallet-device-preflight-and-qualification-order).
+
+`plugins/identity-reader` extracts the Android IsoDep transport from madowi with
+Rust-only methods; no WebView generic APDU command exists. `vendor/civ-card` is a
+licensed minimal source snapshot with exact provenance in `ORIGIN`. The shared
+[identity crate](../../crates/identity/src/lib.rs) owns strict parsing/verification.
+iOS and desktop NFC are unsupported. See [flow, guarantee boundary, deployment
+configuration and checks](../../docs/identity-card-issuance.md).
+
+Preregistered OID4VP Final verifiers can configure `response_encryption` for ECDH-ES/A256GCM `direct_post.jwt` responses with either SD-JWT or mdoc. Configured encryption is mandatory; requests cannot downgrade to plaintext or replace the pinned recipient key. The mdoc DeviceSignature binds that recipient's JWK thumbprint. See [identity issuance](../../docs/identity-card-issuance.md) for registry configuration and protocol boundaries.
+
+An opt-in verifier registry profile `oid4vp_draft18_mdoc` supports a narrow preregistered PE request and encrypted mdoc response using the legacy wallet-nonce handover. The default `oid4vp_final` profile remains separate. This provides Annex B wire components; Android same-device invocation now supports registered HTTPS GET request_uri endpoints via `MIKAKI_OID4VP_REQUEST_URIS`, cold-start queueing and the existing explicit consent. The explicit `oid4vp_final_x509_hash` profile also supports POST request_uri with shared capability metadata and a one-use signed-echo wallet nonce; see the [POST checkpoint](../../docs/identity-card-issuance.md#request-uri-post-and-wallet-metadata-checkpoint) and [host HTTPS transport verification](../../docs/identity-card-issuance.md#native-https-presentation-transport-checkpoint). The [selected official HAIP Wallet baseline](../../docs/identity-card-issuance.md#official-wallet-happy-flow-encryption-and-disclosure-subset-checkpoint) passes eleven modules in each format (22 runs), including [claims omission with explicit proof consent](../../docs/identity-card-issuance.md#dcql-claims-omission-checkpoint), bounded DCQL sets and encrypted errors, with four remaining host rejection probes awaiting real Wallet error-screen evidence; raw verifier-code fragments are also accepted at exact registered completion endpoints. [Same-credential multiple-query presentation](../../docs/identity-card-issuance.md#same-credential-multiple-query-presentation-checkpoint) has shared Rust and independent issued-Wallet peer coverage in both formats. The [verified inventory selection core](../../docs/identity-card-issuance.md#verified-inventory-selection-core-checkpoint) also supports a mixed SD-JWT/mdoc batch with distinct holder keys in shared Rust tests; [native inventory storage and consent](../../docs/identity-card-issuance.md#native-inventory-persistence-and-consent-checkpoint) now connect that core to up to eight Android receipts, v1/v2-to-v3 migration and one atomic reviewed response. Host Node/JOSE verifies a real native mixed response; physical migration and Keystore qualification remain pending. Registered HTTPS browser completion is available via `MIKAKI_OID4VP_REDIRECT_URIS`; only a bounded response_code or raw verifier-code fragment is passed to the native opener after acknowledgement and cancellation checks. Completion failures preserve a sent-credential result without resubmission. Opt-in `certificate_trust` validates a bounded reader CA chain and DNS SAN in addition to the pinned signing key for online and proximity requests. Optional offline `certificate_trust.revocation` requires signed complete CRLs for the leaf and intermediates and bounds consent by CRL freshness. Online OCSP/CDP retrieval, dynamic X.509 client identifiers, verifier-side session redemption and Annex B conformance remain separate work.
+
+Backend intake/issuance remain disabled until migration 0036, dedicated issuer
+keys, trusted card issuer keys and the rate-limit binding are provisioned.
+OID4VP Final uses its own handover. ISO 18013-5 QR/NFC transcript constructors
+share the DeviceAuthentication core. Android QR + BLE peripheral holder transport
+includes transcript-bound session encryption and signed-reader consent. Central-mode
+holder transport, physical NFC/BLE interoperability, 18013-7 Annex A/B and 23220
+profile qualification remain separate work. Local
+synthetic tests and an Android build do not qualify physical-card reading. Test
+real-card success, PIN errors without retries, removal, cancellation and resume
+before activation. Android wallet persistence, erasure and presentation still
+need device and real-verifier qualification.
+
+Android mdoc proximity now has a QR engagement + BLE peripheral GATT holder path, encrypted SessionEstablishment/SessionData and a pinned signed-reader request followed by explicit attribute/retention consent. Build-time `MIKAKI_MDOC_READERS` defaults to `[]`; configure approved reader P-256 public keys separately from the OID4VP registry. Android HCE static and negotiated NFC engagement can hand over to BLE; QR engagement also supports NFC-only encrypted APDU retrieval with deferred consent and response fragmentation; no physical NFC/BLE/TNEP interop, L2CAP or iOS proximity qualification is claimed. See [identity-card-issuance](../../docs/identity-card-issuance.md) for the reader certificate profile, cancellation rules and remaining ISO profiles.
+
+The mdoc proximity diagnostics offer `nfc_negotiated_data` for NFC engagement and encrypted NFC retrieval without QR or Bluetooth, and `nfc_negotiated` TNEP Hr/Hs negotiation followed by BLE peripheral retrieval, with exact handover bytes bound to encryption and signatures. It uses the same explicit `MIKAKI_MDOC_READERS` registry and native consent as QR/static NFC. Physical TNEP/reader interoperability is still unqualified; see [identity card issuance](../../docs/identity-card-issuance.md).
+
+```sh
+cargo test -p mikaki-identity --locked
+cargo test --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib --locked
+npm run test:mobile-ui
+# After building the Rust worker:
+node --test local/conformance/identity-issuance.test.ts
+# From apps/mikaki-client with SDK/NDK and JDK configured:
+npm run tauri -- android build --debug --target aarch64 --ci --apk
+```
+
+The arm64 debug APK can also be assembled after building its Rust JNI library
+using `./gradlew :app:assembleArm64Debug -x :app:rustBuildArm64Debug --no-daemon
+--max-workers=2` from `src-tauri/gen/android`. This bypasses the observed Tauri CLI
+Gradle subprocess startup issue; it requires an up-to-date Rust library first.
 
 ## Desktop setup
 

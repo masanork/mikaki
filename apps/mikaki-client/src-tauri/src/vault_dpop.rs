@@ -17,8 +17,8 @@ use tauri_plugin_native_dpop::NativeDpopExt;
 pub const ISSUER: &str = "https://auth.mikaki.org";
 // Protocol identifiers stay aligned with the disabled native Vault grant schema.
 // These identifiers are not fetch destinations; requests use ISSUER below.
-pub const RESOURCE: &str = "https://mikaki.tossa.app/vault-api/";
-pub const DETAIL_TYPE: &str = "https://mikaki.tossa.app/authorization-details/vault-read-v1";
+pub const RESOURCE: &str = "https://auth.mikaki.org/vault-api/";
+pub const DETAIL_TYPE: &str = "https://auth.mikaki.org/authorization-details/vault-read-v1";
 
 pub struct DpopKey {
     #[cfg(any(target_os = "android", target_os = "ios"))]

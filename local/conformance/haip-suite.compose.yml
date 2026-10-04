@@ -1,0 +1,29 @@
+# Disposable Mikaki HAIP suite; isolated from other projects' suites and databases.
+# docker compose -p mikaki-haip -f local/conformance/haip-suite.compose.yml up -d
+services:
+  mongodb:
+    image: mongo@sha256:b415b12f638e2685d06c58ab7fb5943577c50fadec6d9340ef67d21aeac72070
+  server:
+    image: registry.gitlab.com/openid/conformance-suite@sha256:69495f453a920c262f66e5e72abd12501c33e05ce88051cddf300c00621a4d70
+    environment:
+      BASE_URL: https://suite-frontend:8443
+      MONGODB_HOST: mongodb
+      SPRING_PROFILES_ACTIVE: dev
+      OIDC_GOOGLE_CLIENTID: unused-local-fixture
+      OIDC_GOOGLE_SECRET: unused-local-fixture
+      OIDC_GITLAB_CLIENTID: unused-local-fixture
+      OIDC_GITLAB_SECRET: unused-local-fixture
+      JAVA_EXTRA_ARGS: -Dfintechlabs.devmode=true -Dfintechlabs.startredir=true
+    depends_on:
+      - mongodb
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx@sha256:6ea3f4b8854f1f3626c81350900962d9e5f86424791d8e72b378a26ee2f4c105
+    ports:
+      - "127.0.0.1:9443:8443"
+    depends_on:
+      - server
+    networks:
+      default:
+        aliases:
+          - suite-frontend
+          - localhost.emobix.co.uk

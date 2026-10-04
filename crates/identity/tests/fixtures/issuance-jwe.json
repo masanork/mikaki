@@ -1,0 +1,30 @@
+{
+  "privateKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "AhfmF_C2RDkoJ4-WmZ5pojpPLBUr321s32bluAKC1O0",
+    "y": "GUp968uXcS0t2jyoWqh2Wlb0X8dYWZZS8ol8ZTBuV5Q",
+    "d": "ERERERERERERERERERERERERERERERERERERERERERE",
+    "alg": "ECDH-ES",
+    "kid": "synthetic-request-key",
+    "use": "enc"
+  },
+  "payload": {
+    "credential_configuration_id": "linked_document",
+    "proofs": {
+      "jwt": [
+        "synthetic-proof"
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "enc": "A128GCM",
+      "jwe": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTEyOEdDTSIsImtpZCI6InN5bnRoZXRpYy1yZXF1ZXN0LWtleSIsImFwdSI6ImNHRnlkSGt0ZFEiLCJhcHYiOiJjR0Z5ZEhrdGRnIiwiZXBrIjp7IngiOiJydjRpT3VITnFVMDRxakdzMk9McGdCeFVhT1ZMSFptcERYbVJWNzVlTVk4IiwiY3J2IjoiUC0yNTYiLCJrdHkiOiJFQyIsInkiOiJfMXdhcVJFUHpfdjJfZFg2VDFJZkticGpnOTdRVzVydFNONHJmSzdDNkUwIn19..Jem0RVSaCKV_vQKb.1tBCP0HPgCpQ5q5-LtUAHbVMnJh0z-HW3Na5s7UA6B6RGGvZjeXDurC2_dNL_5W2aOUPUn4BqskfLC85_pDIhoTk7b2ZN7bMcMVdtMu9-jl7LlRIa6g.hfeZZOQYePOnktgjSEu_wQ"
+    },
+    {
+      "enc": "A256GCM",
+      "jwe": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSIsImtpZCI6InN5bnRoZXRpYy1yZXF1ZXN0LWtleSIsImFwdSI6ImNHRnlkSGt0ZFEiLCJhcHYiOiJjR0Z5ZEhrdGRnIiwiZXBrIjp7IngiOiIzekR3SWsyWnoxWlc5Sk1pbUFVOUN1NVltNlZiYUJHbUtVZXctVWZUVEZFIiwiY3J2IjoiUC0yNTYiLCJrdHkiOiJFQyIsInkiOiJoSF80V0JUakZtMVpzbXdZTG1Vd1dfRFRpZEdBTnVyd25scklBOWt3WkRZIn19..vPcp2giQ_-o4bIOy.ETob86qvuZKJNFnK941sjpHL2W7A5DNSvCZ9cpoe-Uta14I12C7OE7K7msZvaqBp7i6ci-NDRs1ur9gvehnrF3yL3BOGjLLvq72dXo4zzUyp12IK1ws.NcTEpexzyt5xnbtD3tj1xA"
+    }
+  ]
+}

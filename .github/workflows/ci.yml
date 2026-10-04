@@ -108,10 +108,13 @@ jobs:
         run: npm run test:frontend-coverage
       - name: Product Worker contracts
         run: |
+          cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
       - name: Native client UI lifecycle
         run: npm run test:mobile-ui
+      - name: Identity presentation, attester, consent and device-preflight regressions
+        run: npm run test:identity-contracts
       - name: MDS durable operation regressions
         run: node --test local/conformance/mds-operation.test.ts
       - name: Project size, coverage, and dependency trends
