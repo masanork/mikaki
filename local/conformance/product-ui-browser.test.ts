@@ -143,6 +143,9 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       releaseReads = resolve;
     });
     let failLoad = false;
+    let failRefreshAfterSave = false;
+    let failNameRefresh = false;
+    let failedNameRefreshes = 0;
     const puts: { id: string; body: string }[] = [];
     let saveStarted = () => {};
     const started = new Promise<void>((resolve) => {
@@ -157,6 +160,12 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       const path = new URL(request.url()).pathname;
       if (path === '/vault/session' && failLoad) {
         failLoad = false;
+        await route.fulfill({ status: 503 });
+        return;
+      }
+      if (path === '/vault/attributes/name' && request.method() === 'GET' && failNameRefresh) {
+        failNameRefresh = false;
+        failedNameRefreshes += 1;
         await route.fulfill({ status: 503 });
         return;
       }
@@ -177,6 +186,10 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
           await held;
           await route.abort();
           return;
+        }
+        if (failRefreshAfterSave && response.ok) {
+          failRefreshAfterSave = false;
+          failNameRefresh = true;
         }
       }
       // Miniflare wraps Undici's response stream. Consume it before awaiting
@@ -490,11 +503,15 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Unsaved owner');
     await page.locator('#name').fill('Acknowledged owner');
-    failLoad = true;
+    // Arm the fault only after this PUT succeeds, then target the profile read.
+    // An unrelated session request must not consume the post-commit failure.
+    failRefreshAfterSave = true;
     await page.locator('#save').click();
     await expect(page.locator('#status')).toHaveText(
       'Your change was applied, but the updated profile could not be loaded. Reload to verify it.',
     );
+    assert.equal(failedNameRefreshes, 1);
+    assert.equal(failRefreshAfterSave, false);
     await expect(page.locator('#save')).toBeDisabled();
     await expect(reload).toBeEnabled();
     await reload.click();
