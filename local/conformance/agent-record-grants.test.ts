@@ -7,7 +7,7 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 import { agentQueries } from '../../crates/worker/service/agent-catalog.ts';
-import { agentKeyId, sealAgentSnapshot } from '../../crates/worker/ui/agent-crypto.ts';
+import { agentKeyId } from '../../crates/worker/ui/agent-crypto.ts';
 import { sealRecordAgentSnapshot } from '../../crates/worker/ui/agent-record-crypto.ts';
 import { encodeOwnerNote, newOwnerNote } from '../../crates/worker/ui/vault-note.ts';
 
@@ -265,18 +265,6 @@ async function selected(f: Fixture, record: 'name' | 'owner_note' = 'name') {
 async function legacy(f: Fixture) {
   const grantId = id(),
     token = `mag_${id()}`;
-  const envelope = await sealAgentSnapshot(
-    [{ id: 'name', title: 'Name', source: 'v1', text: 'Legacy v1 name' }],
-    { public_jwk: publicJwk, key_id: keyId, resource },
-    {
-      owner: 'owner',
-      grant_id: grantId,
-      key_id: keyId,
-      resource,
-      expires_at: f.time + 600,
-      source_revision: 1,
-    },
-  );
   const input = {
     grant_id: grantId,
     delegate: 'synthetic',
@@ -286,11 +274,39 @@ async function legacy(f: Fixture) {
     recipient_key_id: keyId,
     operations: ['list', 'search', 'read', 'propose', 'execute'],
     document_ids: ['name'],
-    envelope,
+    envelope: {
+      version: 1,
+      wrapped_key: 'A'.repeat(342),
+      nonce: 'A'.repeat(16),
+      ciphertext: 'A'.repeat(22),
+    },
     token_hash: hash(token),
     expires_at: f.time + 600,
   };
   return { input, token };
+}
+function seedLegacy(f: Fixture, input: Awaited<ReturnType<typeof legacy>>['input']) {
+  f.sqlite
+    .prepare(
+      `INSERT INTO agent_grant(grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,
+      recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,created_at,expires_at,storage_version)
+      VALUES(?,'owner',1,'passkey',?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+    )
+    .run(
+      input.grant_id,
+      input.delegate,
+      input.provider,
+      input.resource,
+      input.source_revision,
+      input.recipient_key_id,
+      JSON.stringify(input.operations),
+      JSON.stringify(input.document_ids),
+      JSON.stringify(input.envelope),
+      input.token_hash,
+      hash(JSON.stringify(input)),
+      f.time,
+      input.expires_at,
+    );
 }
 async function create(f: Fixture, input: unknown) {
   const result = await f.ownerRequest('/grants', input);
@@ -334,12 +350,11 @@ function stopped(f: Fixture, grantId: string) {
 }
 
 // Pre-migration populated v1 state must retain its shape, hash and authorization.
-test('0033 preserves populated v1 grants and legacy request hashes', async () => {
+test('0033 preserves historical v1 grants while access and new authorization fail closed', async () => {
   const f = fixture(true);
   try {
     const v1 = await legacy(f),
-      parsed = model.grantInput.parse(v1.input);
-    assert.equal(JSON.stringify(parsed), JSON.stringify(v1.input));
+      requestHash = hash(JSON.stringify(v1.input));
     f.sqlite
       .prepare(
         `INSERT INTO agent_grant(grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,
@@ -353,29 +368,96 @@ test('0033 preserves populated v1 grants and legacy request hashes', async () =>
         JSON.stringify(v1.input.operations),
         '["name"]',
         JSON.stringify(v1.input.envelope),
-        hash(v1.token),
-        hash(JSON.stringify(v1.input)),
+        v1.input.token_hash,
+        requestHash,
         f.time,
         f.time + 600,
       );
     f.sqlite.exec(readFileSync(new URL('0033_agent_record_sources.sql', migrationDir), 'utf8'));
     assert.equal(row(f, v1.input.grant_id).storage_version, 1);
-    await create(f, v1.input);
-    const result = await read(f, v1.token);
-    assert.equal(result.data?.result?.structuredContent?.text, 'Legacy v1 name');
-    assert.equal(result.data?.result?.structuredContent?.access.source_check, 'revision-matched');
+    assert.equal(row(f, v1.input.grant_id).request_hash, requestHash);
+    assert.throws(() => model.grantInput.parse(v1.input));
+    const rejected = await f.ownerRequest('/grants', v1.input);
+    assert.equal(rejected.status, 409);
+    assert.equal((await read(f, v1.token)).status, 401);
+    f.sqlite
+      .prepare(
+        `INSERT INTO agent_attribute_proposal
+        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state)
+        VALUES(?1,?2,1,?3,'owner_note',0,'legacy secret proposal',?4,?5,'pending')`,
+      )
+      .run(id(), v1.input.grant_id, hash('legacy-proposal'), f.time + 300, f.time);
+    const revoke = await f.ownerRequest('/revoke', { grant_id: v1.input.grant_id });
+    assert.equal(revoke.status, 200);
+    stopped(f, v1.input.grant_id);
+    const proposal = f.sqlite
+      .prepare('SELECT state,payload FROM agent_attribute_proposal WHERE grant_id=?')
+      .get(v1.input.grant_id) as { state: string; payload: string | null };
+    assert.equal(proposal.state, 'invalid');
+    assert.equal(proposal.payload, null);
   } finally {
     f.sqlite.close();
   }
 });
 
-test('v1/v2 same-name isolation and exactly one canonical selected owner_note', async () => {
+test('scheduled cleanup redacts expired legacy payloads and retains grant until the 30-day proposal window ends', async () => {
   const f = fixture();
   try {
-    const v1 = await legacy(f),
-      v2 = await selected(f),
+    const v1 = await legacy(f);
+    seedLegacy(f, v1.input);
+    const createdAt = f.time - 29 * 86400,
+      expiresAt = createdAt + 600;
+    f.sqlite
+      .prepare(
+        'UPDATE agent_grant SET created_at=?,expires_at=?,revoked=1,encrypted_snapshot=NULL WHERE grant_id=?',
+      )
+      .run(f.time - 32 * 86400, f.time - 31 * 86400, v1.input.grant_id);
+    f.sqlite.prepare('DELETE FROM agent_audit WHERE grant_id=?').run(v1.input.grant_id);
+    const proposalId = id();
+    f.sqlite
+      .prepare(
+        `INSERT INTO agent_attribute_proposal
+        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state)
+        VALUES(?,?,1,?,'owner_note',0,'expired legacy secret',?,?,'pending')`,
+      )
+      .run(proposalId, v1.input.grant_id, hash('old-proposal'), expiresAt, createdAt);
+
+    await store.cleanup(f.env.DB);
+    const retained = f.sqlite
+      .prepare('SELECT state,payload FROM agent_attribute_proposal WHERE proposal_id=?')
+      .get(proposalId) as { state: string; payload: string | null };
+    assert.equal(retained.state, 'invalid');
+    assert.equal(retained.payload, null);
+    assert.ok(row(f, v1.input.grant_id));
+    f.sqlite.prepare('DELETE FROM agent_audit WHERE grant_id=?').run(v1.input.grant_id);
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => (f.time + 2 * 86400) * 1000;
+      await store.cleanup(f.env.DB);
+    } finally {
+      Date.now = realNow;
+    }
+    assert.equal(
+      f.sqlite
+        .prepare('SELECT 1 FROM agent_attribute_proposal WHERE proposal_id=?')
+        .get(proposalId),
+      undefined,
+    );
+    assert.equal(
+      f.sqlite.prepare('SELECT 1 FROM agent_grant WHERE grant_id=?').get(v1.input.grant_id),
+      undefined,
+    );
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+test('v2 same-name isolation and exactly one canonical selected owner_note', async () => {
+  const f = fixture();
+  try {
+    const v2 = await selected(f),
       note = await selected(f, 'owner_note');
-    await create(f, v1.input);
     await create(f, v2.input);
     await create(f, note.input);
     const result = await read(f, v2.token);
@@ -395,26 +477,14 @@ test('v1/v2 same-name isolation and exactly one canonical selected owner_note', 
       listed.data?.result?.structuredContent.documents.map((d: any) => d.id),
       ['owner_note'],
     );
-    f.sqlite.exec(
-      "UPDATE vault_attribute_head SET revision=2 WHERE account_id='owner' AND attribute_id='name'",
-    );
-    stopped(f, v1.input.grant_id);
-    assert.equal((await read(f, v1.token)).status, 401);
-    assert.equal(
-      (await read(f, v2.token)).data?.result?.structuredContent?.text,
-      'Selected v2 name',
-    );
     f.sqlite.exec("UPDATE vault_owner_record_head SET revision=2 WHERE record_id='name'");
-    stopped(f, v2.input.grant_id);
+    assert.equal((await read(f, v2.token)).status, 401);
     assert.equal(
       (await read(f, note.token, 'owner_note')).data?.result?.structuredContent?.text,
       note.document.text,
     );
     // Historical replay acknowledges the immutable request; it never restores access.
-    await create(f, v2.input);
-    stopped(f, v2.input.grant_id);
-    f.sqlite.exec("UPDATE vault_owner_record_head SET revision=1 WHERE record_id='name'");
-    await create(f, v2.input);
+    await create(f, note.input);
     assert.equal((await read(f, v2.token)).status, 401);
   } finally {
     f.sqlite.close();
@@ -574,20 +644,14 @@ test('revocation after initial read and during authorized audit prevents plainte
   }
 });
 
-test('v2 private drafts remain selected, review-bound and separate from legacy attribute capabilities', async () => {
+test('v2 private drafts remain selected, review-bound and separate from Vault writes', async () => {
   const f = fixture();
   try {
     const note = await selected(f, 'owner_note');
     await create(f, note.input);
     assert.equal(
-      (
-        await f.ownerRequest('/attribute-capability', {
-          grant_id: note.input.grant_id,
-          attribute_id: 'owner_note',
-          base_revision: 0,
-        })
-      ).status,
-      409,
+      (await f.ownerRequest('/attribute-capability', { grant_id: note.input.grant_id })).status,
+      404,
     );
     assert.throws(() =>
       f.sqlite
@@ -623,18 +687,6 @@ test('v2 private drafts remain selected, review-bound and separate from legacy a
         .prepare("SELECT revision FROM vault_owner_record_head WHERE record_id='owner_note'")
         .get()!.revision,
       1,
-    );
-    assert.equal(
-      (
-        await rpc(f, note.token, 'propose_attribute', {
-          proposal_id: id(),
-          attribute_id: 'owner_note',
-          base_revision: 0,
-          value: newOwnerNote('Denied', 'Legacy capability'),
-          expires_at: f.time + 300,
-        })
-      ).data?.result?.isError,
-      true,
     );
   } finally {
     f.sqlite.close();
@@ -673,8 +725,9 @@ async function pending(f: Fixture, authorizationDetails: unknown) {
   }))
     url.searchParams.set(key, value);
   const response = await oauth.authorize(new Request(url), f.env);
-  assert.equal(response.status, 302, await response.text());
+  if (response.status !== 302) return { status: response.status, requestId: '', verifier };
   return {
+    status: response.status,
     requestId: new URL(response.headers.get('Location')!).searchParams.get('agent_oauth_request')!,
     verifier,
   };
@@ -703,18 +756,36 @@ test('OAuth requires exact v2 detail; legacy/scope-only, tuple, digest and autho
     const v2 = await selected(f);
     await create(f, v2.input);
     const [target] = authorization(v2);
+    const scopeOnly = await pending(f, null);
+    const scopeOnlyApproval = await oauth.decide(
+      f.db,
+      f.owner,
+      { request_id: scopeOnly.requestId, approve: true, grant_id: v2.input.grant_id },
+      f.env,
+    );
+    const scopeOnlyToken = await exchange(
+      f,
+      new URL(scopeOnlyApproval.redirect).searchParams.get('code')!,
+      scopeOnly.verifier,
+    );
+    assert.equal(scopeOnlyToken.status, 200, await scopeOnlyToken.clone().text());
+    assert.equal(
+      (await read(f, ((await scopeOnlyToken.json()) as { access_token: string }).access_token))
+        .status,
+      200,
+    );
+    const legacyDetail = await pending(f, [
+      {
+        type: 'mikaki_agent_snapshot',
+        locations: [resource],
+        actions: ['read'],
+        document_id: 'name',
+        source_revision: 1,
+        purpose: 'legacy',
+      },
+    ]);
+    assert.equal(legacyDetail.status, 400);
     for (const value of [
-      null,
-      [
-        {
-          type: 'mikaki_agent_snapshot',
-          locations: [resource],
-          actions: ['read'],
-          document_id: 'name',
-          source_revision: 1,
-          purpose: 'legacy',
-        },
-      ],
       [{ ...target, source: { ...target.source, owner_id: 'other' } }],
       [{ ...target, source: { ...target.source, vault_id: 'other' } }],
       [{ ...target, source: { ...target.source, ciphertext_sha256: id() } }],
@@ -818,28 +889,28 @@ test('OAuth redemption rechecks exact details, live source and authority after c
   }
 });
 
-test('legacy and record status are isolated and use the same live source/recipient fences', async () => {
+test('legacy rows are inactive but visible for revocation; record status and connections are v2-only', async () => {
   const f = fixture();
   try {
     const v1 = await legacy(f),
       v2 = await selected(f);
-    await create(f, v1.input);
+    seedLegacy(f, v1.input);
     await create(f, v2.input);
     const legacyStatus = (await (await f.ownerRequest('/status')).json()) as any;
-    assert.deepEqual(
-      legacyStatus.grants.map((g: any) => g.grant_id),
-      [v1.input.grant_id],
+    const legacyRow = legacyStatus.grants.find(
+      (grant: any) => grant.grant_id === v1.input.grant_id,
     );
-    assert.ok(legacyStatus.audit.every((a: any) => a.grant_id === v1.input.grant_id));
+    assert.equal(legacyRow.active, 0);
+    assert.equal(
+      legacyStatus.grants.find((grant: any) => grant.grant_id === v2.input.grant_id).active,
+      1,
+    );
     const connections = (await (await f.ownerRequest('/connections')).json()) as any;
-    assert.deepEqual(
-      connections.grants.map((g: any) => g.grant_id),
-      [v1.input.grant_id],
-    );
+    assert.ok(connections.grants.some((grant: any) => grant.grant_id === v1.input.grant_id));
     assert.deepEqual(connections.proposals, []);
     assert.deepEqual(connections.drafts, []);
-    assert.deepEqual(connections.attribute_proposals, []);
-    assert.equal(connections.note_revision, 0);
+    assert.equal(connections.attribute_proposals, undefined);
+    assert.equal(connections.note_revision, undefined);
     const recordStatus = (await (await f.ownerRequest('/record-status')).json()) as any;
     assert.equal(recordStatus.storage_version, 2);
     assert.equal(recordStatus.attribute_proposals, undefined);
@@ -848,6 +919,10 @@ test('legacy and record status are isolated and use the same live source/recipie
       [v2.input.grant_id],
     );
     assert.equal(recordStatus.grants[0].active, 1);
+    assert.equal((await read(f, v1.token)).status, 401);
+    const revoked = await f.ownerRequest('/revoke', { grant_id: v1.input.grant_id });
+    assert.equal(revoked.status, 200);
+    stopped(f, v1.input.grant_id);
     f.sqlite.prepare("UPDATE agent_recipient_key SET state='disabled' WHERE key_id=?").run(keyId);
     const stoppedStatus = (await (await f.ownerRequest('/record-status')).json()) as any;
     assert.equal(stoppedStatus.grants[0].active, 0);

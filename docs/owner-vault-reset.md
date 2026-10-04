@@ -1,14 +1,15 @@
 # Owner Vault reset preparation (#121)
 
 Status (2026-10-05): source retirement is in progress on
-`feat/issue-121-native-vault-retirement`, based on main `95ab1c1`, which includes
-merged PR #105 and PR #125. The browser/API slice removes the legacy Vault UI
-and 13 v1 HTTP routes while keeping OwnerWorkspace archive/import/search and the
-record editor mounted under shared VaultSession. The native OAuth slice now
-removes Vault consent, token issuance and Tauri ciphertext operations while
-retaining ordinary OIDC/Identity and historical token-isolation guards. Agent v1,
-historical tables/migrations, and stored data remain for later slices. No
-production reset, service deletion, migration renumbering, or release is
+`feat/issue-121-agent-v1-retirement`, based on `e2366ce` (the native-retirement
+source commit); PR #127's integration with main `c1ad9f7` is pending. The
+browser/API and native OAuth source slices remove the legacy Vault UI/routes,
+Vault consent and token issuance, and Tauri ciphertext operations while keeping
+OwnerWorkspace archive/import/search, ordinary OIDC/Identity, and historical
+token-isolation guards. This Agent slice removes v1 Agent grants and attribute
+proposal paths while retaining v2 record grants and approval. Historical
+tables/migrations and stored data remain for a later baseline/reset decision.
+No production reset, service deletion, migration renumbering, or release is
 authorized here.
 
 ## Source and ordering prerequisites
@@ -149,26 +150,36 @@ preview, its exclusive browser test and the unused v1 attribute-commit UI helper
 are removed in the Native follow-up. `VaultSession` and the default
 `OwnerWorkspace` browser and record-commit coverage remain active.
 
-| Surface            | Required change                                                                                                                                                                                                                             | Retain                                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Vault entry and UI | Done in this slice: remove `storage=legacy-v1` / `storage=owner-v2` selection, `VaultRouter` fallback and old profile/note/passkey/AgentPanel components                                                                                    | `OwnerWorkspace`, shared `VaultSession`, record editor, conversation archive/search, lock/draft/visibility controls      |
-| OP storage         | Done in this slice: remove `/vault/attributes/*`, v1 share/release/recipient-key routes, `/vault-api/attributes/*`, and their attribute handlers                                                                                            | Owner-key wraps, opaque record heads and ciphertext storage, record release revoke and atomic commit proof               |
-| UserInfo           | Record-only ClaimStore selection and recipient-secret boundary are done in merged #125; the Native retirement follow-up branch removes legacy issuance while retaining the historical-token cross-authority denial fence until expiry/reset | Recipient directory/secret boundary, record envelope, exact consent/source/authority fences and disclosure audit         |
-| Agent              | Reject v1 grants and authorization details; remove legacy capability/proposal/commit routes and source predicates                                                                                                                           | Record grant/disclosure, explicit record approval, owner/session authorization, OAuth and per-operation freshness checks |
-| GC                 | Remove historical attribute-prefix cleanup only with the later baseline/reset; this browser/API slice does not change GC or old data                                                                                                        | Owner record candidates and, while legacy heads remain, the live-head R2 deletion guard                                  |
-| Native Vault OAuth | Done in this slice: remove consent routes, `vault.read` authorization/code issuance, old OIDC Vault profile and Tauri ciphertext commands; reject legacy inputs and preserve historical-token isolation                                     | Ordinary native OIDC/PKCE, Identity wallet/presentation, generic DPoP checks and historical retention/schema guards      |
-| Demo RP            | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links                                                                                                                                                   | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code                                          |
+| Surface            | Required change                                                                                                                                                                                                                                       | Retain                                                                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vault entry and UI | Done in this slice: remove `storage=legacy-v1` / `storage=owner-v2` selection, `VaultRouter` fallback and old profile/note/passkey/AgentPanel components                                                                                              | `OwnerWorkspace`, shared `VaultSession`, record editor, conversation archive/search, lock/draft/visibility controls                                           |
+| OP storage         | Done in this slice: remove `/vault/attributes/*`, v1 share/release/recipient-key routes, `/vault-api/attributes/*`, and their attribute handlers                                                                                                      | Owner-key wraps, opaque record heads and ciphertext storage, record release revoke and atomic commit proof                                                    |
+| UserInfo           | Record-only ClaimStore selection and recipient-secret boundary are done in merged #125; the Native retirement follow-up branch removes legacy issuance while retaining the historical-token cross-authority denial fence until expiry/reset           | Recipient directory/secret boundary, record envelope, exact consent/source/authority fences and disclosure audit                                              |
+| Agent              | In this follow-up branch, new grants, authorization details and active tokens are v2 record-only; v1 rows remain visible only for revocation, with payload redaction/retention preserved. Legacy attribute tool/routes/source predicates are removed. | Record grant/disclosure, explicit record approval, owner/session authorization, optional RAR with exact v2 source binding, and per-operation freshness checks |
+| GC                 | Remove historical attribute-prefix cleanup only with the later baseline/reset; this browser/API slice does not change GC or old data                                                                                                                  | Owner record candidates and, while legacy heads remain, the live-head R2 deletion guard                                                                       |
+| Native Vault OAuth | Done in this slice: remove consent routes, `vault.read` authorization/code issuance, old OIDC Vault profile and Tauri ciphertext commands; reject legacy inputs and preserve historical-token isolation                                               | Ordinary native OIDC/PKCE, Identity wallet/presentation, generic DPoP checks and historical retention/schema guards                                           |
+| Demo RP            | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links                                                                                                                                                             | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code                                                                               |
 
 Do not remove a shared helper merely because its file currently has an attribute
 name. The first refactor extracts owner authentication, Origin checking,
 conditional revision parsing, operation IDs, hashing and authorization helpers
 into `vault_http.rs`, with page/session/asset serving in `vault_ui.rs`. Owner
 record and login callers no longer import these from `vault_attributes.rs`.
-The removed attribute and native-consent endpoints stay absent; remaining Agent v1
-protocol branches are retired in a later slice. `vault_approved.rs` supplies approval-header parsing used by
+The removed attribute and native-consent endpoints stay absent. This follow-up
+branch also removes Agent v1 disclosure and authorization paths while preserving
+historical rows for revocation and scheduled cleanup. `vault_approved.rs` supplies approval-header parsing used by
 record commits. `vault-crypto.ts` supplies base64 helpers, while
 `agent-crypto.ts` supplies recipient-key validation used by record snapshots.
 Split those shared parts before removing old-format persistence/crypto.
+
+The Agent v1 retirement follow-up removes the old disclosure authorization,
+attribute proposal tool and routes, and legacy source predicates. New grants and
+active tokens are v2 record-only; scope-only OAuth stays available for existing
+clients but only with an active grant whose exact v2 source and authority remain
+live. Supplied RAR details must match that same record. Historical v1 grant rows
+remain available only for owner revocation; revoke clears snapshots, and pending
+legacy proposal payloads continue through the existing redaction and cleanup
+window. The D1 tables and migrations remain for historical retention.
 
 Replace migration-upgrade and legacy compatibility fixtures with fresh baseline
 and record-only tests. Keep denial tests for retired URLs, v1 grants/envelopes,
@@ -319,3 +330,17 @@ and legacy commit source plus 1,118 lines of exclusive tests. Worker UI type/Sve
 checks passed with zero errors or warnings; source boundaries and documentation
 checks passed. The mounted Workspace, shared controller and v2 approval suite
 remain. The integrated Native source also passed all 259 SQL contracts.
+
+Agent v1 retirement implementation verification (2026-10-05, branch
+`feat/issue-121-agent-v1-retirement`, stacked after Native retirement):
+`agent-record-grants.test.ts` passed 24/24, including preservation and denial of
+historical v1 grant rows, v2 scope-only/RAR OAuth, exact source/authority checks,
+approval, freshness and revocation. The real workerd private OP bridge passed
+1/1; the actual OAuth PKCE/owner-consent/SDK/browser suite passed 2/2. The generic
+local stdio adapter passed 8/8 and the v2 record disclosure/recipient/approval
+suite passed 42/42. `check:agent-worker`, `check:service-authority` (64 static
+statements), `check:worker-ui`, release Worker build and `check:docs` passed.
+The broad `check:node` remains blocked only by unavailable independent DPoP,
+OID4VCI/OID4VP and CBOR probe dependencies; it reported no errors in changed
+files. No production deployment, migration/baseline change, reset, or historical
+data deletion was performed in this source follow-up.

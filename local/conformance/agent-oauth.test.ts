@@ -8,9 +8,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { auth, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
-import { agentKeyId, sealAgentSnapshot } from '../../crates/worker/ui/agent-crypto.ts';
-import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
-import { newOwnerNote } from '../../crates/worker/ui/vault-note.ts';
+import { agentKeyId } from '../../crates/worker/ui/agent-crypto.ts';
+import { sealRecordAgentSnapshot } from '../../crates/worker/ui/agent-record-crypto.ts';
 import { registration } from '../../crates/agent-worker/oauth-client.ts';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
@@ -159,25 +158,28 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
         headers: { ...ownerHeaders, Cookie: `__Host-op-sso=${secret}`, Origin: requestOrigin },
         body: JSON.stringify(body),
       });
-    const sealed = await sealAttribute(
-      new TextEncoder().encode('OAuth owner'),
-      new Uint8Array(32).fill(0x35),
-      credential,
-      new Uint8Array(32).fill(0x57),
-      'https://mikaki.test',
-      'name',
-      1,
-    );
-    assert.equal(
-      (
-        await op.fetch('https://mikaki.test/vault/attributes/name', {
-          method: 'PUT',
-          headers: { ...ownerHeaders, 'If-None-Match': '*', 'X-Operation-ID': id() },
-          body: JSON.stringify(sealed),
-        })
-      ).status,
-      200,
-    );
+    const source = {
+        storage_version: 2 as const,
+        origin: 'https://mikaki.test',
+        owner_id: 'owner',
+        vault_id: 'oauth-vault',
+        collection_id: 'personal' as const,
+        record_id: 'name' as const,
+        kind: 'name' as const,
+        revision: 1,
+        ciphertext_sha256: hash('OAuth owner ciphertext'),
+      },
+      authority = { key_generation: 1, owner_key_revision: 1 };
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO vault_owner_key_head VALUES('owner','oauth-vault',?,1,1,2,
+        'PRF-HKDF-SHA256-AES256GCM-v2',?,?,?)`,
+      ).bind(source.origin, id(), id(), time),
+      env.DB.prepare(
+        `INSERT INTO vault_owner_record_head VALUES('owner','oauth-vault','personal',
+        'name','name',1,1,2,'oauth-name',?,?,0,?)`,
+      ).bind(source.ciphertext_sha256, 'e'.repeat(82), time),
+    ]);
     const createGrant = async (
       operations = ['list', 'search', 'read', 'propose', 'execute'],
       ttl = 3600,
@@ -185,17 +187,19 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       const grant_id = id(),
         token = `mag_${id()}`,
         expires_at = time + ttl;
-      const envelope = await sealAgentSnapshot(
-        [{ id: 'name', title: 'Name', source: 'vault:name:1', text: 'OAuth owner' }],
+      const envelope = await sealRecordAgentSnapshot(
+        [{ id: 'name', title: 'Name', source: 'vault:record:name:1', text: 'OAuth owner' }],
         { key_id: keyId, public_jwk: publicJwk, resource },
-        { owner: 'owner', grant_id, key_id: keyId, resource, expires_at, source_revision: 1 },
+        { owner: 'owner', grant_id, key_id: keyId, resource, expires_at, source, authority },
       );
       const response = await ownerCall('grants', {
+        storage_version: 2,
         grant_id,
         delegate: 'native-test',
         provider: 'Test provider',
         resource,
-        source_revision: 1,
+        source,
+        authority,
         recipient_key_id: keyId,
         operations,
         document_ids: ['name'],
@@ -208,6 +212,37 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     };
     const grant = await createGrant(),
       narrow = await createGrant(['list', 'read']);
+    const legacyGrant = id();
+    await env.DB.prepare(
+      `INSERT INTO agent_grant(
+        grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,
+        recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,
+        created_at,expires_at,storage_version
+      ) VALUES(?,'owner',1,?,'native-test','Legacy fixture',?,1,?, ?, '["name"]',
+        '{"version":1}',?,?,?, ?,1)`,
+    )
+      .bind(
+        legacyGrant,
+        credentialId,
+        resource,
+        keyId,
+        JSON.stringify(['list', 'read']),
+        hash('legacy-mag-' + id()),
+        hash('legacy-request-' + id()),
+        time,
+        time + 3600,
+      )
+      .run();
+    assert.equal(
+      (
+        await ownerCall('attribute-capability', {
+          grant_id: grant.grant_id,
+          attribute_id: 'owner_note',
+          base_revision: 0,
+        })
+      ).status,
+      404,
+    );
     const challenge = await agent.fetch(resource);
     assert.equal(challenge.status, 401);
     assert.match(
@@ -299,6 +334,9 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
         { request_id: r.request_id, grant_id: approve ? selected : null, approve },
         secret,
       );
+    const legacyRequest = await begin();
+    assert.equal((await preview(legacyRequest)).status, 200);
+    assert.equal((await consent(legacyRequest, legacyGrant)).status, 409);
     const approved = async (r: Awaited<ReturnType<typeof begin>>, selected = grant.grant_id) => {
       assert.equal((await preview(r)).status, 200);
       const response = await consent(r, selected);
@@ -331,14 +369,17 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       type: 'mikaki_agent_snapshot',
       locations: [resource],
       actions: ['list', 'read'],
+      storage_version: 2,
       document_id: 'name',
-      source_revision: 1,
+      source,
+      authority,
       purpose: 'Read the selected current name snapshot',
     };
     for (const changed of [
       { ...detail, type: 'unknown' },
       { ...detail, locations: ['https://other.test/mcp'] },
       { ...detail, actions: ['execute'] },
+      { ...detail, document_id: 'owner_note' },
       { ...detail, unexpected: true },
     ]) {
       const invalid = await begin({ authorization_details: JSON.stringify([changed]) });
@@ -462,7 +503,6 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       'mikaki_execute',
       'mikaki_list',
       'mikaki_propose',
-      'mikaki_propose_attribute',
       'mikaki_propose_record',
       'mikaki_read',
       'mikaki_search',
@@ -476,11 +516,6 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     });
     assert.equal(disallowed.isError, true);
     assert.equal((await env.DB.prepare('SELECT count(*) n FROM agent_proposal').first()).n, 0);
-    const disallowedAttribute = await mcp.callTool({
-      name: 'mikaki_propose_attribute',
-      arguments: {},
-    });
-    assert.equal(disallowedAttribute.isError, true);
     const writeRequest = await begin({ scope: 'propose execute' });
     const writeCode = await approved(writeRequest);
     const writeResponse = await exchange(writeRequest, writeCode);
@@ -518,32 +553,6 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     assert.ok(!(await writer.callTool(execution)).isError);
     assert.ok(!(await writer.callTool(execution)).isError);
     assert.equal((await env.DB.prepare('SELECT count(*) n FROM agent_draft').first()).n, 1);
-    assert.equal(
-      (
-        await ownerCall('attribute-capability', {
-          grant_id: grant.grant_id,
-          attribute_id: 'owner_note',
-          base_revision: 0,
-        })
-      ).status,
-      200,
-    );
-    const noteProposal = await writer.callTool({
-      name: 'mikaki_propose_attribute',
-      arguments: {
-        proposal_id: id(),
-        attribute_id: 'owner_note',
-        base_revision: 0,
-        expires_at: time + 500,
-        value: newOwnerNote('OAuth proposal', 'Requires separate owner approval and encryption'),
-      },
-    });
-    assert.ok(!noteProposal.isError, JSON.stringify(noteProposal));
-    assert.equal(
-      (await op.fetch('https://mikaki.test/vault/attributes/owner_note', { headers: ownerHeaders }))
-        .status,
-      404,
-    );
     const revoke = (token: string, client_id = 'native-test') =>
       agent.fetch(`${origin}/oauth/revoke`, {
         method: 'POST',
@@ -775,16 +784,27 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       returnUrl = route.request().url();
       await route.fulfill({ status: 200, body: 'Returned to client' });
     });
+    const connectionStatus = await op.fetch('https://mikaki.test/vault/agents/connections', {
+      headers: ownerHeaders,
+    });
+    assert.equal(connectionStatus.status, 200, await connectionStatus.clone().text());
+    const connectionBody = (await connectionStatus.json()) as {
+      grants: { grant_id: string; storage_version: number; active: number }[];
+    };
+    assert.ok(
+      connectionBody.grants.some(
+        (item) =>
+          item.grant_id === grant.grant_id && item.storage_version === 2 && item.active === 1,
+      ),
+      'the active v2 source-bound grant must appear in the owner connection list',
+    );
     await page.goto(ownerLocation + '&lang=en');
     await expect(page.locator('#connections')).toHaveAttribute('open', '');
-    // OAuth review opens in the default workspace even before its parent key
-    // is unlocked. The old attribute presentation remains an explicit link.
+    // OAuth review opens in the default Workspace; the retired attribute flow is absent.
     await expect(
       page.getByRole('button', { name: 'Unlock with passkey', exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole('link', { name: 'Open existing legacy names and notes', exact: true }),
-    ).toHaveAttribute('href', '/vault?lang=en&storage=legacy-v1');
+    await expect(page.getByRole('link', { name: /legacy names and notes/i })).toHaveCount(0);
     const panel = page.getByRole('region', { name: 'Connect an OAuth client' });
     await panel.getByText('native-test · native-test', { exact: true }).waitFor();
     assert.equal(testedLoginRollback, true);
@@ -902,10 +922,24 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       env.DB.prepare("UPDATE agent_oauth_client SET active=1 WHERE client_id='retire-test'").run(),
     );
     const staleDetail = await begin({
-      authorization_details: JSON.stringify([{ ...detail, source_revision: 2 }]),
+      authorization_details: JSON.stringify([{ ...detail, source: { ...source, revision: 2 } }]),
     });
     assert.equal((await preview(staleDetail)).status, 200);
     assert.equal((await consent(staleDetail)).status, 409);
+    const staleAuthority = await begin({
+      authorization_details: JSON.stringify([
+        { ...detail, authority: { ...authority, owner_key_revision: 2 } },
+      ]),
+    });
+    assert.equal((await preview(staleAuthority)).status, 200);
+    assert.equal((await consent(staleAuthority)).status, 409);
+    const crossOwnerDetail = await begin({
+      authorization_details: JSON.stringify([
+        { ...detail, source: { ...source, owner_id: 'other' } },
+      ]),
+    });
+    assert.equal((await preview(crossOwnerDetail)).status, 200);
+    assert.equal((await consent(crossOwnerDetail)).status, 409);
     const detailed = await begin({ authorization_details: JSON.stringify([detail]) });
     const detailedPreview = await preview(detailed);
     assert.equal(detailedPreview.status, 200);

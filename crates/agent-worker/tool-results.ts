@@ -5,18 +5,6 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const timestamp = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
-export const vaultSourceInfo = z.strictObject({
-  kind: z.literal('vault'),
-  attribute: z.enum(['name', 'owner_note']),
-  revision,
-  provenance: z.literal('self-asserted'),
-  confirmed_at: timestamp
-    .nullable()
-    .describe(
-      'Unix seconds of the reported source-version check, not a content update or issuer verification.',
-    ),
-});
-export type VaultSourceInfo = z.infer<typeof vaultSourceInfo>;
 export const recordSource = z
   .strictObject({
     storage_version: z.literal(2),
@@ -60,11 +48,7 @@ const unspecifiedSource = z.strictObject({
   provenance: z.literal('unspecified'),
   confirmed_at: z.null(),
 });
-export const sourceInfo = z.discriminatedUnion('kind', [
-  vaultSourceInfo,
-  vaultRecordSourceInfo,
-  unspecifiedSource,
-]);
+export const sourceInfo = z.discriminatedUnion('kind', [vaultRecordSourceInfo, unspecifiedSource]);
 export const unknownSource = () =>
   unspecifiedSource.parse({
     kind: 'unspecified',
@@ -99,7 +83,7 @@ export const accessInfo = z.discriminatedUnion('mode', [
     checked_at: timestamp.describe('Unix seconds of the final live access/revision check.'),
     grant_expires_at: timestamp.describe('Unix seconds of the access-grant deadline.'),
     source_check: z
-      .enum(['revision-matched', 'record-matched'])
+      .literal('record-matched')
       .describe(
         'The explicit saved source matched the grant during this call; this is not a live subscription.',
       ),
@@ -138,16 +122,6 @@ export const toolOutputs = {
     state: z.enum(['pending', 'approved', 'rejected', 'executed']),
   }),
   execute: z.strictObject({ ...common, draft_id: opaque, state: z.literal('executed') }),
-  propose_attribute: z.strictObject({
-    ...common,
-    proposal_id: opaque,
-    request_hash: opaque,
-    state: z.enum(['pending', 'approved', 'rejected', 'invalid', 'committed']),
-    attribute_id: z.literal('owner_note'),
-    base_revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    expires_at: timestamp,
-    destination: z.literal('owner-vault'),
-  }),
 };
 export type ToolOperation = keyof typeof toolOutputs;
 

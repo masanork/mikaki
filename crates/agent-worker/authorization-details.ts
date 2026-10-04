@@ -11,15 +11,6 @@ const fields = {
     .refine((items) => new Set(items).size === items.length),
   purpose: z.string().trim().min(1).max(160),
 };
-const attributeDetail = z.strictObject({
-  type: fields.type,
-  locations: fields.locations,
-  actions: fields.actions,
-  document_id: z.literal('name'),
-  source_revision: z.number().int().positive(),
-  purpose: fields.purpose,
-  storage_version: z.literal(1).optional(),
-});
 const recordDetail = z
   .strictObject({
     ...fields,
@@ -29,7 +20,7 @@ const recordDetail = z
     authority: recordAuthoritySchema,
   })
   .refine((value) => value.document_id === value.source.record_id);
-const detail = z.union([attributeDetail, recordDetail]);
+const detail = recordDetail;
 export type AgentAuthorizationDetail = z.infer<typeof detail>;
 
 /** Mikaki's one-snapshot RFC 9396 profile; every requested operation remains
@@ -51,7 +42,6 @@ export function parseAuthorizationDetails(
 }
 
 // The expression is a trusted SQL column supplied by callers, never client input.
-// Scope-only compatibility is deliberately limited to historical v1 grants.
 export function authorizationDetailsCondition(expression: string): string {
   const field = (path: string) => `json_extract(${expression},'$[0].${path}')`;
   const scopes = expression.replace(/authorization_details$/, 'scopes');
@@ -61,13 +51,8 @@ export function authorizationDetailsCondition(expression: string): string {
     AND NOT EXISTS(SELECT 1 FROM json_each(${expression},'$[0].actions') action
       WHERE NOT EXISTS(SELECT 1 FROM json_each(${scopes}) scope WHERE scope.value=action.value))`;
   const selected = `json_array_length(g.document_ids)=1 AND json_extract(g.document_ids,'$[0]')`;
-  // Group independent conjunctions to keep nested D1 authorization statements
-  // below workerd's expression-depth limit without omitting any source fence.
-  return `((g.storage_version=1 AND (${expression} IS NULL OR (
-    (${target}) AND (COALESCE(${field('storage_version')},1)=1 AND ${field('type')}='mikaki_agent_snapshot')
-    AND (${field('source_revision')}=g.source_revision AND ${field('document_id')}='name')
-    AND (${selected}='name')))) OR (g.storage_version=2 AND ${expression} IS NOT NULL
-    AND (${target}) AND (${field('storage_version')}=2 AND ${field('type')}='mikaki_agent_snapshot')
+  return `(g.storage_version=2 AND ${expression} IS NOT NULL AND (${target})
+    AND (${field('storage_version')}=2 AND ${field('type')}='mikaki_agent_snapshot')
     AND (${field('document_id')}=g.source_record_id AND ${selected}=g.source_record_id)
     AND (${field('source.storage_version')}=2 AND ${field('source.origin')}=g.source_origin
       AND ${field('source.owner_id')}=g.account_id AND ${field('source.vault_id')}=g.source_vault_id)
@@ -76,5 +61,5 @@ export function authorizationDetailsCondition(expression: string): string {
     AND (${field('source.revision')}=g.source_revision
       AND ${field('source.ciphertext_sha256')}=g.source_ciphertext_sha256)
     AND (${field('authority.key_generation')}=g.source_key_generation
-      AND ${field('authority.owner_key_revision')}=g.source_owner_key_revision)))`;
+      AND ${field('authority.owner_key_revision')}=g.source_owner_key_revision))`;
 }

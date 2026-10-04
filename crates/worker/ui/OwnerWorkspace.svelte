@@ -3,6 +3,7 @@
   import { restoreActionFocus } from './action-focus.js';
   import { vaultContext, OWNER_VAULT_CONTEXT, type OwnerVaultContext } from './vault-context.js';
   import ProductHeader from './ProductHeader.svelte';
+  import AgentOAuth from './AgentOAuth.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
   import { OwnerVaultController } from './vault-owner-controller.ts';
@@ -36,6 +37,27 @@
   let query = $state('');
   let threads: { id: string; revision: number; archive: ThreadArchive }[] = $state([]);
   let selected = $state('');
+  type AgentConnection = {
+    grant_id: string;
+    delegate: string;
+    provider: string;
+    active: number;
+    operations: string;
+    source_revision: number;
+    storage_version: number;
+    source_origin: string | null;
+    resource: string;
+    account_id: string;
+    source_vault_id: string | null;
+    source_collection_id: string | null;
+    source_record_id: string | null;
+    source_kind: string | null;
+    source_ciphertext_sha256: string | null;
+    source_key_generation: number | null;
+    source_owner_key_revision: number | null;
+  };
+  let agentConnections: AgentConnection[] = $state([]);
+  const hasAgentRequest = new URL(location.href).searchParams.has('agent_oauth_request');
   const dirty = $derived(pending !== null || name !== savedName);
   const visibleThreads = $derived(query.trim() ? [] : threads);
   const active = $derived(threads.find((t) => t.id === selected));
@@ -261,6 +283,16 @@
       .then(async () => {
         await scope.ensure();
         if (!scope.identity) throw new Error('unconfirmed');
+        if (hasAgentRequest) {
+          const response = await scope.request('/vault/agents/connections', {
+            cache: 'no-store',
+          });
+          if (!response.ok) throw new Error('connections unavailable');
+          const value: unknown = await response.json();
+          if (typeof value !== 'object' || value === null || !Array.isArray(value.grants))
+            throw new Error('invalid connections');
+          agentConnections = value.grants as AgentConnection[];
+        }
       })
       .catch(() => scope.end('unconfirmed'));
     const unregister = context.registerDraft(() => dirty || busy);
@@ -394,6 +426,12 @@
             >{/if}
         </div>
       </div>
+    {/if}
+    {#if hasAgentRequest}
+      <details id="connections" open>
+        <summary>{m.agentOAuthHeading()}</summary>
+        <AgentOAuth grants={agentConnections} />
+      </details>
     {/if}
   </main>
 </div>

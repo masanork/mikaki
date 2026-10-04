@@ -213,14 +213,13 @@ export async function preview(db: D1Database, owner: Owner, raw: unknown, env: A
     redirect_uri: row.redirect_uri,
     resource: row.resource,
     scopes: scopes.parse(JSON.parse(row.scopes)),
-    authorization_details:
-      row.authorization_details === null
-        ? null
-        : parseAuthorizationDetails(
-            row.authorization_details,
-            row.resource,
-            scopes.parse(JSON.parse(row.scopes)),
-          ),
+    authorization_details: row.authorization_details
+      ? parseAuthorizationDetails(
+          row.authorization_details,
+          row.resource,
+          scopes.parse(JSON.parse(row.scopes)),
+        )
+      : null,
     expires_at: row.expires_at,
   };
 }
@@ -237,7 +236,7 @@ export async function decide(db: D1Database, owner: Owner, raw: unknown, env: Ag
   const liveGrant = `EXISTS(SELECT 1 ${activeJoin} AND g.grant_id=? AND g.account_id=?
     AND g.expires_at>unixepoch() AND g.encrypted_snapshot IS NOT NULL AND NOT EXISTS(SELECT 1 FROM json_each(agent_oauth_request.scopes) s
       WHERE NOT EXISTS(SELECT 1 FROM json_each(g.operations) o WHERE o.value=s.value))
-    AND ${authorizationDetailsCondition('agent_oauth_request.authorization_details')})`;
+    AND (agent_oauth_request.authorization_details IS NULL OR ${authorizationDetailsCondition('agent_oauth_request.authorization_details')}))`;
   const query = input.approve
     ? `UPDATE agent_oauth_request SET decision='approved',grant_id=?,
     grant_revision=(SELECT revision FROM agent_grant WHERE grant_id=?),code_hash=?,code_expires_at=min(expires_at,unixepoch()+120)
@@ -339,7 +338,7 @@ export async function token(request: Request, env: AgentRuntime) {
       AND r.decision='approved' AND r.redeemed_at IS NULL AND r.code_expires_at>unixepoch()
       AND r.expires_at>unixepoch() AND g.expires_at>unixepoch() AND r.grant_revision=g.revision AND g.encrypted_snapshot IS NOT NULL
       AND EXISTS(SELECT 1 FROM agent_oauth_client oc WHERE oc.client_id=r.client_id AND oc.active=1)
-      AND ${authorizationDetailsCondition('r.authorization_details')}
+      AND (r.authorization_details IS NULL OR ${authorizationDetailsCondition('r.authorization_details')})
       AND NOT EXISTS(SELECT 1 FROM json_each(r.scopes) s
         WHERE NOT EXISTS(SELECT 1 FROM json_each(g.operations) o WHERE o.value=s.value))`;
     const exchangeJoin = activeJoin.replace(
@@ -384,7 +383,7 @@ export async function token(request: Request, env: AgentRuntime) {
         AND EXISTS(SELECT 1 FROM agent_oauth_client oc WHERE oc.client_id=t.client_id AND oc.active=1)
         AND t.token_hash=? AND t.grant_id=g.grant_id AND t.grant_revision=g.revision
         AND t.resource=g.resource AND t.revoked=0 AND t.expires_at>unixepoch()
-        AND ${authorizationDetailsCondition('t.authorization_details')}`.replace(
+        AND (t.authorization_details IS NULL OR ${authorizationDetailsCondition('t.authorization_details')})`.replace(
           'FROM agent_grant g',
           'FROM agent_oauth_token t JOIN agent_grant g ON g.grant_id=t.grant_id',
         ),
@@ -397,15 +396,15 @@ export async function token(request: Request, env: AgentRuntime) {
       token_type: 'Bearer',
       expires_in: Math.max(0, row.expires_at - now()),
       scope: scopes.parse(JSON.parse(row.scopes)).join(' '),
-      ...(row.authorization_details === null
-        ? {}
-        : {
+      ...(row.authorization_details
+        ? {
             authorization_details: parseAuthorizationDetails(
               row.authorization_details,
               input.resource,
               scopes.parse(JSON.parse(row.scopes)),
             ),
-          }),
+          }
+        : {}),
     });
   } catch {
     return json({ error: 'invalid_grant' }, 400);

@@ -15,11 +15,7 @@ import {
 import { OwnerRecordDisclosure } from '../../crates/worker/ui/vault-owner-disclosure.ts';
 import { encodeOwnerNote, newOwnerNote } from '../../crates/worker/ui/vault-note.ts';
 import { encodeBase64Url, decodeBase64Url } from '../../crates/worker/ui/vault-crypto.ts';
-import {
-  agentKeyId,
-  sealAgentSnapshot,
-  openAgentSnapshot,
-} from '../../crates/worker/ui/agent-crypto.ts';
+import { agentKeyId } from '../../crates/worker/ui/agent-crypto.ts';
 import {
   openRecordAgentSnapshot,
   sealRecordAgentSnapshot,
@@ -374,26 +370,15 @@ test('record snapshot uses separate version/domain and independently decrypts on
     await assert.rejects(
       openRecordAgentSnapshot(prepared.envelope, key.privateKey, { ...binding, ...change }),
     );
-  const legacyBinding = {
-    owner: 'owner',
-    grant_id: binding.grant_id,
-    key_id: binding.key_id,
-    resource: binding.resource,
-    expires_at: 2000,
-    source_revision: 1,
-  };
-  const legacy = await sealAgentSnapshot(
-    [{ id: 'name', title: 'Name', source: 'name', text: 'Legacy' }],
-    key.recipient,
-    legacyBinding,
-  );
-  await assert.rejects(openRecordAgentSnapshot({ ...legacy, version: 2 }, key.privateKey, binding));
   await assert.rejects(
-    openAgentSnapshot({ ...prepared.envelope, version: 1 }, key.privateKey, legacyBinding),
+    openRecordAgentSnapshot(
+      { ...prepared.envelope, version: 1 } as unknown as Parameters<
+        typeof openRecordAgentSnapshot
+      >[0],
+      key.privateKey,
+      binding,
+    ),
   );
-  assert.deepEqual(await openAgentSnapshot(legacy, key.privateKey, legacyBinding), [
-    { id: 'name', title: 'Name', source: 'name', text: 'Legacy' },
-  ]);
   await assert.rejects(sealRecordAgentSnapshot([], key.recipient, binding));
   await assert.rejects(
     sealRecordAgentSnapshot(

@@ -46,22 +46,7 @@ function parsed<T>(parse: (value: unknown) => T) {
 export const recordSourceSchema = parsed(parseVaultRecordSource);
 export const recordAuthoritySchema = parsed(parseVaultRecordAuthority);
 export const recordEnvelopeSchema = envelopeSchema.extend({ version: z.literal(2) });
-// Absent storage_version is the historical v1 request, including its request hash.
-const attributeGrantInput = z.strictObject({
-  grant_id: grantFields.grant_id,
-  delegate: grantFields.delegate,
-  provider: grantFields.provider,
-  resource: grantFields.resource,
-  source_revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  recipient_key_id: grantFields.recipient_key_id,
-  operations: grantFields.operations,
-  document_ids: z.tuple([z.literal('name')]),
-  envelope: envelopeSchema,
-  token_hash: grantFields.token_hash,
-  expires_at: grantFields.expires_at,
-  storage_version: z.literal(1).optional(),
-});
-const recordGrantInput = z
+export const grantInput = z
   .strictObject({
     ...grantFields,
     storage_version: z.literal(2),
@@ -71,17 +56,6 @@ const recordGrantInput = z
     envelope: recordEnvelopeSchema,
   })
   .refine((input) => input.document_ids[0] === input.source.record_id);
-export const grantInput = z.union([attributeGrantInput, recordGrantInput]);
-export const documentsSchema = z
-  .array(
-    z.strictObject({
-      id: z.literal('name'),
-      title: z.string().min(1).max(160),
-      source: z.string().min(1).max(160),
-      text: z.string().min(1).max(256),
-    }),
-  )
-  .length(1);
 export type Grant = {
   grant_id: string;
   account_id: string;

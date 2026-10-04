@@ -270,17 +270,17 @@ test('export metadata stays digest-bound and opaque labels cannot assert a live 
       toolOutputs.read.parse(await access.call('read', { id: 'shared' })).source_info.kind,
       'unspecified',
     );
-    const source_info = {
-      kind: 'vault',
-      attribute: 'owner_note',
-      revision: 4,
-      provenance: 'self-asserted',
-      confirmed_at: 140,
+    const source_info: Record<string, unknown> = {
+      kind: 'unspecified',
+      attribute: null,
+      revision: null,
+      provenance: 'unspecified',
+      confirmed_at: null,
     };
     const bundle = {
       version: 1,
       owner: 'owner',
-      collection: 'vault',
+      collection: 'archive',
       documents: [
         {
           id: 'owner_note',
@@ -294,7 +294,7 @@ test('export metadata stays digest-bound and opaque labels cannot assert a live 
     };
     bytes = JSON.stringify(bundle);
     await writeFile(f.exportPath, bytes);
-    f.grant.collection = 'vault';
+    f.grant.collection = 'archive';
     f.grant.document_ids = ['owner_note'];
     f.grant.export_sha256 = createHash('sha256').update(bytes).digest('hex');
     await f.save();
@@ -311,12 +311,17 @@ test('export metadata stays digest-bound and opaque labels cannot assert a live 
     bundle.documents[0]!.source_info!.revision = 5;
     await writeFile(f.exportPath, JSON.stringify(bundle));
     await assert.rejects(AgentAccess.create({ ...f, clock: () => 150 }));
-    bundle.documents[0]!.source_info!.attribute = 'name';
+    bundle.documents[0]!.source_info!.revision = null;
+    bundle.documents[0]!.source_info!.kind = 'vault';
+    bundle.documents[0]!.source_info!.attribute = 'owner_note';
+    bundle.documents[0]!.source_info!.revision = 4;
+    bundle.documents[0]!.source_info!.provenance = 'self-asserted';
+    bundle.documents[0]!.source_info!.confirmed_at = 140;
     bytes = JSON.stringify(bundle);
     await writeFile(f.exportPath, bytes);
     f.grant.export_sha256 = createHash('sha256').update(bytes).digest('hex');
     await f.save();
-    await assert.rejects(AgentAccess.create({ ...f, clock: () => 150 }), /Invalid source binding/);
+    await assert.rejects(AgentAccess.create({ ...f, clock: () => 150 }));
   } finally {
     await f.cleanup();
   }
