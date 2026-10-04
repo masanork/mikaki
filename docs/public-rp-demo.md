@@ -20,8 +20,8 @@ Use a clean checkout and the repository's pinned toolchains/dependencies. Build 
 npm ci
 npm run build:helpdesk
 npm run check:helpdesk
-wrangler deploy --config crates/helpdesk-rp/wrangler.demo.jsonc --dry-run
-wrangler deploy --config crates/helpdesk-rp/wrangler.demo.jsonc
+node_modules/.bin/wrangler deploy --config crates/helpdesk-rp/wrangler.demo.jsonc --dry-run
+node_modules/.bin/wrangler deploy --config crates/helpdesk-rp/wrangler.demo.jsonc
 ```
 
 Provision the dedicated DB/migrations and private key before deployment. Use [managed client operations](rp-client-operations.md) for public key/redirect registration and rotation. Never apply RP migrations to the OP database. Do not recreate keys during an ordinary deploy. Keep recovery material in the operator's secret storage; a repository checkout contains no private key. The demo is deployed independently of the OP; no OP release or schema migration is necessary for its registration.
