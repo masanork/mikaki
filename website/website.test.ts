@@ -595,6 +595,10 @@ test('public websites keep app callbacks code-free and render the woven material
       );
     }
   } finally {
+    // Navigation can leave intercepted image reads in flight, especially on CI.
+    // Finish their local fetch/fulfill work before closing pages or killing Workers.
+    for (const context of browser?.contexts() ?? [])
+      for (const page of context.pages()) await page.unrouteAll({ behavior: 'wait' });
     await browser?.close();
     await Promise.all(
       servers.map(async (child) => {
