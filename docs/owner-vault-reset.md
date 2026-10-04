@@ -1,8 +1,8 @@
 # Owner Vault reset preparation (#121)
 
 Status (2026-10-05): source retirement is in progress on
-`feat/issue-121-agent-v1-retirement`, based on `e2366ce` (the native-retirement
-source commit); PR #127's integration with main `c1ad9f7` is pending. The
+`feat/issue-121-agent-v1-retirement`, integrating PR #127's `fd263a4` and main
+`c1ad9f7` (merged PR #105, PR #125 and PR #126). The
 browser/API and native OAuth source slices remove the legacy Vault UI/routes,
 Vault consent and token issuance, and Tauri ciphertext operations while keeping
 OwnerWorkspace archive/import/search, ordinary OIDC/Identity, and historical

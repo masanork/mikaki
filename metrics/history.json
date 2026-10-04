@@ -1134,20 +1134,20 @@
   },
   {
     "date": "2026-10-04",
-    "commit": "612130a",
+    "commit": "95ab1c1",
     "code": {
-      "implementationLines": 35767,
-      "testLines": 4815,
-      "implementationFiles": 155,
-      "testFiles": 14,
+      "implementationLines": 45884,
+      "testLines": 9992,
+      "implementationFiles": 188,
+      "testFiles": 27,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 13065,
+          "implementationLines": 13053,
           "testLines": 2487
         },
         "rust": {
-          "implementationLines": 17236,
-          "testLines": 2328
+          "implementationLines": 27365,
+          "testLines": 7505
         },
         "svelte": {
           "implementationLines": 5466,
@@ -1161,18 +1161,18 @@
         "dev": 21
       },
       "rust": {
-        "runtime": 27,
+        "runtime": 32,
         "build": 0,
-        "dev": 9
+        "dev": 10
       },
       "sourceLines": {
         "npmRuntime": 356708,
-        "rustRuntime": 1075075,
-        "total": 1431783
+        "rustRuntime": 1370575,
+        "total": 1727283
       },
       "sourcePackages": {
         "npmRuntime": 117,
-        "rustRuntime": 156
+        "rustRuntime": 216
       },
       "names": {
         "npmRuntime": [
@@ -1213,14 +1213,19 @@
           "der",
           "ed25519-dalek",
           "futures-util",
+          "getrandom",
+          "hkdf",
           "hpke",
           "js-sys",
           "k256",
+          "miniz_oxide",
           "ml-kem",
           "p256",
           "p384",
           "p521",
           "rsa",
+          "rustls-pki-types",
+          "rustls-webpki",
           "serde",
           "serde_json",
           "serde_urlencoded",
@@ -1240,6 +1245,7 @@
           "base64",
           "ciborium",
           "p256",
+          "rand_core",
           "rusqlite",
           "serde_json",
           "serde_urlencoded",
@@ -1251,19 +1257,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 3342,
-        "count": 3796,
-        "percent": 88.04004214963119
+        "covered": 8889,
+        "count": 10144,
+        "percent": 87.6281545741325
       },
       "regions": {
-        "covered": 5620,
-        "count": 6661,
-        "percent": 84.37171595856478
+        "covered": 14799,
+        "count": 17666,
+        "percent": 83.77108570134723
       },
       "functions": {
-        "covered": 296,
-        "count": 349,
-        "percent": 84.81375358166189
+        "covered": 789,
+        "count": 914,
+        "percent": 86.32385120350109
       }
     }
   }
