@@ -91,9 +91,11 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
   // Faults wrap only the test-owned R2 binding. SQL, triggers, rollback and the
   // final batch use real workerd D1. The post-upload hook crosses the real await
   // between preflight and consumption; no service/Rust authorization is mocked.
+  const services = new URL('../../crates/worker/service/entrypoint.ts', import.meta.url).pathname;
   await writeFile(
     join(directory, 'op.mjs'),
     `import Op from ${JSON.stringify(shim)};
+    export { AgentStore, ClaimStore } from ${JSON.stringify(services)};
     export default {async fetch(request,env,ctx){
       const fault=await env.DB.prepare('SELECT mode,statement,until FROM record_commit_test_fault WHERE id=1').first();
       const bucket=new Proxy(env.VAULT_BLOBS,{get(target,key){
@@ -123,6 +125,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
           name: 'mikaki-op-agent-local',
           main: join(directory, 'op.mjs'),
           compatibility_date: '2026-09-28',
+          rules: [{ type: 'Text', globs: ['**/*.sql'], fallthrough: true }],
           vars: { MIKAKI_ISSUER: origin },
           d1_databases: [
             {
