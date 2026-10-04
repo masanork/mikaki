@@ -159,7 +159,7 @@ test('owner note HTTP and browser paths preserve schema, conflicts, exact retrie
         body: Buffer.from(await response.arrayBuffer()),
       });
     });
-    await page.goto(`${origin}/vault?lang=en`);
+    await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     await expect(page.locator('#note-unlock')).toBeEnabled();
     await expect(page.locator('body')).toBeFocused();
     await page.getByRole('button', { name: 'Unlock with passkey', exact: true }).click();

@@ -226,7 +226,7 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
         return error(404, "not_found");
     }
     let db = context.env.d1("DB")?;
-    let Some(page_owner) = owner(&request, &db).await? else {
+    let Some(_page_owner) = owner(&request, &db).await? else {
         if request
             .url()?
             .query_pairs()
@@ -236,29 +236,15 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
         }
         return crate::passkey_login::web_signin(request, context).await;
     };
-    #[derive(Deserialize)]
-    struct Layout {
-        legacy: i64,
-    }
     // Presentation only; every data operation still verifies live owner authority.
-    // Existing v1 data keeps its existing panels, with no importer or silent reset.
-    let layout = db.prepare("SELECT CASE WHEN EXISTS(SELECT 1 FROM vault_owner_key_head WHERE account_id=?1) THEN 0 \
-        WHEN EXISTS(SELECT 1 FROM vault_attribute_head WHERE account_id=?1 AND attribute_id IN ('name','owner_note') AND deleted=0) THEN 1 ELSE 0 END AS legacy")
-        .bind(&[JsValue::from_str(&page_owner.account_id)])?.first::<Layout>(None).await?
-        .ok_or_else(||worker::Error::RustError("vault_layout_unavailable".into()))?;
+    // The default workspace is v2. Existing v1 records remain available through
+    // the explicit legacy presentation without imports, rewrites or resets.
     let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
     let mut html = include_str!("../ui/vault.html").to_owned();
     let replacements = [
         ("{{locale}}", strings.locale),
         ("{{title}}", strings.message("vaultTitle")),
-        (
-            "{{vault_format}}",
-            if layout.legacy == 1 {
-                "attributes-v1"
-            } else {
-                "owner-v2"
-            },
-        ),
+        ("{{vault_format}}", "owner-v2"),
     ];
     for (key, value) in replacements {
         html = html.replace(key, &crate::i18n::html_escape(value));

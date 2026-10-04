@@ -221,7 +221,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       (cookie) => cookie.name === '__Host-op-sso',
     );
     assert.ok(firstSso);
-    await page.goto(`${issuer}/vault`);
+    await page.goto(`${issuer}/vault?storage=legacy-v1`);
     await page.getByRole('button', { name: 'Passkeyで開く' }).click();
     await page.getByLabel('表示名').fill('Vault browser test');
     await page.getByRole('button', { name: '保存', exact: true }).click();

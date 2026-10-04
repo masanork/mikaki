@@ -244,6 +244,29 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         body,
       });
     });
+    // A retained v1 name without a v2 root must not trap this account in the
+    // old per-attribute unlock UI. The same ciphertext remains readable later.
+    const legacyName = await sealAttribute(
+      new TextEncoder().encode('Retained legacy name'),
+      new Uint8Array(32).fill(0x71),
+      new Uint8Array(credential),
+      new Uint8Array(32).fill(0x42),
+      origin,
+      'name',
+      1,
+    );
+    const savedLegacy = await worker.fetch(`${origin}/vault/attributes/name`, {
+      method: 'PUT',
+      headers: {
+        Cookie: `__Host-op-sso=${secret}`,
+        Origin: origin,
+        'Content-Type': 'application/json',
+        'X-Operation-ID': randomBytes(32).toString('base64url'),
+        'If-None-Match': '*',
+      },
+      body: JSON.stringify(legacyName),
+    });
+    assert.equal(savedLegacy.status, 200, await savedLegacy.text());
     const page = await context.newPage();
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('dialog', (d) => void d.accept());
@@ -479,27 +502,6 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await assertConnectionsOnly();
     // Existing v1 data remains accessible in an explicitly separate presentation,
     // even when a v2 root and canonical v2 records already exist.
-    const legacyName = await sealAttribute(
-      new TextEncoder().encode('Retained legacy name'),
-      new Uint8Array(32).fill(0x71),
-      new Uint8Array(credential),
-      new Uint8Array(32).fill(0x42),
-      origin,
-      'name',
-      1,
-    );
-    const savedLegacy = await worker.fetch(`${origin}/vault/attributes/name`, {
-      method: 'PUT',
-      headers: {
-        Cookie: `__Host-op-sso=${secret}`,
-        Origin: origin,
-        'Content-Type': 'application/json',
-        'X-Operation-ID': randomBytes(32).toString('base64url'),
-        'If-None-Match': '*',
-      },
-      body: JSON.stringify(legacyName),
-    });
-    assert.equal(savedLegacy.status, 200, await savedLegacy.text());
     const legacyPage = await context.newPage();
     await legacyPage.goto(
       new URL(
