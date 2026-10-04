@@ -40,7 +40,6 @@
     "vault-thread-search-client.ts",
     "search.ts",
     "vault-note.ts",
-    "attribute-commit.ts",
     "agent-crypto.ts",
     "agent-record-crypto.ts",
     "vault-record-source.ts",
