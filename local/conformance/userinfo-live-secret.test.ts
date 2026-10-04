@@ -324,7 +324,7 @@ test('live local Secrets Store decrypts consented name and writes disclosure aud
         body: Buffer.from(await response.arrayBuffer()),
       });
     });
-    const navigation = await page.goto(`${origin}/vault?lang=en`);
+    const navigation = await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     assert.equal(navigation?.status(), 200, await page.locator('body').innerText());
     assert.deepEqual(pageErrors, []);
     await page.getByRole('button', { name: 'Unlock with passkey' }).click();

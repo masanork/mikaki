@@ -204,7 +204,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     const reopen = page.getByRole('button', { name: 'Check session and reopen', exact: true });
     const locked = page.getByRole('heading', { name: 'Vault is locked', exact: true });
     async function open() {
-      await page.goto(`${origin}/vault?lang=en`);
+      await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
       await expect(page.locator('#unlock')).toBeEnabled();
       await page.locator('#unlock').click();
       await expect(page.locator('#name')).toHaveValue('Saved owner');

@@ -208,7 +208,7 @@ test('note transfer preserves saved schema independently of name, retries exactl
         body: Buffer.from(await response.arrayBuffer()),
       });
     });
-    await page.goto(`${origin}/vault?lang=en`);
+    await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     const editor = page.getByRole('region', { name: 'Owner note', exact: true });
     await page.getByText('Move the note to another Passkey', { exact: true }).click();
     await page.locator('#connections > summary').click();

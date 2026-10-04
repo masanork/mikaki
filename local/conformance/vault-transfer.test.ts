@@ -447,7 +447,7 @@ test('Vault browser adds a passkey, transfers only the saved name, survives a lo
     };
     const first = await setup();
     await routePage(first.page);
-    await first.page.goto(`${origin}/vault?lang=en`);
+    await first.page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     await first.page.getByRole('button', { name: 'Unlock with Passkey' }).click();
     await first.page.locator('#name').fill('Unsaved edit');
     first.page.on('dialog', (dialog) => {
@@ -498,7 +498,7 @@ test('Vault browser adds a passkey, transfers only the saved name, survives a lo
     await first.page.close();
     const second = await setup();
     await routePage(second.page);
-    await second.page.goto(`${origin}/vault?lang=en`);
+    await second.page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     await second.page.getByRole('button', { name: 'Unlock with Passkey' }).click();
     assert.equal(await second.page.locator('#name').inputValue(), 'Saved browser owner');
     assert.deepEqual(second.errors, []);
