@@ -60,7 +60,6 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     evidence = await startBrowserEvidence(page.context(), 'worker-ui');
     const errors: string[] = [];
 
-    let vaultSessionFailures = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
       if (location.search.includes('silent-motion-change')) {
@@ -139,25 +138,6 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
             : 'text/javascript; charset=utf-8',
           body: scripts.get(url.pathname),
         });
-        return;
-      }
-      if (url.pathname === '/vault/session') {
-        if (vaultSessionFailures > 0) {
-          vaultSessionFailures -= 1;
-          await route.fulfill({ status: 503, body: '' });
-          return;
-        }
-        await route.fulfill({
-          json: {
-            credential_id: 'Y3JlZGVudGlhbA',
-            account_id: 'owner',
-            session_tag: 's'.repeat(43),
-          },
-        });
-        return;
-      }
-      if (url.pathname === '/vault/attributes/name') {
-        await route.fulfill({ status: 404, headers: { ETag: '"1"' }, body: '' });
         return;
       }
       const locale = url.searchParams.get('lang') === 'en' ? 'en' : 'ja';
@@ -293,10 +273,9 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     await page.goto('https://mikaki.test/vault');
-    await page.getByRole('button', { name: 'Passkeyで開く' }).waitFor();
-    await page.getByText('表示名は未登録です。Passkeyで開いて登録できます。').waitFor();
+    await page.locator('#vault-lock-title').waitFor();
     assert.equal(await page.locator('.product-header').count(), 1);
-    assert.equal(await page.locator('.product-nav a').count(), 4);
+    assert.equal(await page.locator('#vault-lock-title').count(), 1);
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
       'rgb(246, 248, 251)',
@@ -306,31 +285,8 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       true,
     );
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
-    await page.getByRole('button', { name: 'Unlock with passkey' }).waitFor();
-    await page.getByRole('link', { name: 'Sharing & connections' }).click();
-    assert.match(page.url(), /#connections$/);
-    await page.waitForFunction(
-      () =>
-        document.querySelector('a[href="#connections"]')?.getAttribute('aria-current') ===
-        'location',
-    );
-    assert.equal(
-      await page.getByRole('link', { name: 'Sharing & connections' }).getAttribute('aria-current'),
-      'location',
-    );
-    vaultSessionFailures = 1;
-    await page.goto('https://mikaki.test/vault?lang=en');
-    await page.locator('#status').getByText('Loading failed.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Reload profile' }).waitFor();
-    assert.equal(
-      await page.getByRole('button', { name: 'Unlock with passkey' }).isDisabled(),
-      true,
-    );
-    await page.getByRole('button', { name: 'Reload profile' }).click();
-    await page
-      .getByText('No display name is saved. Unlock with your passkey to add one.')
-      .waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Unlock with passkey' }).isEnabled(), true);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await page.locator('#vault-lock-title').waitFor();
     await page.goto('https://mikaki.test/?lang=ja');
     await page.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     await page.locator('.gate-background[data-renderer="canvas"]').waitFor();

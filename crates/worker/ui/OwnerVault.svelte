@@ -10,12 +10,7 @@
 </script>
 
 <div class="vault-shell">
-  <ProductHeader
-    {locale}
-    vaultHref={`/vault?lang=${locale}&storage=owner-v2`}
-    onlock={context.lock}
-    material
-  />
+  <ProductHeader {locale} vaultHref={`/vault?lang=${locale}`} onlock={context.lock} material />
   <main id="product-main" tabindex="-1" class="product-main">
     <div class="product-heading">
       <h1>{m.vaultHeading()}</h1>

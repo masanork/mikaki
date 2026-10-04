@@ -13,7 +13,6 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault.html");
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/VaultSession.svelte");
-    println!("cargo:rerun-if-changed=ui/VaultRouter.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-workspace-store.ts");
     println!("cargo:rerun-if-changed=ui/OwnerVault.svelte");
@@ -55,11 +54,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/admin.ts");
     println!("cargo:rerun-if-changed=ui/Complete.svelte");
     println!("cargo:rerun-if-changed=ui/complete.ts");
-    println!("cargo:rerun-if-changed=ui/Vault.svelte");
-    println!("cargo:rerun-if-changed=ui/AgentPanel.svelte");
     println!("cargo:rerun-if-changed=ui/AgentOAuth.svelte");
-    println!("cargo:rerun-if-changed=ui/PasskeyTransfer.svelte");
-    println!("cargo:rerun-if-changed=ui/OwnerNote.svelte");
     println!("cargo:rerun-if-changed=ui/vault-note.ts");
     println!("cargo:rerun-if-changed=ui/attribute-commit.ts");
     println!("cargo:rerun-if-changed=ui/agent-crypto.ts");

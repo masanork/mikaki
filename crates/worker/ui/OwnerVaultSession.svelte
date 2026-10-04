@@ -165,7 +165,7 @@
   <div class="vault-shell">
     <ProductHeader
       {locale}
-      vaultHref={`/vault?lang=${locale}&storage=owner-v2`}
+      vaultHref={`/vault?lang=${locale}`}
       contentId="owner-status-main"
       material
       paused={checking || suspended}

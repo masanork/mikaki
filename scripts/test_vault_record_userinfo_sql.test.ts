@@ -19,16 +19,6 @@ const shareSql = sql('commit-record-recipient-envelope')
   .replace('{LIVE_SOURCE}', live)
   .replace('{SUITE}', suite);
 const consentSql = sql('commit-record-claim-release').replace('{LIVE_SOURCE}', live);
-// Execute the exact legacy statement so the compatibility guard cannot drift
-// away from its Worker implementation.
-const legacyWorker = readFileSync(
-  new URL('../crates/worker/src/vault_claim_releases.rs', import.meta.url),
-  'utf8',
-);
-const legacyConsentSql = legacyWorker
-  .match(/"(INSERT INTO vault_claim_release \\\n[\s\S]+?)",\n\s*\)/)![1]!
-  .replace(/\\\n\s*/g, '');
-
 const preflight = `SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version,h.ciphertext_sha256,e.recipient_key_id,g.origin,g.vault_id,g.collection_id,g.record_id,g.kind,g.key_generation,g.owner_key_revision,g.version AS grant_version,k.generation,e.envelope_id ${claimSql('active_name_record_release')}`;
 const finalAudit = claimSql('audit_name_record_release').replace(
   '{ACTIVE_NAME_RELEASE}',
@@ -369,15 +359,8 @@ test('legacy consent never discloses through the record-only authority', () => {
     assert.equal(consent(db, { 17: 1 }), 1);
     assert.ok(snapshot(db), 'explicit record consent selects only the record source');
     assert.equal(db.prepare('SELECT count(*) AS n FROM vault_claim_release').get()!.n, 1);
-    const legacyConsent = (version: number) =>
-      db
-        .prepare(legacyConsentSql)
-        .run('owner', 'rp', 1, 1, 1, now + 300, now, 2, token('cookie'), version).changes;
-    assert.equal(legacyConsent(-1), 0, 'an old legacy client cannot replace selected v2 consent');
-    assert.equal(legacyConsent(1), 0, 'a stale explicit source-switch CAS is rejected');
-    assert.equal(legacyConsent(2), 1, 'a known v2 consent fence can explicitly select v1');
-    assert.equal(snapshot(db), undefined, 'legacy heads cannot authorize record delivery');
-    assert.equal(consent(db, { 17: 3 }), 1, 'a fresh explicit source selection returns to v2');
+    assert.equal(consent(db, { 17: 1 }), 0, 'a stale explicit record consent fence is rejected');
+    assert.equal(consent(db, { 17: 2 }), 1, 'the current consent fence can renew record selection');
     assert.ok(snapshot(db));
     db.exec("UPDATE vault_attribute_grant SET status='revoked',version=2");
     assert.ok(snapshot(db), 'old v1 grant mutation cannot alter selected v2 consent');

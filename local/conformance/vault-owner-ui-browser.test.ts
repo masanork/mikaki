@@ -175,14 +175,18 @@ test('owner preview uses one unlock for names/notes, exact retries, explicit rec
         (window as unknown as { hiddenForTest: boolean }).hiddenForTest = value;
         document.dispatchEvent(new Event('visibilitychange'));
       }, hidden);
-    await page.goto(`${origin}/vault?lang=en&storage=owner-v2`);
+    await page.goto(`${origin}/vault?lang=en`);
     await expect(open).toBeEnabled();
     await expect(page.getByRole('link', { name: 'mikaki', exact: true })).toHaveAttribute(
       'href',
-      '/vault?lang=en&storage=owner-v2',
+      '/vault?lang=en',
     );
     await expect(name).toHaveCount(0);
     assert.equal(await calls(), 0);
+    await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
+    await expect(open).toBeVisible();
+    await expect(page.locator('#unlock')).toHaveCount(0);
+    await page.goto(`${origin}/vault?lang=en`);
     await open.click();
     await expect(name).toBeEnabled();
     assert.equal(await calls(), 1);

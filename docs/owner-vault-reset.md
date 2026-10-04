@@ -1,22 +1,26 @@
 # Owner Vault reset preparation (#121)
 
-Status: preparation only. No production reset, service deletion, migration
-renumbering, or release is authorized by this document. The implementation branch
-starts at main `967cbc52d639fc2499b65137626680b2e0e0cc37` (2026-10-04).
-The existing development checkout is untouched.
+Status (2026-10-05): implementation is in progress on
+`feat/issue-121-legacy-vault-retirement`, based on main `95ab1c1`, which includes
+merged PR #105 and PR #125. The first source slice removes the legacy Vault UI
+and 13 v1 HTTP routes while keeping the OwnerWorkspace archive/import/search and
+record editor mounted under the shared VaultSession lifecycle. Consent routes,
+older protocol/native paths, historical tables/migrations, and stored data remain
+for later slices. No production reset, service deletion, migration renumbering,
+or release is authorized here.
 
 ## Source and ordering prerequisites
 
 [Issue #121](https://github.com/masanork/mikaki/issues/121) replaces the historical
 Vault with Owner Vault and creates a fresh deployment; it does not upgrade
-existing accounts or migrate their ciphertext. Its source baseline must include
-the identity features from [PR #105](https://github.com/masanork/mikaki/pull/105).
-At the starting main SHA, #105 is still open and identity migrations 0036–0044
-are absent. Main has 0001–0035 and 0045–0046. A successful rehearsal of those
-37 files is not proof that the identity schema is included.
+existing accounts or migrate their ciphertext. Its source baseline includes the
+identity features from [PR #105](https://github.com/masanork/mikaki/pull/105),
+merged to main as `559a73a`; migrations 0036–0044 are present. The reset remains
+blocked on the remaining Vault retirement, schema/baseline choice, RP
+qualification, and reviewed production inventory.
 
-Integrate and qualify #105 before freezing the reset baseline. Resolve the
-execution order with [#116](https://github.com/masanork/mikaki/issues/116): if its
+Keep #105's identity tables and issuance paths in every intermediate build.
+Resolve the execution order with [#116](https://github.com/masanork/mikaki/issues/116): if its
 incremental import is performed first, record that old environment, then discard
 it at this reset. If reset occurs first, #116 must use the new initialization
 procedure and must not import the old 0036–0044 files. Do not edit an open PR's
@@ -95,17 +99,17 @@ the absence of additional agent, identity-verifier, or RP deployments.
 
 Cloudflare account: `4b749427a0c80c547e726a42aff4b6fc`.
 
-| Resource | Configured target | Planned disposition |
-| --- | --- | --- |
-| OP Worker | `mikaki-auth`, `auth.mikaki.org` | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact |
-| OP D1 | `mikaki-auth`, `f9299d62-2dbf-4bae-ae49-8b75674572d4` | Reset all application state and old `d1_migrations` ledger |
-| Vault R2 | `mikaki-auth-vault` | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening |
-| Claim Worker | `mikaki-auth-claims` | Preserve key boundary; redeploy Owner Vault-only claim release |
-| Claim DB authority | OP `ClaimStore` service binding | No separately configured claim D1; reset authority with OP DB |
-| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org` | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS |
-| Demo D1 | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408` | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB |
-| Demo OP client | `77551450-ec73-4222-972d-cd912d9493d4` | Disable before retirement; omit from fresh seed |
-| FAQ RP | Unresolved | Provision separate RP storage/key and initialize an active OP registration |
+| Resource           | Configured target                                        | Planned disposition                                                                                                         |
+| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| OP Worker          | `mikaki-auth`, `auth.mikaki.org`                         | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact                            |
+| OP D1              | `mikaki-auth`, `f9299d62-2dbf-4bae-ae49-8b75674572d4`    | Reset all application state and old `d1_migrations` ledger                                                                  |
+| Vault R2           | `mikaki-auth-vault`                                      | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening |
+| Claim Worker       | `mikaki-auth-claims`                                     | Preserve key boundary; redeploy Owner Vault-only claim release                                                              |
+| Claim DB authority | OP `ClaimStore` service binding                          | No separately configured claim D1; reset authority with OP DB                                                               |
+| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                      | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                               |
+| Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408` | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                               |
+| Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                   | Disable before retirement; omit from fresh seed                                                                             |
+| FAQ RP             | Unresolved                                               | Provision separate RP storage/key and initialize an active OP registration                                                  |
 
 Configured OP schedules are `* * * * *` and `*/10 * * * *`; demo cleanup is
 `*/15 * * * *`. Suspend all actual writers, including older traffic-bearing
@@ -130,24 +134,37 @@ separately from the fresh baseline; restoring old data reverses the reset.
 
 ## Implementation boundaries before consolidation
 
-| Surface | Required change | Retain |
-| --- | --- | --- |
-| Vault entry and UI | Remove `storage=legacy-v1` / `storage=owner-v2` selection, `VaultRouter` fallback and old profile/note panels | `OwnerWorkspace`, owner session/lease, local conversation search, lock/draft/visibility controls |
-| OP storage | Remove `/vault/attributes/*` and attribute-only persistence/transfer/approved-commit handlers | Owner-key wraps, opaque record heads and ciphertext storage, conditional retries and atomic commit proof |
-| UserInfo | Remove attribute SQL/decryption branch and legacy claim-release handlers; select only explicit record grants | Recipient directory/secret boundary, record envelope, exact consent/source/authority fences and disclosure audit |
-| Agent | Reject v1 grants and authorization details; remove legacy capability/proposal/commit routes and source predicates | Record grant/disclosure, explicit record approval, owner/session authorization, OAuth and per-operation freshness checks |
-| GC | Remove attribute-prefix cursor/head/mutation queries and triggers | Owner record candidates, serialized deleting state, bounded cleanup and head-install guards |
-| Native Vault preview | Remove the old attribute-read resource and its consent/profile authorization; reject the retired audience | Native OIDC login, DPoP and common client/session authentication; any new record read profile needs its own explicit contract |
-| Demo RP | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code |
+The current code slice is only the browser-facing retirement boundary. The
+default `/vault` entry mounts `OwnerWorkspace` inside the shared `VaultSession`;
+the v1 profile, note, passkey transfer and AgentPanel components are removed.
+Thirteen v1 resource/share/release and attribute routes now return 404, including `/vault-api/attributes/:attribute`.
+The two `/vault/oauth/consent` methods and native authorization paths are still
+present. Historical tables, migrations, GC protections and any live data are
+untouched, so this is not a completed Vault cutover.
+The unmounted `OwnerVault`/`OwnerVaultSession` name-and-note qualification
+preview remains outside the product entry; its preview browser test is not part
+of product CI. `VaultSession` and the default `OwnerWorkspace` browser coverage
+remain active.
+
+| Surface              | Required change                                                                                                                                                                                                     | Retain                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Vault entry and UI   | Done in this slice: remove `storage=legacy-v1` / `storage=owner-v2` selection, `VaultRouter` fallback and old profile/note/passkey/AgentPanel components                                                            | `OwnerWorkspace`, shared `VaultSession`, record editor, conversation archive/search, lock/draft/visibility controls           |
+| OP storage           | Done in this slice: remove `/vault/attributes/*`, v1 share/release/recipient-key routes, `/vault-api/attributes/*`, and their attribute handlers                                                                    | Owner-key wraps, opaque record heads and ciphertext storage, record release revoke and atomic commit proof                    |
+| UserInfo             | Record-only ClaimStore selection and recipient-secret boundary are done in merged #125; next retire native legacy-token issuance while retaining the existing-token cross-authority denial fence until expiry/reset | Recipient directory/secret boundary, record envelope, exact consent/source/authority fences and disclosure audit              |
+| Agent                | Reject v1 grants and authorization details; remove legacy capability/proposal/commit routes and source predicates                                                                                                   | Record grant/disclosure, explicit record approval, owner/session authorization, OAuth and per-operation freshness checks      |
+| GC                   | Remove historical attribute-prefix cleanup only with the later baseline/reset; this browser/API slice does not change GC or old data                                                                                | Owner record candidates and, while legacy heads remain, the live-head R2 deletion guard                                       |
+| Native Vault preview | Remove the old attribute-read resource and its consent/profile authorization; reject the retired audience                                                                                                           | Native OIDC login, DPoP and common client/session authentication; any new record read profile needs its own explicit contract |
+| Demo RP              | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links                                                                                                                           | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code                                               |
 
 Do not remove a shared helper merely because its file currently has an attribute
 name. The first refactor extracts owner authentication, Origin checking,
 conditional revision parsing, operation IDs, hashing and authorization helpers
 into `vault_http.rs`, with page/session/asset serving in `vault_ui.rs`. Owner
 record and login callers no longer import these from `vault_attributes.rs`.
-Legacy attribute endpoints remain until their dependent product paths are
-explicitly connected to records or retired. `vault_approved.rs` supplies
-approval-header parsing used by record commits. `vault-crypto.ts` supplies base64 helpers, while
+The removed attribute endpoints stay absent; legacy consent/native and agent
+protocol branches remain until their dependent paths are explicitly connected to
+records or retired. `vault_approved.rs` supplies approval-header parsing used by
+record commits. `vault-crypto.ts` supplies base64 helpers, while
 `agent-crypto.ts` supplies recipient-key validation used by record snapshots.
 Split those shared parts before removing old-format persistence/crypto.
 
@@ -247,7 +264,6 @@ tests passed. Rust formatting, diff whitespace and Markdown links/headings passe
 This is a source refactor with unchanged handlers and guards; it does not retire
 legacy URLs or establish browser/production cutover evidence.
 
-
 Record-only UserInfo refactor (2026-10-04): the OP ClaimStore no longer selects
 format-1 attributes or accepts format-1 disclosure audits. The claim Worker
 removes its format-1 decoder, validation endpoint and direct D1/R2 local-test
@@ -267,6 +283,19 @@ recipient release artifacts and the conformance recipient artifact built.
 Service-authority and targeted strict Node TypeScript checks passed. The broad
 Node check requires the separate probe dependencies and browser Wasm/generated
 policy outputs, which are not installed/generated in this worktree; no errors
-were reported for the changed files. Remaining legacy OP attribute/sharing routes,
-UI, Agent attribute proposal paths and native Vault preview still require removal
-or connection to the supported Owner Vault contracts before #121 is complete.
+were reported for the changed files. The browser/API retirement and record-only
+ClaimStore are complete in source. Remaining work includes native
+Vault authorization/consent, Agent v1 grant/proposal paths, the later
+baseline/reset, and production verification.
+
+Browser/API retirement verification (2026-10-05, branch
+`feat/issue-121-legacy-vault-retirement`): release Worker artifacts regenerated
+with `worker-build --release crates/worker`; `worker-ui.test.ts` and
+`vault-owner-workspace-browser.test.ts` passed (3 tests), preserving the default
+OwnerWorkspace profile/record flow, conversation import/search, deletion and
+scope clearing, session lock/reopen, and reload behavior. `product-journey.test.ts`
+and `legacy-vault-retirement.test.ts` passed (2 tests), including a real
+Passkey/PRF journey and 13 retired-route 404 assertions. `npm run
+check:worker-ui` passed with zero errors or warnings. This slice changes source
+only: no production deployment, database reset, historical migration change, or
+live participant-data deletion was performed.
