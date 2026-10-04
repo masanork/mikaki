@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 use worker::{Request, Response, RouteContext};
 
-use crate::vault_attributes::{
-    error, expected_revision, operation_id, owner, request_hash, same_origin,
-};
+use crate::vault_http::{error, expected_revision, operation_id, owner, request_hash, same_origin};
 use crate::{now_seconds, read_bounded_body};
 
 const SUITE: &str = "PRF-HKDF-SHA256-AES256GCM-v2";

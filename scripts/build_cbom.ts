@@ -80,14 +80,14 @@ const CLAIM_ASSETS: Asset[] = [
     'AES-256-GCM Vault name validation',
     'algorithm',
     { primitive: 'ae', algorithmFamily: 'AES', cryptoFunctions: ['decrypt'] },
-    'crates/userinfo-claim-worker/src/envelope.rs',
+    'crates/userinfo-claim-worker/src/envelope_v2.rs',
     'Aes256Gcm::new_from_slice',
   ],
   [
     'ML-KEM-768 Vault recipient decapsulation',
     'algorithm',
     { primitive: 'kem', algorithmFamily: 'ML-KEM', cryptoFunctions: ['decapsulate'] },
-    'crates/userinfo-claim-worker/src/envelope.rs',
+    'crates/userinfo-claim-worker/src/envelope_v2.rs',
     'setup_receiver::<AesGcm256, HkdfSha256, MlKem768>',
   ],
   [

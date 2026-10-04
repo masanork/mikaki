@@ -1,7 +1,7 @@
 //! Owner-authorized forwarding to the separate agent recipient service.
 use worker::{Headers, Method, Request, RequestInit, Response, RouteContext};
 
-use crate::vault_attributes::{error, owner, same_origin};
+use crate::vault_http::{error, owner, same_origin};
 
 pub async fn route(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
     let Some(path) = context.param("operation") else {

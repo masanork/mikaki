@@ -14,6 +14,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Review conformance evidence | [WebAuthn](../local/conformance/README.md) and [OIDC](oidc-core-conformance.md) |
 | Review build evidence | [Supply chain](supply-chain.md) and [metrics](../metrics/README.md) |
 | Prepare release or recovery | [Release inventory, migration rehearsal and recovery gates](release-and-recovery.md) |
+| Prepare the Owner Vault reset | [Issue #121 source dependencies, resource inventory and cutover sequence](owner-vault-reset.md) |
 | Review UI and product quality | [Login preview](login-ui-preview.md), [product screens](product-ui-preview.md), and [quality gates](product-quality.md) |
 | Review the next Vault experience | [Human/agent journeys, data semantics and unified unlock](vault-product-model.md), with a [fictional interactive preview](vault-usage-preview/README.md) |
 | Review encrypted conversation search | [Sorane-inspired SQLite/FTS5 investigation and implementation gates](vault-thread-search.md) |

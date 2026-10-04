@@ -8,7 +8,7 @@ pub(crate) use wallet::{authorize_get, authorize_post, par};
 
 use crate::{
     WorkersCryptoRandom, configured_issuer, now_seconds, read_bounded_body,
-    vault_attributes::{error, owner},
+    vault_http::{error, owner},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use mikaki_identity::{

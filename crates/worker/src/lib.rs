@@ -49,6 +49,8 @@ mod vault_claim_releases;
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 mod vault_gc;
 #[cfg(target_arch = "wasm32")]
+mod vault_http;
+#[cfg(target_arch = "wasm32")]
 mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_resource;
@@ -60,6 +62,8 @@ mod vault_owner_keys;
 mod vault_owner_records;
 #[cfg(target_arch = "wasm32")]
 mod vault_record_sharing;
+#[cfg(target_arch = "wasm32")]
+mod vault_ui;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -2482,10 +2486,10 @@ pub async fn main(
         .post_async("/identity/issuer/credential", identity::credential)
         .post_async("/identity/attester/challenge", identity::attester_challenge)
         .post_async("/identity/attester/attestation", identity::attester_redeem)
-        .get_async("/vault", vault_attributes::page)
+        .get_async("/vault", vault_ui::page)
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
-        .get_async("/vault/session", vault_attributes::session)
+        .get_async("/vault/session", vault_ui::session)
         .get_async(
             "/vault/record-recipient-keys/userinfo",
             vault_record_sharing::recipient,
@@ -2554,9 +2558,9 @@ pub async fn main(
         .get_async("/vault/releases/name", vault_claim_releases::status)
         .post_async("/vault/releases/name", vault_claim_releases::grant)
         .delete_async("/vault/releases/name", vault_claim_releases::revoke)
-        .get_async("/vault/vault.js", vault_attributes::script)
-        .get_async("/vault/search.js", vault_attributes::search_script)
-        .get_async("/vault/sqlite3.wasm", vault_attributes::search_wasm)
+        .get_async("/vault/vault.js", vault_ui::script)
+        .get_async("/vault/search.js", vault_ui::search_script)
+        .get_async("/vault/sqlite3.wasm", vault_ui::search_wasm)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .get_async(
             "/vault-api/attributes/:attribute",
@@ -2664,9 +2668,9 @@ pub async fn scheduled(
     if auth_resources::collect(&env).await.is_err() {
         worker::console_error!("{{\"event\":\"auth_gc_failure\"}}");
     }
-    identity::purge(&env)
-        .await
-        .expect("Identity retention cleanup failed");
+    if identity::purge(&env).await.is_err() {
+        worker::console_error!("{{\"event\":\"identity_gc_failure\"}}");
+    }
     logout_delivery::run_due(&env)
         .await
         .expect("Logout delivery failed");

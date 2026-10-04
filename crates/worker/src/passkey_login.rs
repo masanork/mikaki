@@ -114,7 +114,7 @@ pub(super) async fn web_signin(
 ) -> worker::Result<worker::Response> {
     let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
     let Some(issuer) = configured_issuer(&issuer) else {
-        return crate::vault_attributes::error(503, "invalid_configuration");
+        return crate::vault_http::error(503, "invalid_configuration");
     };
     let query = request
         .url()?
@@ -127,7 +127,7 @@ pub(super) async fn web_signin(
             .any(|(key, value)| key != "lang" || !matches!(value.as_str(), "ja" | "en"))
         || query.len() > 1
     {
-        return crate::vault_attributes::error(400, "invalid_request");
+        return crate::vault_http::error(400, "invalid_request");
     }
     let mut continuation = url::Url::parse(&format!("{issuer}/vault"))
         .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
@@ -135,10 +135,7 @@ pub(super) async fn web_signin(
         continuation.query_pairs_mut().append_pair("lang", lang);
     }
     let db = context.env.d1("DB")?;
-    if crate::vault_attributes::owner(&request, &db)
-        .await?
-        .is_some()
-    {
+    if crate::vault_http::owner(&request, &db).await?.is_some() {
         return Ok(worker::Response::builder()
             .with_status(302)
             .with_header("Location", continuation.as_str())?
@@ -157,7 +154,7 @@ pub(super) async fn web_signin(
     let result = db.prepare("INSERT INTO web_login_transaction(tx_id,browser_hash,authorization_url,challenge,expires_at) SELECT ?1,?2,?3,?4,unixepoch()+300 WHERE (SELECT count(*) FROM web_login_transaction WHERE consumed=0 AND expires_at>unixepoch())<1000 AND (SELECT count(*) FROM web_login_transaction WHERE browser_hash=?2 AND consumed=0 AND expires_at>unixepoch())<5")
         .bind(&[JsValue::from_str(&tx),JsValue::from_str(&hash(&browser)),JsValue::from_str(continuation.as_str()),JsValue::from_str(&challenge)])?.run().await?;
     if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
-        return crate::vault_attributes::error(429, "too_many_requests");
+        return crate::vault_http::error(429, "too_many_requests");
     }
     let mut login_url = url::Url::parse(&format!("{issuer}/login?tx={tx}"))
         .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
@@ -184,11 +181,11 @@ pub(super) async fn start_owner(
     db: &worker::d1::D1Database,
 ) -> worker::Result<worker::Response> {
     if context.env.service("AGENT_ACCESS").is_err() {
-        return crate::vault_attributes::error(503, "agent_service_unavailable");
+        return crate::vault_http::error(503, "agent_service_unavailable");
     }
     let issuer = context.env.var("MIKAKI_ISSUER")?.to_string();
     let Some(issuer) = configured_issuer(&issuer) else {
-        return crate::vault_attributes::error(503, "invalid_configuration");
+        return crate::vault_http::error(503, "invalid_configuration");
     };
     let requested = request.url()?;
     let query = requested.query_pairs().collect::<Vec<_>>();
@@ -204,7 +201,7 @@ pub(super) async fn start_owner(
             .any(|(key, _)| key != "agent_oauth_request" && key != "lang")
         || query.iter().filter(|(key, _)| key == "lang").count() > 1
     {
-        return crate::vault_attributes::error(400, "invalid_request");
+        return crate::vault_http::error(400, "invalid_request");
     }
     let request_id = ids[0].1.as_ref();
     let mut continuation = url::Url::parse(&format!("{issuer}/vault"))
@@ -214,7 +211,7 @@ pub(super) async fn start_owner(
         .append_pair("agent_oauth_request", request_id);
     if let Some((_, lang)) = query.iter().find(|(key, _)| key == "lang") {
         if !matches!(lang.as_ref(), "ja" | "en") {
-            return crate::vault_attributes::error(400, "invalid_request");
+            return crate::vault_http::error(400, "invalid_request");
         }
         continuation.query_pairs_mut().append_pair("lang", lang);
     }
@@ -233,7 +230,7 @@ pub(super) async fn start_owner(
         JsValue::from_str(&challenge),JsValue::from_f64((time+300) as f64),JsValue::from_str(request_id),JsValue::from_str(&issuer)])?
       .run().await?;
     if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
-        return crate::vault_attributes::error(409, "authorization_unavailable");
+        return crate::vault_http::error(409, "authorization_unavailable");
     }
     let mut login_url = url::Url::parse(&format!("{issuer}/login?tx={tx}"))
         .map_err(|_| worker::Error::RustError("invalid_configuration".into()))?;
@@ -532,7 +529,7 @@ pub(super) async fn finish(
         let destination = url::Url::parse(&login.authorization_url)
             .map_err(|_| worker::Error::RustError("invalid continuation".into()))?;
         if destination.origin().ascii_serialization() != issuer || destination.path() != "/vault" {
-            return crate::vault_attributes::error(400, "invalid_continuation");
+            return crate::vault_http::error(400, "invalid_continuation");
         }
     }
     if login.owner_login == 2 {
@@ -545,14 +542,14 @@ pub(super) async fn finish(
                 .iter()
                 .any(|(key, value)| key != "lang" || !matches!(value.as_ref(), "ja" | "en"))
         {
-            return crate::vault_attributes::error(400, "invalid_continuation");
+            return crate::vault_http::error(400, "invalid_continuation");
         }
     }
     let login_table = match login.owner_login {
         0 => "login_transaction",
         1 => "owner_login_transaction",
         2 => "web_login_transaction",
-        _ => return crate::vault_attributes::error(400, "invalid_request"),
+        _ => return crate::vault_http::error(400, "invalid_request"),
     };
     let credential = db
         .prepare(

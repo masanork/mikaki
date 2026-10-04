@@ -1,6 +1,12 @@
 # Vault recipient key and envelope format
 
-**Candidate, 2026-09-24. Production writes remain disabled by D1 policy.** The active generation-1 UserInfo key is a raw ML-KEM-768 encapsulation key, not an OIDC signing key or a JWK. The independent claim Worker holds its 64-byte decapsulation seed. The browser [sender](../crates/worker/ui/vault-recipient-envelope.ts) and claim Worker [receiver](../crates/userinfo-claim-worker/src/envelope.rs) implement the candidate as product source modules. The [independent Node harness](../design/probes/pqc/product-envelope.test.ts) and [Chromium harness](../design/probes/pqc/browser.ts) open browser-generated envelopes with RustCrypto and check binding failures. The [claim Worker unit test](../crates/userinfo-claim-worker/src/envelope.rs) opens the checked-in noble fixture. A [read-only production probe](../scripts/probe-recipient-envelope.ts) verified a synthetic product envelope with the live Secrets Store seed and rejected owner/ciphertext substitutions. The Vault UI and API can create a system Grant and store the frame when the D1 policy is enabled. RP claim release and full production owner flow remain unverified.
+**Historical format 1 candidate, 2026-09-24; receiver retired by #121.**
+The production claim Worker no longer validates or decrypts this format. Its
+receiver and release-authority SQL were removed; the retained sender/probes
+record the earlier experiment while legacy UI cleanup continues. The generation-1
+ML-KEM key remains usable with the supported [record-v2 profile](vault-record-userinfo.md).
+Historical local/probe success does not qualify production owner approval or
+profile delivery.
 
 ## Existing key record
 

@@ -15,7 +15,7 @@ const verifierMockConfig = fileURLToPath(
   new URL('wrangler.recipient-verifier-mock.jsonc', import.meta.url),
 );
 
-test('owner recipient directory fails closed through claim Worker binding', async () => {
+test('record recipient directory fails closed through ClaimStore when the secret binding is absent', async () => {
   const harness = createTestHarness({
     root,
     workers: [{ configPath: opConfig }, { configPath: claimsConfig }],
@@ -23,9 +23,7 @@ test('owner recipient directory fails closed through claim Worker binding', asyn
   try {
     await harness.listen();
     const op = harness.getWorker('mikaki-op-worker');
-    const claims = harness.getWorker('mikaki-userinfo-claim-worker');
     await op.applyD1Migrations('DB');
-    await claims.applyD1Migrations('DB');
     const env = await op.getEnv();
     const secret = randomBytes(32).toString('base64url');
     const cookieHash = createHash('sha256').update(secret).digest('base64url');
@@ -41,7 +39,7 @@ test('owner recipient directory fails closed through claim Worker binding', asyn
         future - 3600,
       ),
     ]);
-    const url = 'https://mikaki.test/vault/recipient-keys/userinfo';
+    const url = 'https://mikaki.test/vault/record-recipient-keys/userinfo';
     assert.equal((await op.fetch(url)).status, 401);
     const headers = { Cookie: `__Host-op-sso=${secret}` };
     assert.equal((await op.fetch(url, { headers })).status, 404);
@@ -105,7 +103,7 @@ test('owner receives only a verified active recipient directory', async () => {
     )
       .bind(future - 3599, keyId)
       .run();
-    const response = await op.fetch('https://mikaki.test/vault/recipient-keys/userinfo', {
+    const response = await op.fetch('https://mikaki.test/vault/record-recipient-keys/userinfo', {
       headers: { Cookie: `__Host-op-sso=${secret}` },
     });
     assert.equal(response.status, 200, await response.clone().text());
@@ -113,7 +111,7 @@ test('owner receives only a verified active recipient directory', async () => {
     assert.deepEqual(await response.json(), {
       service_id: 'userinfo',
       algorithm: 'ML-KEM-768',
-      envelope_suite: 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1',
+      envelope_suite: 'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-record-v2',
       key_id: keyId,
       public_key: publicKey.toString('base64url'),
       generation: 1,

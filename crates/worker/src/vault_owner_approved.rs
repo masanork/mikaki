@@ -3,7 +3,7 @@ use wasm_bindgen::JsValue;
 use worker::{D1Database, D1PreparedStatement};
 
 use crate::vault_approved::Approval;
-use crate::vault_attributes::Owner;
+use crate::vault_http::Owner;
 
 pub(crate) async fn retry_owner(db: &D1Database, owner: &Owner) -> worker::Result<bool> {
     Ok(db

@@ -317,25 +317,15 @@ mod tests {
             )
             .is_none()
         );
-        let legacy = crate::envelope::UserInfoBinding {
-            origin: &source.origin,
-            account_id: &source.owner_id,
-            revision: source.revision,
-            ciphertext: &ciphertext,
-        };
-        assert!(
-            crate::envelope::open_userinfo_data_key(&seed, &public, key_id, 1, &frame, &legacy)
-                .is_none()
-        );
-        assert!(
-            crate::envelope::decrypt_name_ciphertext(
-                &key,
-                &source.origin,
-                source.revision,
-                &ciphertext
-            )
-            .is_none()
-        );
+        // Retired v1 headers cannot enter the record-only decoder.
+        let mut legacy_frame = frame.clone();
+        legacy_frame[..4].copy_from_slice(b"MKVE");
+        legacy_frame[4] = 1;
+        assert!(open(&source, &authority, &legacy_frame, &ciphertext).is_none());
+        let mut legacy_ciphertext = ciphertext.clone();
+        legacy_ciphertext[0] = 1;
+        assert!(open(&source, &authority, &frame, &legacy_ciphertext).is_none());
+        assert!(decrypt_record_name(&key, &source, &legacy_ciphertext).is_none());
         let mut changed = ciphertext.clone();
         changed[13] ^= 1;
         assert!(open(&source, &authority, &frame, &changed).is_none());

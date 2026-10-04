@@ -1,5 +1,5 @@
 //! Explicit v2 saved-name sharing. The OP handles only ciphertext and routing metadata.
-use crate::vault_attributes::{
+use crate::vault_http::{
     Owner, error, expected_revision, operation_id, owner, owner_allowed, request_hash, same_origin,
 };
 use crate::{conformance_deployment, read_bounded_body, vault_authzen};

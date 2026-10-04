@@ -174,6 +174,30 @@ test('product ingress budgets are atomic across isolates and expired state conve
     await DB.prepare('DROP TRIGGER fail_gc').run();
     await worker.scheduled({ cron: '* * * * *' });
     assert.equal(await DB.prepare('SELECT count(*) AS n FROM token_issue').first('n'), 0);
+    // A failed identity purge is logged instead of aborting the scheduled handler.
+    await DB.prepare(
+      "INSERT INTO identity_transaction(tx_id,poll_hash,holder_json,document_json,policy_hash,created_at,expires_at,state) VALUES('expired-identity','poll','{}','{}','policy',?,?, 'pending')",
+    )
+      .bind(now - 100, now - 1)
+      .run();
+    await DB.prepare(
+      "CREATE TRIGGER fail_identity_gc BEFORE DELETE ON identity_transaction BEGIN SELECT RAISE(ABORT,'injected identity cleanup failure'); END",
+    ).run();
+    await worker.scheduled({ cron: '* * * * *' });
+    assert.equal(
+      await DB.prepare(
+        "SELECT count(*) AS n FROM identity_transaction WHERE tx_id='expired-identity'",
+      ).first('n'),
+      1,
+    );
+    await DB.prepare('DROP TRIGGER fail_identity_gc').run();
+    await worker.scheduled({ cron: '* * * * *' });
+    assert.equal(
+      await DB.prepare(
+        "SELECT count(*) AS n FROM identity_transaction WHERE tx_id='expired-identity'",
+      ).first('n'),
+      0,
+    );
     assert.equal((await DB.prepare('PRAGMA foreign_key_check').all()).results.length, 0);
   } finally {
     await harness.close();

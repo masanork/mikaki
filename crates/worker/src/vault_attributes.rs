@@ -8,7 +8,10 @@ use wasm_bindgen::JsValue;
 use worker::{D1Database, Request, Response, RouteContext};
 
 use crate::vault_authzen;
-use crate::{WorkersCryptoRandom, browser_cookie, now_seconds, read_bounded_body};
+use crate::vault_http::{
+    error, expected_revision, operation_id, owner, owner_allowed, request_hash, same_origin,
+};
+use crate::{WorkersCryptoRandom, now_seconds, read_bounded_body};
 
 const MAX_REQUEST_BYTES: usize = 48 * 1024;
 const MAX_CIPHERTEXT_BYTES: usize = 24 * 1024;
@@ -47,13 +50,6 @@ struct WriteLimits {
     slots: i64,
 }
 
-#[derive(Deserialize)]
-pub(crate) struct Owner {
-    pub(crate) account_id: String,
-    pub(crate) secret_hash: String,
-    pub(crate) credential_id: String,
-}
-
 #[derive(Serialize)]
 struct AttributeResponse<'a> {
     format_version: u8,
@@ -68,13 +64,6 @@ struct RevisionResponse {
     deleted: bool,
 }
 
-pub(crate) fn error(status: u16, code: &str) -> worker::Result<Response> {
-    Response::builder()
-        .with_status(status)
-        .with_header("Cache-Control", "no-store")?
-        .from_json(&serde_json::json!({ "error": code }))
-}
-
 fn attribute_id(context: &RouteContext<()>) -> Option<&str> {
     let id = context.param("attribute")?.as_str();
     if id.is_empty()
@@ -86,32 +75,6 @@ fn attribute_id(context: &RouteContext<()>) -> Option<&str> {
         return None;
     }
     Some(id)
-}
-
-pub(crate) async fn owner(request: &Request, db: &D1Database) -> worker::Result<Option<Owner>> {
-    let Some(cookie) = browser_cookie(request, "__Host-op-sso")? else {
-        return Ok(None);
-    };
-    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
-    let hash = URL_SAFE_NO_PAD.encode(Sha256::digest(cookie.as_bytes()));
-    db.prepare(
-        "SELECT ss.account_id,sx.secret_hash,ss.credential_id FROM sso_context sx \
-         JOIN sso_session ss ON ss.sso_id=sx.sso_id \
-         JOIN account_security a ON a.account_id=ss.account_id \
-         JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
-         WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>?2 \
-         AND a.active=1 AND a.epoch=ss.epoch AND c.active=1",
-    )
-    .bind(&[JsValue::from_str(&hash), JsValue::from_f64(now as f64)])?
-    .first::<Owner>(None)
-    .await
-}
-
-#[derive(Serialize)]
-struct SessionResponse<'a> {
-    session_tag: String,
-    credential_id: &'a str,
-    account_id: &'a str,
 }
 
 #[derive(Deserialize)]
@@ -199,156 +162,6 @@ pub async fn recipient_key(
             generation: key.generation,
             revision: key.revision,
         })
-}
-
-pub async fn session(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    let db = context.env.d1("DB")?;
-    let Some(owner) = owner(&request, &db).await? else {
-        return error(401, "authentication_required");
-    };
-    Response::builder()
-        .with_header("Cache-Control", "no-store")?
-        .from_json(&SessionResponse {
-            session_tag: crate::passkey_login::hash(&format!(
-                "vault-session-v1:{}",
-                owner.secret_hash
-            )),
-            credential_id: &owner.credential_id,
-            account_id: &owner.account_id,
-        })
-}
-
-pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    let db = context.env.d1("DB")?;
-    let Some(_page_owner) = owner(&request, &db).await? else {
-        if request
-            .url()?
-            .query_pairs()
-            .any(|(key, _)| key == "agent_oauth_request")
-        {
-            return crate::passkey_login::start_owner(&request, &context, &db).await;
-        }
-        return crate::passkey_login::web_signin(request, context).await;
-    };
-    // Presentation only; every data operation still verifies live owner authority.
-    // The default workspace is v2. Existing v1 records remain available through
-    // the explicit legacy presentation without imports, rewrites or resets.
-    let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
-    let mut html = include_str!("../ui/vault.html").to_owned();
-    let replacements = [
-        ("{{locale}}", strings.locale),
-        ("{{title}}", strings.message("vaultTitle")),
-        ("{{vault_format}}", "owner-v2"),
-    ];
-    for (key, value) in replacements {
-        html = html.replace(key, &crate::i18n::html_escape(value));
-    }
-    Response::builder()
-        .with_header("Cache-Control", "no-store")?
-        .with_header("Referrer-Policy", "no-referrer")?
-        .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
-        .from_html(html)
-}
-
-pub async fn script(_request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    let script = include_str!(concat!(env!("OUT_DIR"), "/vault.js"));
-    Ok(Response::builder()
-        .with_header("Content-Type", "text/javascript; charset=utf-8")?
-        .with_header("Cache-Control", "no-store")?
-        .with_header("X-Content-Type-Options", "nosniff")?
-        .fixed(script.as_bytes().to_vec()))
-}
-
-// Public, immutable build inputs only. No owner data or authentication material.
-pub async fn search_script(
-    _request: Request,
-    context: RouteContext<()>,
-) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    Ok(Response::builder()
-        .with_header("Content-Type", "text/javascript; charset=utf-8")?
-        .with_header("Cache-Control", "no-store")?
-        .with_header("X-Content-Type-Options", "nosniff")?
-        .with_header(
-            "Content-Security-Policy",
-            "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'",
-        )?
-        .fixed(include_bytes!(concat!(env!("OUT_DIR"), "/search.js")).to_vec()))
-}
-
-pub async fn search_wasm(_request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if context.env.bucket("VAULT_BLOBS").is_err() {
-        return error(404, "not_found");
-    }
-    Ok(Response::builder()
-        .with_header("Content-Type", "application/wasm")?
-        .with_header("Cache-Control", "no-store")?
-        .with_header("X-Content-Type-Options", "nosniff")?
-        .fixed(include_bytes!(concat!(env!("OUT_DIR"), "/sqlite3.wasm")).to_vec()))
-}
-
-pub(crate) fn same_origin(request: &Request) -> worker::Result<bool> {
-    let Some(origin) = request.headers().get("Origin")? else {
-        return Ok(false);
-    };
-    Ok(origin == request.url()?.origin().ascii_serialization())
-}
-
-pub(crate) fn expected_revision(request: &Request) -> worker::Result<Option<i64>> {
-    let none_match = request.headers().get("If-None-Match")?;
-    let match_header = request.headers().get("If-Match")?;
-    if none_match.is_some() && match_header.is_some() {
-        return Ok(None);
-    }
-    if none_match.as_deref() == Some("*") {
-        return Ok(Some(-1));
-    }
-    let Some(value) = match_header else {
-        return Ok(None);
-    };
-    let Some(digits) = value.strip_prefix('"').and_then(|x| x.strip_suffix('"')) else {
-        return Ok(None);
-    };
-    let Ok(revision) = digits.parse::<i64>() else {
-        return Ok(None);
-    };
-    Ok((revision > 0 && revision < 9_007_199_254_740_991).then_some(revision))
-}
-
-pub(crate) fn operation_id(request: &Request) -> worker::Result<Option<String>> {
-    let Some(id) = request.headers().get("X-Operation-ID")? else {
-        return Ok(None);
-    };
-    if id.len() != 43
-        || !id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-    {
-        return Ok(None);
-    }
-    Ok(Some(id))
-}
-
-pub(crate) fn request_hash(method: &str, attribute: &str, expected: i64, body: &[u8]) -> String {
-    let mut hash = Sha256::new();
-    hash.update(method.as_bytes());
-    hash.update([0]);
-    hash.update(attribute.as_bytes());
-    hash.update([0]);
-    hash.update(expected.to_be_bytes());
-    hash.update(body);
-    URL_SAFE_NO_PAD.encode(hash.finalize())
 }
 
 async fn mutation(
@@ -791,11 +604,6 @@ async fn write(
         return mutation_response(previous, attribute, &hash, deleted);
     }
     error(409, "revision_conflict")
-}
-
-pub(crate) fn owner_allowed(account: &str, attribute: &str, action: &str) -> bool {
-    let evaluation = vault_authzen::owner_evaluation(account, action, account, attribute);
-    vault_authzen::evaluate_owner(&evaluation, account, attribute).decision
 }
 
 #[derive(Deserialize)]

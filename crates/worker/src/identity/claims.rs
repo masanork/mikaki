@@ -1,6 +1,6 @@
 //! Explicit RP/field consent for linked static document data, separate from Vault claims.
 use super::*;
-use crate::vault_attributes::Owner;
+use crate::vault_http::Owner;
 use worker::D1Database;
 
 pub(crate) const CLAIM: &str = "mikaki_linked_document";

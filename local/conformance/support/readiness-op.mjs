@@ -1,5 +1,6 @@
 // Disposable local fault-injection adapter; never used by production Wrangler configs.
 import op from '../../../crates/worker/build/worker/shim.mjs';
+export { ClaimStore } from '../../../crates/worker/service/entrypoint.ts';
 
 const heads = [];
 const dependencies = [];

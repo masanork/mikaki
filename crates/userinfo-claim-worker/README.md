@@ -1,16 +1,16 @@
 # UserInfo recipient boundary
 
-This private Rust Worker holds the UserInfo recipient ML-KEM seed in Secrets Store. It implements recipient-key verification, envelope validation, readiness and consented name decryption. The OP calls it through `USERINFO_CLAIMS`; it has no public route or preview URL.
+This private Rust Worker holds the UserInfo recipient ML-KEM seed in Secrets Store. It implements recipient-key verification, record-v2 envelope validation, readiness and consented Owner Vault name decryption. The OP calls it through `USERINFO_CLAIMS`; it has no public route or preview URL.
 
 The production configuration has no D1 or R2 binding. `CLAIM_STORE` selects eligible ciphertext and metadata through the OP's named `ClaimStore` entrypoint. A conditional disclosure audit repeats live authorization after decryption, so changed consent/head/session/key state prevents release. The private seed never leaves this Worker. Missing bindings, invalid envelopes, disabled keys, secret mismatches and failed audit fail closed.
 
-The local fixture configuration explicitly enables `MIKAKI_LEGACY_CLAIM_STORE=local-test` for direct test storage. The positive live-secret suite runs the new service boundary with no downstream storage bindings. Requests are read with streaming size bounds. This isolates storage authority, not plaintext: the recipient and OP temporarily see an approved disclosed name, and the RP receives that plaintext.
+Local and production configurations use the same named service boundary without downstream D1/R2 bindings. The former `MIKAKI_LEGACY_CLAIM_STORE` escape hatch and format-1 decoder are removed. Legacy heads/grants/consent do not authorize a name disclosure. The positive record-v2 suite uses real local Secrets Store bindings and the Rust Workers. Requests are read with streaming size bounds. This isolates storage authority, not plaintext: the recipient and OP temporarily see an approved disclosed name, and the RP receives that plaintext.
 
 ```sh
 worker-build --release crates/worker
 worker-build --release crates/userinfo-claim-worker
 worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
-node --test local/conformance/userinfo-claim-worker.test.ts local/conformance/userinfo-live-secret.test.ts local/conformance/service-boundaries.test.ts
+node --test local/conformance/userinfo-claim-worker.test.ts local/conformance/vault-record-userinfo-live.test.ts local/conformance/service-boundaries.test.ts
 cargo test --locked -p mikaki-userinfo-claim-worker
 ```
 

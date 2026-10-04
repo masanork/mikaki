@@ -16,7 +16,7 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
       'utf8',
     ),
   );
-  config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
+  config.main = new URL('../../crates/worker/service/entrypoint.ts', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = new URL(
     '../../crates/worker/migrations',
     import.meta.url,
