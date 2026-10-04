@@ -117,15 +117,7 @@ async function main() {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   const opConfig = 'crates/worker/wrangler.production.jsonc';
-  const migrations = wrangler([
-    'd1',
-    'migrations',
-    'list',
-    'DB',
-    '--remote',
-    '--config',
-    opConfig,
-  ]);
+  const migrations = wrangler(['d1', 'migrations', 'list', 'DB', '--remote', '--config', opConfig]);
   assert.ok(
     migrations.includes('No migrations to apply'),
     'Pending migrations require manual reconciliation before deployment',
