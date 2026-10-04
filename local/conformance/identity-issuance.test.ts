@@ -1953,6 +1953,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
           .setProtectedHeader({ typ: 'dpop+jwt', alg: 'ES256', jwk: dpopJwk })
           .sign(dpopKey.privateKey);
       let pushed: Awaited<ReturnType<typeof haipPush>>;
+      let replayProof: string | undefined;
       if (configuration === 'linked_document') {
         const challenge = await haipPush({ ...parAuth, DPoP: await parDpop() }, configuration);
         assert.equal(challenge.status, 400);
@@ -1974,11 +1975,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         );
         const proof = await parDpop(nonce);
         pushed = await haipPush({ ...parAuth, DPoP: proof }, configuration);
-        assert.equal(
-          (await haipPush({ ...(await clientHeaders()), DPoP: proof }, configuration)).status,
-          400,
-          'PAR DPoP replay must fail',
-        );
+        replayProof = proof;
       } else {
         pushed = await haipPush(parAuth, configuration, haip, {
           dpop_jkt: await calculateJwkThumbprint(dpopJwk),
@@ -1986,6 +1983,13 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       }
       const pushedBody = await pushed.text();
       assert.equal(pushed.status, 201, pushedBody);
+      if (replayProof) {
+        assert.equal(
+          (await haipPush({ ...(await clientHeaders()), DPoP: replayProof }, configuration)).status,
+          400,
+          'PAR DPoP replay must fail',
+        );
+      }
       assert.equal((await haipPush(parAuth, configuration)).status, 400, 'PAR PoP replay');
       const uri = JSON.parse(pushedBody).request_uri;
       const page = await haip.fetch(

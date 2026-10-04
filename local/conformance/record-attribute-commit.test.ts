@@ -872,12 +872,37 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
           'owner_note',
           1,
         );
+        // Historical rows can still exist after the HTTP API is retired. Seed
+        // them in the disposable DB instead of calling the removed writer.
+        const seedLegacy = async (revision: number, value: typeof legacy) => {
+          const objectKey = `vault/${owner.account}/owner_note/${revision}/${id()}`;
+          await env.VAULT_BLOBS.put(objectKey, Buffer.from(value.ciphertext, 'base64url'));
+          await env.DB.prepare(
+            `INSERT INTO vault_attribute_head
+             (account_id,attribute_id,revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted,updated_at)
+             VALUES(?,'owner_note',?,1,?,?,?,0,unixepoch())
+             ON CONFLICT(account_id,attribute_id) DO UPDATE SET
+             revision=excluded.revision,object_key=excluded.object_key,
+             ciphertext_sha256=excluded.ciphertext_sha256,owner_envelope=excluded.owner_envelope,
+             updated_at=excluded.updated_at`,
+          )
+            .bind(
+              owner.account,
+              revision,
+              objectKey,
+              hash(Buffer.from(value.ciphertext, 'base64url')),
+              value.owner_envelope,
+            )
+            .run();
+          return objectKey;
+        };
+        await seedLegacy(1, legacy);
         const response = await op.fetch(`${origin}/vault/attributes/owner_note`, {
           method: 'PUT',
           headers: { ...owner.headers, 'X-Operation-ID': id(), 'If-None-Match': '*' },
           body: JSON.stringify(legacy),
         });
-        assert.equal(response.status, 200, await response.clone().text());
+        assert.equal(response.status, 404, await response.clone().text());
         const p = await propose(owner);
         assert.equal(p.target.revision, 0);
         await approve(owner, p);
@@ -914,16 +939,41 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
               body: JSON.stringify(changed),
             })
           ).status,
-          200,
+          404,
         );
+        assert.equal(
+          (
+            await env.DB.prepare(
+              "SELECT revision FROM vault_attribute_head WHERE account_id=? AND attribute_id='owner_note'",
+            )
+              .bind(owner.account)
+              .first()
+          ).revision,
+          1,
+        );
+        const changedKey = await seedLegacy(2, changed);
         assert.equal((await commit(owner, p, c)).status, 200);
         assert.deepEqual((await reopen(owner)).value, p.value);
         const untouched = await op.fetch(`${origin}/vault/attributes/owner_note`, {
           headers: owner.headers,
         });
-        const legacySaved = (await untouched.json()) as OwnerRecord & { revision: number };
+        assert.equal(untouched.status, 404);
+        const legacySaved = await env.DB.prepare(
+          "SELECT revision,object_key,ciphertext_sha256,owner_envelope FROM vault_attribute_head WHERE account_id=? AND attribute_id='owner_note'",
+        )
+          .bind(owner.account)
+          .first();
         assert.equal(legacySaved.revision, 2);
-        assert.equal(legacySaved.ciphertext, changed.ciphertext);
+        assert.equal(legacySaved.object_key, changedKey);
+        assert.equal(legacySaved.owner_envelope, changed.owner_envelope);
+        assert.equal(
+          legacySaved.ciphertext_sha256,
+          hash(Buffer.from(changed.ciphertext, 'base64url')),
+        );
+        assert.equal(
+          base64(new Uint8Array(await (await env.VAULT_BLOBS.get(changedKey)).arrayBuffer())),
+          changed.ciphertext,
+        );
       },
     );
 
