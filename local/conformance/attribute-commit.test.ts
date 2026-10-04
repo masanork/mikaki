@@ -83,9 +83,12 @@ test('approved note commits exact ciphertext once; proof, failures, retries, con
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-commit-'));
   // Fault injection wraps the real OP entrypoint, changing only R2.put for a test flag.
   const shim = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
+  const authorityEntrypoint = new URL('../../crates/worker/service/entrypoint.ts', import.meta.url)
+    .pathname;
   await writeFile(
     `${directory}/op.mjs`,
     `import Op from ${JSON.stringify(shim)};
+    export { AgentStore } from ${JSON.stringify(authorityEntrypoint)};
     export default {async fetch(request,env,ctx){
       const row=await env.DB.prepare('SELECT enabled FROM commit_test_fault').first();
       const bucket=new Proxy(env.VAULT_BLOBS,{get(target,key){
@@ -103,6 +106,7 @@ test('approved note commits exact ciphertext once; proof, failures, retries, con
         config: {
           name: 'mikaki-op-agent-local',
           main: `${directory}/op.mjs`,
+          rules: [{ type: 'Text', globs: ['**/*.sql'], fallthrough: true }],
           compatibility_date: '2026-09-28',
           d1_databases: [
             {
