@@ -6,12 +6,8 @@ mod identity_reader;
 mod identity_wallet;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod mobile_oidc;
-#[cfg(any(target_os = "android", target_os = "ios"))]
-mod mobile_vault;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod native_oidc;
-#[cfg(any(target_os = "android", target_os = "ios", test))]
-mod vault_dpop;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -57,9 +53,10 @@ pub fn run() {
             native_oidc::cancel_native_login,
             native_oidc::start_desktop_login
         ]);
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_native_dpop::init());
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder
-        .plugin(tauri_plugin_native_dpop::init())
         .manage(mobile_oidc::MobileAuthState::default())
         .invoke_handler(tauri::generate_handler![
             identity_events::subscribe_identity_updates,
@@ -90,10 +87,7 @@ pub fn run() {
             mobile_oidc::mobile_auth_status,
             mobile_oidc::clear_native_session,
             mobile_oidc::cancel_native_login,
-            mobile_oidc::start_mobile_login,
-            mobile_oidc::start_mobile_vault_read,
-            mobile_oidc::check_mobile_vault_key,
-            mobile_oidc::read_mobile_vault_ciphertext
+            mobile_oidc::start_mobile_login
         ])
         .setup(|app| {
             let handle = app.handle().clone();

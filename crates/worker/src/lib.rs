@@ -50,9 +50,6 @@ mod vault_gc;
 #[cfg(target_arch = "wasm32")]
 mod vault_http;
 #[cfg(target_arch = "wasm32")]
-mod vault_oauth_consent;
-#[cfg(target_arch = "wasm32")]
-#[cfg(target_arch = "wasm32")]
 mod vault_owner_approved;
 #[cfg(target_arch = "wasm32")]
 mod vault_owner_keys;
@@ -182,25 +179,6 @@ struct AuthorizationCodeContextRow {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Deserialize)]
-struct VaultCodeGrantRow {
-    grant_id: String,
-    grant_version: i64,
-    resource: String,
-    attribute_id: String,
-    expires_at: i64,
-}
-
-#[cfg(target_arch = "wasm32")]
-struct VaultCodeGrant {
-    grant_id: String,
-    grant_version: i64,
-    resource: String,
-    attribute_id: String,
-    expires_at: u64,
-}
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Deserialize)]
 struct ConsumedCodeRow {
     consumed_by: Option<String>,
 }
@@ -253,8 +231,6 @@ struct ClientRegistrationRow {
     client_revision: i64,
     sector_identifier: String,
     allow_missing_pkce: i64,
-    client_type: String,
-    auth_method: String,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -364,7 +340,6 @@ pub struct AuthorizationCodeContext {
     signing_algorithm: String,
     signing_generation: u64,
     public_jwk: String,
-    vault: Option<VaultCodeGrant>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -596,8 +571,6 @@ struct TokenEndpointSuccess {
     expires_in: u64,
     scope: &'static str,
     id_token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    authorization_details: Option<serde_json::Value>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -901,18 +874,6 @@ fn parse_authorization_parameters(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn authorization_url_without_vault_receipt(url: &url::Url) -> url::Url {
-    let fields = url
-        .query_pairs()
-        .filter(|(name, _)| name != "vault_consent")
-        .map(|(name, value)| (name.into_owned(), value.into_owned()))
-        .collect::<Vec<_>>();
-    let mut clean = url.clone();
-    clean.query_pairs_mut().clear().extend_pairs(fields);
-    clean
-}
-
-#[cfg(target_arch = "wasm32")]
 fn authorization_error_response(
     redirect_uri: &str,
     state: Option<&str>,
@@ -1148,8 +1109,7 @@ async fn authorize_route(
 
     let registration = db
         .prepare(
-            "SELECT c.revision AS client_revision,c.sector_identifier,c.allow_missing_pkce, \
-             c.client_type,c.auth_method \
+            "SELECT c.revision AS client_revision,c.sector_identifier,c.allow_missing_pkce \
              FROM client c JOIN client_redirect_uri r ON r.client_id=c.client_id \
              WHERE c.client_id=?1 AND c.active=1 AND r.redirect_uri=?2 AND r.active=1 \
              AND (?3=0 OR c.client_type='web') \
@@ -1194,36 +1154,6 @@ async fn authorize_route(
     } else {
         parameters.get("state").map(String::as_str)
     };
-    let vault_scope = parameters
-        .get("scope")
-        .is_some_and(|value| matches!(value.as_str(), "openid vault.read" | "vault.read openid"));
-    let vault_preview = context
-        .env
-        .var("MIKAKI_NATIVE_VAULT_OAUTH")
-        .ok()
-        .is_some_and(|value| value.to_string() == "preview");
-    let vault_request = if vault_scope
-        && vault_preview
-        && !fapi
-        && pushed.is_none()
-        && registration.client_type == "native"
-        && registration.auth_method == "none"
-        && loopback_template.is_none()
-    {
-        parameters
-            .get("resource")
-            .zip(parameters.get("authorization_details"))
-            .and_then(|(resource, details)| {
-                mikaki_oidc::VaultReadRequest::parse(
-                    parameters["scope"].as_str(),
-                    resource,
-                    details,
-                )
-                .ok()
-            })
-    } else {
-        None
-    };
     let allow_missing_pkce =
         conformance_deployment(&context.env)? && registration.allow_missing_pkce == 1;
     let has_pkce = parameters.contains_key("code_challenge")
@@ -1237,20 +1167,17 @@ async fn authorize_route(
         .is_some_and(|value| value != "code")
     {
         Some("unsupported_response_type")
-    } else if parameters.contains_key("resource") && vault_request.is_none() {
-        // No Vault-audience issuance path is connected yet. Never silently
-        // turn a resource request into a UserInfo token.
+    } else if parameters.contains_key("resource") {
         Some("invalid_target")
-    } else if (parameters.contains_key("authorization_details")
-        || parameters.contains_key("vault_consent"))
-        && vault_request.is_none()
+    } else if parameters.contains_key("authorization_details")
+        || parameters.contains_key("vault_consent")
     {
         Some("invalid_request")
     } else if parameters.get("scope").is_some_and(|value| {
         !matches!(
             value.as_str(),
             "openid" | "openid profile" | "profile openid"
-        ) && vault_request.is_none()
+        )
     }) {
         Some("invalid_scope")
     } else if parameters
@@ -1286,14 +1213,7 @@ async fn authorize_route(
             .cloned()
             .unwrap_or_default(),
     };
-    let validated = match if vault_request.is_some() {
-        raw.validate_for_vault(
-            client_id,
-            redirect_uri,
-            policy.state_bytes(),
-            policy.nonce_bytes(),
-        )
-    } else if fapi {
+    let validated = match if fapi {
         raw.validate_for_fapi(
             client_id,
             redirect_uri,
@@ -1347,7 +1267,7 @@ async fn authorize_route(
         )
         .await;
     }
-    if prompts.contains(&"consent") && vault_request.is_none() {
+    if prompts.contains(&"consent") {
         return authorization_interaction_response(
             &request,
             &db,
@@ -1456,104 +1376,6 @@ async fn authorize_route(
     }
 
     let mut random = WorkersCryptoRandom;
-    let vault_consent = if let Some(vault) = &vault_request {
-        let clean_url = authorization_url_without_vault_receipt(&request_url).to_string();
-        if let Some(tx) = parameters.get("vault_consent") {
-            if !passkey_login::valid_tx(tx) {
-                return authorization_error_response(
-                    redirect_uri,
-                    state,
-                    &issuer,
-                    "invalid_request",
-                );
-            }
-            let approved = db
-                .prepare(
-                    "SELECT 1 AS approved FROM vault_oauth_consent vc \
-                     WHERE vc.tx_id=?1 AND vc.sso_secret_hash=?2 AND vc.sso_id=?3 \
-                     AND vc.account_id=?4 AND vc.client_id=?5 AND vc.client_revision=?6 \
-                     AND vc.authorization_url=?7 AND vc.redirect_uri=?8 AND vc.state=?9 \
-                     AND vc.attribute_id=?10 AND vc.resource=?11 \
-                     AND vc.decision='approved' AND vc.expires_at>unixepoch()",
-                )
-                .bind(&[
-                    JsValue::from_str(tx),
-                    JsValue::from_str(&cookie_hash),
-                    JsValue::from_str(&sso.sso_id),
-                    JsValue::from_str(&sso.account_id),
-                    JsValue::from_str(client_id),
-                    JsValue::from_f64(sso.client_revision as f64),
-                    JsValue::from_str(&clean_url),
-                    JsValue::from_str(redirect_uri),
-                    JsValue::from_str(validated.state()),
-                    JsValue::from_str(vault.attribute()),
-                    JsValue::from_str(vault.resource()),
-                ])?
-                .first::<i64>(Some("approved"))
-                .await?;
-            if approved.is_none() {
-                return authorization_error_response(
-                    redirect_uri,
-                    state,
-                    &issuer,
-                    "invalid_request",
-                );
-            }
-            Some(tx.clone())
-        } else {
-            if prompts.contains(&"none") {
-                return authorization_error_response(
-                    redirect_uri,
-                    state,
-                    &issuer,
-                    "consent_required",
-                );
-            }
-            let tx = passkey_login::random_secret(&mut random)?;
-            let consent_expires = (now + 300).min(sso.parent_expires_at as u64);
-            let inserted = db
-                .prepare(
-                    "INSERT INTO vault_oauth_consent \
-                     (tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision, \
-                      authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at) \
-                     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
-                )
-                .bind(&[
-                    JsValue::from_str(&tx),
-                    JsValue::from_str(&cookie_hash),
-                    JsValue::from_str(&sso.sso_id),
-                    JsValue::from_str(&sso.account_id),
-                    JsValue::from_str(client_id),
-                    JsValue::from_f64(sso.client_revision as f64),
-                    JsValue::from_str(&clean_url),
-                    JsValue::from_str(redirect_uri),
-                    JsValue::from_str(validated.state()),
-                    JsValue::from_str(vault.attribute()),
-                    JsValue::from_str(vault.resource()),
-                    JsValue::from_f64(consent_expires as f64),
-                    JsValue::from_f64(now as f64),
-                ])?
-                .run()
-                .await;
-            if inserted.is_err() {
-                return authorization_error_response(
-                    redirect_uri,
-                    state,
-                    &issuer,
-                    "temporarily_unavailable",
-                );
-            }
-            let target = format!("{issuer}/vault/oauth/consent?tx={tx}");
-            return Ok(worker::Response::builder()
-                .with_status(302)
-                .with_header("Location", &target)?
-                .with_header("Cache-Control", "no-store")?
-                .with_header("Referrer-Policy", "no-referrer")?
-                .empty());
-        }
-    } else {
-        None
-    };
     let prepared = validated
         .prepare_code(
             &mut random,
@@ -1631,66 +1453,6 @@ async fn authorize_route(
                 JsValue::from_str(parameters["scope"].as_str()),
             ])?,
     ];
-    if let (Some(tx), Some(vault)) = (vault_consent.as_deref(), vault_request.as_ref()) {
-        let grant_id = passkey_login::random_secret(&mut random)?;
-        let grant_expires = (now + 600).min(sso.parent_expires_at as u64);
-        let clean_url = authorization_url_without_vault_receipt(&request_url).to_string();
-        statements.push(
-            db.prepare(
-                "UPDATE vault_oauth_consent SET decision='consumed' \
-                 WHERE tx_id=?1 AND sso_secret_hash=?2 AND sso_id=?3 \
-                 AND account_id=?4 AND client_id=?5 AND client_revision=?6 \
-                 AND authorization_url=?7 AND redirect_uri=?8 AND state=?9 \
-                 AND attribute_id=?10 AND resource=?11 \
-                 AND decision='approved' AND expires_at>unixepoch()",
-            )
-            .bind(&[
-                JsValue::from_str(tx),
-                JsValue::from_str(&cookie_hash),
-                JsValue::from_str(&sso.sso_id),
-                JsValue::from_str(&sso.account_id),
-                JsValue::from_str(client_id),
-                JsValue::from_f64(sso.client_revision as f64),
-                JsValue::from_str(&clean_url),
-                JsValue::from_str(redirect_uri),
-                JsValue::from_str(validated.state()),
-                JsValue::from_str(vault.attribute()),
-                JsValue::from_str(vault.resource()),
-            ])?,
-        );
-        statements.push(
-            db.prepare(
-                "INSERT INTO vault_oauth_grant \
-                 (grant_id,consent_tx_id,account_id,client_id,client_revision,attribute_id, \
-                  resource,action,version,expires_at,created_at) \
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,'read_ciphertext',1,?8,?9)",
-            )
-            .bind(&[
-                JsValue::from_str(&grant_id),
-                JsValue::from_str(tx),
-                JsValue::from_str(&sso.account_id),
-                JsValue::from_str(client_id),
-                JsValue::from_f64(sso.client_revision as f64),
-                JsValue::from_str(vault.attribute()),
-                JsValue::from_str(vault.resource()),
-                JsValue::from_f64(grant_expires as f64),
-                JsValue::from_f64(now as f64),
-            ])?,
-        );
-        statements.push(
-            db.prepare(
-                "INSERT INTO vault_oauth_code_context \
-                 (code_hash,grant_id,grant_version,resource,attribute_id) \
-                 VALUES(?1,?2,1,?3,?4)",
-            )
-            .bind(&[
-                JsValue::from_str(code_hash),
-                JsValue::from_str(&grant_id),
-                JsValue::from_str(vault.resource()),
-                JsValue::from_str(vault.attribute()),
-            ])?,
-        );
-    }
     if let Some(pushed) = &pushed {
         statements.push(
             db.prepare(
@@ -1763,14 +1525,6 @@ async fn authorize_route(
             .bind(&[guard_values[0].clone()])?,
     );
     if let Err(error) = db.batch(statements).await {
-        if vault_consent.is_some() {
-            return authorization_error_response(
-                redirect_uri,
-                state,
-                &issuer,
-                "temporarily_unavailable",
-            );
-        }
         if let Some(pushed) = &pushed {
             let consumed = db
                 .prepare("SELECT consumed_by FROM par_request WHERE request_uri=?1")
@@ -2485,8 +2239,6 @@ pub async fn main(
         .post_async("/identity/attester/challenge", identity::attester_challenge)
         .post_async("/identity/attester/attestation", identity::attester_redeem)
         .get_async("/vault", vault_ui::page)
-        .get_async("/vault/oauth/consent", vault_oauth_consent::get)
-        .post_async("/vault/oauth/consent", vault_oauth_consent::post)
         .get_async("/vault/session", vault_ui::session)
         .get_async(
             "/vault/record-recipient-keys/userinfo",

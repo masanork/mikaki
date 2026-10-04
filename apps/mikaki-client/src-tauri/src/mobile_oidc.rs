@@ -2,22 +2,20 @@
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Mutex,
 };
 use std::time::{Duration, Instant};
 
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
 use openidconnect::{
     AccessTokenHash, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse,
 };
 use serde::Serialize;
 use tauri::{Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 use zeroize::Zeroizing;
-
-use crate::{mobile_vault, vault_dpop};
 
 const ISSUER: &str = "https://auth.mikaki.org";
 const CALLBACK: &str = "https://app.mikaki.org/oidc/native/callback";
@@ -31,7 +29,6 @@ pub struct MobileAuthState {
 struct Inner {
     pending: Option<PendingLogin>,
     session: Option<StoredSession>,
-    vault: Option<Arc<mobile_vault::StoredVault>>,
     phase: &'static str,
     generation: u64,
 }
@@ -42,7 +39,6 @@ struct PendingLogin {
     verifier: Zeroizing<String>,
     expires_at: Instant,
     generation: u64,
-    vault: Option<mobile_vault::PendingVault>,
 }
 
 struct StoredSession {
@@ -60,8 +56,6 @@ pub struct LoginResult {
 pub struct MobileStatus {
     phase: &'static str,
     subject: Option<String>,
-    vault_attribute: Option<String>,
-    vault_preview_available: bool,
 }
 
 struct StartingGuard<'a> {
@@ -86,7 +80,6 @@ impl Default for MobileAuthState {
             inner: Mutex::new(Inner {
                 pending: None,
                 session: None,
-                vault: None,
                 phase: "idle",
                 generation: 0,
             }),
@@ -118,23 +111,12 @@ pub fn mobile_auth_status(state: State<'_, MobileAuthState>) -> Result<MobileSta
         inner.pending = None;
         inner.phase = "expired";
     }
-    if inner.vault.as_ref().is_some_and(|vault| !vault.is_live()) {
-        if let Some(vault) = &inner.vault {
-            vault.close();
-        }
-        inner.vault = None;
-        if inner.phase == "vault_complete" {
-            inner.phase = "expired";
-        }
-    }
     Ok(MobileStatus {
         phase: inner.phase,
         subject: inner
             .session
             .as_ref()
             .map(|session| session.subject.clone()),
-        vault_attribute: inner.vault.as_ref().map(|vault| vault.attribute.clone()),
-        vault_preview_available: vault_preview_available(),
     })
 }
 
@@ -156,10 +138,6 @@ pub fn cancel_native_login(state: State<'_, MobileAuthState>) -> Result<(), Stri
 pub fn clear_native_session(state: State<'_, MobileAuthState>) -> Result<(), String> {
     let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
     inner.session = None;
-    if let Some(vault) = &inner.vault {
-        vault.close();
-    }
-    inner.vault = None;
     inner.pending = None;
     inner.phase = "idle";
     inner.generation = inner.generation.wrapping_add(1);
@@ -172,40 +150,12 @@ pub async fn start_mobile_login(
     app: tauri::AppHandle,
     state: State<'_, MobileAuthState>,
 ) -> Result<(), String> {
-    start_mobile_authorization(app, state, None).await
-}
-
-#[tauri::command]
-pub async fn start_mobile_vault_read(
-    app: tauri::AppHandle,
-    state: State<'_, MobileAuthState>,
-    attribute: String,
-) -> Result<(), String> {
-    if !vault_preview_available() {
-        return Err("Vault preview is not configured".into());
-    }
-    vault_dpop::detail(&attribute)?;
-    start_mobile_authorization(app, state, Some(attribute)).await
-}
-
-#[tauri::command]
-pub async fn check_mobile_vault_key(app: tauri::AppHandle) -> Result<(), String> {
-    if !vault_preview_available() {
-        return Err("Vault preview is not configured".into());
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        let key = vault_dpop::DpopKey::generate(&app)?;
-        key.proof("POST", &format!("{}/token", vault_dpop::ISSUER), None, None)?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| "OS DPoP key check failed".to_owned())?
+    start_mobile_authorization(app, state).await
 }
 
 async fn start_mobile_authorization(
     app: tauri::AppHandle,
     state: State<'_, MobileAuthState>,
-    vault_attribute: Option<String>,
 ) -> Result<(), String> {
     let generation = {
         let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
@@ -257,40 +207,19 @@ async fn start_mobile_authorization(
     if option_env!("MIKAKI_MOBILE_LOGIN_PROMPT") == Some("login") {
         authorization = authorization.add_extra_param("prompt", "login");
     }
-    if let Some(attribute) = vault_attribute.as_deref() {
-        authorization = authorization
-            .add_scope(Scope::new("vault.read".into()))
-            .add_extra_param("resource", vault_dpop::RESOURCE)
-            .add_extra_param("authorization_details", vault_dpop::detail(attribute)?);
-    }
     let (authorization_url, state_value, nonce) = authorization.url();
-    let vault_key = if vault_attribute.is_some() {
-        Some(vault_dpop::DpopKey::generate(&app)?)
-    } else {
-        None
-    };
     {
         let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
         if inner.generation != generation {
             return Err("login cancelled".into());
         }
-        if vault_attribute.is_some() {
-            if let Some(vault) = &inner.vault {
-                vault.close();
-            }
-            inner.vault = None;
-        } else {
-            inner.session = None;
-        }
+        inner.session = None;
         inner.pending = Some(PendingLogin {
             state: Zeroizing::new(state_value.secret().clone()),
             nonce,
             verifier: Zeroizing::new(verifier.secret().clone()),
             expires_at: Instant::now() + LOGIN_LIFETIME,
             generation,
-            vault: vault_attribute
-                .zip(vault_key)
-                .map(|(attribute, key)| mobile_vault::PendingVault { attribute, key }),
         });
         inner.phase = "pending";
     }
@@ -337,26 +266,7 @@ pub async fn handle_open_url(app: tauri::AppHandle, url: Url) {
     };
     let Some(code) = code else { return };
     let generation = pending.generation;
-    let outcome = if pending.vault.is_some() {
-        let PendingLogin {
-            nonce,
-            verifier,
-            vault,
-            ..
-        } = pending;
-        mobile_vault::exchange(
-            code,
-            &verifier,
-            &nonce,
-            vault.expect("Vault pending checked"),
-        )
-        .await
-        .map(ExchangeOutcome::Vault)
-    } else {
-        exchange_code(code, pending)
-            .await
-            .map(ExchangeOutcome::Login)
-    };
+    let outcome = exchange_code(code, pending).await;
     let mut inner = match state.inner.lock() {
         Ok(value) => value,
         Err(_) => return,
@@ -365,42 +275,12 @@ pub async fn handle_open_url(app: tauri::AppHandle, url: Url) {
         return;
     }
     match outcome {
-        Ok(ExchangeOutcome::Login(session)) => {
+        Ok(session) => {
             inner.session = Some(session);
             inner.phase = "complete";
         }
-        Ok(ExchangeOutcome::Vault(vault)) => {
-            inner.vault = Some(Arc::new(vault));
-            inner.phase = "vault_complete";
-        }
         Err(_) => inner.phase = "failed",
     }
-}
-
-enum ExchangeOutcome {
-    Login(StoredSession),
-    Vault(mobile_vault::StoredVault),
-}
-
-#[tauri::command]
-pub async fn read_mobile_vault_ciphertext(
-    state: State<'_, MobileAuthState>,
-) -> Result<mobile_vault::Ciphertext, String> {
-    if !vault_preview_available() {
-        return Err("Vault preview is not configured".into());
-    }
-    let vault = {
-        let inner = state
-            .inner
-            .lock()
-            .map_err(|_| "Vault session unavailable")?;
-        inner.vault.clone().ok_or("Vault grant unavailable")?
-    };
-    vault.read().await
-}
-
-fn vault_preview_available() -> bool {
-    option_env!("MIKAKI_NATIVE_VAULT_PREVIEW") == Some("1")
 }
 
 fn parse_callback(url: &Url, state: &str) -> Result<Option<String>, String> {

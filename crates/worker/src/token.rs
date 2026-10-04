@@ -517,7 +517,6 @@ pub(super) async fn load_authorization_code_context(
     input: &AuthenticatedTokenRequest,
     signer: &WorkerTokenSigner,
     fapi: bool,
-    vault_preview: bool,
     dpop_proof: Option<&mikaki_oidc::VerifiedDpopProof>,
     random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<AuthorizationCodeContext> {
@@ -591,46 +590,11 @@ pub(super) async fn load_authorization_code_context(
     let scope = match row.scope.as_str() {
         "openid" => "openid",
         "openid profile" | "profile openid" => "openid profile",
-        "openid vault.read" | "vault.read openid" if vault_preview => "openid vault.read",
         _ => return Err(worker::Error::RustError("invalid_grant".into())),
     };
-    let vault = if scope == "openid vault.read" {
-        if input.requested_resource.as_deref() != Some(mikaki_oidc::VAULT_RESOURCE) {
-            return Err(worker::Error::RustError("invalid_target".into()));
-        }
-        let grant = db
-            .prepare(
-                "SELECT g.grant_id,g.version AS grant_version,g.resource,g.attribute_id,g.expires_at \
-                 FROM vault_oauth_code_context vc \
-                 JOIN vault_oauth_grant g ON g.grant_id=vc.grant_id \
-                 JOIN authorization_code ac ON ac.code_hash=vc.code_hash \
-                 JOIN eligible_client_session s ON s.client_id=ac.client_id AND s.sid=ac.sid \
-                 JOIN client c ON c.client_id=ac.client_id \
-                 WHERE vc.code_hash=?1 AND vc.grant_version=g.version \
-                 AND vc.resource=g.resource AND vc.attribute_id=g.attribute_id \
-                 AND g.account_id=s.account_id AND g.client_id=ac.client_id \
-                 AND g.client_revision=ac.client_revision AND g.revoked=0 \
-                 AND g.expires_at>unixepoch() AND c.client_type='native' \
-                 AND c.auth_method='none' AND c.active=1 AND c.revision=ac.client_revision",
-            )
-            .bind(&[JsValue::from_str(exchange.code_digest())])?
-            .first::<VaultCodeGrantRow>(None)
-            .await?
-            .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?;
-        Some(VaultCodeGrant {
-            grant_id: grant.grant_id,
-            grant_version: grant.grant_version,
-            resource: grant.resource,
-            attribute_id: grant.attribute_id,
-            expires_at: u64::try_from(grant.expires_at)
-                .map_err(|_| worker::Error::RustError("invalid_grant".into()))?,
-        })
-    } else {
-        if input.requested_resource.is_some() {
-            return Err(worker::Error::RustError("invalid_target".into()));
-        }
-        None
-    };
+    if input.requested_resource.is_some() {
+        return Err(worker::Error::RustError("invalid_target".into()));
+    }
     Ok(AuthorizationCodeContext {
         client_id: row.client_id,
         dpop_jkt: row.dpop_jkt,
@@ -644,7 +608,6 @@ pub(super) async fn load_authorization_code_context(
         signing_algorithm: row.signing_algorithm,
         signing_generation,
         public_jwk: row.public_jwk,
-        vault,
     })
 }
 
@@ -756,7 +719,6 @@ pub(super) async fn commit_authorization_code_exchange(
             .dpop_jkt
             .as_deref()
             .is_some_and(|jkt| dpop_proof.is_none_or(|(proof, _)| proof.thumbprint() != jkt))
-        || (context.vault.is_some() && dpop_proof.is_none())
         || now > i64::MAX as u64
     {
         return Err(worker::Error::RustError("invalid_grant".into()));
@@ -764,13 +726,7 @@ pub(super) async fn commit_authorization_code_exchange(
     let access_expires_at = now
         .checked_add(access_ttl_seconds)
         .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?
-        .min(context.parent_expires_at())
-        .min(
-            context
-                .vault
-                .as_ref()
-                .map_or(u64::MAX, |grant| grant.expires_at),
-        );
+        .min(context.parent_expires_at());
     let id_token_expires_at = now
         .checked_add(id_token_ttl_seconds)
         .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?
@@ -813,14 +769,6 @@ pub(super) async fn commit_authorization_code_exchange(
         expires_in: access_expires_at - now,
         scope: context.scope,
         id_token,
-        authorization_details: context.vault.as_ref().map(|grant| {
-            serde_json::json!([{
-                "type": mikaki_oidc::VAULT_READ_DETAIL_TYPE,
-                "locations": [grant.resource],
-                "actions": ["read_ciphertext"],
-                "attribute": grant.attribute_id,
-            }])
-        }),
     };
     let id_token_hash = URL_SAFE_NO_PAD.encode(Sha256::digest(response.id_token.as_bytes()));
     if serde_json::to_vec(&response)
@@ -894,11 +842,8 @@ pub(super) async fn commit_authorization_code_exchange(
                JOIN sso_context sx ON sx.sso_id=cs.sso_id \
                JOIN code_context cc ON cc.code_hash=?1 \
                WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce IS ?16 \
-               AND (cc.scope=?29 OR (?29='openid profile' AND cc.scope='profile openid') \
-                 OR (?29='openid vault.read' AND cc.scope='vault.read openid'))) \
-             AND ((?29='openid vault.read' AND EXISTS (SELECT 1 FROM vault_oauth_code_context vc \
-               WHERE vc.code_hash=?1)) OR (?29!='openid vault.read' AND NOT EXISTS ( \
-               SELECT 1 FROM vault_oauth_code_context vc WHERE vc.code_hash=?1))) \
+               AND (cc.scope=?29 OR (?29='openid profile' AND cc.scope='profile openid'))) \
+             AND NOT EXISTS (SELECT 1 FROM vault_oauth_code_context vc WHERE vc.code_hash=?1) \
              AND EXISTS (SELECT 1 FROM client_auth_use au WHERE au.client_id=?2 \
                AND au.method=?8 AND au.credential_id=?6 AND au.client_revision=?5 \
                AND au.credential_revision=?7 AND au.endpoint=?9 AND au.accepted_by=?10 \
@@ -943,49 +888,10 @@ pub(super) async fn commit_authorization_code_exchange(
         )
         .bind(&issue_values)?,
     ];
-    if let Some(vault) = &context.vault {
-        let vault_values = [
-            JsValue::from_str(&access_hash),
-            JsValue::from_str(&vault.grant_id),
-            JsValue::from_f64(vault.grant_version as f64),
-            JsValue::from_str(&vault.resource),
-            JsValue::from_str(&vault.attribute_id),
-            JsValue::from_str(exchange.code_digest()),
-        ];
-        statements.push(
-            db.prepare(
-                "INSERT INTO vault_oauth_token_context \
-                 (access_hash,grant_id,grant_version,resource,attribute_id) \
-                 SELECT ?1,?2,?3,?4,?5 FROM token_issue ti \
-                 JOIN vault_oauth_code_context vc ON vc.code_hash=ti.code_hash \
-                 JOIN vault_oauth_grant g ON g.grant_id=vc.grant_id \
-                 WHERE ti.access_hash=?1 AND ti.code_hash=?6 AND ti.revoked=0 \
-                 AND ti.dpop_jkt IS NOT NULL AND vc.grant_id=?2 \
-                 AND vc.grant_version=?3 AND vc.resource=?4 AND vc.attribute_id=?5 \
-                 AND g.version=?3 AND g.revoked=0 AND g.expires_at>=ti.access_expires_at",
-            )
-            .bind(&vault_values)?,
-        );
-        statements.push(
-            db.prepare(
-                "INSERT INTO atomic_guard(operation_id,passed) \
-                 VALUES(?1,CASE WHEN EXISTS (SELECT 1 FROM vault_oauth_token_context \
-                 WHERE access_hash=?1 AND grant_id=?2 AND grant_version=?3 \
-                 AND resource=?4 AND attribute_id=?5) THEN 1 ELSE 0 END)",
-            )
-            .bind(&vault_values[..5])?,
-        );
-    }
     statements.push(
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19")
             .bind(&values[..19])?,
     );
-    if context.vault.is_some() {
-        statements.push(
-            db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
-                .bind(&[JsValue::from_str(&access_hash)])?,
-        );
-    }
     let commit = db.batch(statements).await;
     if let Err(error) = commit {
         let consumed = db
@@ -1272,23 +1178,15 @@ pub(super) async fn issue_token_response(
         .map_err(|_| worker::Error::RustError("server_error".into()))?
         .to_string();
     let signer = WorkerTokenSigner::from_secret(&private_jwk).await?;
-    let vault_preview = env
-        .var("MIKAKI_NATIVE_VAULT_OAUTH")
-        .ok()
-        .is_some_and(|value| value.to_string() == "preview");
     let context = load_authorization_code_context(
         &db,
         &authenticated,
         &signer,
         fapi,
-        vault_preview,
         dpop_proof.as_ref(),
         &mut random,
     )
     .await?;
-    if context.vault.is_some() && dpop_proof.is_none() {
-        return Err(worker::Error::RustError("invalid_dpop_proof".into()));
-    }
     let response = commit_authorization_code_exchange(
         &db,
         &authenticated,

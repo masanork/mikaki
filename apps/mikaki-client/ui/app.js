@@ -29,8 +29,6 @@ let signedIn = false;
 let pending = null;
 let starting = false;
 let cancelling = false;
-let diagnosticBusy = false;
-let grantAvailable = false;
 let epoch = 0;
 let readSequence = 0;
 let timer;
@@ -78,7 +76,7 @@ function render(focus = false) {
   navigation.hidden = !signedIn || !!pending;
   $('#open-settings').disabled = !!pending;
   $('#session-settings').hidden = !signedIn;
-  $('#open-logout').disabled = diagnosticBusy || cardBusy || !!pending;
+  $('#open-logout').disabled = cardBusy || !!pending;
   login.disabled = !available || cardBusy || !!pending;
   cancel.disabled = cancelling;
   cancel.textContent = cancelling ? '終了しています…' : 'キャンセルして戻る';
@@ -89,10 +87,6 @@ function render(focus = false) {
       : platform === 'desktop'
         ? 'デスクトップ'
         : '利用できません';
-  $('#vault-key').disabled = !available || diagnosticBusy || cardBusy || !!pending;
-  $('#vault-consent').disabled = !available || !signedIn || diagnosticBusy || cardBusy || !!pending;
-  $('#vault-read').disabled =
-    !available || !grantAvailable || diagnosticBusy || cardBusy || !!pending;
   for (const tab of navigation.querySelectorAll('a')) {
     const selected =
       tab.dataset.nav ===
@@ -114,11 +108,8 @@ function schedule() {
   if (!pending || document.hidden || starting || cancelling) return;
   timer = setTimeout(() => void refreshNative(), 1000);
 }
-function showWaiting(kind) {
-  $('#waiting-title').innerHTML =
-    kind === 'vault'
-      ? 'ブラウザで<br />読取を承認してください'
-      : 'ブラウザで<br />本人確認してください';
+function showWaiting() {
+  $('#waiting-title').innerHTML = 'ブラウザで<br />本人確認してください';
   $('#waiting-description').textContent = '完了すると、このアプリに戻ります。';
   $('#waiting-phase').textContent = 'ブラウザを開いています';
   $('#check-auth').hidden = true;
@@ -128,8 +119,6 @@ function showWaiting(kind) {
 function applyMobile(result) {
   const wasPending = pending;
   signedIn = typeof result.subject === 'string' && result.subject.length > 0;
-  $('#vault').hidden = !result.vault_preview_available;
-  grantAvailable = result.vault_attribute === 'owner_note';
   if (result.phase === 'pending' || result.phase === 'exchanging') {
     pending ||= 'login';
     $('#waiting-phase').textContent =
@@ -141,14 +130,11 @@ function applyMobile(result) {
   pending = null;
   clearTimeout(timer);
   if (wasPending) {
-    if (result.phase === 'vault_complete') {
-      $('#vault-status').textContent = 'Vault読取が承認されました。暗号文を取得できます。';
-      navigate('diagnostics', true);
-    } else if (result.phase === 'complete' && signedIn) {
+    if (result.phase === 'complete' && signedIn) {
       navigate('home', true);
       notice('ログインしました。');
     } else {
-      navigate(wasPending === 'vault' ? 'diagnostics' : signedIn ? 'home' : 'welcome', true);
+      navigate(signedIn ? 'home' : 'welcome', true);
       const messages = {
         denied: '本人確認が取り消されました。もう一度試すことができます。',
         failed: 'ログインを完了できませんでした。もう一度試してください。',
@@ -217,16 +203,14 @@ async function bootstrap() {
     render();
   }
 }
-async function start(kind = 'login') {
-  if (!available || pending || diagnosticBusy || cardBusy) return;
+async function start() {
+  if (!available || pending || cardBusy) return;
   const generation = ++epoch;
-  pending = kind;
+  pending = 'login';
   starting = true;
-  showWaiting(kind);
+  showWaiting();
   try {
-    if (kind === 'vault') {
-      await invoke('start_mobile_vault_read', { attribute: 'owner_note' });
-    } else if (platform === 'mobile') {
+    if (platform === 'mobile') {
       await invoke('start_mobile_login');
     } else {
       const session = await invoke('start_desktop_login');
@@ -249,18 +233,16 @@ async function start(kind = 'login') {
     await refreshNative();
     if (generation !== epoch) return;
     if (!pending) {
-      navigate(kind === 'vault' ? 'diagnostics' : signedIn ? 'home' : 'welcome', true);
+      navigate(signedIn ? 'home' : 'welcome', true);
       notice(friendly(error));
     }
   }
 }
 login.addEventListener('click', () => void start());
-$('#vault-consent').addEventListener('click', () => void start('vault'));
 $('#retry-init').addEventListener('click', () => void bootstrap());
 $('#check-auth').addEventListener('click', () => void refreshNative());
 cancel.addEventListener('click', async () => {
   if (!pending || cancelling) return;
-  const kind = pending;
   const generation = ++epoch;
   clearTimeout(timer);
   cancelling = true;
@@ -273,7 +255,7 @@ cancel.addEventListener('click', async () => {
     cancelling = false;
     await refreshNative();
     if (generation !== epoch) return;
-    navigate(kind === 'vault' ? 'diagnostics' : signedIn ? 'home' : 'welcome', true);
+    navigate(signedIn ? 'home' : 'welcome', true);
     notice('本人確認を終了しました。');
   } catch (error) {
     if (generation !== epoch) return;
@@ -310,7 +292,7 @@ window.addEventListener('popstate', () => {
   render(true);
 });
 $('#open-logout').addEventListener('click', () => {
-  if (!signedIn || pending || diagnosticBusy) return;
+  if (!signedIn || pending) return;
   $('#logout-error').hidden = true;
   dialog.showModal();
 });
@@ -327,8 +309,6 @@ $('#clear').addEventListener('click', async () => {
     epoch++;
     signedIn = false;
     pending = null;
-    grantAvailable = false;
-    $('#vault-status').textContent = '';
     dialog.close();
     navigate('welcome', true);
     notice('この端末からログアウトしました。');
@@ -344,41 +324,6 @@ $('#clear').addEventListener('click', async () => {
 });
 dialog.addEventListener('cancel', (event) => {
   if ($('#clear').disabled) event.preventDefault();
-});
-async function runDiagnostic(command) {
-  if (!available || pending || diagnosticBusy || cardBusy) return;
-  diagnosticBusy = true;
-  render();
-  $('#vault-status').textContent =
-    command === 'check_mobile_vault_key'
-      ? '端末の鍵を確認しています。'
-      : '暗号文を取得しています。';
-  const generation = epoch;
-  try {
-    const result = await invoke(command);
-    if (generation !== epoch) return;
-    $('#vault-status').textContent =
-      command === 'check_mobile_vault_key'
-        ? '端末の署名鍵を利用できます。'
-        : '暗号文を取得しました。revision ' +
-          result.revision +
-          '、形式 ' +
-          result.format_version +
-          '。';
-  } catch (error) {
-    if (generation !== epoch) return;
-    diagnostic(error);
-    $('#vault-status').textContent =
-      '操作を完了できませんでした。接続と承認状態を確認してください。';
-  } finally {
-    diagnosticBusy = false;
-    render();
-    void refreshNative();
-  }
-}
-$('#vault-key').addEventListener('click', () => void runDiagnostic('check_mobile_vault_key'));
-$('#vault-read').addEventListener('click', () => {
-  if (grantAvailable) void runDiagnostic('read_mobile_vault_ciphertext');
 });
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
@@ -447,7 +392,7 @@ function renderIdentityReader(view) {
       cancelIdentityRead();
   }
   $('#identity-read').disabled =
-    cardBusy || issuanceBusy || diagnosticBusy || !!pending || walletActive;
+    cardBusy || issuanceBusy || !!pending || walletActive;
   $('#identity-pin').disabled = cardBusy;
   $('#identity-pin2').disabled = cardBusy;
   $('#identity-type').disabled = cardBusy;
@@ -455,7 +400,7 @@ function renderIdentityReader(view) {
 }
 $('#identity-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!invoke || !cardSupported || cardBusy || issuanceBusy || pending || diagnosticBusy) return;
+  if (!invoke || !cardSupported || cardBusy || issuanceBusy || pending) return;
   let pin = $('#identity-pin').value;
   let pin2 = $('#identity-pin2').value;
   const documentType = $('#identity-type').value;
@@ -602,7 +547,7 @@ function renderWalletIssuance(view) {
     walletTimer = setTimeout(() => void refreshWalletIssuance(), 5000);
   $('#identity-wallet-issuance').hidden = !walletAvailable;
   $('#identity-wallet-start').disabled =
-    walletActive || issuanceBusy || cardBusy || diagnosticBusy || !!pending;
+    walletActive || issuanceBusy || cardBusy || !!pending;
   $('#identity-wallet-format').disabled = walletActive || issuanceBusy;
   $('#identity-wallet-receive').hidden =
     !walletActive || !['pending', 'ready'].includes(walletPhase);

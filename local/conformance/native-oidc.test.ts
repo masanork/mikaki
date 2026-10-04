@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { exportJWK, generateKeyPair } from 'jose';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createTestHarness } from 'wrangler';
 import { registerNativeClient } from '../../scripts/client-admin-store.ts';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
@@ -24,7 +24,11 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
     '../../crates/worker/migrations',
     import.meta.url,
   ).pathname;
-  config.vars = { MIKAKI_ISSUER: issuer, OP_PRIVATE_JWK: JSON.stringify(privateJwk) };
+  config.vars = {
+    MIKAKI_ISSUER: issuer,
+    MIKAKI_NATIVE_VAULT_OAUTH: 'preview',
+    OP_PRIVATE_JWK: JSON.stringify(privateJwk),
+  };
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
     workers: [{ config }],
@@ -114,13 +118,13 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       'invalid_target',
     );
     unsupportedResource.searchParams.set('scope', 'openid vault.read');
-    unsupportedResource.searchParams.set('resource', 'https://auth.mikaki.org/vault-api/');
+    unsupportedResource.searchParams.set('resource', 'https://mikaki.tossa.app/vault-api/');
     unsupportedResource.searchParams.set(
       'authorization_details',
       JSON.stringify([
         {
-          type: 'https://auth.mikaki.org/authorization-details/vault-read-v1',
-          locations: ['https://auth.mikaki.org/vault-api/'],
+          type: 'https://mikaki.tossa.app/authorization-details/vault-read-v1',
+          locations: ['https://mikaki.tossa.app/vault-api/'],
           actions: ['read_ciphertext'],
           attribute: 'owner_note',
         },
@@ -134,7 +138,51 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       new URL(disabledVault.headers.get('location')!).searchParams.get('error'),
       'invalid_target',
     );
+    const legacyScope = new URL(`${issuer}/authorize`);
+    for (const [name, value] of Object.entries({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: callback,
+      scope: 'openid vault.read',
+      state: secret(),
+      nonce: secret(),
+      code_challenge: digest(secret()),
+      code_challenge_method: 'S256',
+    }))
+      legacyScope.searchParams.set(name, value);
+    const scopeRejected = await worker.fetch(legacyScope.toString(), {
+      headers: { Cookie: '__Host-op-sso=cookie-secret' },
+      redirect: 'manual',
+    });
+    assert.equal(
+      new URL(scopeRejected.headers.get('location')!).searchParams.get('error'),
+      'invalid_scope',
+    );
+
+    const legacyReceipt = new URL(`${issuer}/authorize`);
+    for (const [name, value] of Object.entries({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: callback,
+      scope: 'openid',
+      state: secret(),
+      nonce: secret(),
+      code_challenge: digest(secret()),
+      code_challenge_method: 'S256',
+      vault_consent: 'historical-receipt',
+    }))
+      legacyReceipt.searchParams.set(name, value);
+    const receiptRejected = await worker.fetch(legacyReceipt.toString(), { redirect: 'manual' });
+    assert.equal(
+      new URL(receiptRejected.headers.get('location')!).searchParams.get('error'),
+      'invalid_request',
+    );
     assert.equal(await DB.prepare('SELECT count(*) AS n FROM vault_oauth_consent').first('n'), 0);
+    assert.equal((await worker.fetch(`${issuer}/vault/oauth/consent?tx=historical`)).status, 404);
+    assert.equal(
+      (await worker.fetch(`${issuer}/vault/oauth/consent`, { method: 'POST' })).status,
+      404,
+    );
     assert.equal((await worker.fetch(`${issuer}/vault-api/attributes/owner_note`)).status, 404);
 
     async function authorize() {
@@ -167,10 +215,18 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       return { code, verifier, nonce };
     }
 
-    async function token(code: string, verifier: string, extras: Record<string, string> = {}) {
+    async function token(
+      code: string,
+      verifier: string,
+      extras: Record<string, string> = {},
+      dpop?: string,
+    ) {
       return worker.fetch(`${issuer}/token`, {
         method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(dpop ? { DPoP: dpop } : {}),
+        },
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           client_id: clientId,
@@ -201,6 +257,85 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
 
     const second = await authorize();
     assert.equal((await token(second.code, second.verifier)).status, 200);
+
+    const historicalVaultCode = await authorize();
+    const historicalCodeHash = await DB.prepare(
+      'SELECT code_hash FROM authorization_code WHERE pkce_challenge=? AND consumed_by IS NULL',
+    )
+      .bind(digest(historicalVaultCode.verifier))
+      .first('code_hash');
+    assert.ok(historicalCodeHash);
+    await DB.batch([
+      DB.prepare('DELETE FROM code_context WHERE code_hash=?').bind(historicalCodeHash),
+      DB.prepare('INSERT INTO code_context(code_hash,nonce,scope) VALUES(?,?,?)').bind(
+        historicalCodeHash,
+        historicalVaultCode.nonce,
+        'openid vault.read',
+      ),
+    ]);
+    const legacyConsentId = secret();
+    const legacyGrantId = secret();
+    const legacyNow = Math.floor(Date.now() / 1000);
+    await DB.prepare(
+      `INSERT INTO vault_oauth_consent
+       (tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision,authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at)
+       VALUES(?,?,'sso','account',?,1,?,?,?,'owner_note','https://mikaki.tossa.app/vault-api/',?,?)`,
+    )
+      .bind(
+        legacyConsentId,
+        digest('cookie-secret'),
+        clientId,
+        `${issuer}/authorize?client_id=${clientId}`,
+        callback,
+        secret(),
+        legacyNow + 300,
+        legacyNow,
+      )
+      .run();
+    await DB.prepare("UPDATE vault_oauth_consent SET decision='approved' WHERE tx_id=?")
+      .bind(legacyConsentId)
+      .run();
+    await DB.prepare("UPDATE vault_oauth_consent SET decision='consumed' WHERE tx_id=?")
+      .bind(legacyConsentId)
+      .run();
+    await DB.prepare(
+      `INSERT INTO vault_oauth_grant
+       (grant_id,consent_tx_id,account_id,client_id,client_revision,attribute_id,resource,action,version,expires_at,revoked,created_at)
+       VALUES(?,?,'account',?,1,'owner_note','https://mikaki.tossa.app/vault-api/','read_ciphertext',1,?,0,?)`,
+    )
+      .bind(legacyGrantId, legacyConsentId, clientId, legacyNow + 300, legacyNow)
+      .run();
+    await DB.prepare(
+      `INSERT INTO vault_oauth_code_context
+       (code_hash,grant_id,grant_version,resource,attribute_id)
+       VALUES(?,?,1,'https://mikaki.tossa.app/vault-api/','owner_note')`,
+    )
+      .bind(historicalCodeHash, legacyGrantId)
+      .run();
+    const dpopKeys = await generateKeyPair('ES256');
+    const dpopJwk = await exportJWK(dpopKeys.publicKey);
+    const dpop = await new SignJWT({
+      htm: 'POST',
+      htu: `${issuer}/token`,
+      iat: Math.floor(Date.now() / 1000),
+      jti: secret(),
+    })
+      .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: dpopJwk })
+      .sign(dpopKeys.privateKey);
+    const rejectedVaultToken = await token(
+      historicalVaultCode.code,
+      historicalVaultCode.verifier,
+      { resource: 'https://mikaki.tossa.app/vault-api/' },
+      dpop,
+    );
+    assert.equal(rejectedVaultToken.status, 400, await rejectedVaultToken.clone().text());
+    assert.equal(
+      await DB.prepare('SELECT count(*) AS n FROM token_issue WHERE code_hash=?')
+        .bind(historicalCodeHash)
+        .first('n'),
+      0,
+      'a legacy Vault-scoped authorization code cannot mint an ordinary token',
+    );
 
     const desktopId = randomUUID();
     const registeredLoopback = 'http://127.0.0.1:0/oidc/callback';

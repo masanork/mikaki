@@ -34,9 +34,7 @@
 		5CFBC0F7618AA3D0FF9885AE /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
 		63F9F6A92E2E39F9C924C51F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		64FFDADD78905A1F27BA97A4 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		9D0C5E17E1A05A41F22521DF /* mobile_vault.rs */ = {isa = PBXFileReference; path = mobile_vault.rs; sourceTree = "<group>"; };
 		A052B1B5C0AA50056211F6BF /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
-		A9A0F539AEEDF0EE50FB047B /* vault_dpop.rs */ = {isa = PBXFileReference; path = vault_dpop.rs; sourceTree = "<group>"; };
 		AA678B92C1CAD867D1045819 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		CB105164A43E7055700BFB5C /* mikaki-client_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "mikaki-client_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCC30B55395B8FDF66EDFB79 /* mobile_oidc.rs */ = {isa = PBXFileReference; path = mobile_oidc.rs; sourceTree = "<group>"; };
@@ -127,9 +125,7 @@
 				5CFBC0F7618AA3D0FF9885AE /* lib.rs */,
 				0B8348873CDE070E66FD8632 /* main.rs */,
 				CCC30B55395B8FDF66EDFB79 /* mobile_oidc.rs */,
-				9D0C5E17E1A05A41F22521DF /* mobile_vault.rs */,
 				4BB2B44438AA1243C82A3043 /* native_oidc.rs */,
-				A9A0F539AEEDF0EE50FB047B /* vault_dpop.rs */,
 			);
 			name = src;
 			path = ../../src;

@@ -14,11 +14,6 @@ struct NonceRow {
     nonce: String,
 }
 
-#[derive(Deserialize)]
-pub(super) struct VaultAccountRow {
-    pub account_id: String,
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum NonceScope {
     AuthorizationServer,
@@ -222,70 +217,4 @@ pub(super) async fn authorize_resource(
         .into_iter()
         .next()
         .map(|row| row.sub))
-}
-
-/// Accept one Vault resource proof only while the exact token audience,
-/// attribute, grant revision, client, and owner session are still eligible.
-pub(super) async fn authorize_vault_resource(
-    db: &D1Database,
-    proof: &VerifiedDpopProof,
-    operation: &str,
-    token_hash: &str,
-    attribute: &str,
-    require_nonce: bool,
-) -> worker::Result<Option<VaultAccountRow>> {
-    let mut bindings = values(proof, operation);
-    bindings.push(JsValue::from_str(token_hash));
-    bindings.push(JsValue::from_str(attribute));
-    let nonce_check = if require_nonce {
-        bindings.push(
-            proof
-                .nonce()
-                .map(JsValue::from_str)
-                .unwrap_or(JsValue::NULL),
-        );
-        " AND EXISTS (SELECT 1 FROM dpop_nonce WHERE scope='rs' AND nonce=?8 \
-          AND accept_until>CAST(strftime('%s','now') AS INTEGER))"
-    } else {
-        ""
-    };
-    let authority = "FROM token_issue ti \
-        JOIN vault_oauth_token_context vt ON vt.access_hash=ti.access_hash \
-        JOIN vault_oauth_grant g ON g.grant_id=vt.grant_id \
-        JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
-        JOIN vault_oauth_code_context vc ON vc.code_hash=ac.code_hash \
-        JOIN code_context cc ON cc.code_hash=ac.code_hash \
-        JOIN valid_client_session s ON s.client_id=ac.client_id AND s.sid=ac.sid \
-        JOIN client c ON c.client_id=ac.client_id \
-        WHERE ti.access_hash=?6 AND ti.dpop_jkt=?1 AND ti.revoked=0 \
-        AND ti.access_expires_at>unixepoch() AND ac.consumed_by=ti.operation_id \
-        AND vt.resource='https://mikaki.tossa.app/vault-api/' \
-        AND vt.attribute_id=?7 AND vt.grant_version=g.version \
-        AND vt.attribute_id=g.attribute_id AND vt.resource=g.resource \
-        AND vc.grant_id=g.grant_id AND vc.grant_version=g.version \
-        AND vc.attribute_id=?7 AND vc.resource=vt.resource \
-        AND g.action='read_ciphertext' AND g.revoked=0 \
-        AND g.expires_at>unixepoch() AND ti.access_expires_at<=g.expires_at \
-        AND g.account_id=s.account_id AND g.client_id=ac.client_id \
-        AND g.client_revision=ac.client_revision \
-        AND c.client_type='native' AND c.auth_method='none' \
-        AND c.active=1 AND c.revision=ac.client_revision \
-        AND cc.scope IN ('openid vault.read','vault.read openid')";
-    let proof_check = format!(
-        "{ACCEPT} AND EXISTS (SELECT 1 {authority}) {nonce_check} \
-         ON CONFLICT(jkt,jti_hash) DO NOTHING"
-    );
-    let account_query = format!(
-        "SELECT s.account_id {authority} AND EXISTS (SELECT 1 FROM dpop_proof_use p \
-         WHERE p.jkt=?1 AND p.jti_hash=?2 AND p.accepted_by=?3 \
-         AND p.retain_until>=unixepoch())"
-    );
-    let results = db
-        .batch(vec![
-            cleanup(db),
-            db.prepare(proof_check).bind(&bindings)?,
-            db.prepare(account_query).bind(&bindings[..7])?,
-        ])
-        .await?;
-    Ok(results[2].results::<VaultAccountRow>()?.into_iter().next())
 }
