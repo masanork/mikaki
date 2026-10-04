@@ -50,7 +50,7 @@ test('Vault consent requires the matching live owner session and is decided once
     authorizationUrl.searchParams.set('client_id', clientId);
     authorizationUrl.searchParams.set('state', state);
     const insert = DB.prepare(
-      "INSERT INTO vault_oauth_consent(tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision,authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at) VALUES(?, ?, 'sso', 'owner', ?, 1, ?, ?, ?, 'owner_note', 'https://mikaki.tossa.app/vault-api/', ?, ?)",
+      "INSERT INTO vault_oauth_consent(tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision,authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at) VALUES(?, ?, 'sso', 'owner', ?, 1, ?, ?, ?, 'owner_note', 'https://auth.mikaki.org/vault-api/', ?, ?)",
     );
     await insert
       .bind(

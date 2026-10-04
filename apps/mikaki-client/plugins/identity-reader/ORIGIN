@@ -1,0 +1,7 @@
+NFC connection approach adapted from madowi (MIT OR Apache-2.0).
+Source commit: f3330baf18d005aaffbfcfb0d69f667ddfc1d0e6
+Source file: tauri-app/src-tauri/gen/android/app/src/main/java/app/madowi/nfc/NfcPlugin.kt
+Local implementation: standalone Tauri Android library, Rust-only transport,
+session-bound operations, bounded response sizes, lifecycle cancellation,
+no UID fallback, no card parsing or PIN storage in Kotlin, no diagnostic logs.
+The madowi BLE reader, iOS scaffold, card tokens, and madowi-core are not copied.

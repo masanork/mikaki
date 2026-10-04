@@ -1,0 +1,16 @@
+[package]
+name = "civ-card"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Transport-neutral civ parsing subset for Mikaki identity reading"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+async-trait = "0.1"
+encoding_rs = "0.8"
+once_cell = "1"
+
+[workspace]

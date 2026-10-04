@@ -20,6 +20,8 @@ url.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+mikaki-identity = { path = "../identity" }
+zeroize = "1.9"
 base64.workspace = true
 futures-util.workspace = true
 js-sys = "=0.3.105"

@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/webauthn", "crates/auth", "crates/oidc", "crates/browser-wasm", "crates/worker", "crates/userinfo-claim-worker", "crates/helpdesk-rp"]
-exclude = ["design/probes/es256", "design/probes/pqc", "fuzz"]
+members = ["crates/identity", "crates/webauthn", "crates/auth", "crates/oidc", "crates/browser-wasm", "crates/worker", "crates/userinfo-claim-worker", "crates/helpdesk-rp"]
+exclude = ["apps/mikaki-client/vendor/civ-card", "apps/mikaki-client/src-tauri", "design/probes/es256", "design/probes/pqc", "fuzz"]
 resolver = "3"
 
 [workspace.package]

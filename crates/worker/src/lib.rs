@@ -13,6 +13,8 @@ mod enrollment;
 #[cfg(target_arch = "wasm32")]
 mod home;
 #[cfg(target_arch = "wasm32")]
+mod identity;
+#[cfg(target_arch = "wasm32")]
 mod logout;
 #[cfg(target_arch = "wasm32")]
 mod logout_delivery;
@@ -299,6 +301,8 @@ struct UserInfoResponse {
     sub: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mikaki_linked_document: Option<serde_json::Value>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -3224,6 +3228,9 @@ async fn discovery_route(
                 if name_release_available {
                     claims.push("name");
                 }
+                if identity::claims_enabled(&context.env) {
+                    claims.push(identity::CLAIM);
+                }
                 claims
             },
             acr_values_supported: [mikaki_oidc::PASSKEY_UV_ACR],
@@ -3646,7 +3653,11 @@ async fn userinfo_route_inner(
         return worker::Response::builder()
             .with_header("Cache-Control", "no-store")?
             .with_header("Pragma", "no-cache")?
-            .from_json(&UserInfoResponse { sub, name });
+            .from_json(&UserInfoResponse {
+                sub,
+                name,
+                mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
+            });
     }
     let subject = db
         .prepare(
@@ -3672,6 +3683,7 @@ async fn userinfo_route_inner(
         .from_json(&UserInfoResponse {
             sub: subject.sub,
             name,
+            mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
         })
 }
 
@@ -3752,6 +3764,36 @@ pub async fn main(
         .post_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
         .post_async("/par", par::route)
+        .get_async("/identity", identity::manage_get)
+        .post_async("/identity/erase", identity::manage_post)
+        .post_async("/identity/intake", identity::intake)
+        .get_async("/identity/approve", identity::approve_get)
+        .post_async("/identity/approve", identity::approve_post)
+        .post_async("/identity/poll", identity::poll)
+        .get_async("/identity/documents", identity::documents)
+        .delete_async("/identity/documents/:document", identity::revoke)
+        .get_async(
+            "/.well-known/openid-credential-issuer/identity/issuer",
+            identity::metadata,
+        )
+        .get_async(
+            "/.well-known/oauth-authorization-server/identity/issuer",
+            identity::oauth_metadata,
+        )
+        .get_async("/identity/issuer/jwks", identity::jwks)
+        .get_async(
+            "/identity/issuer/types/linked-document",
+            identity::type_metadata,
+        )
+        .post_async("/identity/release", identity::release_post)
+        .get_async("/identity/issuer/authorize", identity::authorize_get)
+        .post_async("/identity/issuer/authorize", identity::authorize_post)
+        .post_async("/identity/issuer/par", identity::par)
+        .post_async("/identity/issuer/token", identity::token)
+        .post_async("/identity/issuer/nonce", identity::nonce)
+        .post_async("/identity/issuer/credential", identity::credential)
+        .post_async("/identity/attester/challenge", identity::attester_challenge)
+        .post_async("/identity/attester/attestation", identity::attester_redeem)
         .get_async("/vault", vault_attributes::page)
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
@@ -3862,6 +3904,7 @@ fn native_host_route(is_get: bool, path: &str) -> NativeHostRoute {
         (true, "/.well-known/apple-app-site-association") => NativeHostRoute::Apple,
         (true, "/.well-known/assetlinks.json") => NativeHostRoute::Android,
         (true, "/oidc/native/callback") => NativeHostRoute::CallbackFallback,
+        (true, "/identity/issuance/callback") => NativeHostRoute::CallbackFallback,
         (true, "/native-link-help") => NativeHostRoute::Help,
         _ => NativeHostRoute::NotFound,
     }
@@ -3886,6 +3929,10 @@ mod native_host_tests {
             NativeHostRoute::CallbackFallback
         );
         assert_eq!(
+            native_host_route(true, "/identity/issuance/callback"),
+            NativeHostRoute::CallbackFallback
+        );
+        assert_eq!(
             native_host_route(true, "/native-link-help"),
             NativeHostRoute::Help
         );
@@ -3894,6 +3941,10 @@ mod native_host_tests {
         }
         assert_eq!(
             native_host_route(false, "/oidc/native/callback"),
+            NativeHostRoute::NotFound
+        );
+        assert_eq!(
+            native_host_route(false, "/identity/issuance/callback"),
             NativeHostRoute::NotFound
         );
         assert_eq!(
@@ -3915,6 +3966,9 @@ pub async fn scheduled(
             .await
             .expect("Vault garbage collection failed");
     }
+    identity::purge(&env)
+        .await
+        .expect("Identity retention cleanup failed");
     logout_delivery::run_due(&env)
         .await
         .expect("Logout delivery failed");

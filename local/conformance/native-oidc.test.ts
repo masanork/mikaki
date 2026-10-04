@@ -114,13 +114,13 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       'invalid_target',
     );
     unsupportedResource.searchParams.set('scope', 'openid vault.read');
-    unsupportedResource.searchParams.set('resource', 'https://mikaki.tossa.app/vault-api/');
+    unsupportedResource.searchParams.set('resource', 'https://auth.mikaki.org/vault-api/');
     unsupportedResource.searchParams.set(
       'authorization_details',
       JSON.stringify([
         {
-          type: 'https://mikaki.tossa.app/authorization-details/vault-read-v1',
-          locations: ['https://mikaki.tossa.app/vault-api/'],
+          type: 'https://auth.mikaki.org/authorization-details/vault-read-v1',
+          locations: ['https://auth.mikaki.org/vault-api/'],
           actions: ['read_ciphertext'],
           attribute: 'owner_note',
         },

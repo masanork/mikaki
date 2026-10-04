@@ -29,7 +29,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       assert.equal(asset.headers.get('Content-Type'), contentType);
       assert.equal(asset.headers.get('X-Content-Type-Options'), 'nosniff');
       assert.ok((await asset.arrayBuffer()).byteLength > 0);
-      const callbackHost = await worker.fetch(`https://mikaki-native.tossa.app${path}`);
+      const callbackHost = await worker.fetch(`https://app.mikaki.org${path}`);
       assert.equal(callbackHost.status, 404, 'branding must not expand callback-host routes');
     }
     const versionResponse = await worker.fetch('https://mikaki.test/version');

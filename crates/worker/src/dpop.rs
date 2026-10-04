@@ -116,6 +116,23 @@ pub(super) async fn accept_token_proof(
     operation: &str,
     require_nonce: bool,
 ) -> worker::Result<()> {
+    accept_identity_proof(
+        db,
+        proof,
+        operation,
+        require_nonce,
+        NonceScope::AuthorizationServer,
+    )
+    .await
+}
+
+pub(super) async fn accept_identity_proof(
+    db: &D1Database,
+    proof: &VerifiedDpopProof,
+    operation: &str,
+    require_nonce: bool,
+    scope: NonceScope,
+) -> worker::Result<()> {
     let mut bindings = values(proof, operation);
     let nonce_check = if require_nonce {
         bindings.push(
@@ -124,10 +141,12 @@ pub(super) async fn accept_token_proof(
                 .map(JsValue::from_str)
                 .unwrap_or(JsValue::NULL),
         );
-        " AND EXISTS (SELECT 1 FROM dpop_nonce WHERE scope='as' AND nonce=?6 \
-          AND accept_until>CAST(strftime('%s','now') AS INTEGER))"
+        format!(
+            " AND EXISTS (SELECT 1 FROM dpop_nonce WHERE scope='{}' AND nonce=?6 AND accept_until>CAST(strftime('%s','now') AS INTEGER))",
+            scope.as_str()
+        )
     } else {
-        ""
+        String::new()
     };
     let results = db
         .batch(vec![
