@@ -27,8 +27,8 @@ export async function withNativePresentationHttp(
         'build',
         '-q',
         '--manifest-path',
-        'apps/mikaki-client/src-tauri/Cargo.toml',
-        '--example',
+        'design/probes/native-identity-http/Cargo.toml',
+        '--bin',
         'oid4vp_transport',
         '--locked',
         '--offline',
@@ -185,7 +185,7 @@ export async function withNativePresentationHttp(
     },
   );
   const child = spawn(
-    `${cwd}/apps/mikaki-client/src-tauri/target/debug/examples/oid4vp_transport`,
+    `${cwd}/design/probes/native-identity-http/target/debug/oid4vp_transport`,
     [],
     { cwd, stdio: ['pipe', 'pipe', 'pipe'] },
   );
