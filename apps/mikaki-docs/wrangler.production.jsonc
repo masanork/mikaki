@@ -12,12 +12,12 @@
     "directory": "dist",
     "binding": "DOCS_ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": true,
+    "run_worker_first": true
   },
   "vars": {
     "ISSUER": "https://auth.mikaki.org",
     "RP_ORIGIN": "https://docs.mikaki.org",
-    "CLIENT_ID": "301abb06-5573-42bb-a924-434ecf75dd06",
+    "CLIENT_ID": "301abb06-5573-42bb-a924-434ecf75dd06"
   },
   "secrets": { "required": ["RP_PRIVATE_JWK"] },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
@@ -26,21 +26,21 @@
       "binding": "DB",
       "database_name": "mikaki-docs-rp",
       "database_id": "8527823b-5417-425d-8028-0532464e39e7",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "ratelimits": [
     {
       "name": "AUTH_LIMITER",
       "namespace_id": "2026100501",
-      "simple": { "limit": 60, "period": 60 },
-    },
+      "simple": { "limit": 60, "period": 60 }
+    }
   ],
   "triggers": { "crons": ["*/15 * * * *"] },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
     "logs": { "enabled": true, "invocation_logs": false },
-    "traces": { "enabled": false },
-  },
+    "traces": { "enabled": false }
+  }
 }

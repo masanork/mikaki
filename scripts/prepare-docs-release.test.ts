@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -31,4 +31,32 @@ test('Docs release manifest binds source, worker bundle, migrations and every pu
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('production Docs Wrangler config is strict JSON with release worker and binding names', async () => {
+  const path = new URL('../apps/mikaki-docs/wrangler.production.jsonc', import.meta.url);
+  const config = JSON.parse(await readFile(path, 'utf8')) as {
+    name: string;
+    main: string;
+    assets: { binding: string };
+    d1_databases: Array<{ binding: string; database_name: string }>;
+    version_metadata: { binding: string };
+    ratelimits: Array<{ name: string }>;
+    secrets: { required: string[] };
+  };
+
+  assert.equal(config.name, 'mikaki-docs-rp');
+  assert.equal(config.main, 'worker.ts');
+  assert.equal(config.assets.binding, 'DOCS_ASSETS');
+  assert.deepEqual(config.d1_databases, [
+    {
+      binding: 'DB',
+      database_name: 'mikaki-docs-rp',
+      database_id: '8527823b-5417-425d-8028-0532464e39e7',
+      migrations_dir: 'migrations',
+    },
+  ]);
+  assert.equal(config.version_metadata.binding, 'CF_VERSION_METADATA');
+  assert.deepEqual(config.ratelimits.map(({ name }) => name), ['AUTH_LIMITER']);
+  assert.deepEqual(config.secrets.required, ['RP_PRIVATE_JWK']);
 });
