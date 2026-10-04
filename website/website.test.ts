@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
@@ -157,6 +158,29 @@ test('public websites keep app callbacks code-free and render the woven material
       (await app.fetch('https://app.mikaki.org/oidc/native/callback', { method: 'POST' })).status,
       404,
     );
+    for (const [host, worker] of [
+      ['mikaki.org', site],
+      ['app.mikaki.org', app],
+    ] as const) {
+      for (const lang of ['ja', 'en']) {
+        const prefix = lang === 'ja' ? '' : '/en';
+        for (const path of ['/missing-page', '/missing/nested-page']) {
+          const response = await worker.fetch(`https://${host}${prefix}${path}`);
+          assert.equal(response.status, 404);
+          const html = await response.text();
+          assert.ok(html.includes(`<html lang="${lang}">`));
+          assert.ok(html.includes(lang === 'ja' ? 'ページが見つかりません' : 'Page not found'));
+          assert.ok(html.includes('name="robots" content="noindex"'));
+          const switchPath = lang === 'ja' ? '/en/404' : '/404';
+          assert.ok(html.includes(`href="${switchPath}"`));
+          const alternate = await worker.fetch(`https://${host}${switchPath}`);
+          assert.equal(alternate.status, 200);
+          assert.ok(
+            (await alternate.text()).includes(`<html lang="${lang === 'ja' ? 'en' : 'ja'}">`),
+          );
+        }
+      }
+    }
     const association = await app.fetch('https://app.mikaki.org/.well-known/assetlinks.json');
     assert.equal(association.status, 200, JSON.stringify(Object.fromEntries(association.headers)));
     const links = await association.json();
@@ -300,7 +324,8 @@ test('public websites keep app callbacks code-free and render the woven material
     ])
       assert.equal((await site.fetch(`https://mikaki.org${path}`)).status, 200, path);
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
@@ -336,20 +361,38 @@ test('public websites keep app callbacks code-free and render the woven material
       previews.push(
         ['app.mikaki.org', '/', 'app'],
         ['app.mikaki.org', '/native-link-help', 'app-help'],
+        ['app.mikaki.org', '/en/', 'app-en'],
+        ['app.mikaki.org', '/en/native-link-help', 'app-help-en'],
       );
       for (const [host, path, name] of previews) {
         await page.goto(`https://${host}${path}`);
         await page.locator('h1').waitFor();
-        await page.waitForFunction(
-          () => document.querySelector('.scene')?.getAttribute('data-renderer') === 'canvas',
-        );
+        if (await page.locator('canvas').count())
+          await page.waitForFunction(
+            () => document.querySelector('.scene')?.getAttribute('data-renderer') === 'canvas',
+          );
         for (const image of await page.locator('.prose img').all()) {
           await image.scrollIntoViewIfNeeded();
           await image.evaluate((element: HTMLImageElement) => element.decode());
           assert.ok(await image.evaluate((element: HTMLImageElement) => element.naturalWidth > 0));
         }
         await page.evaluate(() => scrollTo(0, 0));
-        assert.equal(await page.locator('.plaque').textContent(), host);
+        assert.equal(await page.locator('main').count(), 1);
+        assert.equal(await page.locator('h1').count(), 1);
+        assert.equal(await page.locator('.primary-nav a').count(), 4);
+        if (width === 1440) {
+          const result = await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+            .analyze();
+          assert.deepEqual(
+            result.violations.map(({ id, nodes }) => ({
+              id,
+              nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+            })),
+            [],
+            `${host}${path}: accessibility violations`,
+          );
+        }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({
           path: new URL(`../artifacts/website-preview/${name}-${width}.png`, import.meta.url)
@@ -384,6 +427,23 @@ test('public websites keep app callbacks code-free and render the woven material
       scene.style.removeProperty('min-height');
     });
     await page.waitForFunction(() => document.querySelector('canvas')!.width > 1);
+    const motion = page.getByRole('button', { name: '背景の動きを停止', exact: true });
+    await motion.click();
+    assert.equal(await motion.getAttribute('aria-pressed'), 'true');
+    const pausedFrame = await page
+      .locator('canvas')
+      .evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+    await page.waitForTimeout(300);
+    assert.equal(
+      await page.locator('canvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()),
+      pausedFrame,
+    );
+    await page.reload();
+    await page.waitForFunction(
+      () => document.querySelector('.scene')?.getAttribute('data-paused') === 'true',
+    );
+    await motion.click();
+    assert.equal(await motion.getAttribute('aria-pressed'), 'false');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('https://mikaki.org');
     await page.waitForFunction(() => document.querySelector('canvas')!.width > 0);
@@ -395,6 +455,72 @@ test('public websites keep app callbacks code-free and render the woven material
       await page.locator('canvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()),
       frame,
     );
+    assert.ok(
+      await page
+        .getByRole('button', { name: '背景の動きを停止（端末設定）', exact: true })
+        .isDisabled(),
+    );
+    // A 320-CSS-pixel viewport exercises the reflow width at 400% zoom on 1280px.
+    // Apply WCAG text-spacing overrides and keep horizontal scrolling within code/tables.
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.route('https://mikaki.org/style.css', async (route) => {
+      const response = await site.fetch(route.request().url());
+      const headers = Object.fromEntries(response.headers);
+      delete headers['content-length'];
+      await route.fulfill({
+        status: response.status,
+        headers,
+        body:
+          (await response.text()) +
+          '\n* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-bottom: 2em !important; }',
+      });
+    });
+    for (const path of [
+      '/',
+      '/en/',
+      '/api',
+      '/en/specifications',
+      '/getting-started',
+      '/contact',
+    ]) {
+      await page.goto(`https://mikaki.org${path}`);
+
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `${path}: text spacing/reflow`,
+      );
+      assert.ok(await page.locator('h1').isVisible());
+      assert.equal(await page.locator('.primary-nav a').count(), 4);
+    }
+    await page.unroute('https://mikaki.org/style.css');
+    await page.goto('https://mikaki.org/api');
+    const table = page.locator('.table-scroll').first();
+    await table.focus();
+    const beforeScroll = await table.evaluate((element) => element.scrollLeft);
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(200);
+    assert.ok((await table.evaluate((element) => element.scrollLeft)) > beforeScroll);
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('https://mikaki.org');
+    assert.equal(
+      await page.locator('canvas').evaluate((element) => getComputedStyle(element).display),
+      'none',
+    );
+    await page.keyboard.press('Tab');
+    const focus = await page.locator('.skip-link').evaluate((element) => ({
+      width: getComputedStyle(element).outlineWidth,
+      style: getComputedStyle(element).outlineStyle,
+    }));
+    assert.equal(focus.width, '3px');
+    assert.equal(focus.style, 'solid');
+    await page.emulateMedia({ forcedColors: 'none', media: 'print' });
+    assert.equal(
+      await page.locator('.site-header').evaluate((element) => getComputedStyle(element).display),
+      'none',
+    );
+    assert.ok(await page.locator('h1').isVisible());
+    await page.emulateMedia({ media: 'screen' });
     assert.deepEqual(errors, []);
     const staticPage = await browser.newPage({ javaScriptEnabled: false });
     await staticPage.route('https://mikaki.org/**', async (route) => {
@@ -407,12 +533,16 @@ test('public websites keep app callbacks code-free and render the woven material
     });
     await staticPage.goto('https://mikaki.org');
     assert.equal(await staticPage.locator('h1').textContent(), '自分の情報を、自分の手元に。');
+    await staticPage.keyboard.press('Tab');
+    assert.equal(await staticPage.evaluate(() => document.activeElement?.className), 'skip-link');
+    await staticPage.keyboard.press('Enter');
+    assert.equal(await staticPage.evaluate(() => document.activeElement?.id), 'main-content');
     const proseLink = staticPage.locator('.prose p a').first();
     assert.equal(
       await proseLink.evaluate((link) => getComputedStyle(link).textDecorationLine),
       'underline',
     );
-    const integrationLink = staticPage.locator('.prose li a[href="/integration"]');
+    const integrationLink = staticPage.locator('.guide-card a[href="/integration"]');
     const navigation = staticPage.waitForResponse(
       (response) => response.url() === 'https://mikaki.org/integration',
     );
@@ -421,12 +551,17 @@ test('public websites keep app callbacks code-free and render the woven material
     assert.equal(new URL(staticPage.url()).pathname, '/integration');
     await staticPage.goto('https://mikaki.org');
     assert.equal(
-      await staticPage.locator('.bolt').getAttribute('href'),
+      await staticPage
+        .locator('.header-tools a[href^="https://auth.mikaki.org/signin"]')
+        .getAttribute('href'),
       'https://auth.mikaki.org/signin',
     );
     await staticPage.locator('.actions a[href="/getting-started"]').click();
     assert.equal(new URL(staticPage.url()).pathname, '/getting-started');
-    assert.equal(await staticPage.locator('nav [aria-current="page"]').textContent(), 'はじめ方');
+    assert.equal(
+      await staticPage.locator('.section-nav [aria-current="page"]').textContent(),
+      'はじめ方',
+    );
     assert.ok((await staticPage.locator('main').textContent())?.includes('招待コード'));
     // Section navigation must work with JavaScript disabled in both locales.
     for (const [path, label, title] of [
@@ -434,6 +569,7 @@ test('public websites keep app callbacks code-free and render the woven material
       ['/en/integration', 'On this page', 'When integration fails'],
     ]) {
       await staticPage.goto(`https://mikaki.org${path}`);
+      await staticPage.locator('.contents-disclosure summary').click();
       const contents = staticPage.getByRole('navigation', { name: label, exact: true });
       const link = contents.getByRole('link', { name: title, exact: true });
       await link.focus();

@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 
-// Capture the existing hero with its woven renderer; no external assets are fetched.
+// Capture the public hero with its woven renderer; no external assets are fetched.
 // Run build:website first, then rebuild after updating these committed images.
 const root = new URL('./', import.meta.url);
 const browser = await chromium.launch({ headless: true });
@@ -36,7 +36,7 @@ try {
       body = Buffer.concat([
         body,
         Buffer.from(
-          '\n.scene{height:630px;min-height:630px}main{padding-top:62px}.actions,.details,.prose,footer{display:none}',
+          '\n.site-header,.skip-link,.home-content,.site-footer,.actions,.hero-status,.motion-control{display:none!important}.hero{height:630px;min-height:630px}.hero-inner{padding:54px 72px}.hero-inner::before{content:"mikaki";display:block;font-size:26px;font-weight:650;margin-bottom:24px;color:#f4f8f2}',
         ),
       ]);
     await route.fulfill({ contentType, body });

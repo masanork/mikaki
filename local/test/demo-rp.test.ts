@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
 import { startLocal } from '../runtime.ts';
 import { OP, RP, now } from '../shared.ts';
 
@@ -56,7 +58,38 @@ test('login-only RP isolates data, checks active leases and removes known revoke
     assert.match(await ja.text(), /公開IdPへの接続を試す/);
     assert.match(ja.headers()['x-robots-tag'], /noindex/);
     assert.equal(ja.headers()['referrer-policy'], 'strict-origin');
+    await page.setViewportSize({ width: 320, height: 900 });
+    for (const locale of ['ja', 'en']) {
+      await page.goto(`${RP}/?lang=${locale}`);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      assert.deepEqual(
+        results.violations.map(({ id, nodes }) => ({
+          id,
+          targets: nodes.map(({ target }) => target),
+        })),
+        [],
+      );
+    }
     await page.goto(`${RP}/?lang=en`);
+    const previews = new URL('../../artifacts/website-preview/', import.meta.url);
+    await mkdir(previews, { recursive: true });
+    await page.screenshot({
+      path: new URL('demo-home-en-320.png', previews).pathname,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({
+      path: new URL('demo-home-en-1440.png', previews).pathname,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.className), 'skip-link');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'main-content');
     await page.getByRole('button', { name: 'Sign in with mikaki' }).click();
     await page.waitForURL(`${OP}/login?**`);
     await page.getByRole('checkbox').check();
@@ -65,6 +98,27 @@ test('login-only RP isolates data, checks active leases and removes known revoke
     await page.waitForURL(`${RP}/session`);
     assert.match(await page.locator('main').innerText(), /Signed in/);
     assert.equal(checks, 1);
+    await page.screenshot({
+      path: new URL('demo-session-en-320.png', previews).pathname,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({
+      path: new URL('demo-session-en-1440.png', previews).pathname,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 320, height: 900 });
+    const activeResults = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    assert.deepEqual(
+      activeResults.violations.map(({ id, nodes }) => ({
+        id,
+        targets: nodes.map(({ target }) => target),
+      })),
+      [],
+    );
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     const session = (await local.rpDB
       .prepare('SELECT sid, sub, parent_expires_at, lease_until FROM rp_session')
       .first()) as {
