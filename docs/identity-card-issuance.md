@@ -4,7 +4,7 @@ The Android Tauri client reads My Number input-support four attributes and tradi
 
 ## Merge and activation gates
 
-The merge target is a disabled-by-default implementation with reproducible host regressions. Physical-device qualification and formal certification are separate activation gates; the selected suite results below do not authorize production activation.
+The merge target is a disabled-by-default implementation with reproducible host regressions. The auth.mikaki.org deployment is also used for testing. Identity routes may be enabled there after CI, migrations and explicit trust/key provisioning, so physical-device qualification can run against the deployed service. Physical-device qualification and formal certification remain required before claiming those assurances; the selected suite results below do not establish them.
 
 Before proposing the identity PR:
 
@@ -12,7 +12,7 @@ Before proposing the identity PR:
 2. Run the full existing PR checks on the resulting branch. The [CI workflow](../.github/workflows/ci.yml) also runs `npm run test:identity-contracts` after the Worker build and Chromium installation: independent SD-JWT/mdoc presentation, simulated ISO proximity transport, CRL checks, attester/bridge rejection paths, explicit UI consent/cancellation and device-preflight regressions. Shared identity Rust tests run through the workspace gate. The separate Tauri crate still needs its native identity tests and Android compilation; workspace success does not cover it. External Wallet and JVM SDK runs remain opt-in and must have their pinned provenance and scope recorded explicitly.
 3. Review account isolation, one-use authorization and nonce handling, erasure/revocation, disabled-profile behavior and migrations 0036–0044. Exercise upgrading an existing database, not just creating a fresh fixture database. Keep the production feature flags absent until activation evidence is available.
 
-Before production activation, qualify real card issuer trust and revocation, actual card reads, Android Keystore custody/persistence/migration/deletion, account switching, the intended deployed Wallet/issuer callbacks and physical ISO transports. Resolve the official suite's remaining cases and obtain certification separately before claiming conformance. A host CLI using a patched software attester is interoperability evidence only within the recorded fixture profile.
+Before enabling test-deployment routes, provision explicit operator-validated card trust, dedicated credential signing keys, rate limits and the selected Wallet client/attester policies. Then qualify real card issuer trust and revocation, actual card reads, Android Keystore custody/persistence/migration/deletion, account switching, the intended deployed Wallet/issuer callbacks and physical ISO transports. Resolve the official suite's remaining cases and obtain certification separately before claiming conformance. A host CLI using a patched software attester is interoperability evidence only within the recorded fixture profile.
 
 ### Migration numbering before the first identity PR
 
@@ -134,18 +134,18 @@ Select the official `/HAIP` test plans. The [OID4VCI certification instructions]
 
 The following is the initial blocker inventory, not a complete normative requirements checklist. Map every applicable MUST, MUST NOT and conditional requirement, including inherited protocol/FAPI requirements, to code and test evidence before declaring a profile complete.
 
-| Area | Current evidence / limitation | Final-baseline work |
-| --- | --- | --- |
-| Issuer PAR, PKCE, authorization response issuer | HAIP requires authenticated PAR and S256; selected official PAR/PKCE/code-binding and consumed/expired request-URI tests pass for both formats. Local tests cover pending-screen revisits and one-winner consent. Public-client direct authorization remains a separate profile. | Complete remaining browser-error/visit-telemetry and inherited profile modules. |
-| Client authentication | Separate authenticated issuance profile verifies ES256 Client Attestation/x5c and PoP at PAR/token; local D1 tests cover replay and instance-key substitution. Official metadata/happy-flow and all six selected client-attestation negative modules pass for each format. | Complete the remaining applicable plan modules, then qualify production attester policy. The general HAIP specification permits ecosystem choices; the selected certification plan is more specific. |
-| DPoP | HAIP requires sender-constrained tokens; explicit `dpop_jkt` and signed PAR proofs bind codes to the token key. Selected official key-substitution, binding-success and full resource-side negative/header-case modules pass; local AS/RS nonce, key/ath/URL and replay checks pass. | Complete remaining applicable modules and qualify the native Wallet; retain the separate public-client contract. |
-| Credential issuer trust | Issuer validates bounded P-256 signing chains before issuance; SD-JWT carries root-excluded `x5c`, and mdoc uses a directly IACA-signed DS. Both official happy-flow modules pass with disposable credential PKI. | Qualify production trust provisioning and revocation operation. Native HAIP receipts additionally validate separately provisioned credential CA/IACA roots at reception, restoration and presentation; qualify production roots and revocation operation. Reader, attester and credential certificate purposes remain separate. |
-| Key attestation | Issuer verifies nonce-bound ES256/x5c attestations via JWT headers or standalone attestation proofs; one key per request. Hardware/platform qualification remains outstanding. | Native Wallet instance/holder enrollment is connected; qualify platform trust/status and batch support. Keep wallet/client authentication, key attestation and DPoP as separate proofs. |
-| Issuer request/response encryption | Optional compact JWE ECDH-ES/P-256 with A128GCM/A256GCM, response-only DEFLATE and independent JOSE/OpenSSL/zlib verification. | Qualify the remaining applicable official variants and native encrypted reception. |
-| Native OID4VCI Wallet | First-party pre-authorized issuance; external SDK exercises the Issuer's authorization-code path. | The opt-in Tauri authorization-code path connects fixed metadata, client/key authentication and nonce challenges. Run the actual Wallet against the emulated Issuer; generic offers and external issuers remain separate. |
-| OID4VP Wallet | Signed requests, selective disclosure, ECDH-ES/A256GCM, GET request_uri and browser completion; the pinned `x509_hash` profile adds POST capability metadata and one-use wallet nonce. DCQL AKI conditions match validated credential chains before consent. | Qualify actual request/response HTTP delivery, complete required DCQL compatibility and official-suite registration, then run the Wallet against the official emulated Verifier. |
-| Browser session binding | Native callback checks exist; verifier-side redemption/session completion is not qualified. | Confirm that the return to the browser completes the originating session; reject missing completion, session substitution and replay in verifier E2E. |
-| Credential lifecycle | Five-minute credentials, account/linkage checks at issuance; unlink does not revoke an already issued credential. | Retain the explicit short-validity policy; specify renewal and status semantics. SD-JWT `status_list` is conditional on a status claim, not an unconditional requirement to add status lists for these short-lived credentials. |
+| Area                                            | Current evidence / limitation                                                                                                                                                                                                                                                        | Final-baseline work                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issuer PAR, PKCE, authorization response issuer | HAIP requires authenticated PAR and S256; selected official PAR/PKCE/code-binding and consumed/expired request-URI tests pass for both formats. Local tests cover pending-screen revisits and one-winner consent. Public-client direct authorization remains a separate profile.     | Complete remaining browser-error/visit-telemetry and inherited profile modules.                                                                                                                                                                                                                                                 |
+| Client authentication                           | Separate authenticated issuance profile verifies ES256 Client Attestation/x5c and PoP at PAR/token; local D1 tests cover replay and instance-key substitution. Official metadata/happy-flow and all six selected client-attestation negative modules pass for each format.           | Complete the remaining applicable plan modules, then qualify production attester policy. The general HAIP specification permits ecosystem choices; the selected certification plan is more specific.                                                                                                                            |
+| DPoP                                            | HAIP requires sender-constrained tokens; explicit `dpop_jkt` and signed PAR proofs bind codes to the token key. Selected official key-substitution, binding-success and full resource-side negative/header-case modules pass; local AS/RS nonce, key/ath/URL and replay checks pass. | Complete remaining applicable modules and qualify the native Wallet; retain the separate public-client contract.                                                                                                                                                                                                                |
+| Credential issuer trust                         | Issuer validates bounded P-256 signing chains before issuance; SD-JWT carries root-excluded `x5c`, and mdoc uses a directly IACA-signed DS. Both official happy-flow modules pass with disposable credential PKI.                                                                    | Qualify production trust provisioning and revocation operation. Native HAIP receipts additionally validate separately provisioned credential CA/IACA roots at reception, restoration and presentation; qualify production roots and revocation operation. Reader, attester and credential certificate purposes remain separate. |
+| Key attestation                                 | Issuer verifies nonce-bound ES256/x5c attestations via JWT headers or standalone attestation proofs; one key per request. Hardware/platform qualification remains outstanding.                                                                                                       | Native Wallet instance/holder enrollment is connected; qualify platform trust/status and batch support. Keep wallet/client authentication, key attestation and DPoP as separate proofs.                                                                                                                                         |
+| Issuer request/response encryption              | Optional compact JWE ECDH-ES/P-256 with A128GCM/A256GCM, response-only DEFLATE and independent JOSE/OpenSSL/zlib verification.                                                                                                                                                       | Qualify the remaining applicable official variants and native encrypted reception.                                                                                                                                                                                                                                              |
+| Native OID4VCI Wallet                           | First-party pre-authorized issuance; external SDK exercises the Issuer's authorization-code path.                                                                                                                                                                                    | The opt-in Tauri authorization-code path connects fixed metadata, client/key authentication and nonce challenges. Run the actual Wallet against the emulated Issuer; generic offers and external issuers remain separate.                                                                                                       |
+| OID4VP Wallet                                   | Signed requests, selective disclosure, ECDH-ES/A256GCM, GET request_uri and browser completion; the pinned `x509_hash` profile adds POST capability metadata and one-use wallet nonce. DCQL AKI conditions match validated credential chains before consent.                         | Qualify actual request/response HTTP delivery, complete required DCQL compatibility and official-suite registration, then run the Wallet against the official emulated Verifier.                                                                                                                                                |
+| Browser session binding                         | Native callback checks exist; verifier-side redemption/session completion is not qualified.                                                                                                                                                                                          | Confirm that the return to the browser completes the originating session; reject missing completion, session substitution and replay in verifier E2E.                                                                                                                                                                           |
+| Credential lifecycle                            | Five-minute credentials, account/linkage checks at issuance; unlink does not revoke an already issued credential.                                                                                                                                                                    | Retain the explicit short-validity policy; specify renewal and status semantics. SD-JWT `status_list` is conditional on a status claim, not an unconditional requirement to add status lists for these short-lived credentials.                                                                                                 |
 
 Implementation checkpoints:
 
@@ -298,12 +298,12 @@ An opt-in broker now connects native proof of key possession and Android evidenc
 
 Required operator configuration:
 
-| Setting | Contract |
-| --- | --- |
-| `IDENTITY_ATTESTER_CLIENTS` variable | JSON array of 1–32 distinct `{client_id, verifier_policy_hash}` policies; the latter is a 43-character SHA-256 base64url policy identifier agreed with the verifier. |
-| `IDENTITY_ATTESTER_SIGNING` secret | JSON `{jwk, chain, trust_anchors}`; `jwk` is a JSON **string** containing the dedicated private ES256 JWK with `kid`; certificates are canonical standard-base64 DER. The attester leaf/public key and validated chain must match. |
-| `IDENTITY_ANDROID_VERIFIER` service binding | Independently implemented Android verification service. Caller-supplied verifier URLs are never accepted. |
-| Issuer Wallet trust | Provision the attester's issuer URL (`MIKAKI_ISSUER` + `/identity/attester`) and CA roots in the existing client/key-attestation trust configuration. The Android platform roots belong to the verification service, not this JWT authority. |
+| Setting                                     | Contract                                                                                                                                                                                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IDENTITY_ATTESTER_CLIENTS` variable        | JSON array of 1–32 distinct `{client_id, verifier_policy_hash}` policies; the latter is a 43-character SHA-256 base64url policy identifier agreed with the verifier.                                                                         |
+| `IDENTITY_ATTESTER_SIGNING` secret          | JSON `{jwk, chain, trust_anchors}`; `jwk` is a JSON **string** containing the dedicated private ES256 JWK with `kid`; certificates are canonical standard-base64 DER. The attester leaf/public key and validated chain must match.           |
+| `IDENTITY_ANDROID_VERIFIER` service binding | Independently implemented Android verification service. Caller-supplied verifier URLs are never accepted.                                                                                                                                    |
+| Issuer Wallet trust                         | Provision the attester's issuer URL (`MIKAKI_ISSUER` + `/identity/attester`) and CA roots in the existing client/key-attestation trust configuration. The Android platform roots belong to the verification service, not this JWT authority. |
 
 The attester signing key must differ from the credential signing and credential encryption keys. Changes to the configured issuer, client policy, signing public key, certificate chain or CA roots invalidate pending enrollments and the old client attestation's permission to enroll holder keys. Private signing material is not part of the policy fingerprint.
 
@@ -473,9 +473,9 @@ Physical Android invocation/consent/cancellation, public endpoint TLS/attester p
 
 The selected module **`oid4vp-1final-wallet-request-uri-method-post`** passes in both format variants, with **zero FAILURE, ERROR or WARNING entries**:
 
-| Format | Official result | Saved evidence |
-| --- | --- | --- |
-| SD-JWT VC (`sd_jwt_vc`) | FINISHED / PASSED | `local/generated/haip-wallet-1791025471006-17b51e71/result.json`, test `W3QNOC9SWaM8cJ0` |
+| Format                           | Official result   | Saved evidence                                                                           |
+| -------------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| SD-JWT VC (`sd_jwt_vc`)          | FINISHED / PASSED | `local/generated/haip-wallet-1791025471006-17b51e71/result.json`, test `W3QNOC9SWaM8cJ0` |
 | mdoc (`iso_mdl`, custom doctype) | FINISHED / PASSED | `local/generated/haip-wallet-1791025474012-bf685e4f/result.json`, test `ziccgBGhjujgXXx` |
 
 These are **two selected official runs**, not full-plan or physical Wallet conformance. Both use `credential_type=custom` and the existing linked-document query. The suite's mdoc format variant is named `iso_mdl`, but this evidence does not claim the ISO mDL doctype or mandatory driving-licence fields. The instance/holder attester, SSO/card evidence and consent remain host fixtures; holder private keys remain inside the live Rust Wallet. The test driver relays suite HTTP exchanges and emulates the suite callback page's bounded fragment XHR. It does not open the real Android browser or prove native OS/App Link/Keystore integration. The prior selected Issuer result remains **84 passes**, unchanged.
@@ -496,13 +496,13 @@ Generated directories are private fixture evidence, contain disposable private s
 
 All **10 selected official runs** finish **PASSED**, with **zero FAILURE, ERROR or WARNING entries**:
 
-| Official module | SD-JWT | mdoc | Behavior exercised |
-| --- | --- | --- | --- |
-| `oid4vp-1final-wallet-request-uri-method-post` | PASS | PASS | Shared metadata and one-use Wallet nonce over POST. |
-| `oid4vp-1final-wallet-happy-flow` | PASS | PASS | GET retrieval, omitted optional state and the default request. |
-| `oid4vp-1final-wallet-alternate-happy-flow` | PASS | PASS | Longer state/nonce, ignored random signed parameter and mismatching `iss`, encryption JWK without `use`, reordered invocation parameters and registered completion. |
-| `oid4vp-1final-wallet-ignores-unusable-encryption-key` | PASS | PASS | Unsupported PQ-shaped and unknown key types surrounding the usable encryption key; suite decryption proves selection of a usable key. |
-| `oid4vp-1final-wallet-fewer-claims-than-available` | PASS | PASS | A query reduced from name/birthdate to name; suite checks that no additional selectively disclosable claim is sent. |
+| Official module                                        | SD-JWT | mdoc | Behavior exercised                                                                                                                                                  |
+| ------------------------------------------------------ | ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oid4vp-1final-wallet-request-uri-method-post`         | PASS   | PASS | Shared metadata and one-use Wallet nonce over POST.                                                                                                                 |
+| `oid4vp-1final-wallet-happy-flow`                      | PASS   | PASS | GET retrieval, omitted optional state and the default request.                                                                                                      |
+| `oid4vp-1final-wallet-alternate-happy-flow`            | PASS   | PASS | Longer state/nonce, ignored random signed parameter and mismatching `iss`, encryption JWK without `use`, reordered invocation parameters and registered completion. |
+| `oid4vp-1final-wallet-ignores-unusable-encryption-key` | PASS   | PASS | Unsupported PQ-shaped and unknown key types surrounding the usable encryption key; suite decryption proves selection of a usable key.                               |
+| `oid4vp-1final-wallet-fewer-claims-than-available`     | PASS   | PASS | A query reduced from name/birthdate to name; suite checks that no additional selectively disclosable claim is sent.                                                 |
 
 Batch evidence is in `local/generated/haip-wallet-1791025728732-5207ec88/summary.json` (SD-JWT, plan `9TE2viXngIbOJ`) and `local/generated/haip-wallet-1791025734308-d4d6b490/summary.json` (mdoc, plan `skBZtMujpIO4S`). Each private evidence directory contains the plan definition, private suite configuration and a module-named result file with final info/full logs. The adapter attempts every selected module and fails the test if any run is not FINISHED/PASSED with no errors/warnings. Reproduce with **`npm run test:identity-wallet-suite`** and the same isolated v5.3.1 suite running. Ordinary six issuance/presentation E2E tests and Node type checking also pass.
 
@@ -514,14 +514,14 @@ This records the earlier rejection-only checkpoint. The [authenticated error-res
 
 [The opt-in suite adapter](../local/conformance/support/official-wallet-suite.ts) now retrieves six additional, unchanged official negative-module requests for **both SD-JWT and mdoc**. It submits them to the same live Rust Wallet core after that Wallet has successfully presented the actual workerd-issued credential in the five positive modules. Every negative response must be exactly the host bridge's `rejected` state, with no credential response. The driver never calls the response endpoint for a negative probe. After all six rejections, a fresh independently signed positive POST request still succeeds and the independent Node peer verifies the original holder's presentation: rejecting a request must not erase the receipt or poison later valid requests.
 
-| Official negative module suffix | Host result, both formats | Evidence still needed for an official pass |
-| --- | --- | --- |
-| `invalid-request-object-signature` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence; suite prohibits a response to the invalid signature request. |
-| `mismatched-client-id` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence; suite prohibits a response when invoking and signed client IDs differ. |
-| `missing-nonce` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response. |
-| `redirect-uri-with-direct-post` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response. |
-| `unknown-transaction-data-type` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response. |
-| `required-non-matching-credential` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response. |
+| Official negative module suffix    | Host result, both formats                           | Evidence still needed for an official pass                                                                |
+| ---------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `invalid-request-object-signature` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence; suite prohibits a response to the invalid signature request.           |
+| `mismatched-client-id`             | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence; suite prohibits a response when invoking and signed client IDs differ. |
+| `missing-nonce`                    | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response.                   |
+| `redirect-uri-with-direct-post`    | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response.                   |
+| `unknown-transaction-data-type`    | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response.                   |
+| `required-non-matching-credential` | REJECTED; no presentation or response-endpoint call | Real Wallet error-screen evidence or an authenticated-endpoint protocol error response.                   |
 
 At this rejection-only checkpoint, totals were **10 official positive PASSED runs** and **12 successful host rejection probes requiring additional official evidence**, not 22 conformance passes. Both formats retain zero suite FAILURE/ERROR/WARNING entries in the observed snapshots. The negative runners remain `WAITING` with a null result at observation, awaiting the module's UI/error-response evidence. The adapter saves that snapshot and separately records harness cleanup as `INTERRUPTED`; cancellation never becomes a conformance pass. No screenshot is synthesized, no suite assertion is bypassed, and no error response is fabricated by the Node driver.
 
@@ -535,11 +535,11 @@ This records the 16-run checkpoint. The [bounded DCQL checkpoint](#bounded-dcql-
 
 [The shared error context](../crates/identity/src/presentation/error_response.rs) and [one-use retrieval evaluator](../crates/identity/src/presentation/retrieval.rs) now distinguish approved requests from a narrow set of authenticated protocol errors. Before authorizing any response, the core independently checks the original compact request's ES256 signature, reader CA/purpose/time/CRL trust, full leaf-DER `x509_hash`, invocation client and GET/POST Wallet nonce, audience, exact registered HTTPS response URI, signed time constraints and usable distinct public encryption key. Duplicate JSON members, invalid metadata, substituted destinations or invalid signatures cannot authorize a response. The existing rejection-only `verify` API and manual inline review remain rejection-only; error delivery requires a native retrieval context.
 
-| Negative request | Encrypted error | SD-JWT | mdoc |
-| --- | --- | --- | --- |
-| Missing nonce | `invalid_request`; no `apv` | PASSED | PASSED |
+| Negative request                | Encrypted error                                 | SD-JWT | mdoc   |
+| ------------------------------- | ----------------------------------------------- | ------ | ------ |
+| Missing nonce                   | `invalid_request`; no `apv`                     | PASSED | PASSED |
 | `redirect_uri` with direct POST | `invalid_request`; registered response URI only | PASSED | PASSED |
-| Unsupported `transaction_data` | `invalid_transaction_data` | PASSED | PASSED |
+| Unsupported `transaction_data`  | `invalid_transaction_data`                      | PASSED | PASSED |
 
 Errors use `direct_post.jwt`, ECDH-ES/A256GCM and a fresh ephemeral key/IV, with only `error` and the optional signed `state` in the plaintext. They contain no credential or holder proof and never use the request's forbidden redirect URI. When the signed request has a nonce, `apv` binds it; a missing nonce uses empty KDF PartyVInfo and omits `apv`. The retrieval Wallet nonce is never substituted for that missing nonce or inserted as `apu`. This follows the [Final error-response transport](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html#section-8.5); unusable encryption metadata still causes a silent abort rather than a plaintext fallback.
 
@@ -563,10 +563,10 @@ Credentials, sets, options and option members are each bounded to eight. Null ty
 
 The unchanged pinned OIDF v5.3.1 suite adds two modules in both formats:
 
-| Official module suffix | SD-JWT | mdoc | Verified behavior |
-| --- | --- | --- | --- |
-| `optional-credential-set` | PASSED | PASSED | Required linked-document is presented; optional nonexistent type is omitted. |
-| `negative-test-required-non-matching-credential` | PASSED | PASSED | Encrypted `access_denied`; no partial/empty VP token. |
+| Official module suffix                           | SD-JWT | mdoc   | Verified behavior                                                            |
+| ------------------------------------------------ | ------ | ------ | ---------------------------------------------------------------------------- |
+| `optional-credential-set`                        | PASSED | PASSED | Required linked-document is presented; optional nonexistent type is omitted. |
+| `negative-test-required-non-matching-credential` | PASSED | PASSED | Encrypted `access_denied`; no partial/empty VP token.                        |
 
 Current selected Wallet totals: **20 FINISHED/PASSED runs** (six positive and four protocol-error modules per format), **zero FAILURE/ERROR/WARNING entries**, and **four host rejections pending real Wallet error-screen evidence**. Evidence: `local/generated/haip-wallet-1791031683053-b4f7df73/summary.json` (SD-JWT, plan `0mpeqHKJNWBPF`) and `local/generated/haip-wallet-1791031690770-78a96326/summary.json` (mdoc, plan `HLUmfBDiALPBm`). Each has `officialPasses=10`, `hostRejections=2`, two `evidencePending` modules and `failures=[]`. Invalid signature and mismatched client ID still send no response; snapshots remain WAITING/null with separate harness cleanup. Reproduce with **`npm run test:identity-wallet-suite`**.
 
@@ -651,14 +651,14 @@ The follow-up on **2026-10-04 01:13 UTC** recorded the current report in ignored
 
 After provisioning a dedicated registered Wallet/attester, issuer signing/encryption keys, separate credential CA/IACA roots and the callback deployment, run the following on a disposable verification build. Record format, public build hash, timing and pass/fail rather than protocol secrets:
 
-| Device case | Expected evidence |
-| --- | --- |
-| SD-JWT and mdoc approval | Real Android instance/holder enrollment passes the intended verifier policy; system-browser approval returns through the dedicated App Link; native receipt shows verified format/expiry. |
-| Restart after receipt, before expiry | The encrypted version 3 inventory restores all live receipts with their existing holder keys and current build trust policy; legacy version 1/2 storage migrates only after validation; presentation still binds to the original holder. |
-| Restart during pending approval | The pending session is not restored; a late callback cannot authorize a new session. Start fresh authorization explicitly. |
-| Cancel during enrollment, browser wait or receipt | Cancellation wins against late work; no new receipt replaces the prior one and the prior credential remains usable until expiry. |
-| Presentation after receipt/restore | A registered independent verifier receives only consented fields, decrypts the response, verifies issuer/holder and request binding, and rejects a changed nonce/recipient/response URI. Actual HTTP delivery and browser completion need their own observations. |
-| Expiry and local erasure | At signed expiry the receipt cannot be restored/presented; explicit local erasure removes the wallet receipt and holder keys. Missing-key restore and crash recovery require a separately controlled device test, not a WebView key-deletion command. |
+| Device case                                       | Expected evidence                                                                                                                                                                                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SD-JWT and mdoc approval                          | Real Android instance/holder enrollment passes the intended verifier policy; system-browser approval returns through the dedicated App Link; native receipt shows verified format/expiry.                                                                         |
+| Restart after receipt, before expiry              | The encrypted version 3 inventory restores all live receipts with their existing holder keys and current build trust policy; legacy version 1/2 storage migrates only after validation; presentation still binds to the original holder.                          |
+| Restart during pending approval                   | The pending session is not restored; a late callback cannot authorize a new session. Start fresh authorization explicitly.                                                                                                                                        |
+| Cancel during enrollment, browser wait or receipt | Cancellation wins against late work; no new receipt replaces the prior one and the prior credential remains usable until expiry.                                                                                                                                  |
+| Presentation after receipt/restore                | A registered independent verifier receives only consented fields, decrypts the response, verifies issuer/holder and request binding, and rejects a changed nonce/recipient/response URI. Actual HTTP delivery and browser completion need their own observations. |
+| Expiry and local erasure                          | At signed expiry the receipt cannot be restored/presented; explicit local erasure removes the wallet receipt and holder keys. Missing-key restore and crash recovery require a separately controlled device test, not a WebView key-deletion command.             |
 
 The automated preflight tests use actual Rust validation with synthetic public PKI/metadata, mocked APK/ADB tools and a mocked fetch transport. They cover ready-vs-qualified distinction, output redaction, ambiguous JSON, redirected/oversized documents, absent/unauthorized/ambiguous devices and disabled App Links. They also cover exact installed-artifact matching, mismatched/unreadable hashes, unsafe installed paths and unqualified split APKs. They do not qualify an actual APK, device or production attester. Official Wallet conformance and physical BLE/NFC interop remain separate checkpoints.
 
@@ -666,27 +666,27 @@ The automated preflight tests use actual Rust validation with synthetic public P
 
 The pinned 5.3.1 plan has 19 entries outside the 84-run checkpoint. They remain unexecuted, not passing or automatically exempt. Conditional features must be checked against the official module and certification rules before recording N/A. Ordinary FAPI inherited modules must keep their official variants and exercise the actual HAIP protocol; a generic resource response is not evidence of successful credential issuance.
 
-| Official module (FAPI prefix shortened to `fapi2-…`) | Current condition / next verification |
-| --- | --- |
-| `oid4vci-1_0-issuer-metadata-test-signed` | Signed metadata is not advertised. Official module conditionally skips unsigned responses; record its actual outcome and applicability separately. |
-| `oid4vci-1_0-issuer-happy-flow-skip-notification` | Notification is not advertised. Run the unchanged tolerance test; absence of notifications alone is not a pass. |
-| `oid4vci-1_0-issuer-batch-issuance` | One attested key per request and no batch metadata. Qualify the conditional exclusion, or implement explicitly bounded batch issuance before testing. |
-| `fapi2-…happy-flow` | Align inherited resource expectations with the real HAIP Issuer protocol and retain independent credential validation. |
-| `fapi2-…user-rejects-authentication` | Drive actual owner denial and registered error callback with required browser interaction evidence. |
-| `fapi2-…ensure-different-state-inside-and-outside-request-object` | JAR is not supported. Review fixed module variants/conditional checks; exercise the applicable rejection without adding a fake signed-request path. |
-| `fapi2-…state-only-outside-request-object-not-used` | JAR is not supported. Review the fixed variant and applicable state handling. |
-| `fapi2-…ensure-request-object-without-redirect-uri-fails` | Review unsigned/JAR module condition and test the actual registered redirect contract. |
-| `fapi2-…plain-fapi-tolerate-unregistered-redirect-uri` | HAIP is not plain FAPI; review official profile gating. Unregistered callbacks remain rejected. |
-| `fapi2-…ensure-unsigned-authorization-request-without-using-par-fails` | HAIP requires PAR. Run direct-authorization rejection with correct error/interaction evidence. |
-| `fapi2-…ensure-redirect-uri-in-authorization-request` | Run registered redirect omission/validation expectations for the fixed variant. |
-| `fapi2-…ensure-response-type-code-idtoken-fails` | Only code is supported. Run the actual unsupported response-type rejection and callback/error checks. |
-| `fapi2-…ensure-response-type-token-fails` | Only code is supported. Run implicit response-type rejection and callback/error checks. |
-| `fapi2-…ensure-client-id-in-token-endpoint` | Run client-attestation/client-ID substitution under an otherwise live authorization code. |
-| `fapi2-…ensure-holder-of-key-required` | Run missing/wrong sender constraint under live code/token authority; a spent grant must not mask the failure. |
-| `fapi2-…ensure-token-endpoint-fails-with-expired-auth-code` | Wait for actual code expiry; extend polling to the real lifetime, not modified database clocks. |
-| `fapi2-…refresh-token` | Refresh is not advertised/issued. Review official conditional applicability; do not introduce unlimited issuance authority to pass a generic module. |
-| `fapi2-…par-ensure-reused-request-uri-prior-to-auth-completion-succeeds` | Local pending-screen revisit test passes; official browser-visit telemetry remains required. |
-| `fapi2-…par-attempt-to-use-request_uri-for-different-client` | Run cross-client PAR reference substitution and validate the registered error path without affecting the legitimate request. |
+| Official module (FAPI prefix shortened to `fapi2-…`)                     | Current condition / next verification                                                                                                                 |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oid4vci-1_0-issuer-metadata-test-signed`                                | Signed metadata is not advertised. Official module conditionally skips unsigned responses; record its actual outcome and applicability separately.    |
+| `oid4vci-1_0-issuer-happy-flow-skip-notification`                        | Notification is not advertised. Run the unchanged tolerance test; absence of notifications alone is not a pass.                                       |
+| `oid4vci-1_0-issuer-batch-issuance`                                      | One attested key per request and no batch metadata. Qualify the conditional exclusion, or implement explicitly bounded batch issuance before testing. |
+| `fapi2-…happy-flow`                                                      | Align inherited resource expectations with the real HAIP Issuer protocol and retain independent credential validation.                                |
+| `fapi2-…user-rejects-authentication`                                     | Drive actual owner denial and registered error callback with required browser interaction evidence.                                                   |
+| `fapi2-…ensure-different-state-inside-and-outside-request-object`        | JAR is not supported. Review fixed module variants/conditional checks; exercise the applicable rejection without adding a fake signed-request path.   |
+| `fapi2-…state-only-outside-request-object-not-used`                      | JAR is not supported. Review the fixed variant and applicable state handling.                                                                         |
+| `fapi2-…ensure-request-object-without-redirect-uri-fails`                | Review unsigned/JAR module condition and test the actual registered redirect contract.                                                                |
+| `fapi2-…plain-fapi-tolerate-unregistered-redirect-uri`                   | HAIP is not plain FAPI; review official profile gating. Unregistered callbacks remain rejected.                                                       |
+| `fapi2-…ensure-unsigned-authorization-request-without-using-par-fails`   | HAIP requires PAR. Run direct-authorization rejection with correct error/interaction evidence.                                                        |
+| `fapi2-…ensure-redirect-uri-in-authorization-request`                    | Run registered redirect omission/validation expectations for the fixed variant.                                                                       |
+| `fapi2-…ensure-response-type-code-idtoken-fails`                         | Only code is supported. Run the actual unsupported response-type rejection and callback/error checks.                                                 |
+| `fapi2-…ensure-response-type-token-fails`                                | Only code is supported. Run implicit response-type rejection and callback/error checks.                                                               |
+| `fapi2-…ensure-client-id-in-token-endpoint`                              | Run client-attestation/client-ID substitution under an otherwise live authorization code.                                                             |
+| `fapi2-…ensure-holder-of-key-required`                                   | Run missing/wrong sender constraint under live code/token authority; a spent grant must not mask the failure.                                         |
+| `fapi2-…ensure-token-endpoint-fails-with-expired-auth-code`              | Wait for actual code expiry; extend polling to the real lifetime, not modified database clocks.                                                       |
+| `fapi2-…refresh-token`                                                   | Refresh is not advertised/issued. Review official conditional applicability; do not introduce unlimited issuance authority to pass a generic module.  |
+| `fapi2-…par-ensure-reused-request-uri-prior-to-auth-completion-succeeds` | Local pending-screen revisit test passes; official browser-visit telemetry remains required.                                                          |
+| `fapi2-…par-attempt-to-use-request_uri-for-different-client`             | Run cross-client PAR reference substitution and validate the registered error path without affecting the legitimate request.                          |
 
 ## Owner-approved UserInfo attributes
 
@@ -809,7 +809,7 @@ Apply migration 0036 before activating any identity routes. Provision:
 1. `IDENTITY_TRUSTED_KEYS`: JSON array of **operator-validated** issuer key policies. Each has `id`, `document_type` (`my_number_card`/`driving_license`), base64url RSA `n` (256 bytes) and `e` (`AQAB`), `subject_key_identifier` (base64url EF07/B6 for licences; `null` for My Number), `not_before` and `not_after` Unix seconds. At most 16 keys; RSA-2048 with exponent 65537 only. Empty, unknown, expired or untrusted keys never grant approval/issuance. Do not promote a key to trusted merely because a submitted card carries it.
 2. `IDENTITY_ISSUER_JWK`: a **dedicated** private P-256 JWK with exactly `kty`, `crv`, `x`, `y`, `d`, `kid`. Public coordinates must match the private key. Do not reuse OP signing keys or login DPoP keys.
 3. `IDENTITY_RATE_LIMIT`: Wrangler rate-limit binding. The development config includes namespace 1030, 30 requests per minute per hashed IP/operation; declare an appropriate binding in each actual deployment environment. Intake/nonce also cap live abandoned rows. No request/evidence/token logging.
-4. Set `IDENTITY_ENABLED=true` only after trusted-key provisioning, isolated test deployment and physical-card qualification. It is absent by default; issuance/intake metadata fail closed. The native app currently targets `https://auth.mikaki.org`, so use a separately configured test build for staging.
+4. For the authorized test deployment, set `IDENTITY_ENABLED=true` after CI, migrations and trusted-key/signing-key/rate-limit provisioning; use the deployed routes for subsequent physical-card qualification. It is absent by default; issuance/intake metadata fail closed. The native app currently targets `https://auth.mikaki.org`, so use a separately configured test build for staging.
 
 Current automated checks use disposable synthetic cards and independent Node crypto/Jose in the actual workerd runtime. They cover both signature formats, tampering with signed components, PIN2 gating, unknown issuers, disclosure binding, cross-account/CSRF rejection, approval/code/nonce replay, parallel one-winner issuance, account-epoch invalidation, deletion and UI cancellation. They do not qualify real cards, issuer pin sourcing, Android hardware NFC or a production trust framework.
 
@@ -829,7 +829,6 @@ Local credential erasure cancels the active card read before clearing evidence, 
 
 Local erasure and account unlinking are separate explicit controls. Account unlinking scrubs linked attributes and transaction attributes, clears grant/access/CSRF secrets and blocks polling, token exchange and credential issuance. Workerd/D1 regression tests cover unlinking before offer retrieval, after offer retrieval and after token exchange for both SD-JWT and mdoc configurations. An already issued offline credential is not remotely erased or immediately revoked by unlinking; its signed validity remains bounded to five minutes. Reader CRL checks concern reader certificates, not the status of these issued credentials.
 
-
 ### Reproduce the Multipaz host SDK issuance test
 
 Use a disposable checkout under `/private/tmp`, a JDK supported by the pinned Gradle wrapper (tested with JDK 21), and an Android SDK available for upstream project configuration. The upstream build may also configure Apple targets on macOS. Dependencies and Gradle caches need normal network/cache access.
@@ -844,7 +843,6 @@ MIKAKI_MULTIPAZ_CHECKOUT=/private/tmp/mikaki-multipaz-checkout \
 ```
 
 The harness validates the checkout commit, copies only [the JVM test adapter](../local/conformance/multipaz/MikakiIssuanceTest.kt), and reruns the selected upstream test task. A loopback-only bridge uses a fresh secret and an exact issuer-endpoint allowlist. Credentials, secrets and private keys are not written to the Mikaki repository; synthetic credentials and ephemeral keys live for the test run. The regular contract test omits the SDK build unless `MIKAKI_MULTIPAZ_CHECKOUT` is set, so SDK success must be reported separately from routine Node test success.
-
 
 ### Reproduce the Multipaz native mixed-presentation verification
 
@@ -864,7 +862,6 @@ The focused run passed **5 native inventory tests**, including **1 selected JVM 
 
 The inputs are synthetic receipts with a fixed test clock, software holder keys and a custom linked-document doctype, not government mDL issuance. This adds independent format/signature verification of the native inventory output, not a full third-party Wallet application, network OID4VP verifier, Digital Credentials API, physical ISO transport, real Keystore or HAIP certification result. Actual-issued Rust host Wallet and official suite checkpoints remain separately documented above. No deployment or device installation is performed by this test.
 
-
 ### Multipaz actual-issued credential presentation checkpoint
 
 On **2026-10-04**, the opt-in issuance test was extended to cover the opposite presentation direction. The unmodified pinned SDK obtains each credential from local workerd/D1 with its own proof/holder key, then uses `SdJwt.filter(...).present(...)` for SD-JWT and `IssuerNamespaces.filter(...)` / `DeviceResponse.Builder.addDocument(...)` for mdoc. Only the approved `name` and `birthdate` attributes are selected. The SDK's private holder keys stay in the JVM and are closed after presentation.
@@ -876,7 +873,6 @@ The latest issuer advertises DPoP proof handling at PAR for this public-client p
 Reproduce using the `MIKAKI_MULTIPAZ_CHECKOUT` command in the issuance section above. The generated, redacted summary is `local/generated/multipaz-issued-presentation-summary.json`; Gradle's selected test result stays in the disposable checkout. Ordinary tests omit this SDK build unless the opt-in checkout is set. No tracked upstream SDK sources were changed, and credential/holder-key fixtures are not saved to disk. Node type checking, edited TypeScript formatting and documentation/diff checks passed.
 
 This is a custom linked-document format/signature interoperability path using the public-client issuer profile, synthetic card evidence and synthetic owner consent. Its presentation challenge is an authenticated host bridge message, not a complete signed OID4VP authorization request. It does not exercise SDK request-object validation, encrypted `direct_post.jwt` HTTP delivery, native Android UI/Keystore, hardware attestation, physical cards or ISO transport; it is not a HAIP qualification claim. The separate native-generated JWE and official HAIP checkpoints retain their own evidence and scope. No deployment or activation was performed.
-
 
 ### eudi-dev CLI Wallet signed-request and encrypted-HTTP checkpoint
 
@@ -956,13 +952,13 @@ The modified Wallet configurations now also send deliberately invalid credential
 
 Each case is exercised for both SD-JWT and mdoc:
 
-| Credential proof defect | Standalone `attestation` | `jwt` + `key_attestation` | Expected issuer error |
-| --- | --- | --- | --- |
-| Signed attestation with a nonce the issuer never issued | 2 | 2 | `invalid_nonce` |
-| Altered key-attestation signature | 2 | 2 | `invalid_proof` |
-| Valid signature under an independently generated, untrusted no-EKU attester CA | 2 | 2 | `invalid_proof` |
-| Two attested keys in mikaki's single-key issuance profile | 2 | 2 | `invalid_proof` |
-| Valid holder JWT whose key differs from the validly signed attested key | — | 2 | `invalid_proof` |
+| Credential proof defect                                                        | Standalone `attestation` | `jwt` + `key_attestation` | Expected issuer error |
+| ------------------------------------------------------------------------------ | ------------------------ | ------------------------- | --------------------- |
+| Signed attestation with a nonce the issuer never issued                        | 2                        | 2                         | `invalid_nonce`       |
+| Altered key-attestation signature                                              | 2                        | 2                         | `invalid_proof`       |
+| Valid signature under an independently generated, untrusted no-EKU attester CA | 2                        | 2                         | `invalid_proof`       |
+| Two attested keys in mikaki's single-key issuance profile                      | 2                        | 2                         | `invalid_proof`       |
+| Valid holder JWT whose key differs from the validly signed attested key        | —                        | 2                         | `invalid_proof`       |
 
 All **18 requests** are rejected with HTTP 400 and no credential in the response. The host independently verifies each negative case's signed input and defect: the bad-signature case fails JWT verification; the other cases have valid attestation signatures; the untrusted leaf has no EKU and is not signed by the configured attester CA. JWT outer proofs retain valid holder signatures and the correct issuer audience, so the holder-mismatch case is not an outer signature failure. A standalone attestation has no separate holder JWT to mismatch; its signed key is authoritative in that proof type, and the test does not claim otherwise.
 
