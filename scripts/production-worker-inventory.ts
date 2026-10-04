@@ -194,7 +194,7 @@ function checkConsumer(name: string, bindings: Bindings, target: InventoryTarget
   if (name === target.op)
     gate(consumers.length === 1 && consumers[0]!.name === 'DB', 'Declared OP D1 binding differs.');
   else if (name === target.claim) {
-    gate(consumers.length === 0, 'Claim Worker must not bind the OP D1 directly.');
+    gate(bindings.databases.length === 0, 'Claim Worker must not bind raw D1 storage.');
     gate(bindings.r2_buckets.length === 0, 'Claim Worker must not bind raw R2 storage.');
     gate(
       bindings.services.length === 1 &&

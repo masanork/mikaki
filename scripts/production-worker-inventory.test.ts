@@ -256,17 +256,20 @@ test('extra D1 consumers and OP AGENT_ACCESS fail in settings or any active vers
 
 test('Claim Worker uses only the named ClaimStore service, never raw D1 or R2', async () => {
   for (const endpoint of ['/settings', '/versions/' + version]) {
-    await assert.rejects(
-      inspectWorkerInventory(
-        fixture(undefined, (path, value) => {
-          if (path.includes('/scripts/mikaki-auth-claims/') && path.endsWith(endpoint))
-            (endpoint === '/settings' ? value.result : value.result.resources).bindings.push(db);
-          return value;
-        }),
-        target,
-      ),
-      /Claim Worker must not bind the OP D1 directly/,
-    );
+    for (const binding of [db, { ...db, database_id: nextVersion }])
+      await assert.rejects(
+        inspectWorkerInventory(
+          fixture(undefined, (path, value) => {
+            if (path.includes('/scripts/mikaki-auth-claims/') && path.endsWith(endpoint))
+              (endpoint === '/settings' ? value.result : value.result.resources).bindings.push(
+                binding,
+              );
+            return value;
+          }),
+          target,
+        ),
+        /Claim Worker must not bind raw D1 storage/,
+      );
     await assert.rejects(
       inspectWorkerInventory(
         fixture(undefined, (path, value) => {
