@@ -101,17 +101,17 @@ the absence of additional agent, identity-verifier, or RP deployments.
 
 Cloudflare account: `4b749427a0c80c547e726a42aff4b6fc`.
 
-| Resource           | Configured target                                        | Planned disposition                                                                                                         |
-| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| OP Worker          | `mikaki-auth`, `auth.mikaki.org`                         | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact                            |
-| OP D1              | `mikaki-auth`, `f9299d62-2dbf-4bae-ae49-8b75674572d4`    | Reset all application state and old `d1_migrations` ledger                                                                  |
-| Vault R2           | `mikaki-auth-vault`                                      | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening |
-| Claim Worker       | `mikaki-auth-claims`                                     | Preserve key boundary; redeploy Owner Vault-only claim release                                                              |
-| Claim DB authority | OP `ClaimStore` service binding                          | No separately configured claim D1; reset authority with OP DB                                                               |
-| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                      | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                               |
-| Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408` | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                               |
-| Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                   | Disable before retirement; omit from fresh seed                                                                             |
-| FAQ RP             | Unresolved                                               | Provision separate RP storage/key and initialize an active OP registration                                                  |
+| Resource           | Configured target                                                 | Planned disposition                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| OP Worker          | `mikaki-auth`, `auth.mikaki.org`                                  | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact                                              |
+| OP D1              | Fresh `mikaki-auth-owner`, `d0258938-0d27-4110-8aa9-c82e20f3885b` | Initialize the single Owner Vault baseline; retire former `mikaki-auth` DB `f9299d62-2dbf-4bae-ae49-8b75674572d4` after stopping every writer |
+| Vault R2           | `mikaki-auth-vault`                                               | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening                   |
+| Claim Worker       | `mikaki-auth-claims`                                              | Preserve key boundary; redeploy Owner Vault-only claim release                                                                                |
+| Claim DB authority | OP `ClaimStore` service binding                                   | No separately configured claim D1; reset authority with OP DB                                                                                 |
+| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                               | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                                                 |
+| Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408`          | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                                                 |
+| Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                            | Disable before retirement; omit from fresh seed                                                                                               |
+| FAQ RP             | Unresolved                                                        | Provision separate RP storage/key and initialize an active OP registration                                                                    |
 
 Configured OP schedules are `* * * * *` and `*/10 * * * *`; demo cleanup is
 `*/15 * * * *`. Suspend all actual writers, including older traffic-bearing
