@@ -60,19 +60,23 @@
     "test:vault-disclosure": "node --test --test-concurrency=1 local/conformance/vault-owner-disclosure.test.ts local/conformance/vault-record-userinfo.test.ts local/conformance/vault-record-approval.test.ts"
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
     "@modelcontextprotocol/sdk": "1.30.1",
     "@noble/post-quantum": "0.7.1",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
     "jose": "6.2.12",
     "svelte": "5.57.1",
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@cloudflare/workers-types": "^5.20260928.1",
     "@inlang/paraglide-js": "^2.25.4",
     "@inlang/plugin-message-format": "^4.4.4",
     "@jridgewell/trace-mapping": "0.3.31",
     "@playwright/test": "1.63.0",
+    "@sorane/cli": "0.5.0",
+    "@sorane/core": "0.5.0",
+    "@sorane/okf": "0.5.0",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@types/node": "^26.6.2",
     "@typescript/native": "npm:typescript@7.0.2",
@@ -81,13 +85,10 @@
     "prettier-plugin-svelte": "4.1.1",
     "smol-toml": "1.9.0",
     "svelte-check": "4.7.6",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vite": "8.3.0",
-    "wrangler": "4.144.0",
-    "@sorane/cli": "0.5.0",
-    "@sorane/core": "0.5.0",
-    "@sorane/okf": "0.5.0",
-    "tsx": "4.23.15"
+    "wrangler": "4.144.0"
   },
   "overrides": {
     "@zenuml/core": {
@@ -97,9 +98,6 @@
       "mermaid": "12.0.0",
       "@mermaid-js/mermaid-cli": "12.0.0"
     },
-    "lodash-es": "4.18.1",
-    "@zenuml/core": {
-      "playwright-core": "1.63.0"
-    }
+    "lodash-es": "4.18.1"
   }
 }

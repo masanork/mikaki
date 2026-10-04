@@ -2,47 +2,43 @@
 type: index
 profile: sorane-okf/0.1
 title: 'mikaki — OSSのパスキー認証・OpenID Connect'
-description: 'パスキー認証とOpenID Connectを提供するRust製OSS。招待からのはじめ方、暗号化Vaultの使い方、アプリ連携と対応状況を案内します。'
+description: 'Rust製OSSの認証サービス。招待からのはじめ方、パスキーとVault、アプリ連携、仕様・対応標準と検証結果を案内します。'
 lang: ja
 translation_key: index
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
-## パスキーでアプリにログイン
+mikakiは、パスキー認証とOpenID Connectを提供するRust製OSSの認証サービスです。利用者のはじめ方、アプリ開発者の接続手順、導入前の評価資料をここから探せます。
 
-mikakiは、Rustを中心に開発しているOSSの認証サービスです。パスキーによる本人認証と、OpenID Connectによるアプリへのログインを提供します。
+## 使いはじめる
 
-Web版は[サインイン画面](https://auth.mikaki.org/signin?lang=ja)から利用できます。連携先アプリへのログインは、そのアプリから始めます。接続先を確認してから、パスキーでサインインしてください。アカウント登録は現在、招待コードが必要です。
-
-mikakiは実験的なプロジェクトです。対応状況や運用上の制約を確認してから利用してください。
-
-## はじめて使う方へ
-
-招待から登録し、いつもの端末で使い始めたい方へ。パスキーでのログインと、Vaultの解錠をそれぞれ確認できます。
+招待から登録し、いつもの端末でサインイン。パスキーでのログインとVaultの解錠は、別々に確認します。
 
 - [招待からはじめる](getting-started.md)
-- [招待について相談する](contact.md)
-- [パスキーと端末の対応を確認する](passkeys.md)
-- [Vaultの保存と共有を知る](vault.md)
-- [よくある質問を見る](faq.md)
+- [パスキーと端末の対応](passkeys.md)
+- [Vaultの保存・共有・復旧](vault.md)
+- [よくある質問](faq.md)
 
-## 開発者・導入を検討する方へ
+## アプリを接続する
 
-自分のWebアプリにパスキー認証を組み込みたい方へ。OpenID Connectの登録、Authorization CodeとPKCE、セッション確認の手順を案内します。
+自分のWebアプリにmikakiの認証を組み込みたい方へ。登録依頼からログイン・セッション確認までを案内します。
 
-- [アプリ連携ガイドを読む](integration.md)
-- [アプリの接続・登録を相談する](contact.md)
-- [公開IdPのログインデモを試す](integration-demo.md)
-- [仕様・対応標準を確認する](specifications.md)
-- [API referenceで要求・応答を確認する](api.md)
-- [ローカルの連携例を動かす](integration-example.md)
-- [GitHubで実装を確認する](https://github.com/masanork/mikaki)
+- [アプリ連携ガイド](integration.md)
+- [公開IdPへの接続デモ](integration-demo.md)
+- [ローカルで動く連携例](integration-example.md)
+- [API reference](api.md)
 
-## 安全性を評価したい方へ
+## 仕様と検証を確認する
 
-採用前に、何を検証できていて、何が残っているか確認したい方へ。暗号化と復旧の制約、OpenID・FAPI・FIDOの試験記録と正式認定の状況を説明します。
+何に対応し、何を検証できていて、どこに制約があるか。導入判断のための情報をまとめています。
 
-- [セキュリティと対応状況を確認する](security.md)
-- [Conformance試験結果の一覧を見る](conformance.md)
-- [運用・サービスの条件を確認する](operations.md)
-- [Vaultの共有と復旧の制約を読む](vault.md)
+- [仕様・対応標準](specifications.md)
+- [セキュリティと制約](security.md)
+- [Conformance試験結果](conformance.md)
+- [運用・サービスの条件](operations.md)
+
+## 招待・連携について相談する
+
+招待を持っていない方、自分のアプリの登録を依頼したい方へ。必要な情報と、相談から試用までの流れを説明します。
+
+[招待・アプリ連携の相談窓口へ](contact.md)。現在は招待制の実験公開です。利用・導入前に[提供条件](operations.md)をご確認ください。

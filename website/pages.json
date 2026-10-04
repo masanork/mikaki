@@ -16,7 +16,7 @@
   {
     "slug": "passkeys",
     "labels": {
-      "ja": "パスキーと解錠",
+      "ja": "パスキーと端末",
       "en": "Passkeys"
     }
   },
@@ -44,8 +44,8 @@
   {
     "slug": "security",
     "labels": {
-      "ja": "対応状況",
-      "en": "Status"
+      "ja": "セキュリティと制約",
+      "en": "Security & limits"
     }
   },
   {
@@ -59,7 +59,7 @@
     "slug": "conformance",
     "labels": {
       "ja": "試験結果一覧",
-      "en": "Conformance"
+      "en": "Conformance results"
     }
   },
   {
@@ -72,8 +72,8 @@
   {
     "slug": "integration-example",
     "labels": {
-      "ja": "連携実行例",
-      "en": "RP example"
+      "ja": "ローカル連携例",
+      "en": "Local RP example"
     }
   },
   {
@@ -95,6 +95,13 @@
     "labels": {
       "ja": "公開接続デモ",
       "en": "Live demo"
+    }
+  },
+  {
+    "slug": "accessibility",
+    "labels": {
+      "ja": "アクセシビリティ",
+      "en": "Accessibility"
     }
   }
 ]

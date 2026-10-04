@@ -2,47 +2,43 @@
 type: index
 profile: sorane-okf/0.1
 title: 'mikaki — Open source passkey authentication and OpenID Connect'
-description: 'An experimental Rust open source service for passkeys and OpenID Connect. Explore invitation-based setup, encrypted Vault, application integration and implementation status.'
+description: 'An open source identity service built in Rust. Find invitation-based setup, passkeys and Vault, application integration, specifications and verification evidence.'
 lang: en
 translation_key: index
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
-## Sign in to applications with a passkey
+mikaki is an open source identity service built in Rust, providing passkey authentication and OpenID Connect. Find setup instructions, application integration guides and evidence for evaluating adoption.
 
-mikaki is an experimental open source identity service built primarily in Rust. It combines passkey authentication with OpenID Connect sign-in for applications.
+## Get started
 
-Use the [Web sign-in page](https://auth.mikaki.org/signin?lang=en) directly, or start application sign-in from the application you want to use. Check the destination on the login screen, then authenticate with your passkey. Account registration currently requires an invitation code.
+Register with an invitation and sign in on your usual device. Passkey sign-in and unlocking Vault are separate operations to check.
 
-mikaki is an experimental project. Review implementation status and operational limitations before adopting it.
+- [Start with an invitation](getting-started.md)
+- [Passkeys and device support](passkeys.md)
+- [Vault: saving, sharing and recovery](vault.md)
+- [Frequently asked questions](faq.md)
 
-## For new users
+## Connect your application
 
-Start with an invitation and your usual device. Check passkey sign-in and unlocking Vault as separate operations.
+Add mikaki authentication to your Web application. Follow the path from registration requests to sign-in and session checks.
 
-- [Get started with an invitation](getting-started.md)
-- [Ask about an invitation](contact.md)
-- [Check passkeys and device support](passkeys.md)
-- [Explore saving and sharing with Vault](vault.md)
-- [Read frequently asked questions](faq.md)
+- [Application integration guide](integration.md)
+- [Public IdP connection demo](integration-demo.md)
+- [Local integration example](integration-example.md)
+- [API reference](api.md)
 
-## For developers and adopters
+## Review specifications and evidence
 
-Add passkey sign-in to your Web application. Follow the OpenID Connect guide for registration, Authorization Code with PKCE and session checks.
+See what is supported, what has been tested and where limitations remain. Use these resources to evaluate adoption.
 
-- [Read the application integration guide](integration.md)
-- [Discuss application registration](contact.md)
-- [Try the public IdP login demo](integration-demo.md)
-- [Check specifications and standards](specifications.md)
-- [Look up API requests and responses](api.md)
-- [Run the local integration example](integration-example.md)
-- [Inspect the implementation on GitHub](https://github.com/masanork/mikaki)
+- [Specifications and standards](specifications.md)
+- [Security and limitations](security.md)
+- [Conformance test results](conformance.md)
+- [Operations and service conditions](operations.md)
 
-## For security evaluation
+## Discuss invitations or integration
 
-Check what has been tested and what still needs verification before adoption. Review encryption and recovery limits, OpenID, FAPI and FIDO test evidence, and formal certification status.
+Need an invitation or want to register your application? Learn which information to provide and how a request progresses to a trial.
 
-- [Review security and implementation status](security.md)
-- [Browse conformance results](conformance.md)
-- [Check operations and service conditions](operations.md)
-- [Read Vault sharing and recovery limits](vault.md)
+[Find the invitation and integration contact](contact.md). Access is currently experimental and invitation-based. Review the [service conditions](operations.md) before use or adoption.

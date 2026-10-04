@@ -1,0 +1,29 @@
+[
+  {
+    "id": "start",
+    "entry": "getting-started",
+    "labels": {
+      "ja": "使いはじめる",
+      "en": "Get started"
+    },
+    "pages": ["getting-started", "passkeys", "vault", "faq"]
+  },
+  {
+    "id": "integration",
+    "entry": "integration",
+    "labels": {
+      "ja": "アプリ連携",
+      "en": "Integration"
+    },
+    "pages": ["integration", "integration-demo", "integration-example", "api"]
+  },
+  {
+    "id": "trust",
+    "entry": "specifications",
+    "labels": {
+      "ja": "仕様・検証",
+      "en": "Specs & evidence"
+    },
+    "pages": ["specifications", "security", "conformance", "operations", "accessibility"]
+  }
+]

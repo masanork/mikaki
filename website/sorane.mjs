@@ -3,13 +3,13 @@ import { readFileSync, writeFileSync, copyFileSync, mkdirSync, readdirSync } fro
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { pages, groupFor, header, footer, breadcrumbs, sectionNav, hero } from './layout.mjs';
 import { register } from 'tsx/esm/api';
 
 register();
 const { renderMarkdown, escapeHtml } = await import('@sorane/core');
 const { parseConcept } = await import('@sorane/okf');
 const site = fileURLToPath(new URL('./', import.meta.url));
-const pages = JSON.parse(readFileSync(join(site, 'pages.json'), 'utf8'));
 const slugs = new Set(pages.map((page) => page.slug));
 if (slugs.size !== pages.length) throw new Error('Duplicate page slug');
 for (const locale of ['', 'en/']) {
@@ -72,16 +72,7 @@ for (const lang of ['ja', 'en']) {
     for (const match of head.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))
       hashes.add(`'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
     pageHashes.set(`/${prefix}${slug === 'index' ? '' : slug}`, hashes);
-    const links = pages
-      .map(
-        (page) =>
-          `<a href="/${prefix}${page.slug === 'index' ? '' : page.slug}"${page.slug === slug ? ' aria-current="page"' : ''}>${escapeHtml(page.labels[lang])}</a>`,
-      )
-      .join('');
-    const nav = `<nav class="footlinks" aria-label="${ja ? 'mikakiについて' : 'About mikaki'}">${links}<a href="/${other}${slug === 'index' ? '' : slug}" lang="${ja ? 'en' : 'ja'}" hreflang="${ja ? 'en' : 'ja'}">${ja ? 'English' : '日本語'}</a></nav>`;
     const home = slug === 'index';
-    const signin = `https://auth.mikaki.org/signin${ja ? '' : '?lang=en'}`;
-    const hero = `<div class="kicker">Your identity. Your choice.</div><h1>${ja ? '自分の情報を、<br>自分の手元に。' : 'Your information.<br>In your hands.'}</h1><p>${ja ? 'Passkeyでサインイン。<br>必要な情報だけを、選んだ相手に。' : 'Sign in with a passkey.<br>Share only what you choose, with whom you choose.'}</p><div class="actions"><a class="bolt" href="${signin}">${ja ? 'Webでサインイン' : 'Sign in on the Web'} ↗</a><a class="quiet" href="/${prefix}getting-started">${ja ? 'はじめての方へ' : 'Getting started'}</a><a class="quiet" href="https://app.mikaki.org">${ja ? 'アプリについて' : 'About the app'} ↗</a></div><section class="details"><div><h2>Passkey</h2><p>${ja ? 'パスワードを使わず、いつもの端末で。' : 'Use your device, without a password.'}</p></div><div><h2>Vault</h2><p>${ja ? '保存した情報は、Passkeyで開く。' : 'Open your stored information with a passkey.'}</p></div><div><h2>${ja ? '選んで共有' : 'Choose what to share'}</h2><p>${ja ? '共有する情報と相手を、自分で選ぶ。' : 'You choose the information and the recipient.'}</p></div></section>`;
     // Sorane renders Markdown sibling links as .html; emit the public routes directly.
     let content = renderMarkdown(concept.body).replace(
       /href="([a-z0-9-]+)\.html([?#][^"]*)?"/g,
@@ -97,32 +88,64 @@ for (const lang of ['ja', 'en']) {
         return `<img src="/${src}"${attributes} width="${png.readUInt32BE(16)}" height="${png.readUInt32BE(20)}" loading="lazy" decoding="async">`;
       },
     );
+    content = content.replace(
+      /<h([23]) id="([^"]+)">([\s\S]*?)<\/h\1>/g,
+      (full, level, id, body) => {
+        const label = body
+          .replace(/<a class="heading-anchor"[\s\S]*?<\/a>/g, '')
+          .replace(/<[^>]*>/g, '');
+        return full.replace(
+          '<a class="heading-anchor"',
+          `<a aria-label="${escapeHtml(ja ? `${label}へのリンク` : `Link to ${label}`)}" class="heading-anchor"`,
+        );
+      },
+    );
+    const sectionName = (offset) => {
+      const headings = [...content.slice(0, offset).matchAll(/<h[23] id="([^"]+)">/g)];
+      return headings.at(-1)?.[1];
+    };
+    let tableNumber = 0;
+    content = content.replace(/<table>([\s\S]*?)<\/table>/g, (full, body, offset) => {
+      const id = sectionName(offset);
+      const name = id
+        ? `aria-labelledby="${escapeHtml(id)}"`
+        : `aria-label="${ja ? '表' : 'Table'} ${++tableNumber}"`;
+      return `<div class="table-scroll" role="region" ${name} tabindex="0"><table>${body.replace(/<th>/g, '<th scope="col">')}</table></div>`;
+    });
+    content = content.replace(
+      /<pre>/g,
+      `<pre tabindex="0" aria-label="${ja ? 'コード例・横スクロール可能' : 'Code sample, horizontally scrollable'}">`,
+    );
+    let body;
     if (home) {
-      // Keep the introduction before the three purpose-based guide sections.
+      content = content.replace(/<a [^>]*class="heading-anchor"[\s\S]*?<\/a>/g, '');
       const [introduction, ...guides] = content.split(/(?=<h2\b)/);
-      content = `${introduction}<div class="guide-grid">${guides
+      if (guides.length !== 4)
+        throw new Error('Homepage needs three audience guides and a contact section');
+      body = `<main id="main-content" tabindex="-1">${hero(lang)}<div class="home-content prose home-prose"><div class="home-intro">${introduction}</div><div class="guide-grid">${guides
+        .slice(0, 3)
         .map((guide) => `<section class="guide-card">${guide}</section>`)
-        .join('')}</div>`;
+        .join('')}</div><section class="home-contact">${guides[3]}</section></div></main>`;
     } else {
-      // Reuse Sorane's rendered heading IDs, including duplicate-heading suffixes.
       const headings = [...content.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<\/h2>/g)];
       if (headings.length >= 3) {
         const items = headings
           .map(([, id, heading]) => {
             const label = heading
-              .replace(/<a class="heading-anchor"[\s\S]*?<\/a>/g, '')
+              .replace(/<a [^>]*class="heading-anchor"[\s\S]*?<\/a>/g, '')
               .replace(/<[^>]*>/g, '');
             return `<li><a href="#${id}">${label}</a></li>`;
           })
           .join('');
         const label = ja ? 'このページの内容' : 'On this page';
-        const contents = `<nav class="contents" aria-label="${label}"><p class="contents-title">${label}</p><ul>${items}</ul></nav>`;
+        const contents = `<details class="contents-disclosure"><summary>${label}</summary><nav class="contents" aria-label="${label}"><ul>${items}</ul></nav></details>`;
         content = content.replace(/(?=<h2\b)/, contents);
       }
+      const group = groupFor(slug);
+      body = `${breadcrumbs(slug, lang)}<div class="article-layout${group ? '' : ' no-sidebar'}">${sectionNav(slug, lang)}<main class="article-main" id="main-content" tabindex="-1"><header class="article-header"><p class="eyebrow">${escapeHtml(group?.labels[lang] ?? (ja ? '招待・連携相談' : 'Invitations and integration'))}</p><h1 class="article-title">${escapeHtml(concept.title)}</h1></header><article class="prose">${content}</article></main></div>`;
     }
-    const body = `${home ? hero : `<h1 class="article-title">${escapeHtml(concept.title)}</h1>`}<section class="prose${home ? ' home-prose' : ''}">${nav}${content}</section>`;
     const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
-    const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body><div class="scene ${home ? '' : 'small'}"><div class="fence" aria-hidden="true"></div><canvas aria-hidden="true"></canvas><header><a class="brand" href="/${prefix}">mikaki</a><span class="plaque">mikaki.org</span></header><main>${body}</main><footer><span>御垣 — mikaki</span><nav class="footlinks"><a href="${signin}">${ja ? 'サインイン' : 'Sign in'}</a><a href="https://github.com/masanork/mikaki">GitHub ↗</a></nav></footer></div></body></html>`;
+    const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body>${header(lang, slug)}${body}${footer(lang)}</body></html>`;
     writeFileSync(join(site, 'public', rel), html);
     copyFileSync(
       join(site, 'dist', rel.replace('.html', '.md')),

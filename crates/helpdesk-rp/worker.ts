@@ -6,7 +6,7 @@ import {
   type Catalog,
   type MessageKey,
 } from './i18n';
-import { demoMessages, demoStyle } from './demo';
+import { demoMessages, demoDocument, formatDemoTime } from './demo';
 import {
   createRemoteJWKSet,
   decodeProtectedHeader,
@@ -136,8 +136,18 @@ function html(
   headers.set('Content-Language', strings.locale);
   headers.append('Set-Cookie', cookieHeader(LOCALE_COOKIE, strings.locale, 31536000));
   if (setCookie) headers.append('Set-Cookie', setCookie);
+  if (demo)
+    return new Response(
+      demoDocument(
+        strings.locale,
+        content,
+        languageUrl.pathname + languageUrl.search,
+        new URL(path, env.RP_ORIGIN).pathname,
+      ),
+      { status, headers },
+    );
   return new Response(
-    `<!doctype html><html lang="${strings.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}${demo ? demoStyle : ''}</style><nav><a href="/">${title}</a>${demo ? `<a href="/session">${escape(demo.session)}</a><a href="https://mikaki.org">mikaki.org</a>` : `<a href="/help">${t('helpHeading')}</a><a href="/tickets">${t('helpTickets')}</a>`}<a href="${escape(languageUrl.pathname + languageUrl.search)}" lang="${strings.locale === 'ja' ? 'en' : 'ja'}" aria-label="${t('language')}">${strings.locale === 'ja' ? 'English' : '日本語'}</a></nav><main>${content}</main></html>`,
+    `<!doctype html><html lang="${strings.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}</style><nav><a href="/">${title}</a><a href="/help">${t('helpHeading')}</a><a href="/tickets">${t('helpTickets')}</a><a href="${escape(languageUrl.pathname + languageUrl.search)}" lang="${strings.locale === 'ja' ? 'en' : 'ja'}" aria-label="${t('language')}">${strings.locale === 'ja' ? 'English' : '日本語'}</a></nav><main>${content}</main></html>`,
     { status, headers },
   );
 }
@@ -754,7 +764,7 @@ export default {
           return html(
             env,
             strings,
-            `<h1>${escape(demo.home)}</h1><p>${escape(demo.intro)}</p>${session ? `<p>${escape(demo.active)}</p><p><a href="/session">${escape(demo.session)}</a></p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${escape(demo.login)}</button></form>`}<p>${escape(demo.privacy)}</p><p><a href="https://mikaki.org${prefix}/contact">${escape(demo.invitation)}</a> · <a href="https://mikaki.org${prefix}/integration-example">${escape(demo.guide)}</a></p>`,
+            `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.home)}</h1><p>${escape(demo.intro)}</p></header><section class="task-panel" aria-labelledby="demo-action-title"><h2 id="demo-action-title"${session ? ' class="status"' : ''}>${escape(session ? demo.active : demo.start)}</h2>${session ? `<p><a class="button" href="/session">${escape(demo.session)}</a></p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${escape(demo.login)}</button></form>`}</section><section class="demo-steps" aria-labelledby="demo-steps-title"><h2 id="demo-steps-title">${escape(demo.steps)}</h2><ol><li>${escape(demo.stepLogin)}</li><li>${escape(demo.stepCheck)}</li><li>${escape(demo.stepLogout)}</li></ol></section><aside class="privacy-note" aria-labelledby="demo-privacy-title"><h2 id="demo-privacy-title">${escape(demo.privacyTitle)}</h2><p>${escape(demo.privacy)}</p><a href="https://mikaki.org${prefix}/contact">${escape(demo.invitation)}</a><a href="https://mikaki.org${prefix}/integration-demo">${escape(demo.guide)}</a></aside>`,
             200,
             cookieHeader(BROWSER, browser, 86400),
           );
@@ -771,7 +781,7 @@ export default {
           return html(
             env,
             strings,
-            `<h1>${escape(demo.session)}</h1><h2>${escape(demo.active)}</h2><p>${escape(demo.sessionBody)}</p><dl><dt>${escape(demo.lease)}</dt><dd>${new Date(session.lease_until * 1000).toISOString()}</dd><dt>${escape(demo.expires)}</dt><dd>${new Date(session.parent_expires_at * 1000).toISOString()}</dd></dl><form method="post" action="/session/check">${csrf}<button>${escape(demo.check)}</button></form><form method="post" action="/logout">${csrf}<button>${escape(demo.logout)}</button></form><p>${escape(demo.logoutBody)}</p><p><a href="${env.ISSUER}/logout">${escape(demo.opLogout)}</a></p>`,
+            `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.session)}</h1></header><section class="task-panel"><h2 class="status">${escape(demo.active)}</h2><p>${escape(demo.sessionBody)}</p><dl class="session-times"><div><dt>${escape(demo.lease)}</dt><dd><time datetime="${new Date(session.lease_until * 1000).toISOString()}">${escape(formatDemoTime(session.lease_until, strings.locale))}</time></dd></div><div><dt>${escape(demo.expires)}</dt><dd><time datetime="${new Date(session.parent_expires_at * 1000).toISOString()}">${escape(formatDemoTime(session.parent_expires_at, strings.locale))}</time></dd></div></dl><div class="session-actions"><form method="post" action="/session/check">${csrf}<button>${escape(demo.check)}</button></form><form method="post" action="/logout">${csrf}<button class="secondary">${escape(demo.logout)}</button></form></div><p class="logout-note">${escape(demo.logoutBody)}</p></section><details class="op-logout"><summary>${escape(demo.opLogoutDetails)}</summary><p>${escape(demo.opLogoutWarning)}</p><a href="${env.ISSUER}/logout">${escape(demo.opLogout)}</a></details>`,
             200,
             undefined,
             '/session',
