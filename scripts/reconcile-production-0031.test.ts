@@ -936,11 +936,10 @@ function compatibilityMetadata(extraService = false, advance: () => void = () =>
   return async (path: string) => {
     advance();
     const target = COMPATIBILITY_TARGET;
-    if (path.includes('/scripts-search'))
+    if (path.endsWith('/scripts'))
       return {
         success: true,
-        result: [{ script_name: target.op }, { script_name: target.claim }],
-        result_info: { page: 1, per_page: 20, count: 2, total_count: 2, total_pages: 1 },
+        result: [{ id: target.op }, { id: target.claim }],
       };
     const op = path.includes(`/scripts/${target.op}/`);
     const id = op ? target.versions.op : target.versions.claim;
