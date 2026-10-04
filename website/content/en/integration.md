@@ -8,6 +8,7 @@ translation_key: integration
 updated: 2026-10-03
 ---
 
+To try the public IdP in your browser, open the [public integration demo](integration-demo.md).
 This guide is for developers connecting a Web application whose backend holds a private signing key. It covers registration, login, code exchange and application session creation. For user sign-in instructions, read [Getting started](getting-started.md).
 
 ## Connect using OpenID Connect

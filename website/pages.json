@@ -89,5 +89,12 @@
       "ja": "招待・連携相談",
       "en": "Contact"
     }
+  },
+  {
+    "slug": "integration-demo",
+    "labels": {
+      "ja": "公開接続デモ",
+      "en": "Live demo"
+    }
   }
 ]

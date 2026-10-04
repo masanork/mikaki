@@ -11,10 +11,12 @@ import { OP, RP, CLIENT, p, random, hash, now, sqlParts } from './shared.ts';
 export async function startLocal({
   scheduler = true,
   helpdesk = false,
+  demo = false,
   beforeSessionCheckResponse,
 }: {
   scheduler?: boolean;
   helpdesk?: boolean;
+  demo?: boolean;
   beforeSessionCheckResponse?: () => Promise<void>;
 } = {}) {
   async function keys(kid: string) {
@@ -73,7 +75,9 @@ export async function startLocal({
         },
         {
           configPath: helpdesk
-            ? 'crates/helpdesk-rp/wrangler.local.jsonc'
+            ? demo
+              ? 'crates/helpdesk-rp/wrangler.demo-local.jsonc'
+              : 'crates/helpdesk-rp/wrangler.local.jsonc'
             : 'local/wrangler.rp.jsonc',
           vars: publicVars,
           secrets: { RP_PRIVATE_JWK: rpKeys.private },
@@ -82,7 +86,9 @@ export async function startLocal({
     });
     await harness.listen();
     const op = harness.getWorker('mikaki-local-op'),
-      rp = harness.getWorker(helpdesk ? 'mikaki-helpdesk-local' : 'mikaki-local-rp');
+      rp = harness.getWorker(
+        helpdesk ? (demo ? 'mikaki-demo-local' : 'mikaki-helpdesk-local') : 'mikaki-local-rp',
+      );
     const opEnv = await op.getEnv(),
       rpEnv = await rp.getEnv();
     async function schema(db: typeof opEnv.DB, name: string) {

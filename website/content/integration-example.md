@@ -8,6 +8,7 @@ translation_key: integration-example
 updated: 2026-10-03
 ---
 
+公開IdPへの接続をブラウザーで試す方は、[公開接続デモ](integration-demo.md)へ進めます。
 実行できる接続例として、リポジトリの[Helpdesk RP](https://github.com/masanork/mikaki/tree/main/crates/helpdesk-rp)を使います。Rust/WasmとWorkerでできた小さなアプリに、ログインと保護されたページがあります。**この例は使い捨てのローカルOPへ接続します。公開IdPへの登録済み接続や本番向けサポートサービスではありません。**
 
 ## 準備して起動する

@@ -32,6 +32,7 @@ mikakiは実験的なプロジェクトです。対応状況や運用上の制�
 
 - [アプリ連携ガイドを読む](integration.md)
 - [アプリの接続・登録を相談する](contact.md)
+- [公開IdPのログインデモを試す](integration-demo.md)
 - [仕様・対応標準を確認する](specifications.md)
 - [API referenceで要求・応答を確認する](api.md)
 - [ローカルの連携例を動かす](integration-example.md)
