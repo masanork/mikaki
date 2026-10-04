@@ -99,6 +99,8 @@ test('inventory separates OP storage, service-bound claims, and retiring demo re
     true,
   );
   assert.equal(plan.faq.configured, false);
+  assert.equal(plan.faq.origin, 'https://docs.mikaki.org');
+  assert.ok(!plan.faq.required.includes('origin'));
   const rp = plan.schemas.find((schema) => schema.database === 'mikaki-demo-rp')!;
   assert.equal(rp.identity_profile_required, false);
   assert.deepEqual(rp.missing_identity_tables, []);

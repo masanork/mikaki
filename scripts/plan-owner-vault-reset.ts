@@ -204,13 +204,9 @@ export function createResetPlan(root: string) {
     ]),
     faq: {
       configured: false,
-      required: [
-        'origin',
-        'client_id',
-        'public_jwk',
-        'rp_database',
-        'private-key-secret-reference',
-      ],
+      product: 'mikaki Docs',
+      origin: 'https://docs.mikaki.org',
+      required: ['client_id', 'public_jwk', 'rp_database', 'private-key-secret-reference'],
     },
   };
 }
