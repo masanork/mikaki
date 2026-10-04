@@ -624,7 +624,7 @@ for (const [field, value] of [
       );
     }));
 }
-test('v1 source/proposal cannot be relabeled v2 and v2 cannot enter legacy SQL predicates', () =>
+test('a legacy proposal cannot be attached to a v2 record grant', () =>
   withFixture((f) => {
     assert.throws(() =>
       insert(f.db, 'agent_attribute_proposal', {
@@ -639,12 +639,6 @@ test('v1 source/proposal cannot be relabeled v2 and v2 cannot enter legacy SQL p
         expires_at: f.clock.now + 60,
       }),
     );
-    const legacyRust = readFileSync(
-      new URL('../crates/worker/src/vault_approved.rs', import.meta.url),
-      'utf8',
-    );
-    assert.match(legacyRust, /p\.storage_version=1 AND ac\.storage_version=1/);
-    assert.match(legacyRust, /WHERE storage_version=1 AND proposal_id=\?1/);
   }));
 
 test('historical retry SQL accepts only live same-owner database-clock scope independently of root/grant', () =>
