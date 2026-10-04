@@ -245,9 +245,14 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
           { htm: 'POST' },
           { htu: `${issuer}/token` },
           { iat: now() - 71 },
-          { iat: now() + 11 },
+          // Keep rejected future proofs outside the 10-second allowance after transport latency.
+          { iat: now() + 71 },
         ]) {
-          assert.equal((await resource(token, await proof(changes, token))).status, 401);
+          assert.equal(
+            (await resource(token, await proof(changes, token))).status,
+            401,
+            JSON.stringify(changes),
+          );
         }
         const p = await proof({}, token);
         assert.equal((await resource(token, `${p}, ${p}`)).status, 401);
