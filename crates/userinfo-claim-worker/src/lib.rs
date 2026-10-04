@@ -98,6 +98,8 @@ struct NameRelease {
     owner_key_revision: i64,
     system_grant_version: i64,
     envelope_id: String,
+    #[serde(default)]
+    ciphertext: Option<Vec<u8>>,
     account_id: String,
     client_id: String,
     revision: i64,
@@ -130,6 +132,78 @@ const ACTIVE_NAME_RECORD_RELEASE: &str = include_str!("active_name_record_releas
 const AUDIT_NAME_RECORD_RELEASE: &str = include_str!("audit_name_record_release.sql");
 
 #[cfg(target_arch = "wasm32")]
+fn legacy_store(env: &worker::Env) -> bool {
+    env.var("MIKAKI_LEGACY_CLAIM_STORE")
+        .is_ok_and(|value| value.to_string() == "local-test")
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn store_call(
+    env: &worker::Env,
+    path: &str,
+    input: serde_json::Value,
+) -> worker::Result<serde_json::Value> {
+    let mut init = worker::RequestInit::new();
+    init.with_method(worker::Method::Post)
+        .with_body(Some(JsValue::from_str(&input.to_string())));
+    init.headers.set("Content-Type", "application/json")?;
+    let mut response = env
+        .service("CLAIM_STORE")?
+        .fetch(format!("https://store.internal/{path}"), Some(init))
+        .await?;
+    if response.status_code() != 200 {
+        return Err(worker::Error::RustError("claim_store_unavailable".into()));
+    }
+    response.json().await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn load_key(
+    env: &worker::Env,
+    key_id: &str,
+    active: bool,
+) -> worker::Result<Option<RecipientKey>> {
+    if env.service("CLAIM_STORE").is_ok() {
+        return serde_json::from_value(
+            store_call(
+                env,
+                "key",
+                serde_json::json!({"key_id":key_id,"active":active}),
+            )
+            .await?,
+        )
+        .map_err(|_| worker::Error::RustError("invalid_claim_store_response".into()));
+    }
+    if !legacy_store(env) {
+        return Err(worker::Error::RustError("claim_store_required".into()));
+    }
+    let sql = format!(
+        "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation FROM vault_recipient_key WHERE key_id=?1{}",
+        if active { " AND state='active'" } else { "" }
+    );
+    env.d1("DB")?
+        .prepare(&sql)
+        .bind(&[JsValue::from_str(key_id)])?
+        .first::<RecipientKey>(None)
+        .await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn bounded_body(request: &mut worker::Request, maximum: usize) -> worker::Result<Vec<u8>> {
+    use futures_util::StreamExt;
+    let mut stream = request.stream()?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if bytes.len().saturating_add(chunk.len()) > maximum {
+            return Err(worker::Error::RustError("claim_request_too_large".into()));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn release_name(
     mut request: worker::Request,
     env: &worker::Env,
@@ -140,10 +214,7 @@ async fn release_name(
             .with_header("Cache-Control", "no-store")?
             .empty())
     };
-    let body = request.bytes().await?;
-    if body.len() > 256 {
-        return unavailable();
-    }
+    let body = bounded_body(&mut request, 256).await?;
     let Ok(input) = serde_json::from_slice::<NameRequest>(&body) else {
         return unavailable();
     };
@@ -155,7 +226,7 @@ async fn release_name(
     {
         return unavailable();
     }
-    let db = env.d1("DB")?;
+    let remote = env.service("CLAIM_STORE").is_ok();
     // One statement selects one ledger row's explicit version, never a guessed
     // source or a second consent ledger. Both arms use the same token and RP.
     let query = format!(
@@ -168,11 +239,25 @@ async fn release_name(
         2 AS storage_version,g.origin AS source_origin,g.vault_id,g.collection_id,g.record_id,g.kind, \
         g.key_generation,g.owner_key_revision,g.version AS system_grant_version,e.envelope_id {ACTIVE_NAME_RECORD_RELEASE}"
     );
-    let row = db
-        .prepare(&query)
-        .bind(&[JsValue::from_str(&input.access_hash)])?
-        .first::<NameRelease>(None)
-        .await?;
+    let row = if remote {
+        serde_json::from_value::<Option<NameRelease>>(
+            store_call(
+                env,
+                "release",
+                serde_json::json!({"access_hash":input.access_hash}),
+            )
+            .await?,
+        )
+        .map_err(|_| worker::Error::RustError("invalid_claim_store_response".into()))?
+    } else if legacy_store(env) {
+        env.d1("DB")?
+            .prepare(&query)
+            .bind(&[JsValue::from_str(&input.access_hash)])?
+            .first::<NameRelease>(None)
+            .await?
+    } else {
+        return unavailable();
+    };
     let Some(row) = row else {
         return Ok(worker::Response::builder()
             .with_status(204)
@@ -190,18 +275,24 @@ async fn release_name(
     {
         return unavailable();
     }
-    let Some(object) = env
-        .bucket("VAULT_BLOBS")?
-        .get(&row.object_key)
-        .execute()
-        .await?
-    else {
-        return unavailable();
+    let ciphertext = if remote {
+        row.ciphertext
+            .clone()
+            .ok_or_else(|| worker::Error::RustError("missing_claim_blob".into()))?
+    } else {
+        let Some(object) = env
+            .bucket("VAULT_BLOBS")?
+            .get(&row.object_key)
+            .execute()
+            .await?
+        else {
+            return unavailable();
+        };
+        let Some(blob) = object.body() else {
+            return unavailable();
+        };
+        blob.bytes().await?
     };
-    let Some(blob) = object.body() else {
-        return unavailable();
-    };
-    let ciphertext = blob.bytes().await?;
     if ciphertext.len() > 24 * 1024
         || URL_SAFE_NO_PAD.encode(Sha256::digest(&ciphertext)) != row.ciphertext_sha256
     {
@@ -318,12 +409,25 @@ async fn release_name(
             JsValue::from_str(&row.envelope_id),
         ]);
     }
-    let accepted = db
-        .prepare(&audit)
-        .bind(&params)?
-        .first::<i64>(Some("id"))
-        .await?;
-    if accepted.is_none() {
+    let accepted = if remote {
+        store_call(env,"audit",serde_json::json!({
+            "access_hash":input.access_hash,"storage_version":row.storage_version,
+            "account_id":row.account_id,"client_id":row.client_id,"revision":row.revision,
+            "release_version":row.release_version,"ciphertext_sha256":row.ciphertext_sha256,"key_id":row.key_id,
+            "source_origin":row.source_origin,"vault_id":row.vault_id,"collection_id":row.collection_id,
+            "record_id":row.record_id,"kind":row.kind,"key_generation":row.key_generation,
+            "owner_key_revision":row.owner_key_revision,"system_grant_version":row.system_grant_version,
+            "generation":row.generation,"envelope_id":row.envelope_id
+        })).await?["accepted"].as_bool()==Some(true)
+    } else {
+        env.d1("DB")?
+            .prepare(&audit)
+            .bind(&params)?
+            .first::<i64>(Some("id"))
+            .await?
+            .is_some()
+    };
+    if !accepted {
         return unavailable();
     }
     worker::Response::builder()
@@ -340,15 +444,7 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
     {
         return Ok(false);
     }
-    let db = env.d1("DB")?;
-    let row = db
-        .prepare(
-            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
-             FROM vault_recipient_key WHERE key_id=?1",
-        )
-        .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
-        .first::<RecipientKey>(None)
-        .await?;
+    let row = load_key(env, key_id, false).await?;
     let Some(row) = row else {
         worker::console_warn!("recipient verification unavailable: directory row missing");
         return Ok(false);
@@ -398,10 +494,7 @@ async fn validate_envelope(
         return Ok(false);
     }
     // This Worker has no public route. The OP service binding sends at most 40 KiB.
-    let body = request.bytes().await?;
-    if body.len() > 40 * 1024 {
-        return Ok(false);
-    }
+    let body = bounded_body(&mut request, 40 * 1024).await?;
     let Ok(value) = serde_json::from_slice::<EnvelopeValidation>(&body) else {
         return Ok(false);
     };
@@ -426,15 +519,7 @@ async fn validate_envelope(
     {
         return Ok(false);
     }
-    let db = env.d1("DB")?;
-    let row = db
-        .prepare(
-            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
-         FROM vault_recipient_key WHERE key_id=?1 AND state='active'",
-        )
-        .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
-        .first::<RecipientKey>(None)
-        .await?;
+    let row = load_key(env, key_id, true).await?;
     let Some(row) = row else {
         return Ok(false);
     };
@@ -504,10 +589,7 @@ async fn validate_record_envelope(
         return Ok(false);
     }
     // This Worker has no public route. The OP service binding sends at most 40 KiB.
-    let body = request.bytes().await?;
-    if body.len() > 40 * 1024 {
-        return Ok(false);
-    }
+    let body = bounded_body(&mut request, 40 * 1024).await?;
     let Ok(value) = serde_json::from_slice::<RecordEnvelopeValidation>(&body) else {
         return Ok(false);
     };
@@ -527,15 +609,7 @@ async fn validate_record_envelope(
     {
         return Ok(false);
     }
-    let db = env.d1("DB")?;
-    let row = db
-        .prepare(
-            "SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation \
-         FROM vault_recipient_key WHERE key_id=?1 AND state='active'",
-        )
-        .bind(&[wasm_bindgen::JsValue::from_str(key_id)])?
-        .first::<RecipientKey>(None)
-        .await?;
+    let row = load_key(env, key_id, true).await?;
     let Some(row) = row else {
         return Ok(false);
     };
@@ -595,10 +669,16 @@ pub async fn main(
     }
     if request.method() == worker::Method::Get && path == "/internal/ready" {
         let ready = async {
-            let db = env.d1("DB")?;
-            db.prepare("SELECT key_id FROM vault_recipient_key LIMIT 1")
-                .first::<serde_json::Value>(None)
-                .await?;
+            if env.service("CLAIM_STORE").is_ok() {
+                store_call(&env, "ready", serde_json::json!({})).await?;
+            } else if legacy_store(&env) {
+                env.d1("DB")?
+                    .prepare("SELECT key_id FROM vault_recipient_key LIMIT 1")
+                    .first::<serde_json::Value>(None)
+                    .await?;
+            } else {
+                return Err(worker::Error::RustError("claim_store_required".into()));
+            }
             Ok::<(), worker::Error>(())
         }
         .await;

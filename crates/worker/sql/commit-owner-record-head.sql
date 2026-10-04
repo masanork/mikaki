@@ -4,6 +4,7 @@ INSERT INTO vault_owner_record_head(account_id,vault_id,collection_id,record_id,
 SELECT ?1,?2,?3,?4,?5,?6,?7,2,?8,?9,?10,?11,unixepoch()
 WHERE ?6=CASE WHEN ?12=-1 THEN 1 ELSE ?12+1 END
 AND (?11=0 OR ?12>0)
+AND (?8 IS NULL OR EXISTS(SELECT 1 FROM vault_gc_candidate WHERE object_key=?8 AND state='pending'))
 AND unixepoch() BETWEEN ?18 AND ?18+300
 AND NOT EXISTS(SELECT 1 FROM vault_owner_record_mutation WHERE account_id=?1 AND operation_id=?19)
 AND ((?12=-1 AND NOT EXISTS(SELECT 1 FROM vault_owner_record_head WHERE account_id=?1 AND vault_id=?2 AND collection_id=?3 AND record_id=?4))

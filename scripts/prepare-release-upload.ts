@@ -18,11 +18,13 @@ const workers = [
   {
     archive: 'mikaki-worker.tar.gz',
     directory: 'op',
+    entry: 'service',
     config: 'crates/worker/wrangler.production.jsonc',
   },
   {
     archive: 'mikaki-userinfo-claim-worker.tar.gz',
     directory: 'userinfo',
+    entry: 'shim',
     config: 'crates/userinfo-claim-worker/wrangler.production.jsonc',
   },
 ] as const;
@@ -94,7 +96,7 @@ export async function prepareReleaseUpload(
         assert.deepEqual(digest(bytes), member.digest, `Archive member changed: ${member.name}`);
         await writeFile(join(input, member.name), bytes, { flag: 'wx', mode: 0o600 });
       }
-      const entry = join(input, 'worker/shim.mjs');
+      const entry = join(input, `worker/${worker.entry}.mjs`);
       const config = join(root, worker.config);
       if (bundle) bundle(entry, config, output);
       else
@@ -114,7 +116,7 @@ export async function prepareReleaseUpload(
         assert.match(name, /^[a-zA-Z0-9_.-]+$/, 'Unexpected bundle filename');
         bundleFiles.push({ name, digest: digest(await boundedFile(join(output, name))) });
       }
-      assert.ok(bundleFiles.some((file) => file.name === 'shim.js'));
+      assert.ok(bundleFiles.some((file) => file.name === `${worker.entry}.js`));
       assert.equal(bundleFiles.filter((file) => file.name.endsWith('.wasm')).length, 1);
       prepared.push({
         worker: worker.directory,
@@ -177,7 +179,13 @@ export async function verifyPreparedUpload(
       'package.json',
       'worker',
     ]);
-    assert.deepEqual(await readdir(join(input, 'worker')), ['shim.mjs']);
+    assert.deepEqual(
+      (await readdir(join(input, 'worker'))).sort(),
+      archive.members
+        .filter((member) => member.name.startsWith('worker/'))
+        .map((member) => member.name.slice(7))
+        .sort(),
+    );
     for (const member of archive.members) {
       assert.deepEqual(digest(await boundedFile(join(input, member.name))), member.digest);
     }
@@ -186,7 +194,7 @@ export async function verifyPreparedUpload(
       (await readdir(output)).sort(),
       record.bundle_files.map((file) => file.name).sort(),
     );
-    assert.ok(record.bundle_files.some((file) => file.name === 'shim.js'));
+    assert.ok(record.bundle_files.some((file) => file.name === `${worker.entry}.js`));
     assert.equal(record.bundle_files.filter((file) => file.name.endsWith('.wasm')).length, 1);
     for (const file of record.bundle_files) {
       assert.match(file.name, /^[a-zA-Z0-9_.-]+$/);

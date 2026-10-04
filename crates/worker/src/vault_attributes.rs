@@ -693,6 +693,12 @@ async fn write(
         rng.fill(&mut random)
             .map_err(|_| worker::Error::RustError("server_error".into()))?;
         let key = format!("vault-attribute/{}", URL_SAFE_NO_PAD.encode(random));
+        db.prepare(
+            "INSERT INTO vault_gc_candidate(object_key,eligible_at) VALUES(?1,unixepoch()+86400)",
+        )
+        .bind(&[JsValue::from_str(&key)])?
+        .run()
+        .await?;
         context
             .env
             .bucket("VAULT_BLOBS")?
@@ -743,6 +749,7 @@ async fn write(
          AND (?13 IS NULL OR EXISTS(SELECT 1 FROM agent_attribute_proposal p JOIN agent_attribute_commit ac ON ac.proposal_id=p.proposal_id \
            WHERE p.proposal_id=?13 AND p.request_hash=?14 AND p.state='committed' AND ac.account_id=?1 \
            AND ac.operation_id=?15 AND ac.candidate_sha256=?16 AND ac.origin=?17)) \
+         AND (?4 IS NULL OR EXISTS(SELECT 1 FROM vault_gc_candidate WHERE object_key=?4 AND state='pending')) \
          AND (SELECT COUNT(*) FROM vault_attribute_mutation WHERE account_id=?1 AND created_at>?8-60)<20 \
          AND (?9>0 OR (SELECT COUNT(*) FROM vault_attribute_head WHERE account_id=?1)<32) \
          ON CONFLICT(account_id,attribute_id) DO UPDATE SET \

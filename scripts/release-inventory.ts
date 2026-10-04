@@ -55,21 +55,23 @@ export async function collectRelease(
   assert.equal(typeof source.clean, 'boolean');
   const releases: ReleaseInventory['archives'] = [];
   for (const name of archives) {
+    const requiredMembers =
+      name === 'mikaki-worker.tar.gz' ? [...members, 'worker/service.mjs'] : members;
     const path = join(root, 'artifacts', name);
     const bytes = await regularFile(path);
     const names = tar(bytes, ['-tz']).toString('utf8').trimEnd().split('\n');
     assert.deepEqual(
       [...names].sort(),
-      [...members].sort(),
+      [...requiredMembers].sort(),
       `Unexpected/duplicate archive entries: ${name}`,
     );
     const types = tar(bytes, ['-tvz']).toString('utf8').trimEnd().split('\n');
-    assert.equal(types.length, members.length);
+    assert.equal(types.length, requiredMembers.length);
     assert.ok(
       types.every((line) => line.startsWith('-')),
       'Archive members must be regular files',
     );
-    const archiveMembers = members.map((entry) => ({
+    const archiveMembers = requiredMembers.map((entry) => ({
       name: entry,
       bytes: tar(bytes, ['-xOz', entry]),
     }));

@@ -195,6 +195,11 @@ function fixture(base = 0, deleted = 0, source = 'name', before = '9999') {
       ledgerHash?: string;
     } = {},
   ) {
+    const objectKey = overrides.head?.[7] ?? 'blob/new';
+    if (typeof objectKey === 'string')
+      db.prepare(
+        'INSERT OR IGNORE INTO vault_gc_candidate(object_key,eligible_at) VALUES(?,unixepoch()+86400)',
+      ).run(objectKey);
     db.exec('BEGIN IMMEDIATE');
     try {
       if (!overrides.skipConsume) db.prepare(consumeSql).run(...(overrides.identity ?? identity));

@@ -1212,7 +1212,7 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
     );
 
     await t.test(
-      'v2 GC retains young/current objects, removes old orphans and expired ledger rows, and leaves v1 untouched',
+      'v2 GC retains young/current objects, removes old orphans and expired ledger rows, and collects both ciphertext formats',
       async () => {
         const owner = await bootstrap('garbage-collection');
         assert.equal((await mutate(owner, await candidate(owner))).status, 200);
@@ -1261,7 +1261,7 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
             .first(),
         );
         await worker.scheduled({
-          cron: '* * * * *',
+          cron: '*/10 * * * *',
           scheduledTime: new Date(Date.now() + 2 * 86400000),
         });
         assert.equal(await env.VAULT_BLOBS.get(orphan), null);
@@ -1275,7 +1275,11 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
           await env.VAULT_BLOBS.get(current.object_key),
           'old referenced ciphertext is retained',
         );
-        assert.ok(await env.VAULT_BLOBS.get(legacy), 'v1 objects are outside the v2 cron prefix');
+        assert.equal(
+          await env.VAULT_BLOBS.get(legacy),
+          null,
+          'old v1 orphan is collected by the shared GC',
+        );
         assert.equal((await decrypt(owner)).value.revision, 2);
         assert.equal(
           (

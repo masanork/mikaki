@@ -1,3 +1,4 @@
+import { runtime, type AgentRuntime } from './database.js';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
@@ -69,7 +70,7 @@ async function snapshot(grant: Grant, key: CryptoKey) {
 }
 
 async function call(
-  env: Env,
+  env: AgentRuntime,
   tokenHash: string,
   op: Operation | 'propose_attribute' | 'propose_record',
   args: unknown,
@@ -183,7 +184,7 @@ async function call(
   }
 }
 
-async function mcp(request: Request, env: Env): Promise<Response> {
+async function mcp(request: Request, env: AgentRuntime): Promise<Response> {
   const origin = request.headers.get('Origin');
   const resource = new URL(env.AGENT_RESOURCE);
   if (request.url !== resource.href || (origin !== null && origin !== resource.origin))
@@ -324,21 +325,22 @@ function challenge(resource: URL): Response {
 // Only the OP is bound to this named entrypoint. Public fetch never dispatches owner routes.
 export class OwnerAgents extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
+    const env = runtime(this.env);
     try {
       const account = request.headers.get('X-Mikaki-Account');
       const secretHash = request.headers.get('X-Mikaki-Session-Hash');
       if (!account || !secretHash) return json({ error: 'authentication_required' }, 401);
       const owner: Owner = { account, secretHash };
-      if (!(await store.ownerActive(this.env.DB, owner)))
+      if (!(await store.ownerActive(env.DB, owner)))
         return json({ error: 'authentication_required' }, 401);
       const path = new URL(request.url).pathname;
       if (['/oauth-request', '/oauth-decide'].includes(path) && request.method === 'POST') {
-        if (!oauth.ownerUrl(this.env)) throw new Error('OAuth disabled');
+        if (!oauth.ownerUrl(env)) throw new Error('OAuth disabled');
         const body = await boundedJson(request, 1024);
         return json(
           path === '/oauth-request'
-            ? await oauth.preview(this.env.DB, owner, body, this.env)
-            : await oauth.decide(this.env.DB, owner, body, this.env),
+            ? await oauth.preview(env.DB, owner, body, env)
+            : await oauth.decide(env.DB, owner, body, env),
         );
       }
       if (
@@ -346,9 +348,9 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         request.method === 'GET'
       ) {
         const connectionsOnly = path === '/connections';
-        const key = await recipient(this.env);
+        const key = await recipient(env);
         const status = await store.ownerStatus(
-          this.env.DB,
+          env.DB,
           owner,
           key.key_id,
           key.resource,
@@ -358,14 +360,12 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         return json({
           ...status,
           ...(path === '/record-status'
-            ? { storage_version: 2, record_proposals: await records.status(this.env.DB, owner) }
+            ? { storage_version: 2, record_proposals: await records.status(env.DB, owner) }
             : {
-                attribute_proposals: connectionsOnly
-                  ? []
-                  : await attributes.status(this.env.DB, owner),
+                attribute_proposals: connectionsOnly ? [] : await attributes.status(env.DB, owner),
                 note_revision: connectionsOnly
                   ? 0
-                  : await attributes.currentRevision(this.env.DB, owner),
+                  : await attributes.currentRevision(env.DB, owner),
               }),
           recipient: {
             public_jwk: key.public_jwk,
@@ -382,22 +382,22 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         const origin = request.headers.get('X-Mikaki-Origin');
         if (!origin || new URL(origin).origin !== origin || !origin.startsWith('https://'))
           throw new Error('Invalid owner origin');
-        const key = await recipient(this.env),
+        const key = await recipient(env),
           input = await boundedJson(request, path === '/record-prepare' ? 49152 : 4096);
         if (path === '/record-capability') {
           const selected = records.capabilityInput.parse(input);
           if (selected.target.origin !== origin) throw new Error('Wrong target origin');
-          return json(await records.allow(this.env.DB, owner, selected, key.key_id, key.resource));
+          return json(await records.allow(env.DB, owner, selected, key.key_id, key.resource));
         }
         return json(
           path === '/record-decide'
-            ? await records.decide(this.env.DB, owner, input, key.key_id, key.resource)
-            : await records.prepare(this.env.DB, owner, input, key, origin),
+            ? await records.decide(env.DB, owner, input, key.key_id, key.resource)
+            : await records.prepare(env.DB, owner, input, key, origin),
         );
       }
       if (path === '/grants' && request.method === 'POST') {
         const input = grantInput.parse(await boundedJson(request));
-        const key = await recipient(this.env);
+        const key = await recipient(env);
         if (
           !key.enabled ||
           input.recipient_key_id !== key.key_id ||
@@ -432,7 +432,7 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
             }),
           );
         }
-        await store.createGrant(this.env.DB, owner, input);
+        await store.createGrant(env.DB, owner, input);
         return json({ grant_id: input.grant_id, expires_at: input.expires_at });
       }
       if (
@@ -440,42 +440,42 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         request.method === 'POST'
       ) {
         const input = await boundedJson(request, 1024);
-        const key = await recipient(this.env);
+        const key = await recipient(env);
         await store.requireLegacyAttributeGrant(
-          this.env.DB,
+          env.DB,
           owner,
           input,
           path === '/attribute-capability',
         );
         const result =
           path === '/attribute-capability'
-            ? await attributes.allow(this.env.DB, owner, input, key.key_id, key.resource)
-            : await attributes.decide(this.env.DB, owner, input, key.key_id, key.resource);
+            ? await attributes.allow(env.DB, owner, input, key.key_id, key.resource)
+            : await attributes.decide(env.DB, owner, input, key.key_id, key.resource);
         return json(result);
       }
       if (path === '/attribute-prepare' && request.method === 'POST') {
         const origin = request.headers.get('X-Mikaki-Origin');
         if (!origin || new URL(origin).origin !== origin || !origin.startsWith('https://'))
           throw new Error('Invalid owner origin');
-        const key = await recipient(this.env);
+        const key = await recipient(env);
         const input = await boundedJson(request);
-        await store.requireLegacyAttributeGrant(this.env.DB, owner, input, false);
-        return json(await attributes.prepare(this.env.DB, owner, input, key, origin));
+        await store.requireLegacyAttributeGrant(env.DB, owner, input, false);
+        return json(await attributes.prepare(env.DB, owner, input, key, origin));
       }
       if (path === '/revoke' && request.method === 'POST') {
         const input = z
           .strictObject({ grant_id: opaque.nullable() })
           .parse(await boundedJson(request, 1024));
-        await store.revoke(this.env.DB, owner, input.grant_id);
+        await store.revoke(env.DB, owner, input.grant_id);
         return json({ revoked: true });
       }
       if (path === '/decide' && request.method === 'POST') {
         const input = z
           .strictObject({ proposal_id: opaque, request_hash: opaque, approve: z.boolean() })
           .parse(await boundedJson(request, 1024));
-        const key = await recipient(this.env);
+        const key = await recipient(env);
         await store.decide(
-          this.env.DB,
+          env.DB,
           owner,
           input.proposal_id,
           input.request_hash,
@@ -486,14 +486,15 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         return json({ decided: true });
       }
       return json({ error: 'not_found' }, 404);
-    } catch {
+    } catch (error) {
       return json({ error: 'operation_failed' }, 409);
     }
   }
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, bindings: Env): Promise<Response> {
+    const env = runtime(bindings);
     try {
       const url = new URL(request.url);
       const resource = new URL(env.AGENT_RESOURCE);
@@ -560,7 +561,8 @@ export default {
       return json({ error: 'service_unavailable' }, 503);
     }
   },
-  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+  async scheduled(_event: ScheduledController, bindings: Env): Promise<void> {
+    const env = runtime(bindings);
     await oauth.cleanup(env.DB);
     await attributes.cleanup(env.DB);
     await store.cleanup(env.DB);

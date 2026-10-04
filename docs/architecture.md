@@ -9,7 +9,7 @@ Browser + passkey
 Mikaki Worker (OIDC endpoints, HTTP, D1)
        |                 |
        v                 v
-OIDC and auth cores   Vault storage (separate capability)
+OIDC and auth cores   OP-owned D1 + encrypted Vault R2
        |
        v
 Portable WebAuthn verifier
@@ -42,10 +42,26 @@ The durable store must enforce challenge consumption at most once, including con
 
 Passkey authentication does not prove that a user can decrypt vault data. A WebAuthn PRF result and keys derived from it stay in the browser and must not be logged or sent to the server. Random data-encryption keys are wrapped under purpose-separated derived keys; separate passkeys must not be assumed to produce the same PRF output. A new authenticator needs an authorized rewrapping path. A PRF failure must be explicit for operations that need decryption, with no silent weak-key fallback. The [vault design](personal-vault.md) describes the proposed sync and recovery model.
 
-Vault storage is outside the authentication core. Login permission, vault read/write permission, and RP claim disclosure are separate decisions. Removing a credential cannot retract plaintext or keys already obtained by a device. [Claim sharing](vault-claim-sharing.md) remains a proposal; [recipient-key management](vault-recipient-key-lifecycle.md) has local components but is not activated or connected to UserInfo.
+Vault storage is outside the authentication core. Login permission, vault read/write permission, and RP claim disclosure are separate decisions. Removing a credential cannot retract plaintext or keys already obtained by a device. [Claim sharing](vault-claim-sharing.md) has locally qualified v1/v2 recipient envelopes, system grants, selected RP consent and conditional disclosure audits. The UserInfo recipient decrypts only the selected ciphertext using its own Secrets Store seed. Production sharing policy and real-owner qualification remain separate gates. [Recipient-key management](vault-recipient-key-lifecycle.md) describes activation and rotation.
 
 [ADR 0012](adr/0012-vault-protocol-boundaries.md) also separates storage/synchronization, credential presentation, file operations, and AI access. MCP adapts domain operations; it does not own the Vault data model. OIDC profile release and proposed OpenID4VP credential presentation serve different relying-party needs. The [protocol review](vault-protocol-review.md) records current candidates and their adoption gates.
 
+## Runtime ownership and plaintext
+
+The Rust OP owns OIDC/WebAuthn authorization, owner ciphertext commits, D1 and R2. Its default handler serves public routes; named `AgentStore` and `ClaimStore` entrypoints supply bounded internal capabilities. Agent and UserInfo production configurations omit D1/R2 bindings. The [ownership ADR](adr/0015-service-data-ownership.md) records atomic batches and rollout order; these binding changes are locally verified and await deployment.
+
+The browser holds PRF output, the nonextractable owner key, decrypted records and its local SQLite search index. Owner storage receives ciphertext and public identity/revision metadata. For an approved UserInfo disclosure, the recipient returns the allowed name to the OP, which constructs the plaintext UserInfo response for the RP. The UserInfo recipient temporarily holds only authorized profile plaintext and its recipient secret. The Agent domain authority can decrypt explicit selected snapshots with its own recipient key, and private drafts/results can contain delegated plaintext in its authorized storage. Revocation ends future access; it cannot retract copies already returned. Root/content keys are never delegated. See [source authorities](implementation-authorities.md), [bounded authentication retention](auth-resource-lifecycle.md) and [ciphertext collection](vault-garbage-collection.md).
+
+The deployed issuer configuration is `https://auth.mikaki.org`; a checked-in configuration is not proof of a running version or policy. Current owner-key v2 record storage and browser conversation search exist. Additional credential enrollment/rewrapping, root rotation, record-selection sharing UI and live conversation ingestion still have open qualification or implementation work.
+
+## Identity development boundary
+
+The unpublished Identity/Wallet work reviewed on 2026-10-04 is separate from the encrypted owner Vault. Its OP normalizes card-derived name, address, birthdate, optional gender/expiry and provenance as plaintext D1 data for linking, explicit release consent and issuance. Raw card EFs, PINs, photos, personal number and its hash are excluded from persistent storage/logs. Linked attributes remain until owner deletion; abandoned unlinked transactions and expired nonces use bounded minute/intake cleanup. This is not the Vault ciphertext GC or the ordinary OIDC retention contract.
+
+Holder credentials and holder private keys occupy separate Wallet/native compartments; verifier-approved presentation can reveal selected plaintext. A linked attribute or custom issued credential does not establish government issuance or current possession of the original card. Native ordinary OIDC authentication likewise does not grant PRF decryption or Wallet presentation permission.
+
+Identity migrations `0036`–`0044`, `IDENTITY_ENABLED`, `IDENTITY_WALLET_ENABLED`, separately consented release and configured trust/attestation policies are development prerequisites; the HAIP profile adds its own enable flag and issuer/wallet/key trust. The reviewed unpublished source and its local tests are not present on this branch and do not establish deployed activation or physical-card/ISO qualification. [Deployment issue #116](https://github.com/masanork/mikaki/issues/116) and [device qualification #117](https://github.com/masanork/mikaki/issues/117) track those gates. This branch reserves `0045`–`0046` for the resource/GC changes so the Identity migration numbers are preserved. No Identity environment flag is enabled by these changes.
+
 ## Future boundaries
 
-Federated messaging, a conversation archive, and MCP access are outside the initial login scope. Federation must distinguish DID identity, device encryption keys, and server delivery. MCP access requires explicit, bounded delegation and does not follow automatically from message receipt or login. The [roadmap](roadmap.md) identifies their maturity and links to the corresponding proposals.
+Federated messaging and live cross-application conversation ingestion remain future work. Encrypted thread records and browser-local search are implemented; existing typed-record and Agent APIs do not by themselves import real conversations. Federation must distinguish DID identity, device encryption keys, and server delivery. MCP access requires explicit, bounded delegation and does not follow automatically from message receipt or login. The [roadmap](roadmap.md) identifies their maturity and links to the corresponding proposals.
