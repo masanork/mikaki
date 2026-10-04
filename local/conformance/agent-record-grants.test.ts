@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import { agentQueries } from '../../crates/worker/service/agent-catalog.ts';
 import { agentKeyId, sealAgentSnapshot } from '../../crates/worker/ui/agent-crypto.ts';
 import { sealRecordAgentSnapshot } from '../../crates/worker/ui/agent-record-crypto.ts';
 import { encodeOwnerNote, newOwnerNote } from '../../crates/worker/ui/vault-note.ts';
@@ -94,9 +95,11 @@ function adapter(sqlite: DatabaseSync) {
       return { results };
     }
     async run() {
-      const result = sqlite.prepare(this.sql).run(...this.values);
+      const statement = sqlite.prepare(this.sql);
+      const results = statement.columns().length ? statement.all(...this.values) : [];
+      const changes = statement.columns().length ? 0 : statement.run(...this.values).changes;
       hook?.(this.sql);
-      return { meta: { changes: result.changes } };
+      return { results, meta: { changes } };
     }
   }
   const db = {
@@ -166,6 +169,19 @@ function fixture(before33 = false) {
   const shim = adapter(sqlite);
   const env = {
     DB: shim.db,
+    AUTH_STORE: {
+      async fetch(_url: string, init: RequestInit) {
+        const { statements } = JSON.parse(init.body as string);
+        const prepared = statements.map(
+          ({ id, values }: { id: string; values: SQLInputValue[] }) => {
+            const query = agentQueries[id];
+            assert.ok(query, 'synthetic binding accepts only checked-in Agent capabilities');
+            return shim.db.prepare(query).bind(...values);
+          },
+        );
+        return Response.json(await shim.db.batch(prepared));
+      },
+    },
     AGENT_PRIVATE_JWK: JSON.stringify(privateJwk),
     AGENT_RESOURCE: resource,
     AGENT_OWNER_URL: `${origin}/vault`,

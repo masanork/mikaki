@@ -17,5 +17,6 @@ ADRs record accepted choices and their rationale. They do not certify that a fea
 | [0012](0012-vault-protocol-boundaries.md) | Separate owner storage, credential presentation, file synchronization, and AI adapters; keep MCP outside the canonical Vault data/commit contract. New protocol profiles retain independent adoption gates. |
 | [0013](0013-agent-proposal-authority.md) | One isolated agent proposal authority for HTTP/MCP; an explicit TypeScript exception leaves Rust owner storage and the encrypted commit boundary separate. |
 | [0014](0014-agent-oauth-authority.md) | Bounded isolated delegated-agent OAuth authority; public-client token issuance selects existing grants and remains separate from Rust OIDC/owner storage. |
+| [0015](0015-service-data-ownership.md) | OP-owned durable storage, bounded Agent/recipient service capabilities and ordered rollout/rollback. |
 
 There is no ADR 0010 in the repository. The numbering is not renumbered to hide that gap.

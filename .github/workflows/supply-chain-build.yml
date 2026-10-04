@@ -31,6 +31,7 @@ jobs:
         run: |
           npm run build:policy
           worker-build --release crates/worker
+          npm run build:op-authority
           worker-build --release crates/userinfo-claim-worker
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
@@ -68,7 +69,7 @@ jobs:
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-crypto.cdx.json --input-version v1_7 --fail-on-errors
       - name: Archive the built Worker
         run: |
-          tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+          tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
       - name: Bind release bytes and migrations to the clean source revision
         run: |

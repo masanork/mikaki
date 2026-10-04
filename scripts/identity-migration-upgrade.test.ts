@@ -68,10 +68,11 @@ function seedExistingOwner(db: DatabaseSync) {
     1,
   );
 }
-test('identity migrations append to current main without renumbering or changing existing Vault data', async () => {
+test('identity and subsequent migrations preserve existing Vault data in migration order', async () => {
   const items = await migrations();
-  const base = items.filter((item) => !item.name.includes('_identity_'));
+  const base = items.filter((item) => Number(item.name.slice(0, 4)) < 36);
   const identity = items.filter((item) => item.name.includes('_identity_'));
+  const subsequent = items.filter((item) => Number(item.name.slice(0, 4)) > 44);
   assert.equal(base.at(-1)!.name, '0035_agent_record_approvals.sql');
   assert.equal(identity.length, 9);
   assert.equal(identity[0].name, '0036_identity_documents.sql');
@@ -104,6 +105,11 @@ test('identity migrations append to current main without renumbering or changing
       );
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM identity_document').get()!.n, 0);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM identity_wallet_grant').get()!.n, 0);
+    for (const item of subsequent) apply(db, item.sql);
+    integrity(db);
+    tables.forEach((table, index) =>
+      assert.deepEqual(db.prepare(`SELECT * FROM ${table}`).all(), rows[index]),
+    );
   } finally {
     db.close();
   }
