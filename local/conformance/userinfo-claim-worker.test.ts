@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createTestHarness } from 'wrangler';
@@ -12,22 +13,20 @@ const opConfigPath = fileURLToPath(
 );
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-test('claim Worker fails closed without its Secrets Store binding', async () => {
-  const harness = createTestHarness({ root, workers: [{ configPath }] });
+test('claim Worker requires ClaimStore even when the retired local-test flag is set', async () => {
+  const config = JSON.parse((await readFile(configPath, 'utf8')).replace(/,\s*([}\]])/g, '$1'));
+  config.main = `${root}/crates/userinfo-claim-worker/build/worker/shim.mjs`;
+  config.services = [];
+  config.vars.MIKAKI_LEGACY_CLAIM_STORE = 'local-test';
+  const harness = createTestHarness({ root, workers: [{ config }] });
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-userinfo-claim-worker');
-    await worker.applyD1Migrations('DB');
     const env = await worker.getEnv();
-    const publicKey = Buffer.alloc(1184, 7);
-    const keyId = createHash('sha256').update(publicKey).digest('base64url');
-    await env.DB.prepare(
-      `INSERT INTO vault_recipient_key
-      (key_id,service_id,algorithm,public_key,secret_ref,generation,state,revision,created_at)
-      VALUES(?,'userinfo','ML-KEM-768',?,'VAULT_USERINFO_MLKEM_TEST',1,'staged',1,?)`,
-    )
-      .bind(keyId, publicKey, Math.floor(Date.now() / 1000))
-      .run();
+    assert.equal('DB' in env, false);
+    assert.equal('VAULT_BLOBS' in env, false);
+    const keyId = createHash('sha256').update('key').digest('base64url');
+    assert.equal((await worker.fetch('https://internal.invalid/internal/ready')).status, 503);
     const response = await worker.fetch(
       `https://internal.invalid/internal/recipient-keys/${keyId}/verify`,
     );
@@ -47,8 +46,7 @@ test('claim Worker fails closed without its Secrets Store binding', async () => 
         }),
       },
     );
-    assert.equal(rejected.status, 503);
-    assert.equal(rejected.headers.get('Cache-Control'), 'no-store');
+    assert.equal(rejected.status, 404);
     const absent = await worker.fetch('https://internal.invalid/internal/claims/name', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,7 +54,7 @@ test('claim Worker fails closed without its Secrets Store binding', async () => 
         access_hash: createHash('sha256').update('unused').digest('base64url'),
       }),
     });
-    assert.equal(absent.status, 204, 'a token without a live profile release yields no name');
+    assert.equal(absent.status, 503, 'missing authority cannot be mistaken for absent consent');
     const malformed = await worker.fetch('https://internal.invalid/internal/claims/name', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,7 +68,7 @@ test('claim Worker fails closed without its Secrets Store binding', async () => 
   }
 });
 
-test('profile name release requires current RP consent and fails closed when the recipient secret is absent', async () => {
+test('legacy name heads and consent never authorize a UserInfo disclosure', async () => {
   const harness = createTestHarness({
     root,
     workers: [
@@ -83,8 +81,7 @@ test('profile name release requires current RP consent and fails closed when the
     const op = harness.getWorker('mikaki-op-worker');
     const worker = harness.getWorker('mikaki-userinfo-claim-worker');
     await op.applyD1Migrations('DB');
-    await worker.applyD1Migrations('DB');
-    const { DB, VAULT_BLOBS } = await worker.getEnv();
+    const { DB, VAULT_BLOBS } = await op.getEnv();
     const now = Math.floor(Date.now() / 1000);
     const access = Buffer.alloc(32, 5).toString('base64url');
     const token = createHash('sha256').update(access).digest('base64url');
@@ -181,12 +178,16 @@ test('profile name release requires current RP consent and fails closed when the
       .run();
     assert.equal(
       (await call()).status,
-      503,
-      'the missing recipient secret cannot silently omit a consented name',
+      204,
+      'legacy consent is ignored before any recipient secret or ciphertext is accessed',
     );
     const unavailableProfile = await userinfo();
-    assert.equal(unavailableProfile.status, 503);
-    assert.ok(!(await unavailableProfile.text()).includes('synthetic-invalid-ciphertext'));
+    assert.equal(unavailableProfile.status, 200);
+    assert.deepEqual(await unavailableProfile.json(), { sub: 'pairwise' });
+    assert.equal(
+      await DB.prepare('SELECT count(*) AS n FROM vault_claim_disclosure_audit').first('n'),
+      0,
+    );
     await DB.prepare(
       "UPDATE vault_claim_release SET status='revoked',version=version+1,updated_at=? WHERE account_id='owner' AND client_id='rp'",
     )

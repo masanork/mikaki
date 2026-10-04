@@ -110,6 +110,49 @@ test('named OP authorities limit Agent SQL and claim release without downstream 
       ).status,
       503,
     );
+    const legacyAudit = {
+      access_hash: key,
+      storage_version: 1,
+      source_origin: 'https://mikaki.test',
+      vault_id: 'vault',
+      collection_id: 'personal',
+      record_id: 'name',
+      kind: 'name',
+      envelope_id: key,
+      key_generation: 1,
+      owner_key_revision: 1,
+      system_grant_version: 1,
+      generation: 1,
+      account_id: 'owner',
+      client_id: 'rp',
+      revision: 1,
+      release_version: 1,
+      ciphertext_sha256: key,
+      key_id: key,
+    };
+    assert.equal(
+      (
+        await claimEnv.CLAIM_STORE.fetch('https://store.internal/audit', {
+          method: 'POST',
+          body: JSON.stringify(legacyAudit),
+        })
+      ).status,
+      503,
+      'the named authority rejects the retired audit protocol',
+    );
+    assert.equal(
+      (
+        await claims.fetch(
+          `https://userinfo.internal/internal/recipient-keys/${key}/validate-envelope`,
+          {
+            method: 'POST',
+            body: '{}',
+          },
+        )
+      ).status,
+      404,
+      'the legacy envelope validator is retired',
+    );
     assert.equal((await DB.prepare('PRAGMA foreign_key_check').all()).results.length, 0);
   } finally {
     await harness.close();

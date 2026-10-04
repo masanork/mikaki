@@ -20,7 +20,7 @@ The ClaimStore takes an access-token hash rather than an arbitrary account/objec
 
 Each Agent `DB.batch` becomes one OP D1 `batch`, including conditional guards and audit writes. It is never split into multiple fetches. Every invocation uses a primary D1 session; no stale read replica is used as authorization evidence. OP owner commits remain their existing Rust atomic transitions.
 
-The local Claim Worker config explicitly enables `MIKAKI_LEGACY_CLAIM_STORE=local-test` for isolated fixture tests. Missing service bindings fail closed in every other mode. Production/example configs omit that flag and all downstream storage bindings. The positive live-secret suite also runs the new service boundary, without legacy storage access.
+Both local and production Claim Worker configs use `CLAIM_STORE` and omit direct D1/R2 bindings. #121 removes the former local-test storage escape hatch and format-1 UserInfo decoder/authority. Missing service bindings fail closed. The record-v2 live-secret suite exercises the same service boundary and conditional audit with real local Secrets Store seeds. Historical format-1 heads or consent cannot authorize disclosure.
 
 ## Rollout and rollback
 

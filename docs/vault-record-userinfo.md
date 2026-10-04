@@ -72,19 +72,21 @@ commit; they never reactivate a revoked or expired grant.
 - `DELETE /vault/records/personal/name/releases` uses the existing common-ledger
   withdrawal body `{ "client_id": "..." }`; `If-Match` is the release version.
 
-The original format-1 release POST remains compatible for format-1 or absent
-ledger rows. It accepts optional `expected_release_version`; switching an existing
-v2 selection back to v1 requires this field to match the observed ledger version.
-An old v1 client cannot silently overwrite a v2 selection.
+During the source refactor, the original format-1 release POST is still present
+in the OP and uses its existing ledger CAS. It no longer authorizes UserInfo
+delivery: `ClaimStore` selects record-v2 releases exclusively and the recipient
+Worker has no format-1 decoder. Removing the remaining legacy OP/UI routes is
+tracked by #121; they must not be used as a supported disclosure flow.
 
 ## One RP consent ledger and final disclosure check
 
 `vault_claim_release` remains the only per-owner/per-RP/per-claim consent ledger.
-Migration gives existing entries `source_storage_version=1`; explicitly granting
+Historical migration gives existing entries `source_storage_version=1`, which
+the current disclosure authority ignores; explicitly granting
 v2 replaces that row with its full selected source. Merely creating a v2 system
 grant does not change RP consent. Revocation has no v1 fallback.
 
-The ClaimWorker selects the source by that ledger discriminator in one query. It
+The OP ClaimStore selects only record-v2 sources from that ledger in one query. It
 requires a valid token/session with `profile`, live confidential RP registration
 and connection, current policy, selected source, system grant, recipient and RP
 consent. After decrypting, its conditional disclosure-audit insert reruns those

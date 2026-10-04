@@ -79,21 +79,13 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await check(503);
     assert.equal((await claim.fetch('https://internal.invalid/internal/ready')).status, 503);
     await op.applyD1Migrations('DB');
-    await claim.applyD1Migrations('DB');
     assert.equal((await claim.fetch('https://internal.invalid/internal/ready')).status, 204);
     await check(503);
     const { DB } = await op.getEnv();
-    await DB.prepare("INSERT INTO account_security VALUES('shared-binding-probe',0,1)").run();
-    const { DB: claimDB } = await claim.getEnv();
-    assert.equal(
-      await claimDB
-        .prepare(
-          "SELECT count(*) AS n FROM account_security WHERE account_id='shared-binding-probe'",
-        )
-        .first('n'),
-      1,
-      'OP and claim Worker must read the same local D1',
-    );
+    const claimEnv = await claim.getEnv();
+    assert.equal('DB' in claimEnv, false);
+    assert.equal('VAULT_BLOBS' in claimEnv, false);
+    assert.ok(claimEnv.CLAIM_STORE, 'readiness uses the same named OP authority as delivery');
     const policy = JSON.parse(
       await readFile(new URL('../generated/worker-policy.json', import.meta.url), 'utf8'),
     );

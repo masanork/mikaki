@@ -326,7 +326,7 @@ test('invalid nullable source selector cannot bypass check triggers', () => {
   }
 });
 
-test('populated v1 migration preserves consent until an explicit v2 replacement', () => {
+test('legacy consent never discloses through the record-only authority', () => {
   const db = fixture(true);
   try {
     const now = Number(db.prepare('SELECT unixepoch() AS n').get()!.n);
@@ -362,19 +362,12 @@ test('populated v1 migration preserves consent until an explicit v2 replacement'
         .source_storage_version,
       1,
     );
-    assert.equal(snapshot(db), undefined);
-    assert.ok(
-      db.prepare('SELECT r.version ' + claimSql('active_name_release')).get(token('access')),
-    );
+    assert.equal(snapshot(db), undefined, 'legacy heads cannot authorize record delivery');
     db.exec('UPDATE vault_record_share_policy SET enabled=1,revision=2');
     share(db);
     assert.equal(snapshot(db), undefined, 'system v2 grant does not silently migrate RP consent');
     assert.equal(consent(db, { 17: 1 }), 1);
-    assert.ok(snapshot(db));
-    assert.equal(
-      db.prepare('SELECT r.version ' + claimSql('active_name_release')).get(token('access')),
-      undefined,
-    );
+    assert.ok(snapshot(db), 'explicit record consent selects only the record source');
     assert.equal(db.prepare('SELECT count(*) AS n FROM vault_claim_release').get()!.n, 1);
     const legacyConsent = (version: number) =>
       db
@@ -383,21 +376,13 @@ test('populated v1 migration preserves consent until an explicit v2 replacement'
     assert.equal(legacyConsent(-1), 0, 'an old legacy client cannot replace selected v2 consent');
     assert.equal(legacyConsent(1), 0, 'a stale explicit source-switch CAS is rejected');
     assert.equal(legacyConsent(2), 1, 'a known v2 consent fence can explicitly select v1');
-    assert.equal(snapshot(db), undefined);
-    assert.ok(
-      db.prepare('SELECT r.version ' + claimSql('active_name_release')).get(token('access')),
-    );
+    assert.equal(snapshot(db), undefined, 'legacy heads cannot authorize record delivery');
     assert.equal(consent(db, { 17: 3 }), 1, 'a fresh explicit source selection returns to v2');
     assert.ok(snapshot(db));
     db.exec("UPDATE vault_attribute_grant SET status='revoked',version=2");
     assert.ok(snapshot(db), 'old v1 grant mutation cannot alter selected v2 consent');
     db.exec("UPDATE vault_claim_release SET status='revoked',version=version+1");
-    assert.equal(snapshot(db), undefined);
-    assert.equal(
-      db.prepare('SELECT r.version ' + claimSql('active_name_release')).get(token('access')),
-      undefined,
-      'withdrawal has no v1 fallback',
-    );
+    assert.equal(snapshot(db), undefined, 'withdrawal has no legacy fallback');
   } finally {
     db.close();
   }

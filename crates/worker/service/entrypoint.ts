@@ -3,8 +3,6 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { z } from 'zod';
 import op from '../build/worker/shim.mjs';
 import { agentQueries } from './agent-catalog';
-import activeRelease from '../../userinfo-claim-worker/src/active_name_release.sql';
-import auditRelease from '../../userinfo-claim-worker/src/audit_name_release.sql';
 import activeRecord from '../../userinfo-claim-worker/src/active_name_record_release.sql';
 import auditRecord from '../../userinfo-claim-worker/src/audit_name_record_release.sql';
 
@@ -77,10 +75,6 @@ const keyQuery =
   'SELECT key_id,service_id,algorithm,public_key,secret_ref,state,generation FROM vault_recipient_key WHERE key_id=?1';
 const releaseQuery = `SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version,
  h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation,
- 1 AS storage_version,'' AS source_origin,'' AS vault_id,'' AS collection_id,'' AS record_id,'' AS kind,
- 0 AS key_generation,0 AS owner_key_revision,g.version AS system_grant_version,e.envelope_id ${activeRelease}
- UNION ALL SELECT v.account_id,ac.client_id,h.revision,r.version AS release_version,
- h.object_key,h.ciphertext_sha256,e.frame,k.key_id,k.public_key,k.secret_ref,k.generation,
  2 AS storage_version,g.origin AS source_origin,g.vault_id,g.collection_id,g.record_id,g.kind,
  g.key_generation,g.owner_key_revision,g.version AS system_grant_version,e.envelope_id ${activeRecord}`;
 const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -120,15 +114,15 @@ export class ClaimStore extends WorkerEntrypoint<Env> {
         const value = z
           .strictObject({
             access_hash: opaque,
-            storage_version: z.union([z.literal(1), z.literal(2)]),
-            source_origin: z.string().max(256),
-            vault_id: z.string().max(128),
-            collection_id: z.string().max(128),
-            record_id: z.string().max(128),
-            kind: z.string().max(128),
+            storage_version: z.literal(2),
+            source_origin: z.string().min(1).max(256),
+            vault_id: z.string().min(1).max(128),
+            collection_id: z.string().min(1).max(128),
+            record_id: z.string().min(1).max(128),
+            kind: z.string().min(1).max(128),
             envelope_id: opaque,
-            key_generation: z.number().int().nonnegative(),
-            owner_key_revision: z.number().int().nonnegative(),
+            key_generation: z.number().int().positive(),
+            owner_key_revision: z.number().int().positive(),
             system_grant_version: z.number().int().positive(),
             generation: z.number().int().positive(),
             account_id: z.string().min(1).max(128),
@@ -148,26 +142,20 @@ export class ClaimStore extends WorkerEntrypoint<Env> {
           value.ciphertext_sha256,
           value.key_id,
         ];
-        if (value.storage_version === 2)
-          params.push(
-            value.source_origin,
-            value.vault_id,
-            value.collection_id,
-            value.record_id,
-            value.kind,
-            value.key_generation,
-            value.owner_key_revision,
-            value.system_grant_version,
-            value.generation,
-            value.envelope_id,
-          );
+        params.push(
+          value.source_origin,
+          value.vault_id,
+          value.collection_id,
+          value.record_id,
+          value.kind,
+          value.key_generation,
+          value.owner_key_revision,
+          value.system_grant_version,
+          value.generation,
+          value.envelope_id,
+        );
         const accepted = await db
-          .prepare(
-            (value.storage_version === 1 ? auditRelease : auditRecord).replace(
-              '{ACTIVE_NAME_RELEASE}',
-              value.storage_version === 1 ? activeRelease : activeRecord,
-            ),
-          )
+          .prepare(auditRecord.replace('{ACTIVE_NAME_RELEASE}', activeRecord))
           .bind(...params)
           .first('id');
         return json({ accepted: accepted !== null });

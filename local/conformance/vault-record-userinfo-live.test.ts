@@ -91,6 +91,7 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
     const keyId = digest(keys.publicKey);
     const origin = 'https://mikaki.test';
     let beforeAudit: (() => Promise<void>) | undefined;
+    let claimFailure: 'none' | 'throw' | 'unavailable' | 'missing-secret' = 'none';
     const claimBuild = join(root, 'crates/userinfo-claim-worker/build-conformance');
     const opBuild = join(root, 'crates/worker/build');
     const authorityBuild = join(temporary, 'authority');
@@ -149,14 +150,33 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
       d1Databases: { DB: 'record-userinfo' },
       r2Buckets: { VAULT_BLOBS: 'record-userinfo' },
       serviceBindings: {
-        USERINFO_CLAIMS: async (request, runtime) =>
-          (await runtime.getWorker('mikaki-userinfo-claim-worker')).fetch(request),
+        USERINFO_CLAIMS: async (request, runtime) => {
+          if (claimFailure === 'throw') throw new Error('simulated claim transport failure');
+          if (claimFailure === 'unavailable') return new Response(null, { status: 503 });
+          const name =
+            claimFailure === 'missing-secret'
+              ? 'claims-without-secret'
+              : 'mikaki-userinfo-claim-worker';
+          return (await runtime.getWorker(name)).fetch(request);
+        },
       },
     });
     opOptions.workers[0].config.manifest!.modules['index_bg.wasm'] = {
       type: 'wasm',
       contents: new Uint8Array(await readFile(join(opBuild, 'index_bg.wasm'))),
     };
+    const noSecret = convertV4MiniflareOptions({
+      name: 'claims-without-secret',
+      compatibilityDate: '2026-09-23',
+      modules: true,
+      scriptPath: join(claimBuild, 'index.js'),
+      modulesRoot: claimBuild,
+      bindings: { MIKAKI_ISSUER: origin },
+      serviceBindings: { CLAIM_STORE: { name: 'mikaki-op-worker', entrypoint: 'ClaimStore' } },
+    });
+    noSecret.workers[0].config.manifest!.modules['index_bg.wasm'] =
+      options.workers[0].config.manifest!.modules['index_bg.wasm'];
+    options.workers.push(noSecret.workers[0]);
     options.workers.unshift(opOptions.workers[0]);
     mf = new Miniflare(options);
     const db = await mf.getD1Database('DB'),
@@ -482,6 +502,42 @@ window.recordProbe=async()=>{
     assert.deepEqual(await response.json(), { sub: 'pairwise', name: 'Alice 山田 😀' });
     const audits = () =>
       db.prepare('SELECT count(*) AS n FROM vault_claim_disclosure_audit').first<number>('n');
+    assert.equal(await audits(), 1);
+    const assertUnavailable = async () => {
+      const result = await userinfo();
+      assert.equal(result.status, 503);
+      assert.equal(result.headers.get('Retry-After'), '5');
+      assert.equal(result.headers.get('Cache-Control'), 'no-store');
+      assert.equal(result.headers.get('WWW-Authenticate'), null);
+      assert.ok(!(await result.text()).includes('Alice'));
+      assert.equal(await audits(), 1, 'failure must not create disclosure evidence');
+    };
+    for (const failure of ['missing-secret', 'throw', 'unavailable'] as const) {
+      claimFailure = failure;
+      await assertUnavailable();
+    }
+    claimFailure = 'none';
+    await blobs.put('record-blob', Buffer.from('tampered-ciphertext'));
+    await assertUnavailable();
+    await blobs.delete('record-blob');
+    await assertUnavailable();
+    await blobs.put('record-blob', Buffer.from(prepared.record.ciphertext, 'base64url'));
+    const view = await db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='view' AND name='valid_client_session'")
+      .first<string>('sql');
+    assert.ok(view);
+    await db.prepare('DROP VIEW valid_client_session').run();
+    try {
+      await assertUnavailable();
+    } finally {
+      await db.prepare(view).run();
+    }
+    const invalidToken = await op.fetch(origin + '/userinfo', {
+      headers: { Authorization: `Bearer ${randomBytes(32).toString('base64url')}` },
+    });
+    assert.equal(invalidToken.status, 401);
+    assert.match(invalidToken.headers.get('WWW-Authenticate') ?? '', /Bearer.*invalid_token/);
+    assert.equal(invalidToken.headers.get('Retry-After'), null);
     assert.equal(await audits(), 1);
     let entered!: () => void;
     const enteredPromise = new Promise<void>((resolve) => (entered = resolve));

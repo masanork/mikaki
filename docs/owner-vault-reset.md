@@ -246,3 +246,27 @@ passed; all 70 owner-record SQL authority/atomicity tests and five reset-planner
 tests passed. Rust formatting, diff whitespace and Markdown links/headings passed.
 This is a source refactor with unchanged handlers and guards; it does not retire
 legacy URLs or establish browser/production cutover evidence.
+
+
+Record-only UserInfo refactor (2026-10-04): the OP ClaimStore no longer selects
+format-1 attributes or accepts format-1 disclosure audits. The claim Worker
+removes its format-1 decoder, validation endpoint and direct D1/R2 local-test
+fallback. The recipient key, generation and service bindings are preserved.
+Legacy heads/grants/consent are ignored before any recipient secret or blob is
+read. The superseded format-1 live suite is replaced by record-v2 qualification,
+including real local Secrets Store, Node/browser encryption, selected RP consent,
+postdecrypt withdrawal, audit failure, missing key binding, broken authority,
+transport outage, and altered/missing ciphertext. These changes affect source
+behavior only; they are not a production deployment or reset.
+
+Verification for this slice: 133 owner-record/UserInfo SQL tests, three recipient
+Rust tests and five actual-Worker/browser/service-boundary tests passed. The full Worker-contract suite (40 tests) and record sharing/approval
+suite (42 tests) also passed after aligning recipient-directory and readiness
+fixtures with the same named authority. OP and
+recipient release artifacts and the conformance recipient artifact built.
+Service-authority and targeted strict Node TypeScript checks passed. The broad
+Node check requires the separate probe dependencies and browser Wasm/generated
+policy outputs, which are not installed/generated in this worktree; no errors
+were reported for the changed files. Remaining legacy OP attribute/sharing routes,
+UI, Agent attribute proposal paths and native Vault preview still require removal
+or connection to the supported Owner Vault contracts before #121 is complete.
