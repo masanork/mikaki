@@ -12,9 +12,7 @@ import { authorizationDetailsCondition } from './authorization-details.js';
 
 // One source predicate for creation, disclosure, audit, status, and OAuth. A label
 // or same-named v1 attribute can never satisfy a v2 source identity.
-export const liveSource = `((g.storage_version=1 AND EXISTS(
- SELECT 1 FROM vault_attribute_head h WHERE h.account_id=g.account_id AND h.attribute_id='name'
- AND h.deleted=0 AND h.revision=g.source_revision)) OR (g.storage_version=2 AND EXISTS(
+export const liveSource = `(g.storage_version=2 AND EXISTS(
  SELECT 1 FROM vault_owner_record_head h JOIN vault_owner_key_head k
  ON k.account_id=h.account_id AND k.vault_id=h.vault_id
  WHERE h.account_id=g.account_id AND h.vault_id=g.source_vault_id
@@ -23,14 +21,14 @@ export const liveSource = `((g.storage_version=1 AND EXISTS(
  AND h.ciphertext_sha256=g.source_ciphertext_sha256 AND h.key_generation=g.source_key_generation
  AND k.origin=g.source_origin AND k.key_generation=g.source_key_generation
  AND k.revision=g.source_owner_key_revision AND k.format_version=2
- AND k.suite='PRF-HKDF-SHA256-AES256GCM-v2')))`;
+ AND k.suite='PRF-HKDF-SHA256-AES256GCM-v2'))`;
 // Every authorization-sensitive read starts a fresh primary session and includes the full join.
 export const activeJoin = `FROM agent_grant g
  JOIN agent_recipient_key rk ON rk.key_id=g.recipient_key_id AND rk.state='active'
  JOIN account_security a ON a.account_id=g.account_id AND a.active=1 AND a.epoch=g.owner_epoch
  JOIN credential c ON c.credential_id=g.credential_id AND c.account_id=g.account_id AND c.active=1
  WHERE g.revoked=0 AND g.expires_at>? AND g.expires_at>unixepoch()
- AND g.recipient_key_id=? AND g.resource=? AND g.encrypted_snapshot IS NOT NULL AND ${liveSource}`;
+ AND g.recipient_key_id=? AND g.resource=? AND g.encrypted_snapshot IS NOT NULL AND ${liveSource} AND g.storage_version=2`;
 export const ownerJoin = `FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id
  JOIN account_security a ON a.account_id=ss.account_id AND a.active=1 AND a.epoch=ss.epoch
  JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id AND c.active=1
@@ -40,7 +38,7 @@ const oauthAccess = `SELECT t.scopes FROM agent_oauth_token t
   JOIN agent_oauth_client oc ON oc.client_id=t.client_id AND oc.active=1
   WHERE t.token_hash=? AND t.grant_id=g.grant_id AND t.grant_revision=g.revision
     AND t.resource=g.resource AND t.revoked=0 AND t.expires_at>unixepoch()
-    AND ${authorizationDetailsCondition('t.authorization_details')}
+    AND (t.authorization_details IS NULL OR ${authorizationDetailsCondition('t.authorization_details')})
     AND NOT EXISTS(SELECT 1 FROM json_each(t.scopes) s
       WHERE NOT EXISTS(SELECT 1 FROM json_each(g.operations) o WHERE o.value=s.value))`;
 // Rechecked inside each side-effect statement, including individual token revocation.
@@ -98,12 +96,10 @@ export async function createGrant(
   if (input.expires_at < time + 60 || input.expires_at > time + 86400)
     throw new Error('Invalid expiry');
   const session = db.withSession('first-primary');
-  const version = input.storage_version === 2 ? 2 : 1;
-  const source = input.storage_version === 2 ? input.source : null;
-  const authority = input.storage_version === 2 ? input.authority : null;
+  const source = input.source;
+  const authority = input.authority;
   if (source && source.owner_id !== owner.account) throw new Error('Owner mismatch');
-  const sourceRevision =
-    input.storage_version === 2 ? input.source.revision : input.source_revision;
+  const sourceRevision = input.source.revision;
   const sourceColumns = [
     'storage_version',
     'account_id',
@@ -118,7 +114,7 @@ export async function createGrant(
     'source_owner_key_revision',
   ];
   const sourceValues = [
-    version,
+    2,
     owner.account,
     sourceRevision,
     source?.origin ?? null,
@@ -217,14 +213,14 @@ export async function ownerStatus(
   owner: Owner,
   keyId: string,
   resource: string,
-  storageVersion: 1 | 2 = 1,
+  storageVersion: 2 | null = null,
   connectionsOnly = false,
 ) {
   if (!(await ownerActive(db, owner))) throw new Error('Access denied');
   const session = db.withSession('first-primary');
   const grants = await session
     .prepare(
-      `SELECT g.grant_id,g.delegate,g.provider,g.resource,g.source_revision,
+      `SELECT g.grant_id,g.account_id,g.delegate,g.provider,g.resource,g.source_revision,
     g.operations,g.document_ids,g.created_at,g.expires_at,g.revoked,g.revision,g.recipient_key_id,
     g.storage_version,g.source_origin,g.source_vault_id,g.source_collection_id,g.source_record_id,
     g.source_kind,g.source_ciphertext_sha256,g.source_key_generation,g.source_owner_key_revision,
@@ -232,19 +228,19 @@ export async function ownerStatus(
       AND a.active=1 AND a.epoch=g.owner_epoch AND c.active=1 AND g.expires_at>unixepoch()
       AND g.encrypted_snapshot IS NOT NULL
       AND EXISTS(SELECT 1 FROM agent_recipient_key rk WHERE rk.key_id=g.recipient_key_id AND rk.state='active')
-      AND ${liveSource} THEN 1 ELSE 0 END AS active
+      AND g.storage_version=2 AND ${liveSource} THEN 1 ELSE 0 END AS active
     FROM agent_grant g JOIN account_security a ON a.account_id=g.account_id
     JOIN credential c ON c.credential_id=g.credential_id AND c.account_id=g.account_id
-    WHERE g.account_id=? AND g.storage_version=? ORDER BY g.created_at DESC LIMIT 100`,
+    WHERE g.account_id=? AND (? IS NULL OR g.storage_version=?) ORDER BY g.created_at DESC LIMIT 100`,
     )
-    .bind(now(), keyId, resource, owner.account, storageVersion)
+    .bind(now(), keyId, resource, owner.account, storageVersion, storageVersion)
     .all();
   const audit = await session
     .prepare(
       `SELECT au.* FROM agent_audit au JOIN agent_grant g ON g.grant_id=au.grant_id
-    WHERE g.account_id=? AND g.storage_version=? ORDER BY au.created_at DESC,au.event_id DESC LIMIT 100`,
+    WHERE g.account_id=? AND (? IS NULL OR g.storage_version=?) ORDER BY au.created_at DESC,au.event_id DESC LIMIT 100`,
     )
-    .bind(owner.account, storageVersion)
+    .bind(owner.account, storageVersion, storageVersion)
     .all();
   // The v2 connection manager never loads legacy proposal or draft plaintext.
   if (connectionsOnly) {
@@ -254,16 +250,16 @@ export async function ownerStatus(
   const proposals = await session
     .prepare(
       `SELECT p.* FROM agent_proposal p JOIN agent_grant g ON g.grant_id=p.grant_id
-    WHERE g.account_id=? AND g.storage_version=? ORDER BY p.created_at DESC LIMIT 20`,
+    WHERE g.account_id=? AND g.storage_version=2 ORDER BY p.created_at DESC LIMIT 20`,
     )
-    .bind(owner.account, storageVersion)
+    .bind(owner.account)
     .all();
   const drafts = await session
     .prepare(
       `SELECT d.* FROM agent_draft d JOIN agent_proposal p ON p.proposal_id=d.proposal_id
-      JOIN agent_grant g ON g.grant_id=p.grant_id WHERE d.account_id=? AND g.storage_version=? ORDER BY d.created_at DESC LIMIT 20`,
+      JOIN agent_grant g ON g.grant_id=p.grant_id WHERE d.account_id=? AND g.storage_version=2 ORDER BY d.created_at DESC LIMIT 20`,
     )
-    .bind(owner.account, storageVersion)
+    .bind(owner.account)
     .all();
   if (!(await ownerActive(db, owner))) throw new Error('Access denied');
   return {
@@ -275,28 +271,6 @@ export async function ownerStatus(
 }
 
 // No v2 target may enter the legacy owner-note capability/commit state machine.
-export async function requireLegacyAttributeGrant(
-  db: D1Database,
-  owner: Owner,
-  raw: unknown,
-  capability: boolean,
-) {
-  const input = raw as { grant_id?: unknown; proposal_id?: unknown } | null;
-  const id = capability ? input?.grant_id : input?.proposal_id;
-  if (typeof id !== 'string') throw new Error('Access denied');
-  const row = await db
-    .withSession('first-primary')
-    .prepare(
-      capability
-        ? 'SELECT 1 FROM agent_grant WHERE grant_id=? AND account_id=? AND storage_version=1'
-        : `SELECT 1 FROM agent_attribute_proposal p JOIN agent_grant g ON g.grant_id=p.grant_id
-       WHERE p.proposal_id=? AND g.account_id=? AND g.storage_version=1`,
-    )
-    .bind(id, owner.account)
-    .first();
-  if (!row) throw new Error('Access denied');
-}
-
 export async function revoke(db: D1Database, owner: Owner, grantId: string | null) {
   const time = now();
   const session = db.withSession('first-primary');
@@ -327,6 +301,12 @@ export async function revoke(db: D1Database, owner: Owner, grantId: string | nul
     session
       .prepare(
         `UPDATE agent_proposal SET text=NULL,state='rejected' WHERE state!='executed'
+      AND grant_id IN(SELECT grant_id FROM agent_grant WHERE account_id=? AND revoked=1)`,
+      )
+      .bind(owner.account),
+    session
+      .prepare(
+        `UPDATE agent_attribute_proposal SET payload=NULL,state='rejected' WHERE state IN('pending','approved')
       AND grant_id IN(SELECT grant_id FROM agent_grant WHERE account_id=? AND revoked=1)`,
       )
       .bind(owner.account),
@@ -527,6 +507,12 @@ export async function cleanup(db: D1Database) {
       AND NOT EXISTS(SELECT 1 FROM agent_draft d WHERE d.proposal_id=agent_proposal.proposal_id)`,
       )
       .bind(now() - 30 * 86400),
+    db
+      .prepare(
+        "UPDATE agent_attribute_proposal SET state='invalid',payload=NULL WHERE expires_at<=? AND state IN('pending','approved')",
+      )
+      .bind(now()),
+    db.prepare('DELETE FROM agent_attribute_proposal WHERE created_at<?').bind(now() - 30 * 86400),
     db
       .prepare(
         `DELETE FROM agent_grant WHERE expires_at<?

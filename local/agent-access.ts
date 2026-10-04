@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { open, appendFile } from 'node:fs/promises';
 import { z } from 'zod';
 import {
-  vaultSourceInfo,
   vaultRecordSourceInfo,
   recordSelection,
   unknownSource,
@@ -18,7 +17,14 @@ const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const label = z.string().min(1).max(160);
 const operation = z.enum(['list', 'search', 'read']);
 export type Operation = z.infer<typeof operation>;
-const legacyGrantSchema = z.strictObject({
+const unspecifiedSourceSchema = z.strictObject({
+  kind: z.literal('unspecified'),
+  attribute: z.null(),
+  revision: z.null(),
+  provenance: z.literal('unspecified'),
+  confirmed_at: z.null(),
+});
+const genericGrantSchema = z.strictObject({
   version: z.literal(1),
   id,
   owner: id,
@@ -32,7 +38,7 @@ const legacyGrantSchema = z.strictObject({
   expires_at: z.number().int().nonnegative(),
   revoked: z.boolean(),
 });
-const legacyExportSchema = z.strictObject({
+const genericExportSchema = z.strictObject({
   version: z.literal(1),
   owner: id,
   collection: id,
@@ -42,7 +48,7 @@ const legacyExportSchema = z.strictObject({
         id,
         title: label,
         source: label,
-        source_info: vaultSourceInfo.optional(),
+        source_info: unspecifiedSourceSchema.optional(),
         text: z.string().refine((value) => Buffer.byteLength(value) <= 16384),
       }),
     )
@@ -65,18 +71,26 @@ const recordExportSchema = z.strictObject({
     .min(1)
     .max(2),
 });
-const recordGrantSchema = legacyGrantSchema.extend({
+const recordGrantSchema = genericGrantSchema.extend({
   version: z.literal(2),
+  id,
   owner: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  delegate: id,
+  service: label,
   collection: z.literal('vault-records'),
+  export_sha256: z.string().regex(/^[a-f0-9]{64}$/),
   document_ids: z
     .array(z.enum(['name', 'owner_note']))
     .min(1)
     .max(2),
+  operations: z.array(operation).min(1).max(3),
+  not_before: z.number().int().nonnegative(),
+  expires_at: z.number().int().nonnegative(),
+  revoked: z.boolean(),
   sources: z.array(recordSelection).min(1).max(2),
 });
-const exportSchema = z.discriminatedUnion('version', [legacyExportSchema, recordExportSchema]);
-const grantSchema = z.discriminatedUnion('version', [legacyGrantSchema, recordGrantSchema]);
+const exportSchema = z.discriminatedUnion('version', [genericExportSchema, recordExportSchema]);
+const grantSchema = z.discriminatedUnion('version', [genericGrantSchema, recordGrantSchema]);
 
 async function boundedFile(path: string, limit: number): Promise<Buffer> {
   const file = await open(path, 'r');
@@ -134,15 +148,6 @@ export class AgentAccess {
   }): Promise<AgentAccess> {
     const bytes = await boundedFile(options.exportPath, 1024 * 1024);
     const bundle = exportSchema.parse(JSON.parse(bytes.toString('utf8')));
-    if (
-      bundle.version === 1 &&
-      bundle.documents.some(
-        (doc) =>
-          doc.source_info &&
-          (bundle.collection !== 'vault' || doc.id !== doc.source_info.attribute),
-      )
-    )
-      throw new Error('Invalid source binding');
     if (bundle.version === 2) {
       for (const doc of bundle.documents) {
         const source = parseVaultRecordSource(doc.source_info.source);

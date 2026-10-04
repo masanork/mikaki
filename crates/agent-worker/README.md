@@ -1,6 +1,6 @@
 # Explicit agent access
 
-This separate Worker decrypts only owner-approved snapshot copies. It exposes stateless, JSON-response Streamable HTTP MCP at `/mcp`, with `mikaki_list`, `mikaki_search`, `mikaki_read`, `mikaki_propose`, and `mikaki_execute`. All grants initially target the saved Vault `name`. See the [product contract and evidence](../../docs/agent-integration.md).
+This separate Worker decrypts only owner-approved snapshot copies. It exposes stateless, JSON-response Streamable HTTP MCP at `/mcp`, with `mikaki_list`, `mikaki_search`, `mikaki_read`, `mikaki_propose`, and `mikaki_execute`. Remote grants require explicit `storage_version: 2` and select one saved `name` or `owner_note` record with its exact source and owner-key authority. Legacy v1 grants cannot authorize access; historical rows retain owner revocation and expiry cleanup. See the [product contract and evidence](../../docs/agent-integration.md).
 
 ## Trust boundary
 

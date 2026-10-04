@@ -34,17 +34,4 @@ test('structured output validates trust/freshness states and mirrors exactly in 
   ])
     assert.throws(() => toolResult('read', invalid));
   assert.throws(() => toolResult('list', { ...read, documents: [], next_offset: null }));
-  assert.throws(() =>
-    toolOutputs.propose_attribute.parse({
-      proposal_id: 'a'.repeat(43),
-      request_hash: 'b'.repeat(43),
-      state: 'executed',
-      attribute_id: 'owner_note',
-      base_revision: 1,
-      expires_at: 200,
-      destination: 'owner-vault',
-      result_version: 1,
-      untrusted_content: true,
-    }),
-  );
 });

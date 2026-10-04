@@ -660,7 +660,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
         for (const options of bad)
           assert.equal((await prepare(owner, await candidate(owner, p, options))).status, 409);
         assert.equal((await prepare(other, c)).status, 409);
-        assert.equal((await ownerCall(owner, 'attribute-prepare', c)).status, 409);
+        assert.equal((await ownerCall(owner, 'attribute-prepare', c)).status, 404);
         assert.equal(
           (
             await ownerCall(owner, 'attribute-decide', {
@@ -669,7 +669,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
               approve: true,
             })
           ).status,
-          409,
+          404,
         );
         assert.equal(
           (
@@ -679,7 +679,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
               base_revision: 0,
             })
           ).status,
-          409,
+          404,
         );
         // A public caller cannot acquire the owner-only prepare surface.
         assert.equal(

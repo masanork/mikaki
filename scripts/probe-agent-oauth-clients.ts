@@ -4,8 +4,8 @@ import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { agentKeyId, sealAgentSnapshot } from '../crates/worker/ui/agent-crypto.ts';
-import { sealAttribute } from '../crates/worker/ui/vault-crypto.ts';
+import { agentKeyId } from '../crates/worker/ui/agent-crypto.ts';
+import { sealRecordAgentSnapshot } from '../crates/worker/ui/agent-record-crypto.ts';
 import type { D1Database } from '@cloudflare/workers-types';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:https';
@@ -346,29 +346,36 @@ async function qualify(
       headers,
       body: JSON.stringify(body),
     });
-  const sealed = await sealAttribute(
-    new TextEncoder().encode('Synthetic Codex owner'),
-    new Uint8Array(32).fill(0x35),
-    credential,
-    new Uint8Array(32).fill(0x57),
-    'https://mikaki.test',
-    'name',
-    1,
-  );
-  assert.equal(
-    (
-      await op.fetch('https://mikaki.test/vault/attributes/name', {
-        method: 'PUT',
-        headers: { ...headers, 'If-None-Match': '*', 'X-Operation-ID': opaque() },
-        body: JSON.stringify(sealed),
-      })
-    ).status,
-    200,
-  );
+  const source = {
+      storage_version: 2 as const,
+      origin: 'https://mikaki.test',
+      owner_id: 'owner',
+      vault_id: 'codex-probe-vault',
+      collection_id: 'personal' as const,
+      record_id: 'name' as const,
+      kind: 'name' as const,
+      revision: 1,
+      ciphertext_sha256: digest('Synthetic Codex owner ciphertext'),
+    },
+    authority = { key_generation: 1, owner_key_revision: 1 };
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO vault_owner_key_head VALUES('owner','codex-probe-vault',?,1,1,2,
+      'PRF-HKDF-SHA256-AES256GCM-v2',?,?,?)`,
+      )
+      .bind(source.origin, opaque(), opaque(), time),
+    db
+      .prepare(
+        `INSERT INTO vault_owner_record_head VALUES('owner','codex-probe-vault','personal',
+      'name','name',1,1,2,'codex-probe-name',?,?,0,?)`,
+      )
+      .bind(source.ciphertext_sha256, 'e'.repeat(82), time),
+  ]);
   const grantId = opaque(),
     expires = time + 3600;
-  const envelope = await sealAgentSnapshot(
-    [{ id: 'name', title: 'Name', source: 'vault:name:1', text: 'mikaki-codex-oauth-ok' }],
+  const envelope = await sealRecordAgentSnapshot(
+    [{ id: 'name', title: 'Name', source: 'vault:record:name:1', text: 'mikaki-codex-oauth-ok' }],
     { key_id: keyId, public_jwk: publicJwk, resource },
     {
       owner: 'owner',
@@ -376,17 +383,20 @@ async function qualify(
       key_id: keyId,
       resource,
       expires_at: expires,
-      source_revision: 1,
+      source,
+      authority,
     },
   );
   assert.equal(
     (
       await owner('grants', {
+        storage_version: 2,
         grant_id: grantId,
         delegate: clientId,
         provider: 'Synthetic Codex test',
         resource,
-        source_revision: 1,
+        source,
+        authority,
         recipient_key_id: keyId,
         operations: ['list', 'search', 'read', 'propose', 'execute'],
         document_ids: ['name'],

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const files = ['store', 'oauth', 'attribute-proposals', 'record-proposals', 'model'].map((name) =>
+const files = ['store', 'oauth', 'record-proposals', 'model'].map((name) =>
   resolve(`crates/agent-worker/${name}.ts`),
 );
 const program = ts.createProgram(files, {
