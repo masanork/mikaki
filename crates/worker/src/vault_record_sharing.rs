@@ -348,10 +348,11 @@ pub async fn share(mut request: Request, context: RouteContext<()>) -> worker::R
         .await
         .is_err()
     {
-        if let Some(previous) = audit(&db, &owner.account_id, &operation).await? {
-            if previous.request_hash == hash && previous.action == "share" {
-                return result(&previous);
-            }
+        if let Some(previous) = audit(&db, &owner.account_id, &operation).await?
+            && previous.request_hash == hash
+            && previous.action == "share"
+        {
+            return result(&previous);
         }
         return error(409, "share_conflict");
     }
@@ -418,10 +419,11 @@ pub async fn revoke(mut request: Request, context: RouteContext<()>) -> worker::
         .await
         .is_err()
     {
-        if let Some(previous) = audit(&db, &owner.account_id, &operation).await? {
-            if previous.request_hash == hash && previous.action == "revoke" {
-                return result(&previous);
-            }
+        if let Some(previous) = audit(&db, &owner.account_id, &operation).await?
+            && previous.request_hash == hash
+            && previous.action == "revoke"
+        {
+            return result(&previous);
         }
         return error(409, "share_conflict");
     }

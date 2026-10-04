@@ -1,3 +1,4 @@
+import type { AgentRuntime } from './database.js';
 import { z } from 'zod';
 import { digest, json, now, opaque, operation, randomId, recipient, type Owner } from './model.js';
 import { activeJoin, ownerJoin } from './store.js';
@@ -30,7 +31,7 @@ const scopes = z
 const requestInput = z.strictObject({ request_id: opaque });
 const decisionInput = requestInput.extend({ approve: z.boolean(), grant_id: opaque.nullable() });
 
-export function ownerUrl(env: Env): URL | null {
+export function ownerUrl(env: AgentRuntime): URL | null {
   if (!env.AGENT_OWNER_URL) return null;
   const url = new URL(env.AGENT_OWNER_URL);
   if (
@@ -44,7 +45,7 @@ export function ownerUrl(env: Env): URL | null {
     throw new Error('Invalid owner URL');
   return url;
 }
-export function metadata(env: Env) {
+export function metadata(env: AgentRuntime) {
   const origin = new URL(env.AGENT_RESOURCE).origin;
   return {
     issuer: origin,
@@ -103,7 +104,7 @@ const codeRequest = z.strictObject({
   code_challenge_method: z.literal('S256'),
   authorization_details: z.string().optional(),
 });
-export async function authorize(request: Request, env: Env) {
+export async function authorize(request: Request, env: AgentRuntime) {
   const destination = ownerUrl(env);
   if (!destination) return json({ error: 'temporarily_unavailable' }, 503);
   let input: z.infer<typeof codeRequest>;
@@ -167,7 +168,7 @@ export async function authorize(request: Request, env: Env) {
   }
 }
 
-export async function preview(db: D1Database, owner: Owner, raw: unknown, env: Env) {
+export async function preview(db: D1Database, owner: Owner, raw: unknown, env: AgentRuntime) {
   const { request_id } = requestInput.parse(raw),
     session = db.withSession('first-primary');
   await session
@@ -224,7 +225,7 @@ export async function preview(db: D1Database, owner: Owner, raw: unknown, env: E
   };
 }
 
-export async function decide(db: D1Database, owner: Owner, raw: unknown, env: Env) {
+export async function decide(db: D1Database, owner: Owner, raw: unknown, env: AgentRuntime) {
   const input = decisionInput.parse(raw),
     time = now();
   const reviewed = await preview(db, owner, { request_id: input.request_id }, env);
@@ -321,7 +322,7 @@ const exchangeInput = z.strictObject({
   resource: z.string(),
   code_verifier: z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/),
 });
-export async function token(request: Request, env: Env) {
+export async function token(request: Request, env: AgentRuntime) {
   try {
     const input = exchangeInput.parse(
       params(await form(request), Object.keys(exchangeInput.shape)),
@@ -410,7 +411,7 @@ export async function token(request: Request, env: Env) {
     return json({ error: 'invalid_grant' }, 400);
   }
 }
-export async function revoke(request: Request, env: Env) {
+export async function revoke(request: Request, env: AgentRuntime) {
   try {
     const input = z
       .strictObject({
@@ -434,7 +435,6 @@ export async function revoke(request: Request, env: Env) {
 }
 export async function cleanup(db: D1Database) {
   await db.batch([
-    db.prepare('DELETE FROM owner_login_transaction WHERE expires_at<unixepoch()-86400'),
     db.prepare('DELETE FROM agent_oauth_request WHERE created_at<unixepoch()-172800'),
   ]);
 }

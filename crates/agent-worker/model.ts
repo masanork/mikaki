@@ -1,3 +1,4 @@
+import type { AgentRuntime } from './database.js';
 import { z } from 'zod';
 import { agentKeyId } from '../worker/ui/agent-crypto.js';
 import { encodeBase64Url } from '../worker/ui/vault-crypto.js';
@@ -185,7 +186,7 @@ export async function digest(value: string): Promise<string> {
 }
 export const now = () => Math.floor(Date.now() / 1000);
 
-export async function recipient(env: Env) {
+export async function recipient(env: AgentRuntime) {
   const privateJwk: JsonWebKey = JSON.parse(env.AGENT_PRIVATE_JWK);
   if (!privateJwk.d) throw new Error('Recipient unavailable');
   const public_jwk: JsonWebKey = { kty: privateJwk.kty, n: privateJwk.n, e: privateJwk.e };

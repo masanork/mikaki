@@ -16,6 +16,9 @@
       "remote": false,
     },
   ],
+  "services": [
+    { "binding": "AUTH_STORE", "service": "mikaki-op-agent-local", "entrypoint": "AgentStore" },
+  ],
   "triggers": { "crons": ["0 * * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 }

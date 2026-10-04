@@ -1821,8 +1821,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                 uri: http.uri('/request'),
                 form: retrieval.form,
               });
-              assert.equal(fetched.error, undefined, 'native HTTPS request retrieval');
-              assert.ok(fetched.jwt);
+              assert.ok(fetched.jwt, `Native request retrieval: ${JSON.stringify(fetched)}`);
               const retrieved = http.requests.at(-1)!;
               assert.equal(fetched.jwt, retrieved.jwt);
 

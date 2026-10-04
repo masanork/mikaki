@@ -4,6 +4,21 @@ import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
 import { importJWK, jwtVerify } from 'jose';
 import type { Cbor } from './support/mdoc-test.ts';
+import { setTimeout } from 'node:timers/promises';
+import { withNativePresentationHttp } from './support/native-presentation-http.ts';
+
+test('native HTTPS retrieval survives wallet work beyond the server keep-alive deadline', async () => {
+  await withNativePresentationHttp(async (http) => {
+    http.onRequest(async () => ({ claims: {}, jwt: 'fixture-request' }));
+    const retrieve = () =>
+      http.command({ command: 'retrieve', uri: http.uri('/request'), form: [] });
+    assert.deepEqual(await retrieve(), { jwt: 'fixture-request' });
+    // Node's HTTPS server closes idle keep-alive connections after five seconds.
+    await setTimeout(7000);
+    assert.deepEqual(await retrieve(), { jwt: 'fixture-request' });
+    assert.equal(http.requests.length, 2);
+  });
+});
 
 test('independent JOSE verifies Rust OID4VP request, SD-JWT issuer and holder binding', async () => {
   const fixture = JSON.parse(

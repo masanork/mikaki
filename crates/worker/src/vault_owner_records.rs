@@ -561,6 +561,12 @@ async fn write(
             .fill(&mut random)
             .map_err(|_| worker::Error::RustError("server_error".into()))?;
         let key = format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(random));
+        db.prepare(
+            "INSERT INTO vault_gc_candidate(object_key,eligible_at) VALUES(?1,unixepoch()+86400)",
+        )
+        .bind(&[JsValue::from_str(&key)])?
+        .run()
+        .await?;
         // Even an accidental random-key collision must never replace stored bytes.
         if !matches!(
             bucket
@@ -643,41 +649,8 @@ async fn write(
 /// One bounded page per existing minute cron. Backlog/abuse qualification is separate.
 #[cfg(feature = "worker-entry")]
 pub async fn collect(env: &worker::Env, scheduled_ms: u64) -> worker::Result<()> {
-    #[derive(Deserialize)]
-    struct Cursor {
-        cursor: Option<String>,
-    }
     let db = env.d1("DB")?;
-    let bucket = env.bucket("VAULT_BLOBS")?;
-    let previous = db
-        .prepare("SELECT cursor FROM vault_owner_record_gc_cursor WHERE id=1")
-        .first::<Cursor>(None)
-        .await?
-        .ok_or_else(|| worker::Error::RustError("record_gc_cursor_missing".into()))?;
-    let mut listing = bucket.list().prefix(PREFIX).limit(256);
-    if let Some(cursor) = previous.cursor {
-        listing = listing.cursor(cursor);
-    }
-    let page = listing.execute().await?;
-    let cutoff = scheduled_ms.saturating_sub(86_400_000);
-    for object in page.objects() {
-        if object.uploaded().as_millis() >= cutoff {
-            continue;
-        }
-        let key = object.key();
-        let referenced = db.prepare("SELECT 1 AS present FROM vault_owner_record_head WHERE object_key=?1 AND deleted=0")
-            .bind(&[JsValue::from_str(&key)])?.first::<serde_json::Value>(None).await?;
-        if referenced.is_none() {
-            bucket.delete(&key).await?;
-        }
-    }
-    db.prepare("UPDATE vault_owner_record_gc_cursor SET cursor=?1 WHERE id=1")
-        .bind(&[page
-            .cursor()
-            .as_deref()
-            .map_or(JsValue::NULL, JsValue::from_str)])?
-        .run()
-        .await?;
+    let _ = scheduled_ms;
     // Logical retry expiry uses DB time too; physical cleanup may lag bounded work.
     db.prepare("DELETE FROM vault_owner_record_mutation WHERE rowid IN (SELECT rowid FROM vault_owner_record_mutation WHERE created_at<unixepoch()-7776000 ORDER BY created_at LIMIT 1000)").run().await?;
     Ok(())

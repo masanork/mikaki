@@ -12,9 +12,9 @@ type Config = {
   name: string;
   compatibility_date: string;
   vars: Record<string, string>;
-  d1_databases: { binding: string; database_id: string }[];
-  r2_buckets: { binding: string; bucket_name: string }[];
-  services?: { binding: string; service: string }[];
+  d1_databases?: { binding: string; database_id: string }[];
+  r2_buckets?: { binding: string; bucket_name: string }[];
+  services?: { binding: string; service: string; entrypoint?: string }[];
   secrets?: { required: string[] };
   version_metadata?: { binding: string };
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
@@ -28,6 +28,18 @@ export function checkBindings(
 ) {
   assert.equal(version.resources.script_runtime.compatibility_date, config.compatibility_date);
   const bindings = version.resources.bindings;
+  for (const binding of bindings) {
+    if (binding.type === 'd1')
+      assert.ok(
+        config.d1_databases?.some((item) => item.binding === binding.name),
+        `Unexpected storage binding ${binding.name}`,
+      );
+    if (binding.type === 'r2_bucket')
+      assert.ok(
+        config.r2_buckets?.some((item) => item.binding === binding.name),
+        `Unexpected storage binding ${binding.name}`,
+      );
+  }
   const check = (name: string, expected: Binding) => {
     const actual = bindings.find((binding) => binding.name === name);
     assert.ok(actual, `Missing binding ${name}`);
@@ -35,12 +47,16 @@ export function checkBindings(
       assert.deepEqual(actual[key], value, `Binding ${name}: ${key}`);
   };
   for (const [name, text] of Object.entries(config.vars)) check(name, { type: 'plain_text', text });
-  for (const item of config.d1_databases)
+  for (const item of config.d1_databases ?? [])
     check(item.binding, { type: 'd1', database_id: item.database_id });
-  for (const item of config.r2_buckets)
+  for (const item of config.r2_buckets ?? [])
     check(item.binding, { type: 'r2_bucket', bucket_name: item.bucket_name });
   for (const item of config.services ?? [])
-    check(item.binding, { type: 'service', service: item.service });
+    check(item.binding, {
+      type: 'service',
+      service: item.service,
+      ...(item.entrypoint ? { entrypoint: item.entrypoint } : {}),
+    });
   for (const name of config.secrets?.required ?? []) check(name, { type: 'secret_text' });
   if (config.version_metadata) check(config.version_metadata.binding, { type: 'version_metadata' });
   for (const item of config.secrets_store_secrets ?? [])
@@ -127,8 +143,8 @@ async function main() {
   // Stage both versions and inspect bindings before changing any traffic.
   const staged = [];
   for (const [worker, configPath] of [
-    ['userinfo', 'crates/userinfo-claim-worker/wrangler.production.jsonc'],
     ['op', opConfig],
+    ['userinfo', 'crates/userinfo-claim-worker/wrangler.production.jsonc'],
   ]) {
     const config: Config = JSON.parse(readFileSync(join(root, configPath!), 'utf8'));
     const history = JSON.parse(
@@ -142,7 +158,7 @@ async function main() {
     const args = [
       'versions',
       'upload',
-      join(destination, worker!, 'bundle/shim.js'),
+      join(destination, worker!, worker === 'op' ? 'bundle/service.js' : 'bundle/shim.js'),
       '--no-bundle',
       '--config',
       configPath!,

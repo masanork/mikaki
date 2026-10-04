@@ -101,7 +101,7 @@ fn values(proof: &VerifiedDpopProof, operation: &str) -> Vec<JsValue> {
 fn cleanup(db: &D1Database) -> D1PreparedStatement {
     // Strictly less: a proof is still valid exactly at its inclusive deadline.
     db.prepare(
-        "DELETE FROM dpop_proof_use WHERE retain_until < CAST(strftime('%s','now') AS INTEGER)",
+        "DELETE FROM dpop_proof_use WHERE rowid IN (SELECT rowid FROM dpop_proof_use WHERE retain_until < CAST(strftime('%s','now') AS INTEGER) ORDER BY retain_until LIMIT 1000)",
     )
 }
 

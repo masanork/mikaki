@@ -35,7 +35,11 @@ for (const name of await readdir(new URL('local/ui/dist/assets', root)))
 const coverage = JSON.parse(await readFile(new URL('artifacts/native-coverage.json', root), 'utf8'))
   .data[0].totals;
 const cargo = JSON.parse(
-  execFileSync('cargo', ['metadata', '--format-version', '1', '--locked'], { encoding: 'utf8' }),
+  execFileSync('cargo', ['metadata', '--format-version', '1', '--locked'], {
+    encoding: 'utf8',
+    // Keep the full dependency count when metadata grows beyond Node's 1 MiB default.
+    maxBuffer: 16 * 1024 * 1024,
+  }),
 );
 const npm = JSON.parse(await readFile(new URL('package-lock.json', root), 'utf8'));
 const report = {

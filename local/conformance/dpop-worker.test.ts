@@ -224,6 +224,59 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         assert.match(ledger.results[0].jti_hash, /^[A-Za-z0-9_-]{43}$/);
       },
     );
+    await t.test(
+      'code replay preserves sender constraints and revokes only matching issuance',
+      async () => {
+        const input = await grant();
+        const firstProof = await proof();
+        const issued = await exchange(input, firstProof);
+        assert.equal(issued.status, 200);
+        const issuedToken = ((await issued.json()) as { access_token: string }).access_token;
+        const proofValue = await proof({}, undefined, other);
+        for (const attempt of [
+          () => exchange(input),
+          () => exchange(input, proofValue),
+          async () => exchange({ ...input, verifier: secret() }, await proof()),
+          () => exchange(input, firstProof),
+          async () => exchange(input, await proof({ iat: now() - 71 })),
+        ]) {
+          assert.equal((await attempt()).status, 400);
+          assert.equal(
+            await DB.prepare('SELECT revoked FROM token_issue WHERE access_hash=?')
+              .bind(digest(issuedToken))
+              .first('revoked'),
+            0,
+          );
+        }
+        assert.equal((await exchange(input, await proof())).status, 400);
+        assert.equal(
+          await DB.prepare('SELECT revoked FROM token_issue WHERE access_hash=?')
+            .bind(digest(issuedToken))
+            .first('revoked'),
+          1,
+        );
+        assert.equal(
+          await DB.prepare('SELECT revoked FROM token_issue WHERE access_hash=?')
+            .bind(digest(token))
+            .first('revoked'),
+          0,
+          'other code in the same session remains valid',
+        );
+        const parallel = await grant();
+        const responses = await Promise.all([
+          exchange(parallel, await proof()),
+          exchange(parallel, await proof()),
+        ]);
+        assert.deepEqual(responses.map((r) => r.status).sort(), [200, 400]);
+        assert.equal(
+          await DB.prepare('SELECT revoked FROM token_issue WHERE code_hash=?')
+            .bind(codeDigest(parallel.code))
+            .first('revoked'),
+          1,
+        );
+      },
+    );
+
     await t.test('profile scope is carried from the code into the token response', async () => {
       const profile = await exchange(await grant('openid profile'), await proof());
       assert.equal(profile.status, 200);
@@ -328,12 +381,23 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         assert.equal((await resource(token, compact)).status, 401);
         const input = await grant();
         assert.equal((await exchange(input, await proof())).status, 400);
+        const marked = (await DB.prepare('SELECT count(*) AS n FROM dpop_proof_use WHERE jkt=?')
+          .bind(marker)
+          .first('n')) as number;
         await DB.prepare(
           "UPDATE dpop_proof_use SET retain_until=strftime('%s','now')-1 WHERE jkt=?",
         )
           .bind(marker)
           .run();
         assert.equal((await resource(token, compact)).status, 200);
+        assert.equal(
+          await DB.prepare('SELECT count(*) AS n FROM dpop_proof_use WHERE jkt=?')
+            .bind(marker)
+            .first('n'),
+          marked! - 1000,
+          'request cleanup is bounded to 1000; earlier accepted proof receipts stay retained',
+        );
+        for (let batch = 0; batch < 10; batch++) await worker.scheduled({ cron: '* * * * *' });
         assert.equal(
           await DB.prepare('SELECT count(*) AS n FROM dpop_proof_use WHERE jkt=?')
             .bind(marker)
@@ -699,7 +763,7 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         };
         assert.equal((await push(`${issuer}/par`)).status, 401);
         assert.equal((await push([issuer])).status, 401);
-        assert.equal((await push(issuer, now() + 11)).status, 401);
+        assert.equal((await push(issuer, now() + 20)).status, 401);
         const par = await push(issuer, now() + 10);
         assert.equal(par.status, 201, await par.clone().text());
         const requestUri = ((await par.json()) as { request_uri: string }).request_uri;
@@ -760,7 +824,7 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
           401,
         );
         assert.equal(
-          (await exchange({ code, verifier }, await proof({ nonce: asNonce }), issuer, now() + 11))
+          (await exchange({ code, verifier }, await proof({ nonce: asNonce }), issuer, now() + 20))
             .status,
           401,
         );
@@ -768,7 +832,7 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
           { code, verifier },
           await proof({ nonce: asNonce }),
           issuer,
-          now() + 10,
+          now() + 9,
         );
         assert.equal(issued.status, 200, await issued.clone().text());
         const bound = (await issued.json()) as {

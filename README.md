@@ -26,3 +26,5 @@ The charts track implementation and test code size and native Rust coverage. See
 ![Codebase growth: implementation and test source lines](metrics/code-size.svg)
 
 ![Native Rust coverage over time](metrics/coverage.svg)
+
+Current product implementations and model-test limits are mapped in [implementation authorities](docs/implementation-authorities.md). The locally verified [storage ownership change](docs/adr/0015-service-data-ownership.md) requires an ordered OP/downstream rollout before production activation.

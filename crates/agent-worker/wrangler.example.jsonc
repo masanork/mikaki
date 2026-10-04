@@ -6,15 +6,7 @@
   "workers_dev": false,
   "routes": [{ "pattern": "agent.example.com", "custom_domain": true }],
   "vars": { "AGENT_RESOURCE": "https://agent.example.com/mcp", "AGENT_OWNER_URL": "" },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "REPLACE_WITH_OP_DATABASE_NAME",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "../worker/migrations",
-      "remote": false,
-    },
-  ],
+  "services": [{ "binding": "AUTH_STORE", "service": "mikaki-auth", "entrypoint": "AgentStore" }],
   "triggers": { "crons": ["0 * * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 }

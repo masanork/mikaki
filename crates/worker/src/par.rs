@@ -330,7 +330,7 @@ pub(super) async fn route(
         JsValue::from_str(&endpoint),
     ];
     let results=db.batch(vec![
-        db.prepare("DELETE FROM par_request WHERE expires_at<=CAST(strftime('%s','now') AS INTEGER)"),
+        db.prepare("DELETE FROM par_request WHERE request_uri IN (SELECT request_uri FROM par_request WHERE expires_at<=CAST(strftime('%s','now') AS INTEGER) ORDER BY expires_at LIMIT 1000)"),
         db.prepare("INSERT INTO par_request(request_uri,client_id,client_revision,key_id,key_revision,request_query,dpop_jkt,expires_at) \
             SELECT ?1,c.client_id,c.revision,k.kid,k.revision,?6,?7,?8 FROM client c \
             JOIN client_key k ON k.client_id=c.client_id AND k.kid=?4 \
