@@ -1131,5 +1131,139 @@
         "percent": 84.22619047619048
       }
     }
+  },
+  {
+    "date": "2026-10-04",
+    "commit": "93d0da1",
+    "code": {
+      "implementationLines": 34797,
+      "testLines": 4620,
+      "implementationFiles": 146,
+      "testFiles": 13,
+      "byLanguage": {
+        "typescript": {
+          "implementationLines": 12351,
+          "testLines": 2292
+        },
+        "rust": {
+          "implementationLines": 16980,
+          "testLines": 2328
+        },
+        "svelte": {
+          "implementationLines": 5466,
+          "testLines": 0
+        }
+      }
+    },
+    "dependencies": {
+      "npm": {
+        "runtime": 6,
+        "dev": 20
+      },
+      "rust": {
+        "runtime": 27,
+        "build": 0,
+        "dev": 9
+      },
+      "sourceLines": {
+        "npmRuntime": 356708,
+        "rustRuntime": 1075075,
+        "total": 1431783
+      },
+      "sourcePackages": {
+        "npmRuntime": 117,
+        "rustRuntime": 156
+      },
+      "names": {
+        "npmRuntime": [
+          "@modelcontextprotocol/sdk",
+          "@noble/post-quantum",
+          "@sqlite.org/sqlite-wasm",
+          "jose",
+          "svelte",
+          "zod"
+        ],
+        "npmDev": [
+          "@cloudflare/workers-types",
+          "@inlang/paraglide-js",
+          "@inlang/plugin-message-format",
+          "@jridgewell/trace-mapping",
+          "@playwright/test",
+          "@sorane/cli",
+          "@sorane/core",
+          "@sorane/okf",
+          "@sveltejs/vite-plugin-svelte",
+          "@types/node",
+          "@typescript/native",
+          "esbuild",
+          "prettier",
+          "prettier-plugin-svelte",
+          "smol-toml",
+          "svelte-check",
+          "tsx",
+          "typescript",
+          "vite",
+          "wrangler"
+        ],
+        "rustRuntime": [
+          "aes-gcm",
+          "base64",
+          "ciborium",
+          "der",
+          "ed25519-dalek",
+          "futures-util",
+          "hpke",
+          "js-sys",
+          "k256",
+          "ml-kem",
+          "p256",
+          "p384",
+          "p521",
+          "rsa",
+          "serde",
+          "serde_json",
+          "serde_urlencoded",
+          "sha1",
+          "sha2",
+          "subtle",
+          "url",
+          "wasm-bindgen",
+          "wasm-bindgen-futures",
+          "web-sys",
+          "worker",
+          "x509-cert",
+          "zeroize"
+        ],
+        "rustBuild": [],
+        "rustDev": [
+          "base64",
+          "ciborium",
+          "p256",
+          "rusqlite",
+          "serde_json",
+          "serde_urlencoded",
+          "sha2",
+          "tiny_http",
+          "wasm-bindgen-test"
+        ]
+      }
+    },
+    "coverage": {
+      "lines": {
+        "covered": 3342,
+        "count": 3796,
+        "percent": 88.04004214963119
+      },
+      "regions": {
+        "covered": 5620,
+        "count": 6661,
+        "percent": 84.37171595856478
+      },
+      "functions": {
+        "covered": 296,
+        "count": 349,
+        "percent": 84.81375358166189
+      }
+    }
   }
 ]
