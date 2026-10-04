@@ -66,7 +66,7 @@ export function canonicalSql(sql: string): string[] {
 
 export const BASELINE_NAME = '0001_owner_vault_initial.sql';
 export const BASELINE_SCHEMA_QUERY = `SELECT type,name,tbl_name,sql FROM sqlite_master
-WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
+WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' AND name != '_cf_KV' AND tbl_name != '_cf_KV'
 AND name != 'd1_migrations' AND tbl_name != 'd1_migrations' ORDER BY type,name`;
 type SchemaRow = { type: string; name: string; tbl_name: string; sql: string };
 function canonicalSchema(rows: SchemaRow[]) {
