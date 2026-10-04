@@ -112,6 +112,103 @@ test('projection never accesses text/json/secret values', () => {
   }
 });
 
+test('the complete roster accepts exactly 100 Workers and rejects 101', async () => {
+  const names = [target.op, target.claim, ...Array.from({ length: 98 }, (_, n) => `other-${n}`)];
+  assert.equal((await inspectWorkerInventory(fixture(names), target)).workers.length, 100);
+  await assert.rejects(
+    inspectWorkerInventory(fixture([...names, 'one-too-many']), target),
+    /excessive Worker roster/,
+  );
+});
+
+test('empty or individually missing production Workers fail before detail inspection', async () => {
+  for (const names of [[], [target.op], [target.claim]])
+    await assert.rejects(
+      inspectWorkerInventory(
+        fixture(names, (path, value) => {
+          assert.ok(path.endsWith('/scripts'));
+          return value;
+        }),
+        target,
+      ),
+      /Expected production Workers are absent/,
+    );
+});
+
+test('roster identities use id, never the opaque tag, and reject any pagination metadata', async () => {
+  const value = await inspectWorkerInventory(
+    fixture(undefined, (path, value) => {
+      if (path.endsWith('/scripts'))
+        for (const item of value.result) item.tag = 'opaque-script-tag';
+      return value;
+    }),
+    target,
+  );
+  assert.deepEqual(
+    value.workers.map((worker) => worker.name),
+    [target.op, target.claim],
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, value) => {
+        if (path.endsWith('/scripts'))
+          for (const item of value.result) {
+            item.tag = item.id;
+            delete item.id;
+          }
+        return value;
+      }),
+      target,
+    ),
+    /Malformed Worker\/binding name/,
+  );
+  for (const metadata of [null, {}, [], 'unexpected', 0])
+    await assert.rejects(
+      inspectWorkerInventory(
+        fixture(undefined, (path, value) => {
+          if (path.endsWith('/scripts')) value.result_info = metadata;
+          return value;
+        }),
+        target,
+      ),
+      /Unexpected Worker roster pagination/,
+    );
+});
+
+test('recognized non-D1 binding types never bypass agent or extra-consumer guards', async () => {
+  for (const type of ['worker_loader', 'vectorize', 'workflow'])
+    for (const endpoint of ['/settings', '/versions/' + version]) {
+      await assert.rejects(
+        inspectWorkerInventory(
+          fixture(undefined, (path, value) => {
+            if (path.includes('/scripts/mikaki-auth/') && path.endsWith(endpoint))
+              (endpoint === '/settings' ? value.result : value.result.resources).bindings.push({
+                name: 'AGENT_ACCESS',
+                type,
+              });
+            return value;
+          }),
+          target,
+        ),
+        /AGENT_ACCESS/,
+      );
+      await assert.rejects(
+        inspectWorkerInventory(
+          fixture([target.op, target.claim, 'other'], (path, value) => {
+            if (path.includes('/scripts/other/') && path.endsWith(endpoint))
+              (endpoint === '/settings' ? value.result : value.result.resources).bindings.push(
+                { name: 'KNOWN', type },
+                db,
+              );
+            return value;
+          }),
+          target,
+        ),
+        /Another ordinary Worker/,
+      );
+    }
+});
+
 test('extra D1 consumers and OP AGENT_ACCESS fail in settings or any active version', async () => {
   for (const endpoint of ['/settings', '/versions/' + version]) {
     await assert.rejects(

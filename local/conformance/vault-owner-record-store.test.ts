@@ -811,8 +811,10 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
           try {
             const response = await get(owner);
             assert.equal(response.status, 503);
-            assert.equal(await hits(), 1);
+            // Consume the body before another harness RPC can trigger GC of
+            // Miniflare's original undici Response and cancel its shared stream.
             assert.deepEqual(await response.json(), { error: 'storage_unavailable' });
+            assert.equal(await hits(), 1);
           } finally {
             await fault();
           }
