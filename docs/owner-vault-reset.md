@@ -1,8 +1,8 @@
 # Owner Vault reset preparation (#121)
 
 Status (2026-10-05): source retirement is in progress on
-`feat/issue-121-native-vault-retirement`, based on main `95ab1c1`, which includes
-merged PR #105 and PR #125. The browser/API slice removes the legacy Vault UI
+`feat/issue-121-native-vault-retirement`, integrated with main `c1ad9f7`, which includes
+merged PR #105, PR #125 and PR #126. The browser/API slice removes the legacy Vault UI
 and 13 v1 HTTP routes while keeping OwnerWorkspace archive/import/search and the
 record editor mounted under shared VaultSession. The native OAuth slice now
 removes Vault consent, token issuance and Tauri ciphertext operations while
