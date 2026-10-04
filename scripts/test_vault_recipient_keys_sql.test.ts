@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
 const migration = readFileSync(
-  new URL('../crates/worker/migrations/0007_vault_recipient_keys.sql', import.meta.url),
+  new URL('../crates/worker/migrations/0001_owner_vault_initial.sql', import.meta.url),
   'utf8',
 );
 const db = () => {

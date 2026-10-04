@@ -1,7 +1,7 @@
 /** Exact Rust-approved-commit SQL in native SQLite; no claim of workerd/R2 coverage. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
@@ -27,16 +27,13 @@ function insert(db: DatabaseSync, table: string, row: Row) {
       .join(',')})`,
   ).run(...Object.values(row));
 }
-function migrations(db: DatabaseSync, before = '9999') {
-  for (const file of readdirSync(folder)
-    .filter((f) => /^\d{4}_.+\.sql$/.test(f) && f < before)
-    .sort())
-    db.exec(readFileSync(new URL(file, folder), 'utf8'));
+function migrations(db: DatabaseSync) {
+  db.exec(readFileSync(new URL('0001_owner_vault_initial.sql', folder), 'utf8'));
 }
-function fixture(base = 0, deleted = 0, source = 'name', before = '9999') {
+function fixture(base = 0, deleted = 0, source = 'name') {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
-  migrations(db, before);
+  migrations(db);
   const clock = { now: 1_800_000_000 };
   db.function('unixepoch', () => clock.now);
   db.exec(
@@ -481,67 +478,6 @@ test('historical receipt remains unchanged after newer edit, expiry, recipient r
     );
   }));
 
-test('0035 preserves populated v1 rows and keeps v2 selection explicit', () => {
-  const f = fixture(0, 0, 'name', '0035');
-  try {
-    const grant = {
-      ...f.grant,
-      grant_id: 'legacy',
-      storage_version: 1,
-      token_hash: hash('legacy-token'),
-    };
-    for (const key of Object.keys(grant).filter(
-      (k) => k.startsWith('source_') && k !== 'source_revision',
-    ))
-      delete (grant as Row)[key];
-    insert(f.db, 'agent_grant', grant);
-    insert(f.db, 'agent_attribute_capability', {
-      grant_id: 'legacy',
-      attribute_id: 'owner_note',
-      base_revision: 0,
-      grant_revision: 1,
-      created_at: f.clock.now,
-      expires_at: f.clock.now + 600,
-    });
-    insert(f.db, 'agent_attribute_proposal', {
-      proposal_id: 'legacy',
-      grant_id: 'legacy',
-      grant_revision: 1,
-      request_hash: 'hash',
-      attribute_id: 'owner_note',
-      base_revision: 0,
-      payload: 'legacy plaintext',
-      expires_at: f.clock.now + 600,
-      created_at: f.clock.now,
-      state: 'approved',
-    });
-    insert(f.db, 'agent_attribute_commit', {
-      proposal_id: 'legacy',
-      account_id: 'owner',
-      operation_id: 'legacy-op',
-      candidate: '{}',
-      candidate_sha256: 'old-hash',
-      origin,
-      prepared_at: f.clock.now,
-    });
-    const tables = [
-      'agent_attribute_capability',
-      'agent_attribute_proposal',
-      'agent_attribute_commit',
-    ];
-    const before = tables.map((t) => f.db.prepare(`SELECT * FROM ${t}`).get()!);
-    f.db.exec(readFileSync(new URL('0035_agent_record_approvals.sql', folder), 'utf8'));
-    for (let i = 0; i < tables.length; i++) {
-      const after = f.db.prepare(`SELECT * FROM ${tables[i]}`).get()!;
-      for (const [k, v] of Object.entries(before[i])) assert.equal(after[k], v);
-      assert.equal(after.storage_version, 1);
-    }
-    assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
-    assert.equal(f.ready(), false);
-  } finally {
-    f.db.close();
-  }
-});
 for (const [field, value] of [
   ['target_origin', null],
   ['target_vault_id', null],
@@ -679,17 +615,3 @@ test('present capabilities cannot omit their exact digest or downgrade to missin
     f.db.close();
   }
 });
-
-test('legacy attribute target updates do not invalidate the explicit v2 note approval', () =>
-  withFixture((f) => {
-    f.db
-      .prepare(
-        `INSERT INTO vault_attribute_head(account_id,attribute_id,revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted,updated_at)
-    VALUES('owner','owner_note',1,1,'legacy',?,'{}',0,?)`,
-      )
-      .run(hash('legacy'), f.clock.now);
-    assert.equal(f.ready(), true);
-    f.db.exec("UPDATE vault_attribute_head SET revision=2 WHERE attribute_id='owner_note'");
-    assert.equal(f.ready(), true);
-    f.commit();
-  }));

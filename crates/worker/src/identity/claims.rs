@@ -48,7 +48,7 @@ pub(crate) async fn userinfo(
         AND g.active=1 AND g.grant_version=r.connection_grant_version \
         AND a.active=1 AND a.epoch=r.epoch AND a.epoch=d.epoch \
         AND r.active=1 AND r.expires_at>unixepoch() AND d.revoked=0 AND d.valid_until>unixepoch() AND d.policy_hash=?2 \
-        AND NOT EXISTS(SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash)")
+        ")
         .bind(&[js(token),js(&current_policy)])?.first::<Released>(None).await?;
     let Some(row) = row else {
         return Ok(None);

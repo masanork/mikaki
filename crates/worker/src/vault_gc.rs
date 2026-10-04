@@ -1,4 +1,4 @@
-//! Bounded candidate collection, with a cursor sweep for pre-migration orphans.
+//! Bounded candidate collection for Owner Vault record objects.
 
 use serde::Deserialize;
 use wasm_bindgen::JsValue;
@@ -27,40 +27,35 @@ pub async fn run(env: &Env, scheduled_ms: u64) -> Result<()> {
     let started = js_sys::Date::now();
     // A sweep is a fallback, not the collection throughput limit. New uploads
     // and retired heads have durable candidates even if no sweep reaches them.
-    for (prefix, cursor_table) in [
-        ("vault-attribute/", "vault_gc_cursor"),
-        ("vault-owner-record/", "vault_owner_record_gc_cursor"),
-    ] {
-        let previous = db
-            .prepare(format!("SELECT cursor FROM {cursor_table} WHERE id=1"))
-            .first::<CursorRow>(None)
-            .await?
-            .ok_or_else(|| worker::Error::RustError("vault_gc_cursor_missing".into()))?;
-        let mut listing = bucket.list().prefix(prefix).limit(128);
-        if let Some(cursor) = previous.cursor {
-            listing = listing.cursor(cursor);
-        }
-        let page = listing.execute().await?;
-        let cutoff = scheduled_ms.saturating_sub(86_400_000);
-        let mut discovered = Vec::new();
-        for object in page.objects() {
-            if object.uploaded().as_millis() >= cutoff {
-                continue;
-            }
-            discovered.push(db.prepare("INSERT OR IGNORE INTO vault_gc_candidate(object_key,eligible_at) SELECT ?1,?2 WHERE NOT EXISTS(SELECT 1 FROM vault_attribute_head WHERE object_key=?1 AND deleted=0) AND NOT EXISTS(SELECT 1 FROM vault_owner_record_head WHERE object_key=?1 AND deleted=0)")
-                .bind(&[JsValue::from_str(&object.key()),JsValue::from_f64((object.uploaded().as_millis()/1000+86400) as f64)])?);
-        }
-        if !discovered.is_empty() {
-            db.batch(discovered).await?;
-        }
-        db.prepare(format!("UPDATE {cursor_table} SET cursor=?1 WHERE id=1"))
-            .bind(&[page
-                .cursor()
-                .as_deref()
-                .map_or(JsValue::NULL, JsValue::from_str)])?
-            .run()
-            .await?;
+    let previous = db
+        .prepare("SELECT cursor FROM vault_owner_record_gc_cursor WHERE id=1")
+        .first::<CursorRow>(None)
+        .await?
+        .ok_or_else(|| worker::Error::RustError("vault_owner_record_gc_cursor_missing".into()))?;
+    let mut listing = bucket.list().prefix("vault-owner-record/").limit(128);
+    if let Some(cursor) = previous.cursor {
+        listing = listing.cursor(cursor);
     }
+    let page = listing.execute().await?;
+    let cutoff = scheduled_ms.saturating_sub(86_400_000);
+    let mut discovered = Vec::new();
+    for object in page.objects() {
+        if object.uploaded().as_millis() >= cutoff {
+            continue;
+        }
+        discovered.push(db.prepare("INSERT OR IGNORE INTO vault_gc_candidate(object_key,eligible_at) SELECT ?1,?2 WHERE NOT EXISTS(SELECT 1 FROM vault_owner_record_head WHERE object_key=?1 AND deleted=0)")
+            .bind(&[JsValue::from_str(&object.key()),JsValue::from_f64((object.uploaded().as_millis()/1000+86400) as f64)])?);
+    }
+    if !discovered.is_empty() {
+        db.batch(discovered).await?;
+    }
+    db.prepare("UPDATE vault_owner_record_gc_cursor SET cursor=?1 WHERE id=1")
+        .bind(&[page
+            .cursor()
+            .as_deref()
+            .map_or(JsValue::NULL, JsValue::from_str)])?
+        .run()
+        .await?;
     let mut collected = 0;
     for _ in 0..4 {
         if js_sys::Date::now() - started >= 20_000.0 {
@@ -68,7 +63,7 @@ pub async fn run(env: &Env, scheduled_ms: u64) -> Result<()> {
         }
         // This transaction serializes with head updates. The write path checks
         // pending state before installing a head; triggers also reject deleting keys.
-        let candidates = db.prepare("UPDATE vault_gc_candidate SET state='deleting' WHERE object_key IN (SELECT object_key FROM vault_gc_candidate WHERE eligible_at<=?1 AND NOT EXISTS(SELECT 1 FROM vault_attribute_head h WHERE h.object_key=vault_gc_candidate.object_key AND h.deleted=0) AND NOT EXISTS(SELECT 1 FROM vault_owner_record_head h WHERE h.object_key=vault_gc_candidate.object_key AND h.deleted=0) ORDER BY eligible_at,object_key LIMIT 256) RETURNING object_key")
+        let candidates = db.prepare("UPDATE vault_gc_candidate SET state='deleting' WHERE object_key IN (SELECT object_key FROM vault_gc_candidate WHERE eligible_at<=?1 AND NOT EXISTS(SELECT 1 FROM vault_owner_record_head h WHERE h.object_key=vault_gc_candidate.object_key AND h.deleted=0) ORDER BY eligible_at,object_key LIMIT 256) RETURNING object_key")
             .bind(&[JsValue::from_f64(now as f64)])?.all().await?.results::<Candidate>()?;
         if candidates.is_empty() {
             break;
@@ -102,7 +97,7 @@ pub async fn run(env: &Env, scheduled_ms: u64) -> Result<()> {
         serde_json::json!({"event":"vault_gc", "collected":collected, "backlog":backlog, "duration_ms":js_sys::Date::now()-started})
     );
     let retention = now.saturating_sub(90 * 86400);
-    db.prepare("DELETE FROM vault_attribute_mutation WHERE rowid IN (SELECT rowid FROM vault_attribute_mutation WHERE created_at<?1 LIMIT 1000)")
+    db.prepare("DELETE FROM vault_owner_record_mutation WHERE rowid IN (SELECT rowid FROM vault_owner_record_mutation WHERE created_at<?1 LIMIT 1000)")
         .bind(&[JsValue::from_f64(retention as f64)])?.run().await?;
     let registration_retention = now.saturating_sub(86400);
     db.prepare("DELETE FROM owner_passkey_registration WHERE transaction_id IN (SELECT transaction_id FROM owner_passkey_registration WHERE expires_at<?1 LIMIT 1000)")

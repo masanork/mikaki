@@ -29,15 +29,17 @@ type WorkerConfig = {
 };
 export const BASELINE_NAME = '0001_owner_vault_initial.sql';
 export const IDENTITY_TABLES = [
+  'identity_claim_release',
   'identity_document',
   'identity_transaction',
   'identity_wallet_grant',
   'identity_wallet_par',
+  'identity_wallet_attestation_replay',
   'identity_nonce',
   'identity_attester_challenge',
 ] as const;
 export const LEGACY_TABLE =
-  /^(vault_attribute_|vault_share_policy$|vault_gc_cursor$|vault_oauth_consent$)/;
+  /^(?:vault_attribute_(?:head|mutation|recipient_envelope|grant|share_audit)|vault_share_policy|vault_share_atomic_guard|vault_gc_cursor|vault_oauth_(?:consent|grant|code_context|token_context)|vault_passkey_transfer_audit)$/;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 export function readMigrations(directory: string): Migration[] {
@@ -85,7 +87,9 @@ export function rehearseSchema(migrations: Migration[]) {
       legacy_tables: tables.filter((name) => LEGACY_TABLE.test(name)),
       legacy_dependencies: objects
         .filter((item) =>
-          /\bvault_attribute_\w+|\bvault_share_policy\b|\bvault_gc_cursor\b/.test(item.sql),
+          /\bvault_attribute_(?:head|mutation|recipient_envelope|grant|share_audit)\b|\bvault_share_policy\b|\bvault_share_atomic_guard\b|\bvault_gc_cursor\b|\bvault_oauth_(?:consent|grant|code_context|token_context)\b|\bvault_passkey_transfer_audit\b/.test(
+            item.sql,
+          ),
         )
         .map(({ type, name, tbl_name }) => ({ type, name, table: tbl_name })),
       missing_identity_tables: IDENTITY_TABLES.filter((name) => !tables.includes(name)),
@@ -149,7 +153,9 @@ export function createResetPlan(root: string) {
   if (!opSchema) throw new Error('Missing OP schema');
   const blockers = [
     ...(opSchema.missing_identity_tables.length ? ['identity-not-integrated'] : []),
-    ...(opSchema.legacy_tables.length ? ['legacy-vault-still-present'] : []),
+    ...(opSchema.legacy_tables.length || opSchema.legacy_dependencies.length
+      ? ['legacy-vault-still-present']
+      : []),
     ...(opSchema.migrations.length !== 1 || opSchema.migrations[0].name !== BASELINE_NAME
       ? ['baseline-not-consolidated']
       : []),

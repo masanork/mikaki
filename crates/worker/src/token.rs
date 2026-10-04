@@ -843,7 +843,6 @@ pub(super) async fn commit_authorization_code_exchange(
                JOIN code_context cc ON cc.code_hash=?1 \
                WHERE cs.client_id=?2 AND cs.sid=?14 AND sx.auth_time=?17 AND cc.nonce IS ?16 \
                AND (cc.scope=?29 OR (?29='openid profile' AND cc.scope='profile openid'))) \
-             AND NOT EXISTS (SELECT 1 FROM vault_oauth_code_context vc WHERE vc.code_hash=?1) \
              AND EXISTS (SELECT 1 FROM client_auth_use au WHERE au.client_id=?2 \
                AND au.method=?8 AND au.credential_id=?6 AND au.client_revision=?5 \
                AND au.credential_revision=?7 AND au.endpoint=?9 AND au.accepted_by=?10 \
