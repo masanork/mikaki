@@ -1134,19 +1134,19 @@
   },
   {
     "date": "2026-10-04",
-    "commit": "8da422f",
+    "commit": "63ce635",
     "code": {
-      "implementationLines": 34971,
-      "testLines": 4761,
+      "implementationLines": 35022,
+      "testLines": 4815,
       "implementationFiles": 148,
       "testFiles": 14,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 12525,
-          "testLines": 2433
+          "implementationLines": 12590,
+          "testLines": 2487
         },
         "rust": {
-          "implementationLines": 16980,
+          "implementationLines": 16966,
           "testLines": 2328
         },
         "svelte": {
@@ -1158,7 +1158,7 @@
     "dependencies": {
       "npm": {
         "runtime": 6,
-        "dev": 20
+        "dev": 21
       },
       "rust": {
         "runtime": 27,
@@ -1184,6 +1184,7 @@
           "zod"
         ],
         "npmDev": [
+          "@axe-core/playwright",
           "@cloudflare/workers-types",
           "@inlang/paraglide-js",
           "@inlang/plugin-message-format",
