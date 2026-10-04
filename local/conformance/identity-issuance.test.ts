@@ -536,7 +536,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       const denied = await consent(await beginWallet(configuration), document, 'deny');
       assert.equal(denied.callback.searchParams.get('error'), 'access_denied');
       assert.equal(denied.callback.searchParams.get('code'), null);
-      const flow = await consent(pending, document);
+      let flow = await consent(pending, document);
       assert.equal((await walletToken(flow, { code_verifier: secret() })).status, 400);
       assert.equal((await walletToken(flow, { client_id: 'another-wallet' })).status, 400);
       assert.equal(
@@ -574,8 +574,31 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal(((await missingVerifier.json()) as any).error, 'invalid_grant');
       const tokenRace = await Promise.all([walletToken(flow), walletToken(flow)]);
       assert.deepEqual(tokenRace.map((r) => r.status).sort(), [200, 400]);
-      const token = (await tokenRace.find((r) => r.status === 200)!.json()) as any;
-      assert.equal(token.scope, configuration);
+      const racedToken = (await tokenRace.find((r) => r.status === 200)!.json()) as any;
+      assert.equal(racedToken.scope, configuration);
+      assert.equal(
+        (await walletIssue(racedToken.access_token, configuration, await walletProof(secret())))
+          .status,
+        401,
+        'authenticated concurrent code reuse revokes even a single-credential grant',
+      );
+      flow = await consent(await beginWallet(configuration), document);
+      const tokenResponse = await walletToken(flow);
+      assert.equal(tokenResponse.status, 200);
+      const token = (await tokenResponse.json()) as any;
+      for (const patch of [
+        { code_verifier: secret() },
+        { client_id: 'another-wallet' },
+        { redirect_uri: 'https://wallet.example/other' },
+      ]) {
+        assert.equal((await walletToken(flow, patch)).status, 400);
+        assert.equal(
+          await DB.prepare('SELECT state FROM identity_wallet_grant WHERE grant_id=?')
+            .bind(flow.grant)
+            .first('state'),
+          'token',
+        );
+      }
       const nonce = (
         (await (await external.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
       ).c_nonce;

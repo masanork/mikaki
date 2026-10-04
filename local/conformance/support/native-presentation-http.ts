@@ -160,6 +160,10 @@ export async function withNativePresentationHttp(
             .end(Buffer.from([0xff]));
           return;
         }
+        if (req.url === '/fixture') {
+          res.writeHead(200, { 'Content-Type': 'application/oauth-authz-req+jwt' }).end('fixture');
+          return;
+        }
         if (req.url === '/request') {
           assert.equal(req.headers.accept, 'application/oauth-authz-req+jwt');
           assert.ok(requestHandler);
@@ -184,6 +188,9 @@ export async function withNativePresentationHttp(
       }
     },
   );
+  // Make the peer close an idle connection while the stdio adapter waits for input.
+  server.keepAliveTimeout = 100;
+  server.keepAliveTimeoutBuffer = 0;
   const child = spawn(
     `${cwd}/design/probes/native-identity-http/target/debug/oid4vp_transport`,
     [],
@@ -233,6 +240,14 @@ export async function withNativePresentationHttp(
     assert.deepEqual(await command({ command: 'retrieve', uri: uri('/stall'), form: [] }), {
       error: 'network_error',
     });
+    const fixture = { command: 'retrieve', uri: uri('/fixture'), form: [] };
+    assert.deepEqual(await command(fixture), { jwt: 'fixture' });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.deepEqual(
+      await command(fixture),
+      { jwt: 'fixture' },
+      'retrieval after the HTTPS peer closes an idle connection',
+    );
     await run({
       uri,
       command,

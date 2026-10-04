@@ -646,7 +646,7 @@ pub(super) async fn token(
         // RFC 6749 4.1.2: revoke remaining authority on authenticated code reuse.
         // Possessing a code alone, a wrong PKCE verifier or a substitute sender
         // key must never let a caller cancel somebody else's live grant.
-        db.prepare("DELETE FROM identity_wallet_grant WHERE redeemed_code_hash=?1 AND issuance_limit=16 AND state='token' AND client_id=?2 AND redirect_uri=?3 AND code_challenge=?4 AND client_policy_hash=?5 AND policy_hash=?6 AND client_binding IS ?7 AND dpop_jkt IS ?8")
+        db.prepare("DELETE FROM identity_wallet_grant WHERE redeemed_code_hash=?1 AND state='token' AND client_id=?2 AND redirect_uri=?3 AND code_challenge=?4 AND client_policy_hash=?5 AND policy_hash=?6 AND client_binding IS ?7 AND dpop_jkt IS ?8")
             .bind(&[js(&hash(&body.code)),js(&client_id),js(&body.redirect_uri),js(&hash(&body.code_verifier)),js(&client_policy),js(&policy_hash),self::binding(&binding)?,dpop_proof.as_ref().map(|proof|js(proof.thumbprint())).unwrap_or(JsValue::NULL)])?.run().await?;
         return error(400, "invalid_grant");
     };
