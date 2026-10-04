@@ -38,8 +38,9 @@ for (const dir of ['public', 'app-public']) {
 const document = (host, title, body, lang = 'ja', path = '/', noindex = false) => {
   const ja = lang === 'ja';
   const origin = 'https://mikaki.org';
+  const app = host === 'app.mikaki.org';
   const languageUrl = path.startsWith('/en/') ? path.replace('/en/', '/') : `/en${path}`;
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${ja ? 'mikakiアプリとWeb版の利用案内。' : 'Using the mikaki application and Web service.'}">${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="https://${host}${path}">`}<title>${escape(title)} · mikaki</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body>${header(lang, 'index', { origin, languageUrl })}<main class="app-main" id="main-content" tabindex="-1"><p class="eyebrow">${ja ? 'mikakiアプリ' : 'mikaki application'}</p>${body}</main>${footer(lang, { origin })}</body></html>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${app ? (ja ? 'mikakiアプリとWeb版の利用案内。' : 'Using the mikaki application and Web service.') : ja ? 'mikakiの公式サイト。' : 'The official mikaki website.'}">${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="https://${host}${path}">`}<title>${escape(title)} · mikaki</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body>${header(lang, 'index', { origin, languageUrl })}<main class="app-main" id="main-content" tabindex="-1"><p class="eyebrow">${app ? (ja ? 'mikakiアプリ' : 'mikaki application') : 'mikaki'}</p>${body}</main>${footer(lang, { origin })}</body></html>`;
 };
 for (const lang of ['ja', 'en']) {
   const ja = lang === 'ja';
@@ -81,18 +82,26 @@ await writeFile(
     },
   ]),
 );
-for (const dir of ['public', 'app-public'])
-  await writeFile(
-    new URL(`${dir}/404.html`, base),
-    document(
-      dir === 'public' ? 'mikaki.org' : 'app.mikaki.org',
-      'ページが見つかりません',
-      '<h1>ページが見つかりません</h1><div class="prose"><p>リンクが変更されたか、URLが正しくない可能性があります。</p><p><a href="https://mikaki.org/">mikakiのホームへ戻る</a></p></div>',
-      'ja',
-      '/404',
-      true,
-    ),
-  );
+for (const dir of ['public', 'app-public']) {
+  for (const lang of ['ja', 'en']) {
+    const ja = lang === 'ja';
+    const prefix = ja ? '' : 'en/';
+    await mkdir(new URL(`${dir}/${prefix}`, base), { recursive: true });
+    await writeFile(
+      new URL(`${dir}/${prefix}404.html`, base),
+      document(
+        dir === 'public' ? 'mikaki.org' : 'app.mikaki.org',
+        ja ? 'ページが見つかりません' : 'Page not found',
+        ja
+          ? '<h1>ページが見つかりません</h1><div class="prose"><p>リンクが変更されたか、URLが正しくない可能性があります。</p><p><a href="https://mikaki.org/">mikakiのホームへ戻る</a></p></div>'
+          : '<h1>Page not found</h1><div class="prose"><p>The link may have changed, or the URL may be incorrect.</p><p><a href="https://mikaki.org/en/">Back to the mikaki homepage</a></p></div>',
+        lang,
+        `/${prefix}404`,
+        true,
+      ),
+    );
+  }
+}
 
 await import('./sorane.mjs');
 

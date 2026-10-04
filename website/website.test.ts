@@ -158,6 +158,29 @@ test('public websites keep app callbacks code-free and render the woven material
       (await app.fetch('https://app.mikaki.org/oidc/native/callback', { method: 'POST' })).status,
       404,
     );
+    for (const [host, worker] of [
+      ['mikaki.org', site],
+      ['app.mikaki.org', app],
+    ] as const) {
+      for (const lang of ['ja', 'en']) {
+        const prefix = lang === 'ja' ? '' : '/en';
+        for (const path of ['/missing-page', '/missing/nested-page']) {
+          const response = await worker.fetch(`https://${host}${prefix}${path}`);
+          assert.equal(response.status, 404);
+          const html = await response.text();
+          assert.ok(html.includes(`<html lang="${lang}">`));
+          assert.ok(html.includes(lang === 'ja' ? 'ページが見つかりません' : 'Page not found'));
+          assert.ok(html.includes('name="robots" content="noindex"'));
+          const switchPath = lang === 'ja' ? '/en/404' : '/404';
+          assert.ok(html.includes(`href="${switchPath}"`));
+          const alternate = await worker.fetch(`https://${host}${switchPath}`);
+          assert.equal(alternate.status, 200);
+          assert.ok(
+            (await alternate.text()).includes(`<html lang="${lang === 'ja' ? 'en' : 'ja'}">`),
+          );
+        }
+      }
+    }
     const association = await app.fetch('https://app.mikaki.org/.well-known/assetlinks.json');
     assert.equal(association.status, 200, JSON.stringify(Object.fromEntries(association.headers)));
     const links = await association.json();
