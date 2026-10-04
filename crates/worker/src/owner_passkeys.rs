@@ -1,6 +1,6 @@
 //! Add a discoverable credential to the authenticated account, without a new account.
 use super::*;
-use crate::vault_attributes::{error, owner, same_origin};
+use crate::vault_http::{error, owner, same_origin};
 use wasm_bindgen::JsValue;
 
 #[derive(Deserialize, Serialize)]

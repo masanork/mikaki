@@ -47,6 +47,8 @@ mod vault_claim_releases;
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
 mod vault_gc;
 #[cfg(target_arch = "wasm32")]
+mod vault_http;
+#[cfg(target_arch = "wasm32")]
 mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_resource;
@@ -58,6 +60,8 @@ mod vault_owner_keys;
 mod vault_owner_records;
 #[cfg(target_arch = "wasm32")]
 mod vault_record_sharing;
+#[cfg(target_arch = "wasm32")]
+mod vault_ui;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -2437,10 +2441,10 @@ pub async fn main(
         .post_async("/userinfo", userinfo_route)
         .post_async("/token", token_route)
         .post_async("/par", par::route)
-        .get_async("/vault", vault_attributes::page)
+        .get_async("/vault", vault_ui::page)
         .get_async("/vault/oauth/consent", vault_oauth_consent::get)
         .post_async("/vault/oauth/consent", vault_oauth_consent::post)
-        .get_async("/vault/session", vault_attributes::session)
+        .get_async("/vault/session", vault_ui::session)
         .get_async(
             "/vault/record-recipient-keys/userinfo",
             vault_record_sharing::recipient,
@@ -2509,9 +2513,9 @@ pub async fn main(
         .get_async("/vault/releases/name", vault_claim_releases::status)
         .post_async("/vault/releases/name", vault_claim_releases::grant)
         .delete_async("/vault/releases/name", vault_claim_releases::revoke)
-        .get_async("/vault/vault.js", vault_attributes::script)
-        .get_async("/vault/search.js", vault_attributes::search_script)
-        .get_async("/vault/sqlite3.wasm", vault_attributes::search_wasm)
+        .get_async("/vault/vault.js", vault_ui::script)
+        .get_async("/vault/search.js", vault_ui::search_script)
+        .get_async("/vault/sqlite3.wasm", vault_ui::search_wasm)
         .get_async("/vault/attributes/:attribute", vault_attributes::get)
         .get_async(
             "/vault-api/attributes/:attribute",

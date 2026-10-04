@@ -9,7 +9,7 @@ use worker::{Request, Response, RouteContext};
 
 use crate::{
     TokenBindingRow, WorkersCryptoRandom, configured_issuer, dpop, dpop_nonce_error_response,
-    dpop_nonce_required, now_seconds, vault_attributes,
+    dpop_nonce_required, now_seconds, vault_attributes, vault_http,
 };
 
 #[derive(Serialize)]
@@ -37,19 +37,19 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
         .is_some_and(|value| value.to_string() == "preview")
         || context.env.bucket("VAULT_BLOBS").is_err()
     {
-        return vault_attributes::error(404, "not_found");
+        return vault_http::error(404, "not_found");
     }
     let Some(attribute) = context.param("attribute").map(String::as_str) else {
-        return vault_attributes::error(404, "not_found");
+        return vault_http::error(404, "not_found");
     };
     if !matches!(attribute, "name" | "owner_note") {
-        return vault_attributes::error(404, "not_found");
+        return vault_http::error(404, "not_found");
     }
     let issuer = configured_issuer(&context.env.var("MIKAKI_ISSUER")?.to_string())
         .ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let endpoint = format!("{issuer}/vault-api/attributes/{attribute}");
     if request.url()?.to_string() != endpoint {
-        return vault_attributes::error(400, "invalid_request");
+        return vault_http::error(400, "invalid_request");
     }
     let Some(header) = request.headers().get("authorization")? else {
         return unauthorized("invalid_token");

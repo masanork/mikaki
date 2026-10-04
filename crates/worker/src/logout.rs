@@ -257,7 +257,7 @@ pub(super) async fn post(
         return invalid(&request);
     };
     if values.contains_key("csrf") {
-        if values.len() != 1 || !vault_attributes::same_origin(&request)? {
+        if values.len() != 1 || !vault_http::same_origin(&request)? {
             return invalid(&request);
         }
         return confirm(request, context, &db, &values["csrf"]).await;

@@ -23,13 +23,46 @@ procedure and must not import the old 0036–0044 files. Do not edit an open PR'
 identity implementation in an unrelated dirty checkout or omit it silently from
 the consolidated schema.
 
-The FAQ RP has no identified production configuration in the starting main.
-Before building its seed, establish the exact HTTPS origin, client ID, separate
-D1 database, redirect URI, logout/session-check destinations, public JWK, and
-private-key secret reference. The current Helpdesk implementation includes help
-articles and ticket routes; confirm whether this is the intended FAQ application.
-An invented FAQ domain, placeholder key, or reuse of the demo client is not a
-production registration.
+The user selected `https://docs.mikaki.org` for the initial RP. It will share
+bilingual guide/FAQ content and preserve real OIDC login, session checking,
+local logout and backchannel logout. Its dedicated client, database, public JWK
+and `RP_PRIVATE_JWK` secret must be included in the initialization workflow.
+Do not reuse the demo's client or key. The initial Docs application prototype is
+saved separately while the Owner Vault refactor proceeds; it is not a deployed
+or qualified RP.
+
+### Implementation order and scope
+
+The user confirmed on 2026-10-04 that the #121 refactor precedes live messaging.
+The implementation order is:
+
+1. Extract shared owner authentication, CSRF/origin and mutation guards from the
+   historical attribute-storage module. Preserve their existing authority and
+   retry semantics while current-format callers stop importing legacy storage.
+2. Connect current UserInfo/selected sharing and approved agent changes to Owner
+   Vault, or explicitly retire unsupported product paths. Remove legacy UI,
+   fallback, compatibility endpoints, storage, SQL and their exclusive fixtures.
+3. After the final main schema includes #105, consolidate the complete supported
+   schema, initial policies and release/readiness checks into one `0001`.
+4. Qualify the initial Docs RP and replacement registration, retire the demo,
+   rehearse the reset, then perform the separately reviewed production cutover.
+
+### Future Docs inquiries
+
+Guides, FAQ and published Q&A remain readable without authentication. Later
+individual inquiries will be private to their author and named support
+participants, with both sides able to reply. Operators will summarize and
+generalize useful answers into separately reviewed public Q&A articles, without
+making the original private thread or message history public.
+
+Live E2EE messaging and inquiry submission are **follow-up work, not a #121
+prerequisite or completion condition**. Do not implement a temporary plaintext
+inquiry store or advertise the current encrypted owner archive as live E2EE.
+The intended later application uses Mikaki's common messaging capability;
+protocol/device-key binding, cryptographic state, delivery/retry and recovery
+require their own implementation and qualification. See the
+[messaging boundary](federated-messaging.md) and
+[Vault product model](vault-product-model.md#live-e2ee-owner-archive-and-ai-recipients).
 
 ## Offline review
 
@@ -108,10 +141,13 @@ separately from the fresh baseline; restoring old data reverses the reset.
 | Demo RP | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code |
 
 Do not remove a shared helper merely because its file currently has an attribute
-name. `vault_attributes.rs` supplies owner authentication, Origin checking,
+name. The first refactor extracts owner authentication, Origin checking,
 conditional revision parsing, operation IDs, hashing and authorization helpers
-used by the record handlers. `vault_approved.rs` supplies approval-header parsing
-used by record commits. `vault-crypto.ts` supplies base64 helpers, while
+into `vault_http.rs`, with page/session/asset serving in `vault_ui.rs`. Owner
+record and login callers no longer import these from `vault_attributes.rs`.
+Legacy attribute endpoints remain until their dependent product paths are
+explicitly connected to records or retired. `vault_approved.rs` supplies
+approval-header parsing used by record commits. `vault-crypto.ts` supplies base64 helpers, while
 `agent-crypto.ts` supplies recipient-key validation used by record snapshots.
 Split those shared parts before removing old-format persistence/crypto.
 
@@ -203,3 +239,10 @@ five new planner tests; strict TypeScript
 checking of the planner and its tests passed; repository Markdown destination
 and heading checks passed. No live metadata or participant-state inspection was
 performed in this preparation step.
+
+First dependency-extraction verification (2026-10-04): Wasm-target
+`cargo check --locked --offline --target wasm32-unknown-unknown -p mikaki-worker`
+passed; all 70 owner-record SQL authority/atomicity tests and five reset-planner
+tests passed. Rust formatting, diff whitespace and Markdown links/headings passed.
+This is a source refactor with unchanged handlers and guards; it does not retire
+legacy URLs or establish browser/production cutover evidence.

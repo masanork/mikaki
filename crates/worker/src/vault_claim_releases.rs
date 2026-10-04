@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 use worker::{D1Database, Request, Response, RouteContext};
 
-use crate::vault_attributes::{
+use crate::vault_http::{
     error, expected_revision, operation_id, owner, owner_allowed, request_hash, same_origin,
 };
 use crate::{conformance_deployment, now_seconds, read_bounded_body, vault_authzen};

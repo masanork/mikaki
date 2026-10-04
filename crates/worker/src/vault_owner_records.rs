@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use wasm_bindgen::JsValue;
 use worker::{D1Database, Request, Response, RouteContext};
 
-use crate::vault_attributes::{
+use crate::vault_http::{
     Owner, error, expected_revision, operation_id, owner, request_hash, same_origin,
 };
 use crate::{WorkersCryptoRandom, read_bounded_body};
