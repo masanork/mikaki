@@ -12,6 +12,7 @@
   },
   "include": [
     "worker.ts",
+    "oidc.ts",
     "worker-configuration.d.ts",
     "worker-demo-configuration.d.ts",
     "wasm.d.ts",

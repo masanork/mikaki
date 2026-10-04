@@ -55,6 +55,9 @@ jobs:
           npm run check:service-authority
           npm run check:i18n
           npm run check:docs
+          npm run build:docs
+          npm run check:docs-rp
+          npm run test:docs-release
       - name: Native tests and measured coverage
         run: |
           cargo test --locked --workspace
@@ -133,6 +136,7 @@ jobs:
           npm run test:vault-notes
           npm run test:attribute-commit
           npm run test:e2e
+          npm run test:docs-rp
           npm run health
           cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -255,8 +259,18 @@ jobs:
     uses: ./.github/workflows/deploy-production.yml
     secrets: inherit
 
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy.outputs.deployed == 'true'
+    needs: [deploy]
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    uses: ./.github/workflows/deploy-docs-production.yml
+    secrets: inherit
+
   production-smoke:
-    needs: [deploy, deploy-website]
+    needs: [deploy, deploy-docs, deploy-website]
     if: needs.deploy.outputs.deployed == 'true'
     uses: ./.github/workflows/production-smoke.yml
     with:

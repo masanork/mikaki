@@ -1,0 +1,46 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mikaki-docs-rp",
+  "main": "worker.ts",
+  "account_id": "4b749427a0c80c547e726a42aff4b6fc",
+  "compatibility_date": "2026-10-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "docs.mikaki.org", "custom_domain": true }],
+  "assets": {
+    "directory": "dist",
+    "binding": "DOCS_ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": true,
+  },
+  "vars": {
+    "ISSUER": "https://auth.mikaki.org",
+    "RP_ORIGIN": "https://docs.mikaki.org",
+    "CLIENT_ID": "301abb06-5573-42bb-a924-434ecf75dd06",
+  },
+  "secrets": { "required": ["RP_PRIVATE_JWK"] },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikaki-docs-rp",
+      "database_id": "8527823b-5417-425d-8028-0532464e39e7",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "2026100501",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "invocation_logs": false },
+    "traces": { "enabled": false },
+  },
+}
