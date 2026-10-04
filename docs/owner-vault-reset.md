@@ -145,9 +145,9 @@ Vault authorization-code issuance and Tauri ciphertext commands. Ordinary OIDC,
 Identity and token-class isolation remain. Historical tables, migrations, GC
 protections and live data are untouched, so this is not a completed Vault cutover.
 The unmounted `OwnerVault`/`OwnerVaultSession` name-and-note qualification
-preview remains outside the product entry; its preview browser test is not part
-of product CI. `VaultSession` and the default `OwnerWorkspace` browser coverage
-remain active.
+preview, its exclusive browser test and the unused v1 attribute-commit UI helper
+are removed in the Native follow-up. `VaultSession` and the default
+`OwnerWorkspace` browser and record-commit coverage remain active.
 
 | Surface            | Required change                                                                                                                                                                                                                             | Retain                                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -313,3 +313,9 @@ token-class isolation. `worker-build --release crates/worker`, Tauri host and
 Android native-dpop host checks, and focused Native/DPoP/Identity/mobile UI
 contracts passed. This branch change has not deployed, reset a database, or
 removed historical Vault tables or stored data.
+
+Unused UI cleanup in the same follow-up removes 459 lines of unmounted preview
+and legacy commit source plus 1,118 lines of exclusive tests. Worker UI type/Svelte
+checks passed with zero errors or warnings; source boundaries and documentation
+checks passed. The mounted Workspace, shared controller and v2 approval suite
+remain. The integrated Native source also passed all 259 SQL contracts.
