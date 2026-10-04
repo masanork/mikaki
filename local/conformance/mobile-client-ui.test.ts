@@ -33,7 +33,7 @@ test('native mobile UI keeps authentication and navigation consistent', async (t
           await page.evaluate(() => window.__nativeUiTest.complete());
           await resumeNativeUi(page);
           await page.locator('#home').waitFor({ state: 'visible' });
-          assert.equal(await page.locator('#vault-key').isVisible(), false);
+          assert.equal(await page.locator('#vault').count(), 0);
           assert.equal(await page.locator('#navigation').isVisible(), true);
           await page.getByRole('link', { name: 'アカウント情報' }).click();
           await page.locator('#account').waitFor({ state: 'visible' });
@@ -162,36 +162,6 @@ test('native mobile UI keeps authentication and navigation consistent', async (t
           });
           await page.locator('#check-auth').click();
           await page.locator('#home').waitFor({ state: 'visible' });
-          assert.deepEqual(errors, []);
-        } finally {
-          await page.close();
-        }
-      },
-    );
-    await t.test(
-      'Vault preview stays in diagnostics and retains approval/read behavior',
-      async () => {
-        const { page, errors } = await createNativeUiPage(browser, server.url, {
-          signedIn: true,
-          preview: true,
-        });
-        try {
-          assert.equal(await page.locator('#vault').isVisible(), false);
-          await page.locator('#open-settings').click();
-          await page.getByRole('link', { name: '診断' }).click();
-          await page.locator('#vault').waitFor({ state: 'visible' });
-          assert.equal(await page.locator('#vault-read').isDisabled(), true);
-          await page.locator('#vault-key').click();
-          await page.getByText('端末の署名鍵を利用できます。', { exact: true }).waitFor();
-          await page.locator('#vault-consent').click();
-          await page.locator('#waiting').waitFor({ state: 'visible' });
-          await page.evaluate(() => window.__nativeUiTest.complete('vault_complete'));
-          await resumeNativeUi(page);
-          await page.locator('#diagnostics').waitFor({ state: 'visible' });
-          await page.locator('#vault-read').click();
-          await page
-            .getByText('暗号文を取得しました。revision 1、形式 1。', { exact: true })
-            .waitFor();
           assert.deepEqual(errors, []);
         } finally {
           await page.close();

@@ -6,7 +6,6 @@ mod exchange;
 mod signing;
 #[cfg(test)]
 mod token_boundary_tests;
-mod vault_read;
 
 pub use client_assertion::{
     ClientAssertionKey, ClientAssertionPolicy, InvalidClientAssertion, VerifiedClientAssertion,
@@ -26,10 +25,6 @@ pub use exchange::{
 pub use signing::{
     IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, LogoutTokenSigningInput,
     P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey,
-};
-pub use vault_read::{
-    DETAIL_TYPE as VAULT_READ_DETAIL_TYPE, InvalidVaultReadRequest, RESOURCE as VAULT_RESOURCE,
-    VaultReadRequest,
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
@@ -99,7 +94,6 @@ pub struct InvalidAuthorization;
 enum AuthorizationProfile {
     Core,
     Fapi,
-    Vault,
 }
 
 impl Authorization {
@@ -148,26 +142,6 @@ impl Authorization {
         )
     }
 
-    pub fn validate_for_vault(
-        &self,
-        client_id: &str,
-        redirect_uri: &str,
-        state_limit: usize,
-        nonce_limit: usize,
-    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
-        if self.nonce.is_none() {
-            return Err(InvalidAuthorization);
-        }
-        self.validate_with_options(
-            client_id,
-            redirect_uri,
-            state_limit,
-            nonce_limit,
-            false,
-            AuthorizationProfile::Vault,
-        )
-    }
-
     fn validate_with_options(
         &self,
         client_id: &str,
@@ -189,17 +163,10 @@ impl Authorization {
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
-            || !(if matches!(profile, AuthorizationProfile::Vault) {
-                matches!(
-                    self.scope.as_str(),
-                    "openid vault.read" | "vault.read openid"
-                )
-            } else {
-                matches!(
-                    self.scope.as_str(),
-                    "openid" | "openid profile" | "profile openid"
-                )
-            })
+            || !matches!(
+                self.scope.as_str(),
+                "openid" | "openid profile" | "profile openid"
+            )
             || (!matches!(profile, AuthorizationProfile::Fapi) && self.state.is_empty())
             || self.state.len() > state_limit
             || self

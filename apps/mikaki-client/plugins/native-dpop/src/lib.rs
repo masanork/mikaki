@@ -1,6 +1,8 @@
 //! Mobile OS key custody and Android identity-wallet storage. No JavaScript command is exposed.
 
+#[cfg(target_os = "android")]
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "android")]
 use tauri::{
     plugin::{Builder, PluginHandle, TauriPlugin},
     Manager, Runtime,
@@ -8,9 +10,8 @@ use tauri::{
 
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "app.mikaki.native_dpop";
-#[cfg(target_os = "ios")]
-tauri::ios_plugin_binding!(init_plugin_native_dpop);
 
+#[cfg(target_os = "android")]
 #[derive(Clone, Deserialize)]
 pub struct PublicKey {
     pub x: String,
@@ -34,31 +35,13 @@ struct AttestedHolderRequest<'a> {
 }
 
 #[derive(Deserialize)]
+#[cfg(target_os = "android")]
 struct Signature {
     der: String,
 }
 
-#[derive(Serialize)]
-struct SignRequest<'a> {
-    input: &'a str,
-}
-
+#[cfg(target_os = "android")]
 pub struct NativeDpop<R: Runtime>(PluginHandle<R>);
-
-impl<R: Runtime> NativeDpop<R> {
-    pub fn public_key(&self) -> Result<PublicKey, String> {
-        self.0
-            .run_mobile_plugin("publicKey", ())
-            .map_err(|_| "OS DPoP key unavailable".into())
-    }
-
-    pub fn sign(&self, input: &str) -> Result<String, String> {
-        self.0
-            .run_mobile_plugin::<Signature>("sign", SignRequest { input })
-            .map(|result| result.der)
-            .map_err(|_| "OS DPoP signature unavailable".into())
-    }
-}
 
 #[cfg(target_os = "android")]
 #[derive(Serialize)]
@@ -178,23 +161,23 @@ impl<R: Runtime> NativeDpop<R> {
     }
 }
 
+#[cfg(target_os = "android")]
 pub trait NativeDpopExt<R: Runtime> {
     fn native_dpop(&self) -> tauri::State<'_, NativeDpop<R>>;
 }
 
+#[cfg(target_os = "android")]
 impl<R: Runtime, T: Manager<R>> NativeDpopExt<R> for T {
     fn native_dpop(&self) -> tauri::State<'_, NativeDpop<R>> {
         self.state::<NativeDpop<R>>()
     }
 }
 
+#[cfg(target_os = "android")]
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("native-dpop")
         .setup(|app, api| {
-            #[cfg(target_os = "android")]
             let handle = api.register_android_plugin(PLUGIN_IDENTIFIER, "NativeDpopPlugin")?;
-            #[cfg(target_os = "ios")]
-            let handle = api.register_ios_plugin(init_plugin_native_dpop)?;
             app.manage(NativeDpop(handle));
             Ok(())
         })

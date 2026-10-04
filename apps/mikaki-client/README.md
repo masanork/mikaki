@@ -210,62 +210,10 @@ retain browser SSO. The flag applies to mobile authorization requests only.
 The generated iOS entitlement contains `applinks:app.mikaki.org`. A signed
 physical-device build also needs an Apple development team and an association
 response containing that team's app identifier. This checkout has neither a
-signing certificate nor a configured team ID. The iPhoneOS Rust/Swift target
-passes `MIKAKI_NATIVE_VAULT_PREVIEW=1 cargo check --target aarch64-apple-ios`.
-The full Simulator build through Tauri CLI is blocked on this machine because Xcode 27 has
-the iOS 27 SDK but only the iOS 26.5 Simulator runtime is installed.
+signing certificate nor a configured team ID. The full Simulator build through
+Tauri CLI is blocked on this machine because Xcode 27 has the iOS 27 SDK but
+only the iOS 26.5 Simulator runtime is installed.
 
-## Mobile Vault preview
-
-Build with `MIKAKI_NATIVE_VAULT_PREVIEW=1` and a registered mobile client ID
-to show the Vault action. The matching OP must explicitly run with
-`MIKAKI_NATIVE_VAULT_OAUTH=preview`; normal deployment keeps that path closed.
-The preview requests `scope=openid vault.read`, the Vault resource, and exact
-`authorization_details` for `owner_note`. It verifies the callback and signed
-ID Token, requires a DPoP Token response, and reads ciphertext through
-`GET /vault-api/attributes/owner_note`. A DPoP nonce challenge is retried once
-with a fresh proof. The UI shows only the revision and format version.
-
-The DPoP key is a persistent, non-exportable installation key. iPhone requires
-a physical device with Secure Enclave; the simulator has no fallback signing
-key. Android uses Android Keystore without requiring StrongBox, so hardware
-backing varies by device. The token remains in process memory and is discarded
-on logout or process exit. The flow has not been exercised on a signed Android
-or iPhone build. Desktop Vault consent is still unavailable because the current
-server grant requires an exact registered HTTPS callback rather than its
-ephemeral loopback port. Production enablement also requires reviewed client
-display identity in the consent page and installed-app security tests. The iOS
-Swift plugin was compiled with the iOS Simulator Rust target. The Android
-Kotlin plugin was compiled into an arm64 debug APK with `MIKAKI_NATIVE_VAULT_PREVIEW=1
-npm run tauri -- android build --debug --target aarch64 --apk --ci`. Neither
-build establishes working OS callback association or Vault access on a signed
-physical device.
-
-The Android API 35 arm64 emulator ran the preview APK. The `端末の鍵を確認`
-action created or reopened the Android Keystore key and produced a DPoP proof;
-Rust verified the signature against the public key returned by the plugin.
-The check succeeded again after force-stopping and restarting the app. It does
-not contact the OP or prove OAuth consent, App Link delivery, or hardware-backed
-key storage on a physical device.
-
-On 2026-09-30, a physical Pixel 10 Pro running Android 17 also passed the
-key check, including after force-stopping and restarting the app. This was a
-locally debug-signed preview APK, without a configured mobile client ID.
-The device reported the callback domain as unverified (code 1024), so this
-result establishes OS signing and Rust signature verification only. It does
-not establish hardware backing, release signing, browser login, App Link
-delivery, or Vault ciphertext access.
-
-Later on 2026-09-30, the dedicated verification-signed release-mode APK with
-the registered mobile client ID replaced the Pixel's debug installation.
-Android reported the callback domain as `verified`; an implicit callback URL
-intent reached the app without a forced component or manually approved
-domain state. This confirms OS association and URL delivery. After unlocking,
-ordinary login returned to the app and passed Rust's token validation twice,
-including after native-session clearing. D1 confirmed two token issues with
-PKCE; the first used an authentication context one second old, the second
-reused that SSO. The Passkey prompt itself was not directly observed.
-Force-stopping and reopening the app removed the in-memory logged-in state;
-the Keystore signature check passed again after restart. Browser SSO was
-preserved. Native Vault access/decryption, iPhone and remaining cancellation/
-timeout/interception cases are still unqualified.
+Native Vault OAuth and ciphertext commands were retired on 2026-10-05. The
+mobile client continues to support ordinary OIDC login and Identity wallet
+flows; it does not request `vault.read` or expose native Vault access.

@@ -5,7 +5,6 @@ import type { Browser, Page } from '@playwright/test';
 export interface NativeUiScenario {
   platform?: 'mobile' | 'desktop';
   signedIn?: boolean;
-  preview?: boolean;
   phase?: string;
   identityReader?: boolean;
   identityWallet?: boolean;
@@ -23,7 +22,6 @@ declare global {
     __nativeUiTest: {
       phase: string;
       subject: string | null;
-      attribute: string | null;
       failures: Record<string, string>;
       calls: string[];
       arguments: { command: string; args?: Record<string, unknown> }[];
@@ -99,7 +97,6 @@ export async function createNativeUiPage(
     const mock: Window['__nativeUiTest'] = {
       phase: initial.phase ?? (initial.signedIn ? 'complete' : 'idle'),
       subject: initial.signedIn ? 'synthetic-user' : null,
-      attribute: null,
       failures: {},
       calls: [],
       arguments: [],
@@ -123,7 +120,6 @@ export async function createNativeUiPage(
         if (mock.phase !== 'pending' && mock.phase !== 'exchanging') return;
         mock.phase = phase;
         if (phase === 'complete') mock.subject = 'synthetic-user';
-        if (phase === 'vault_complete') mock.attribute = 'owner_note';
       },
     };
     window.__nativeUiTest = mock;
@@ -266,16 +262,10 @@ export async function createNativeUiPage(
           result = {
             phase: mock.phase,
             subject: mock.subject,
-            vault_attribute: mock.attribute,
-            vault_preview_available: initial.preview ?? false,
           };
           break;
         case 'start_mobile_login':
           mock.subject = null;
-          mock.phase = 'pending';
-          break;
-        case 'start_mobile_vault_read':
-          mock.attribute = null;
           mock.phase = 'pending';
           break;
         case 'start_desktop_login':
@@ -288,13 +278,7 @@ export async function createNativeUiPage(
         case 'clear_native_session':
           generation++;
           mock.subject = null;
-          mock.attribute = null;
           mock.phase = 'idle';
-          break;
-        case 'check_mobile_vault_key':
-          break;
-        case 'read_mobile_vault_ciphertext':
-          result = { revision: 1, format_version: 1 };
           break;
         default:
           throw new Error('Unknown synthetic command: ' + command);
