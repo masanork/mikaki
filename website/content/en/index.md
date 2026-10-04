@@ -32,6 +32,7 @@ Add passkey sign-in to your Web application. Follow the OpenID Connect guide for
 
 - [Read the application integration guide](integration.md)
 - [Discuss application registration](contact.md)
+- [Try the public IdP login demo](integration-demo.md)
 - [Check specifications and standards](specifications.md)
 - [Look up API requests and responses](api.md)
 - [Run the local integration example](integration-example.md)

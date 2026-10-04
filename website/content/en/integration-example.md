@@ -8,6 +8,7 @@ translation_key: integration-example
 updated: 2026-10-03
 ---
 
+To try the public IdP in your browser, open the [public integration demo](integration-demo.md).
 Use the existing [Helpdesk RP](https://github.com/masanork/mikaki/tree/main/crates/helpdesk-rp) as an executable integration example. This small Rust/Wasm and Worker application has login and protected pages. **It connects to a disposable local OP, not a registered public IdP client or a production support service.**
 
 ## Prepare and start

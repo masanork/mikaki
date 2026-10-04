@@ -8,6 +8,7 @@ translation_key: integration
 updated: 2026-10-03
 ---
 
+公開IdPへの接続をブラウザーで試す方は、[公開接続デモ](integration-demo.md)へ進めます。
 このガイドは、秘密鍵をバックエンドに保管するWebアプリをmikakiへ接続する開発者向けです。管理者への登録依頼、ログインの開始、コード交換、アプリのセッション作成までを説明します。利用者のログイン手順は[はじめ方](getting-started.md)を参照してください。
 
 ## OpenID Connectで接続する

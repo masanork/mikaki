@@ -6,6 +6,7 @@ import {
   type Catalog,
   type MessageKey,
 } from './i18n';
+import { demoMessages, demoStyle } from './demo';
 import {
   createRemoteJWKSet,
   decodeProtectedHeader,
@@ -29,7 +30,11 @@ const wasm = new WebAssembly.Instance(wasmModule, {
 __wbg_set_wasm(wasm.exports);
 (wasm.exports.__wbindgen_start as () => void)();
 
-type Env = HelpdeskEnv & { RP_PRIVATE_JWK: string; LOCAL_ONLY?: string };
+type Env = HelpdeskEnv &
+  Partial<Pick<HelpdeskDemoEnv, 'DEMO_ONLY' | 'DEMO_LIMITER'>> & {
+    RP_PRIVATE_JWK: string;
+    LOCAL_ONLY?: string;
+  };
 type Session = {
   token_hash: string;
   sid: string;
@@ -104,7 +109,8 @@ function cookie(request: Request, name: string): string {
 function baseHeaders(env: Env): Headers {
   return new Headers({
     'Cache-Control': 'no-store',
-    'Referrer-Policy': 'same-origin',
+    'Referrer-Policy': 'strict-origin',
+    'X-Robots-Tag': env.DEMO_ONLY === 'true' ? 'noindex, nofollow' : 'noindex',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${env.ISSUER}; frame-ancestors 'none'; base-uri 'none'`,
   });
@@ -118,6 +124,8 @@ function html(
   path = '/',
 ): Response {
   const t = (key: MessageKey) => escape(strings.message(key));
+  const demo = env.DEMO_ONLY === 'true' ? demoMessages(strings.locale) : null;
+  const title = demo ? escape(demo.title) : t('helpTitle');
   const languageUrl = new URL(path, env.RP_ORIGIN);
   // Keep the current page when switching, without replaying callback parameters or POSTs.
   if (languageUrl.pathname === '/callback') languageUrl.pathname = '/';
@@ -129,7 +137,7 @@ function html(
   headers.append('Set-Cookie', cookieHeader(LOCALE_COOKIE, strings.locale, 31536000));
   if (setCookie) headers.append('Set-Cookie', setCookie);
   return new Response(
-    `<!doctype html><html lang="${strings.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t('helpTitle')}</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}</style><nav><a href="/">${t('helpTitle')}</a><a href="/help">${t('helpHeading')}</a><a href="/tickets">${t('helpTickets')}</a><a href="${escape(languageUrl.pathname + languageUrl.search)}" lang="${strings.locale === 'ja' ? 'en' : 'ja'}" aria-label="${t('language')}">${strings.locale === 'ja' ? 'English' : '日本語'}</a></nav><main>${content}</main></html>`,
+    `<!doctype html><html lang="${strings.locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font:16px system-ui;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6}nav a{margin-right:1rem}textarea,input[type=text]{width:100%;box-sizing:border-box;padding:.5rem}textarea{min-height:9rem}article{padding:1rem 0;border-bottom:1px solid #ddd}button{padding:.45rem .8rem}pre{white-space:pre-wrap}${demo ? demoStyle : ''}</style><nav><a href="/">${title}</a>${demo ? `<a href="/session">${escape(demo.session)}</a><a href="https://mikaki.org">mikaki.org</a>` : `<a href="/help">${t('helpHeading')}</a><a href="/tickets">${t('helpTickets')}</a>`}<a href="${escape(languageUrl.pathname + languageUrl.search)}" lang="${strings.locale === 'ja' ? 'en' : 'ja'}" aria-label="${t('language')}">${strings.locale === 'ja' ? 'English' : '日本語'}</a></nav><main>${content}</main></html>`,
     { status, headers },
   );
 }
@@ -261,7 +269,7 @@ async function checkSession(env: Env, sid: string, sub: string, authTime: number
     idleTimeout: result.app_idle_timeout,
   };
 }
-async function current(request: Request, env: Env): Promise<Session | null> {
+async function current(request: Request, env: Env, forceCheck = false): Promise<Session | null> {
   const token = cookie(request, SESSION);
   if (!token) return null;
   const db = env.DB.withSession('first-primary');
@@ -272,10 +280,20 @@ async function current(request: Request, env: Env): Promise<Session | null> {
     .bind(await hash(token), now(), now())
     .first<Session>();
   if (!session) return null;
-  const valid =
-    session.lease_until <= now()
-      ? await checkSession(env, session.sid, session.sub, session.auth_time)
-      : null;
+  let valid: Awaited<ReturnType<typeof checkSession>> | null = null;
+  if (forceCheck || session.lease_until <= now()) {
+    try {
+      valid = await checkSession(env, session.sid, session.sub, session.auth_time);
+    } catch (error) {
+      // A known revocation must also invalidate a still-unexpired cached lease.
+      if (error instanceof HttpError && error.status === 401)
+        await db
+          .prepare('DELETE FROM rp_session WHERE token_hash=?')
+          .bind(session.token_hash)
+          .run();
+      throw error;
+    }
+  }
   const timestamp = now();
   if (valid && valid.lease <= timestamp) fail(401, 'session_expired');
   const parent = Math.min(session.parent_expires_at, valid?.parent ?? session.parent_expires_at);
@@ -301,8 +319,8 @@ async function current(request: Request, env: Env): Promise<Session | null> {
   if (!session) fail(401, 'session_changed');
   return session;
 }
-async function requireSession(request: Request, env: Env): Promise<Session> {
-  const session = await current(request, env);
+async function requireSession(request: Request, env: Env, forceCheck = false): Promise<Session> {
+  const session = await current(request, env, forceCheck);
   if (!session) fail(401, 'login_required');
   return session;
 }
@@ -400,6 +418,11 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
   )
     fail(401, 'invalid_id_token');
   const valid = await checkSession(env, payload.sid, payload.sub, payload.auth_time);
+  if (env.DEMO_ONLY === 'true') {
+    valid.parent = Math.min(valid.parent, now() + 3600);
+    valid.lease = Math.min(valid.lease, valid.parent);
+    valid.idle = Math.min(valid.idle, valid.parent);
+  }
   const secret = random();
   const inserted = await env.DB.prepare(
     'INSERT INTO rp_session(token_hash,sid,sub,auth_time,lease_until,parent_expires_at,idle_expires_at,idle_timeout_seconds) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM logout_tombstone WHERE sid=? AND expires_at>?)',
@@ -418,7 +441,11 @@ async function callback(request: Request, env: Env, url: URL): Promise<Response>
     )
     .run();
   if (inserted.meta.changes !== 1) fail(401, 'session_revoked');
-  return redirect(env, '/tickets', cookieHeader(SESSION, secret, valid.parent - now()));
+  return redirect(
+    env,
+    env.DEMO_ONLY === 'true' ? '/session' : '/tickets',
+    cookieHeader(SESSION, secret, valid.parent - now()),
+  );
 }
 
 async function backchannel(request: Request, env: Env): Promise<Response> {
@@ -687,6 +714,70 @@ export default {
         !env.CLIENT_ID
       )
         fail(400, 'invalid_configuration');
+      if (env.DEMO_ONLY === 'true') {
+        const demo = demoMessages(strings.locale);
+        if (
+          ![
+            '/',
+            '/health',
+            '/login',
+            '/callback',
+            '/backchannel',
+            '/logout',
+            '/session',
+            '/session/check',
+          ].includes(url.pathname)
+        )
+          fail(404, 'not_found');
+        if (request.method === 'GET' && url.pathname === '/health') {
+          if (!env.RP_PRIVATE_JWK || !env.DEMO_LIMITER) fail(503, 'invalid_configuration');
+          await env.DB.prepare('SELECT token_hash FROM rp_session LIMIT 1').first();
+          return Response.json(
+            { status: 'ok', issuer: env.ISSUER, origin: env.RP_ORIGIN, mode: 'login-demo' },
+            { headers: baseHeaders(env) },
+          );
+        }
+        if (request.method === 'POST' && ['/login', '/session/check'].includes(url.pathname)) {
+          if (!env.DEMO_LIMITER) fail(503, 'invalid_configuration');
+          if (!(await env.DEMO_LIMITER.limit({ key: `mikaki-demo:${url.pathname}` })).success)
+            return html(
+              env,
+              strings,
+              `<h1>${escape(demo.title)}</h1><p>${escape(demo.rateLimited)}</p>`,
+              429,
+            );
+        }
+        if (request.method === 'GET' && url.pathname === '/') {
+          const browser = cookie(request, BROWSER) || random();
+          const session = await current(request, env);
+          const prefix = strings.locale === 'en' ? '/en' : '';
+          return html(
+            env,
+            strings,
+            `<h1>${escape(demo.home)}</h1><p>${escape(demo.intro)}</p>${session ? `<p>${escape(demo.active)}</p><p><a href="/session">${escape(demo.session)}</a></p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${escape(demo.login)}</button></form>`}<p>${escape(demo.privacy)}</p><p><a href="https://mikaki.org${prefix}/contact">${escape(demo.invitation)}</a> · <a href="https://mikaki.org${prefix}/integration-example">${escape(demo.guide)}</a></p>`,
+            200,
+            cookieHeader(BROWSER, browser, 86400),
+          );
+        }
+        if (
+          (request.method === 'GET' && url.pathname === '/session') ||
+          (request.method === 'POST' && url.pathname === '/session/check')
+        ) {
+          const force = request.method === 'POST';
+          if (force) await readForm(request, env);
+          const session = await requireSession(request, env, force);
+          if (force) return redirect(env, '/session');
+          const csrf = formCsrf(await browserCsrf(request));
+          return html(
+            env,
+            strings,
+            `<h1>${escape(demo.session)}</h1><h2>${escape(demo.active)}</h2><p>${escape(demo.sessionBody)}</p><dl><dt>${escape(demo.lease)}</dt><dd>${new Date(session.lease_until * 1000).toISOString()}</dd><dt>${escape(demo.expires)}</dt><dd>${new Date(session.parent_expires_at * 1000).toISOString()}</dd></dl><form method="post" action="/session/check">${csrf}<button>${escape(demo.check)}</button></form><form method="post" action="/logout">${csrf}<button>${escape(demo.logout)}</button></form><p>${escape(demo.logoutBody)}</p><p><a href="${env.ISSUER}/logout">${escape(demo.opLogout)}</a></p>`,
+            200,
+            undefined,
+            '/session',
+          );
+        }
+      }
       if (request.method === 'GET' && url.pathname === '/') {
         let browser = cookie(request, BROWSER);
         if (!browser) browser = random();
@@ -763,7 +854,7 @@ export default {
       return html(
         env,
         strings,
-        `<h1>${failure.status === 404 ? t('helpNotFound') : t('helpErrorHeading')}</h1><p>${escape(errorMessage(strings, failure.message))}</p><p><a href="/">${t('helpBackHome')}</a></p>`,
+        `<h1>${failure.status === 404 ? t('helpNotFound') : t('helpErrorHeading')}</h1><p>${escape(env.DEMO_ONLY === 'true' && failure.message === 'login_required' ? demoMessages(strings.locale).loginRequired : errorMessage(strings, failure.message))}</p><p><a href="/">${t('helpBackHome')}</a></p>`,
         failure.status,
         undefined,
         new URL(request.url).pathname,
