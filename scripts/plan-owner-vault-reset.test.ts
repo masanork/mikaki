@@ -22,7 +22,7 @@ test('reset planning rehearses the complete main schema and records source/confi
     plan.source.commit,
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   );
-  const op = plan.schemas.find((schema) => schema.database === 'mikaki-auth')!;
+  const op = plan.schemas.find((schema) => schema.database === 'mikaki-auth-owner')!;
   assert.ok(op.tables.includes('vault_owner_key_head'));
   assert.ok(op.tables.includes('vault_owner_key_wrap'));
   assert.ok(op.tables.includes('vault_owner_record_head'));
@@ -65,7 +65,7 @@ test('inventory separates OP storage, service-bound claims, and retiring demo re
   assert.deepEqual(
     plan.databases.map((db) => [db.name, db.id, db.disposition]),
     [
-      ['mikaki-auth', 'f9299d62-2dbf-4bae-ae49-8b75674572d4', 'reset'],
+      ['mikaki-auth-owner', 'd0258938-0d27-4110-8aa9-c82e20f3885b', 'reset'],
       ['mikaki-demo-rp', 'ce11d383-758b-4574-8bcc-7febc505a408', 'retire-after-client-revocation'],
     ],
   );
