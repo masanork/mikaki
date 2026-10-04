@@ -19,6 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(2))
+        // This stdio fixture pauses its runtime between commands. Do not retain
+        // pooled sockets whose peer can close them while Tokio is not polled.
+        .pool_max_idle_per_host(0)
         .add_root_certificate(reqwest::Certificate::from_pem(
             config["tls_ca"]
                 .as_str()
