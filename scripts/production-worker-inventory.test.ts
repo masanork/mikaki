@@ -33,20 +33,9 @@ function fixture(
     calls.set(path, (calls.get(path) ?? 0) + 1);
     const url = new URL('https://fixture.test' + path);
     let value: unknown;
-    if (url.pathname.endsWith('/scripts-search')) {
-      const page = Number(url.searchParams.get('page'));
-      assert.equal(url.searchParams.get('order_by'), 'name');
-      assert.equal(url.searchParams.get('per_page'), '20');
-      const items = sorted
-        .slice((page - 1) * 20, page * 20)
-        .map((script_name) => ({ script_name }));
-      value = envelope(items, {
-        page,
-        per_page: 20,
-        count: items.length,
-        total_count: sorted.length,
-        total_pages: Math.ceil(sorted.length / 20),
-      });
+    if (url.pathname.endsWith('/scripts')) {
+      assert.equal(url.search, '');
+      value = envelope(sorted.map((id) => ({ id })));
     } else {
       const name = /\/scripts\/([^/]+)\//.exec(url.pathname)![1]!;
       const bindings = [
@@ -82,7 +71,7 @@ function fixture(
   };
 }
 
-test('complete multi-page roster retains only sanitized ordinary-Worker evidence and explicit scope', async () => {
+test('complete single-page roster retains only sanitized ordinary-Worker evidence and explicit scope', async () => {
   const names = [
     ...Array.from({ length: 20 }, (_, n) => `other-${String(n).padStart(2, '0')}`),
     target.op,
@@ -103,7 +92,14 @@ test('complete multi-page roster retains only sanitized ordinary-Worker evidence
 });
 
 test('projection never accesses text/json/secret values', () => {
-  for (const type of ['plain_text', 'json', 'secret_text']) {
+  for (const type of [
+    'plain_text',
+    'json',
+    'secret_text',
+    'worker_loader',
+    'vectorize',
+    'workflow',
+  ]) {
     const binding = { name: 'VALUE', type };
     for (const key of ['text', 'json', 'secret'])
       Object.defineProperty(binding, key, {
@@ -147,26 +143,22 @@ test('extra D1 consumers and OP AGENT_ACCESS fail in settings or any active vers
   }
 });
 
-test('denied, duplicate, missing, unknown and excessive roster pages fail closed', async () => {
+test('denied, duplicate, missing, unknown and excessive rosters fail closed', async () => {
   for (const mutate of [
     (v: any) => {
-      delete v.result_info;
+      delete v.result;
     },
     (v: any) => {
-      v.result_info.total_count = 101;
-      v.result_info.total_pages = 6;
+      v.result = Array.from({ length: 101 }, (_, n) => ({ id: `other-${n}` }));
     },
     (v: any) => {
-      v.result_info.page = 2;
+      v.result_info = { page: 1, total_pages: 2 };
     },
     (v: any) => {
-      v.result_info.count = 100;
+      v.result[1].id = v.result[0].id;
     },
     (v: any) => {
-      v.result_info.total_pages = 2;
-    },
-    (v: any) => {
-      v.result[1].script_name = v.result[0].script_name;
+      delete v.result[0].id;
     },
     (v: any) => {
       v.result[0].environment_is_default = false;
@@ -181,7 +173,7 @@ test('denied, duplicate, missing, unknown and excessive roster pages fail closed
     await assert.rejects(
       inspectWorkerInventory(
         fixture(undefined, (path, value) => {
-          if (path.includes('/scripts-search')) mutate(value);
+          if (path.endsWith('/scripts')) mutate(value);
           return value;
         }),
         target,
@@ -230,7 +222,7 @@ test('binding, deployment and roster ambiguity or drift stops planning', async (
         v.result.bindings.push({ name: 'NEW', type: 'service', service: 'new-target' });
     },
     (p: string, v: any, n: number) => {
-      if (p.includes('/scripts-search') && n > 1) v.result[1].script_name = 'changed';
+      if (p.endsWith('/scripts') && n > 1) v.result[1].id = 'changed';
     },
   ])
     await assert.rejects(
@@ -272,6 +264,8 @@ test('transport is fixed-origin GET metadata, with endpoint allowlist and redact
     path.replace('/settings', ''),
     'https://evil.test/',
     path + '?redirect=evil',
+    `/accounts/${target.account}/workers/scripts?tags=filtered`,
+    `/accounts/${target.account}/workers/scripts-search?order_by=name&page=1&per_page=20`,
   ])
     await assert.rejects(get(bad), /Unapproved/);
   assert.equal(calls, 1);
@@ -300,6 +294,23 @@ test('transport is fixed-origin GET metadata, with endpoint allowlist and redact
     )(path),
     /exceeds limit/,
   );
+});
+
+test('unknown binding types still require review', () => {
+  assert.throws(
+    () => projectBindings([{ name: 'UNKNOWN', type: 'future_binding' }]),
+    /Unknown Worker binding type/,
+  );
+});
+
+test('transport allows only the unfiltered full roster endpoint', async () => {
+  const path = `/accounts/${target.account}/workers/scripts`;
+  const get = cloudflareMetadataGet(target.account, 'synthetic-token', async (url, init) => {
+    assert.equal(url, 'https://api.cloudflare.com/client/v4' + path);
+    assert.equal(init?.method, 'GET');
+    return new Response(JSON.stringify(envelope([{ id: target.op }])));
+  });
+  assert.deepEqual(await get(path), envelope([{ id: target.op }]));
 });
 
 test('source annotations cannot replace exact qualified activation versions', async () => {

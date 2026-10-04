@@ -1,7 +1,6 @@
 /** Fixed-origin GET metadata only. Never request script content or secret endpoints. */
 const ORIGIN = 'https://api.cloudflare.com/client/v4';
-const PAGE_SIZE = 20;
-const MAX_PAGES = 5;
+const MAX_WORKERS = 100;
 const MAX_BYTES = 2 * 1024 * 1024;
 const namePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -32,6 +31,9 @@ const bindingTypes = new Set([
   'pipelines',
   'images',
   'browser',
+  'worker_loader',
+  'vectorize',
+  'workflow',
 ]);
 type Row = Record<string, unknown>;
 export type MetadataGet = (path: string) => Promise<unknown>;
@@ -111,79 +113,37 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
 }
 
 async function roster(get: MetadataGet, base: string): Promise<string[]> {
+  // The official list endpoint is SinglePage and returns all uploaded Workers.
+  // Search pagination metadata is optional and cannot establish completeness.
+  // https://developers.cloudflare.com/api/typescript/resources/workers/subresources/scripts/methods/list/
+  const envelope = await get(`${base}/scripts`);
+  const items = result(envelope);
+  gate(Array.isArray(items) && items.length <= MAX_WORKERS, 'Missing or excessive Worker roster.');
+  gate(
+    row(envelope) && envelope.result_info === undefined,
+    'Unexpected Worker roster pagination; review required.',
+  );
   const names: string[] = [];
-  let total: number | undefined, pages: number | undefined;
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    // Official unfiltered paginated roster; never follow a returned URL.
-    // https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/search/
-    const envelope = await get(
-      `${base}/scripts-search?order_by=name&page=${page}&per_page=${PAGE_SIZE}`,
-    );
-    const items = result(envelope);
+  for (const item of items) {
+    gate(row(item), 'Malformed Worker roster entry.');
+    const name = safeName(item.id);
+    gate(!names.includes(name), 'Duplicate Worker roster entry.');
     gate(
-      row(envelope) && Array.isArray(items) && row(envelope.result_info),
-      'Incomplete Worker roster pagination.',
+      item.environment_is_default === undefined || item.environment_is_default === true,
+      'Nondefault/unknown Worker environment requires review.',
     );
-    const info = envelope.result_info;
-    gate(
-      info.page === page && info.per_page === PAGE_SIZE && info.count === items.length,
-      'Worker roster page metadata disagrees.',
-    );
-    gate(
-      Number.isSafeInteger(info.total_count) &&
-        Number(info.total_count) >= 0 &&
-        Number(info.total_count) <= PAGE_SIZE * MAX_PAGES,
-      'Worker roster exceeds reviewed inventory limit.',
-    );
-    gate(
-      Number.isSafeInteger(info.total_pages) &&
-        Number(info.total_pages) >= 0 &&
-        Number(info.total_pages) <= MAX_PAGES,
-      'Worker roster pagination overflow.',
-    );
-    const expectedPages = Math.max(1, Math.ceil(Number(info.total_count) / PAGE_SIZE));
-    gate(
-      info.total_pages === expectedPages || (info.total_count === 0 && info.total_pages === 0),
-      'Worker roster total/page count disagrees.',
-    );
-    total ??= Number(info.total_count);
-    pages ??= expectedPages;
-    gate(
-      total === info.total_count && pages === expectedPages,
-      'Worker roster changed during pagination.',
-    );
-    gate(
-      items.length === Math.min(PAGE_SIZE, total - names.length),
-      'Worker roster page is incomplete.',
-    );
-    for (const item of items) {
-      gate(row(item), 'Malformed Worker roster entry.');
-      const name = safeName(item.script_name);
-      gate(!names.includes(name), 'Duplicate Worker roster entry.');
-      gate(
-        item.environment_is_default === undefined || item.environment_is_default === true,
-        'Nondefault/unknown Worker environment requires review.',
-      );
-      if (item.environment_name !== undefined || item.service_name !== undefined) {
+    if (item.environment_name !== undefined || item.service_name !== undefined) {
+      gate(item.environment_is_default === true, 'Unqualified Worker environment requires review.');
+      if (item.environment_name !== undefined) safeName(item.environment_name);
+      if (item.service_name !== undefined)
         gate(
-          item.environment_is_default === true,
-          'Unqualified Worker environment requires review.',
+          safeName(item.service_name) === name,
+          'Worker service identity differs; review required.',
         );
-        if (item.environment_name !== undefined) safeName(item.environment_name);
-        if (item.service_name !== undefined)
-          gate(
-            safeName(item.service_name) === name,
-            'Worker service identity differs; review required.',
-          );
-      }
-      names.push(name);
     }
-    if (page === pages) {
-      gate(names.length === total, 'Incomplete Worker roster.');
-      return names.sort();
-    }
+    names.push(name);
   }
-  throw new InventoryError('Worker roster pagination overflow.');
+  return names.sort();
 }
 
 async function activeVersions(get: MetadataGet, path: string): Promise<string[]> {
@@ -337,7 +297,7 @@ export function cloudflareMetadataGet(
   return async (path) => {
     gate(
       path.startsWith(base) &&
-        /^(?:scripts-search\?order_by=name&page=[1-5]&per_page=20|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
+        /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
           path.slice(base.length),
         ),
       'Unapproved Cloudflare metadata endpoint.',

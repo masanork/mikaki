@@ -131,14 +131,19 @@ restore cleared data; after v2 use, reassess compatibility before rolling back.
 ### Qualified dormant upgrade window
 
 Plan, apply and post-application inspection each check the complete ordinary
-account-Worker roster using [paginated script search](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/search/).
-Pagination must be complete and consistent, without duplicates or ambiguous/
-nondefault environments, within five pages/100 scripts. Check each script's
+account-Worker roster using the unfiltered [single-page script list](https://developers.cloudflare.com/api/typescript/resources/workers/subresources/scripts/methods/list/).
+Unlike script search, this endpoint returns the full roster without optional pagination
+metadata. Reject more than 100 Workers, duplicate/malformed identities, or unexpected
+pagination metadata; never infer completeness from a short search page.
+Reject ambiguous/nondefault environments. Check each script's
 [current settings](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/)
 and every version in its [active deployment](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/),
 using [version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/).
 Reread the roster/deployments/settings to reject drift. Denied, missing, unknown,
 oversized or ambiguous responses fail closed. The OP cannot have `AGENT_ACCESS`.
+The recognized [Worker Loader binding](https://developers.cloudflare.com/dynamic-workers/getting-started/)
+provides an API rather than a database identity; D1 and service bindings are still
+checked separately, and unknown binding types still stop inspection.
 Among ordinary Workers, only the declared OP and ClaimWorker may bind this D1.
 
 Both must serve the independently recorded old-live version at 100%, with upload
