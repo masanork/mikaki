@@ -3698,7 +3698,10 @@ pub async fn main(
     // reaching the callback gets a fixed redirect that drops the code and
     // state query before displaying recovery instructions.
     let url = req.url()?;
-    if url.host_str() == Some("mikaki-native.tossa.app") {
+    if matches!(
+        url.host_str(),
+        Some("app.mikaki.org" | "mikaki-native.tossa.app")
+    ) {
         return match native_host_route(req.method() == worker::Method::Get, url.path()) {
             NativeHostRoute::Apple => app_association::apple_for_env(&env),
             NativeHostRoute::Android => app_association::android_for_env(&env),
