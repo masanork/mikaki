@@ -268,14 +268,16 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
         }
       }
     }
+    // Default workspace checks above stay on v2. The per-attribute panels and
+    // their independent reads/failure retries below explicitly qualify v1.
     for (const section of ['connections', 'security']) {
-      await sourceCoverage.goto(`${origin}/vault?lang=en#${section}`);
+      await sourceCoverage.goto(`${origin}/vault?lang=en&storage=legacy-v1#${section}`);
       await expect(page.locator(`#${section}`)).toHaveAttribute('open', '');
       await expect(page.locator(`#${section} > summary`)).toBeVisible();
     }
     // None of the independent reads may wait for another read's response.
     holdReads = true;
-    await sourceCoverage.goto(`${origin}/vault?lang=en`);
+    await sourceCoverage.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     try {
       await expect.poll(() => observedReads.size).toBe(3);
       await expect(page.locator('#unlock')).toBeDisabled();
@@ -303,7 +305,7 @@ test('product screens preserve CSP, locale, keyboard/mobile access and profile f
       .poll(() => page.locator('.product-header').getAttribute('data-light-phase'))
       .not.toBe(offscreenPhase);
     failLoad = true;
-    await sourceCoverage.goto(`${origin}/vault?lang=en`);
+    await sourceCoverage.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
     await expect(page.locator('#status')).toHaveText('Loading failed.');
     await expect(page.locator('#unlock')).toBeDisabled();
     const reload = page.getByRole('button', {

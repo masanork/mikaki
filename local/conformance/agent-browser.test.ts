@@ -178,7 +178,7 @@ test('Vault owner selects saved content, exports locally, issues remote access, 
         body: Buffer.from(await response.arrayBuffer()),
       });
     });
-    await page.goto('https://mikaki.test/vault?lang=en');
+    await page.goto('https://mikaki.test/vault?lang=en&storage=legacy-v1');
     await page.locator('#connections > summary').click();
     const panel = page.getByRole('region', { name: 'Share with an AI agent' });
     await assert.rejects(
