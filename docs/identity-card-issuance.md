@@ -2,6 +2,8 @@
 
 The Android Tauri client reads My Number input-support four attributes and traditional IC driving licences. It can submit the signed evidence, obtain account-owner approval in the system browser, and receive a first-party **Mikaki linked-document attribute credential** through OID4VCI 1.0 (`dc+sd-jwt` or `mso_mdoc`). This is implemented locally, disabled for production by default, and not yet qualified with physical cards. It is not a government-issued PID or mobile driving licence.
 
+**Source status, 2026-10-05:** PR #105 merged on 2026-10-04. Main includes Identity migrations `0036`–`0044` and the subsequent GC/resource migrations `0045`–`0046`. The preparation and integration checkpoints below record pre-merge work. They do not establish the current production migration ledger, feature activation or physical-device qualification; see [current source and deployment evidence](status.md).
+
 ## Merge and activation gates
 
 The merge target is a disabled-by-default implementation with reproducible host regressions. The auth.mikaki.org deployment is also used for testing. Identity routes may be enabled there after CI, migrations and explicit trust/key provisioning, so physical-device qualification can run against the deployed service. Physical-device qualification and formal certification remain required before claiming those assurances; the selected suite results below do not establish them.
@@ -14,13 +16,13 @@ Before proposing the identity PR:
 
 Before enabling test-deployment routes, provision explicit operator-validated card trust, dedicated credential signing keys, rate limits and the selected Wallet client/attester policies. Then qualify real card issuer trust and revocation, actual card reads, Android Keystore custody/persistence/migration/deletion, account switching, the intended deployed Wallet/issuer callbacks and physical ISO transports. Resolve the official suite's remaining cases and obtain certification separately before claiming conformance. A host CLI using a patched software attester is interoperability evidence only within the recorded fixture profile.
 
-### Migration numbering before the first identity PR
+### Historical migration numbering before the first identity PR
 
 Current `main` uses 0030–0035 for Web sign-in and owner Vault features. The unpublished identity sequence has been moved from 0030–0038 to **0036–0044**, preserving the existing main migration files byte for byte. [The upgrade rehearsal](../scripts/identity-migration-upgrade.test.ts), included in `test:identity-contracts`, starts with the existing main schema and populated Vault key/wrapper/ciphertext rows. It checks their preservation, unchanged existing schema objects, foreign-key integrity and unique migration numbers. An intermediate identity-schema rehearsal also checks PAR callback retention, the default single-credential budget of existing grants, failed issuance preserving authority and nonce, successful nonce consumption and revocation of remaining grants.
 
 These are disposable SQLite rehearsals. Temporary databases created with the previous unpublished identity filenames should be recreated; renaming files is not a migration of their applied-migration ledger. No production identity migration has been applied. The branch still needs integration with current main's code and the full PR checks; restoring its migration files alone does not complete that integration.
 
-### PR integration checkpoint
+### Historical PR integration checkpoint
 
 The isolated `feat/identity-wallet-qualification` branch starts from main `d3e0223`. It preserves main's website, login design, native branding and OIDC lifecycle changes, with compiled identity endpoints updated to `auth.mikaki.org` and `app.mikaki.org`. Android build outputs are excluded. Shared identity tests, native identity tests, existing mobile UI regressions, migration rehearsals and actual workerd issuance/presentation/UserInfo checks have been rerun after integration. Historical external Wallet and official suite results below remain evidence for their recorded checkpoints, rather than certification of this new branch.
 

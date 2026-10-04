@@ -4,7 +4,7 @@
 
 ## Distinguish the roles
 
-Mikaki is an OIDC provider (OP) for registered relying parties (RPs). It uses a WebAuthn Passkey to authenticate a person during an authorization transaction. The owner Vault is a same-origin Web application and currently authorizes through the `__Host-op-sso` Cookie; an unauthenticated page visit starts first-party Web sign-in; its protected APIs return 401 without that session. Vault unlock separately calls WebAuthn PRF in the owner page. An ID Token or Access Token does not create a Vault session or provide PRF output. See [OIDC login](oidc-login.md), [Vault design](personal-vault.md), and the [Vault owner check](../crates/worker/src/vault_attributes.rs).
+Mikaki is an OIDC provider (OP) for registered relying parties (RPs). It uses a WebAuthn Passkey to authenticate a person during an authorization transaction. The owner Vault is a same-origin Web application and currently authorizes through the `__Host-op-sso` Cookie; an unauthenticated page visit starts first-party Web sign-in; its protected APIs return 401 without that session. Vault unlock separately calls WebAuthn PRF in the owner page. An ID Token or Access Token does not create a Vault session or provide PRF output. See [OIDC login](oidc-login.md), [Vault design](personal-vault.md), and the [shared Vault owner check](../crates/worker/src/vault_http.rs).
 
 There are three different potential clients here:
 
