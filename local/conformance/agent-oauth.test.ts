@@ -777,9 +777,14 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     });
     await page.goto(ownerLocation + '&lang=en');
     await expect(page.locator('#connections')).toHaveAttribute('open', '');
+    // OAuth review opens in the default workspace even before its parent key
+    // is unlocked. The old attribute presentation remains an explicit link.
     await expect(
-      page.getByRole('link', { name: 'Sharing & connections', exact: true }),
-    ).toHaveAttribute('aria-current', 'location');
+      page.getByRole('button', { name: 'Unlock with passkey', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Open existing legacy names and notes', exact: true }),
+    ).toHaveAttribute('href', '/vault?lang=en&storage=legacy-v1');
     const panel = page.getByRole('region', { name: 'Connect an OAuth client' });
     await panel.getByText('native-test · native-test', { exact: true }).waitFor();
     assert.equal(testedLoginRollback, true);
