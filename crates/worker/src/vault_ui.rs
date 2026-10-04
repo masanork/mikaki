@@ -52,7 +52,6 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     let replacements = [
         ("{{locale}}", strings.locale),
         ("{{title}}", strings.message("vaultTitle")),
-        ("{{vault_format}}", "owner-v2"),
     ];
     for (key, value) in replacements {
         html = html.replace(key, &crate::i18n::html_escape(value));

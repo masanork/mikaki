@@ -131,9 +131,7 @@ jobs:
           npm run test:vault-transfer
           npm run test:vault-disclosure
           npm run test:vault-notes
-          npm run test:attribute-proposals
           npm run test:attribute-commit
-          npm run test:agent-oauth
           npm run test:e2e
           npm run health
           cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"

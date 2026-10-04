@@ -148,51 +148,32 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     ).toBeVisible();
     assert.equal(page.url(), `${issuer}/enroll/complete?lang=en`);
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM passkey_credential').first()).n, 1);
+    const beforeOwner = ownerAssertions;
     await page.goto(`${issuer}/vault?lang=en`);
+    await expect(page.locator('#name')).toHaveCount(0);
     await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('');
     await page.locator('#name').fill('Journey owner');
     await page.locator('#save').click();
-    await expect(page.locator('#status')).toHaveText('Saved.');
-    await page.locator('#reload-profile').click();
     await expect(page.locator('#name')).toHaveValue('Journey owner');
-    assert.equal(
-      await page.evaluate(
-        () => (window as unknown as { vaultCeremonyCount: number }).vaultCeremonyCount,
-      ),
-      1,
-    );
-    await page.reload();
-    await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Journey owner');
-    // The opt-in hierarchy uses one actual virtual WebAuthn/PRF ceremony for
-    // both supported records and repeated saves. The default uses the same name/note records.
-    const beforeOwner = ownerAssertions;
-    await page.goto(`${issuer}/vault?lang=en&storage=owner-v2`);
-    await expect(page.locator('#owner-name')).toHaveCount(0);
-    await page.locator('#owner-unlock').click();
-    await expect(page.locator('#owner-name')).toHaveValue('Journey owner');
     assert.equal(ownerAssertions, beforeOwner + 1);
-    await page.locator('#owner-name').fill('Unified journey owner');
-    await page.locator('#owner-profile-save').click();
-    await expect(page.locator('#owner-profile-status')).toHaveText(
-      'Saved and verified. Vault stays open.',
-    );
+    await page.locator('#name').fill('Unified journey owner');
+    await page.locator('#save').click();
+    await expect(page.locator('#status')).toHaveText('Saved.');
     await page.locator('#owner-note-title').fill('Journey record');
     await page.locator('#owner-note-text').fill('One unlock protects both supported records.');
     await page.locator('#owner-note-save').click();
     await expect(page.locator('#owner-note-status')).toHaveText(
       'Saved and verified. Vault stays open.',
     );
-    await page.locator('#owner-name').fill('Unified journey owner updated');
-    await page.locator('#owner-profile-save').click();
-    await expect(page.locator('#owner-profile-status')).toHaveText(
-      'Saved and verified. Vault stays open.',
-    );
+    await page.locator('#name').fill('Unified journey owner updated');
+    await page.locator('#save').click();
+    await expect(page.locator('#status')).toHaveText('Saved.');
     assert.equal(ownerAssertions, beforeOwner + 1);
     await page.reload();
-    await expect(page.locator('#owner-name')).toHaveCount(0);
-    await page.locator('#owner-unlock').click();
-    await expect(page.locator('#owner-name')).toHaveValue('Unified journey owner updated');
+    await expect(page.locator('#name')).toHaveCount(0);
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     await expect(page.locator('#owner-note-text')).toHaveValue(
       'One unlock protects both supported records.',
     );

@@ -6,9 +6,6 @@ import { createTestHarness } from 'wrangler';
 import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
-import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
-import { agentKeyId } from '../../crates/worker/ui/agent-crypto.ts';
-import { newOwnerNote } from '../../crates/worker/ui/vault-note.ts';
 import { parseThreadArchive } from '../../crates/worker/ui/vault-thread-archive.ts';
 
 test('archive schema accepts human/AI messages and rejects malformed content', () => {
@@ -57,6 +54,9 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await DB.batch([
       DB.prepare("INSERT INTO account_security VALUES('owner',1,1)"),
       DB.prepare("INSERT INTO credential VALUES(?,'owner',1)").bind(id),
+      DB.prepare(
+        "INSERT INTO passkey_credential VALUES(?,'synthetic-key','synthetic-user',0,0,0,1)",
+      ).bind(id),
       DB.prepare("INSERT INTO sso_session VALUES('session','owner',?,1,?,0)").bind(id, now + 3600),
       DB.prepare("INSERT INTO sso_context VALUES('session',?,?)").bind(
         createHash('sha256').update(secret).digest('base64url'),
@@ -65,72 +65,6 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     ]);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    const keys = await crypto.subtle.generateKey(
-      {
-        name: 'RSA-OAEP',
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: 'SHA-256',
-      },
-      true,
-      ['encrypt', 'decrypt'],
-    );
-    const publicJwk = await crypto.subtle.exportKey('jwk', keys.publicKey);
-    let revoked = false;
-    const legacyStatus = () => ({
-      recipient: {
-        key_id: '',
-        resource: 'https://agent.test/mcp',
-        enabled: true,
-        public_jwk: publicJwk,
-      },
-      grants: [
-        {
-          grant_id: 'legacy-grant',
-          delegate: 'Legacy synthetic connection',
-          provider: 'Test',
-          resource: 'https://agent.test/mcp',
-          expires_at: now + 3600,
-          revoked: revoked ? 1 : 0,
-          source_revision: 1,
-          created_at: now,
-          active: revoked ? 0 : 1,
-          operations: '["list","search","read","propose","execute"]',
-        },
-      ],
-      proposals: [
-        {
-          proposal_id: 'legacy-draft',
-          request_hash: 'draft-hash',
-          title: 'Hidden legacy draft',
-          text: 'Never approve here',
-          state: 'pending',
-          expires_at: now + 3600,
-        },
-      ],
-      drafts: [],
-      audit: [],
-      note_revision: 0,
-      attribute_proposals: ['pending', 'approved'].map((state) => ({
-        proposal_id: `legacy-note-${state}`,
-        request_hash: `note-${state}`,
-        payload: JSON.stringify(newOwnerNote('Hidden legacy proposal', 'Never commit here')),
-        attribute_id: 'owner_note',
-        base_revision: 0,
-        expires_at: now + 3600,
-        state,
-        delegate: 'Legacy synthetic connection',
-        provider: 'Test',
-        destination: 'owner-vault',
-        grant_id: 'legacy-grant',
-        operation_id: null,
-        candidate: null,
-        result_revision: null,
-      })),
-    });
-    const keyId = await agentKeyId(publicJwk);
-    const legacyRequests: string[] = [];
-    const legacyModeRequests: string[] = [];
     let ceremonies = 0;
     await context.exposeFunction('recordCeremony', () => {
       ceremonies++;
@@ -181,28 +115,6 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
           return;
         }
       }
-      if (path.startsWith('/vault/agents/') || path.startsWith('/vault/attributes/'))
-        (request.frame().url().includes('storage=legacy-v1')
-          ? legacyModeRequests
-          : legacyRequests
-        ).push(`${request.method()} ${path}`);
-      if (path === '/vault/agents/status' || path === '/vault/agents/connections') {
-        const status = legacyStatus();
-        status.recipient.key_id = keyId;
-        if (path === '/vault/agents/connections') {
-          status.proposals = [];
-          status.drafts = [];
-          status.attribute_proposals = [];
-        }
-        await route.fulfill({ json: status });
-        return;
-      }
-      if (path === '/vault/agents/revoke') {
-        assert.deepEqual(request.postDataJSON(), { grant_id: 'legacy-grant' });
-        revoked = true;
-        await route.fulfill({ json: { ok: true } });
-        return;
-      }
       if (failSession && path === '/vault/session') {
         await route.fulfill({ status: 503 });
         return;
@@ -244,71 +156,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         body,
       });
     });
-    // A retained v1 name without a v2 root must not trap this account in the
-    // old per-attribute unlock UI. The same ciphertext remains readable later.
-    const legacyName = await sealAttribute(
-      new TextEncoder().encode('Retained legacy name'),
-      new Uint8Array(32).fill(0x71),
-      new Uint8Array(credential),
-      new Uint8Array(32).fill(0x42),
-      origin,
-      'name',
-      1,
-    );
-    const savedLegacy = await worker.fetch(`${origin}/vault/attributes/name`, {
-      method: 'PUT',
-      headers: {
-        Cookie: `__Host-op-sso=${secret}`,
-        Origin: origin,
-        'Content-Type': 'application/json',
-        'X-Operation-ID': randomBytes(32).toString('base64url'),
-        'If-None-Match': '*',
-      },
-      body: JSON.stringify(legacyName),
-    });
-    assert.equal(savedLegacy.status, 200, await savedLegacy.text());
     const page = await context.newPage();
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('dialog', (d) => void d.accept());
     await page.goto(`${origin}/vault?lang=en`);
-    // A populated credential, active legacy grant and both pending/approved note
-    // proposals must not expose legacy data actions in the default v2 workspace.
-    await page.locator('#connections summary').click();
-    const connections = page.locator('#connections');
-    await expect(
-      connections.getByText('Legacy synthetic connection · Test · https://agent.test/mcp', {
-        exact: true,
-      }),
-    ).toBeVisible();
-    const assertConnectionsOnly = async () => {
-      for (const label of [
-        'Allow note proposals for this connection',
-        'Approve this note proposal (do not save yet)',
-        'Encrypt and save the approved note',
-        'Retry the same encrypted commit',
-        'Approve this exact draft',
-        'Prepare a local MCP export',
-        'Create remote access',
-      ])
-        await expect(connections.getByRole('button', { name: label, exact: true })).toHaveCount(0);
-      await expect(connections.getByText('Hidden legacy proposal', { exact: true })).toHaveCount(0);
-      await expect(connections.getByText('Hidden legacy draft', { exact: true })).toHaveCount(0);
-      assert.ok(
-        legacyRequests.every((request) =>
-          ['GET /vault/agents/connections', 'POST /vault/agents/revoke'].includes(request),
-        ),
-        legacyRequests.join('\n'),
-      );
-    };
-    await assertConnectionsOnly();
     assert.equal(ceremonies, 0);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toBeEnabled();
     await expect(page.locator('#name')).toBeFocused();
     assert.equal(ceremonies, 1);
-    await assertConnectionsOnly();
-    await connections.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await assertConnectionsOnly();
     await page.evaluate(() =>
       (window as unknown as { setVaultHidden: (value: boolean) => void }).setVaultHidden(true),
     );
@@ -422,21 +278,30 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     );
     await expect(page.locator('#thread-search')).toHaveValue('');
     await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search-scope').selectOption({ label: '申請の相談' });
     await page.locator('#thread-search').fill('情報');
     await expect(results.getByRole('button')).toHaveCount(1);
     await results.getByRole('button').click();
     await expect(page.locator('#thread-message-1')).toBeFocused();
+    await page.locator('#threads .product-danger').click();
+    await expect(page.locator('#thread-search')).toHaveValue('');
+    await expect(page.locator('#thread-search-scope')).toHaveValue('');
+    await expect(results.getByRole('button')).toHaveCount(0);
+    await page.locator('#thread-search').fill('申請');
+    await expect(results.getByRole('button')).toHaveCount(1);
+    await expect(results.getByRole('button')).toContainText('別の相談');
     await page.locator('#thread-search').fill('');
     await page.locator('#reload-profile').click();
     await expect(page.locator('#name')).toHaveValue('New owner');
     failSearch = true;
-    await page.locator('#thread-search').fill('情報');
+    await page.locator('#thread-search').fill('申請');
     await expect(results.getByRole('status')).toHaveText(
       'Search is unavailable. Please try again.',
     );
     failSearch = false;
     await results.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(results.getByRole('button')).toHaveCount(1);
+    await expect(results.getByRole('button')).toContainText('別の相談');
     await page.locator('#thread-search').fill('');
     assert.equal(ceremonies, 1);
     await auditAccessibility(page, 'owner-vault-mobile');
@@ -452,7 +317,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await page.reload();
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('New owner');
-    await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '別の相談', exact: true })).toBeVisible();
     assert.equal(ceremonies, 3);
     await page.locator('#delete').click();
     await expect(page.locator('#name')).toHaveValue('');
@@ -468,78 +333,6 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       'Saved and verified. Vault stays open.',
     );
     assert.equal(ceremonies, 3);
-    await page.goto(`${origin}/vault?lang=en&storage=owner-v2`);
-    await page.locator('#owner-unlock').click();
-    await expect(page.locator('#owner-name')).toHaveValue('Recreated');
-    await expect(page.locator('#owner-note-text')).toHaveValue(
-      'Same record in both presentations.',
-    );
-    await page.locator('#owner-name').fill('Updated in preview');
-    await page.locator('#owner-profile-save').click();
-    await expect(page.locator('#owner-profile-status')).toHaveText(
-      'Saved and verified. Vault stays open.',
-    );
-    await page.goto(`${origin}/vault?lang=en`);
-    await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Updated in preview');
-    await expect(page.locator('#owner-note-text')).toHaveValue(
-      'Same record in both presentations.',
-    );
-    await expect(page.getByRole('button', { name: '申請の相談', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '申請の相談', exact: true }).click();
-    await page.locator('#thread-search').fill('申請');
-    await page.locator('#thread-search-scope').selectOption({ label: '申請の相談' });
-    await expect(page.locator('#thread-search-results button')).toHaveCount(2);
-    await page.locator('#threads .product-danger').click();
-    await expect(page.locator('#thread-search')).toHaveValue('');
-    await expect(page.locator('#thread-search-scope')).toHaveValue('');
-    await expect(page.locator('#thread-search-results button')).toHaveCount(0);
-    await page.locator('#thread-search').fill('申請');
-    await expect(page.locator('#thread-search-results button')).toHaveCount(1);
-    await expect(page.locator('#thread-search-results button')).toContainText('別の相談');
-    await page.locator('#thread-search').fill('');
-    await page.locator('#connections summary').click();
-    await assertConnectionsOnly();
-    // Existing v1 data remains accessible in an explicitly separate presentation,
-    // even when a v2 root and canonical v2 records already exist.
-    const legacyPage = await context.newPage();
-    await legacyPage.goto(
-      new URL(
-        (await connections
-          .getByRole('link', { name: 'Open existing legacy names and notes', exact: true })
-          .getAttribute('href'))!,
-        origin,
-      ).href,
-    );
-    await legacyPage.locator('#unlock').click();
-    await expect(legacyPage.locator('#name')).toHaveValue('Retained legacy name');
-    await legacyPage.locator('#connections summary').click();
-    await expect(
-      legacyPage.getByRole('button', {
-        name: 'Allow note proposals for this connection',
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(
-      legacyPage.getByRole('button', {
-        name: 'Approve this note proposal (do not save yet)',
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(
-      legacyPage.getByRole('button', { name: 'Encrypt and save the approved note', exact: true }),
-    ).toBeEnabled();
-    assert.ok(legacyModeRequests.includes('GET /vault/attributes/name'));
-    await legacyPage.close();
-    await expect(page.locator('#name')).toHaveValue('Updated in preview');
-    await assertConnectionsOnly();
-    await connections.getByRole('button', { name: 'Revoke access', exact: true }).click();
-    await expect(
-      connections.getByRole('button', { name: 'Revoke access', exact: true }),
-    ).toHaveCount(0);
-    assert.ok(legacyRequests.includes('POST /vault/agents/revoke'));
-    await assertConnectionsOnly();
-    assert.equal(ceremonies, 6);
     assert.deepEqual(errors, []);
     failSession = true;
     await page.evaluate(() =>
@@ -550,7 +343,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     );
     await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
     await expect(page.locator('#name')).toHaveCount(0);
-    assert.equal(ceremonies, 6);
+    assert.equal(ceremonies, 3);
     assert.ok(
       recordBodies.every((body) => !body.includes('New owner') && !body.includes('保育園')),
     );

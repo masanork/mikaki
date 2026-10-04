@@ -43,7 +43,6 @@ mod owner_passkeys;
 #[cfg(target_arch = "wasm32")]
 mod vault_approved;
 #[cfg(target_arch = "wasm32")]
-mod vault_attributes;
 #[cfg(target_arch = "wasm32")]
 mod vault_claim_releases;
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
@@ -53,7 +52,6 @@ mod vault_http;
 #[cfg(target_arch = "wasm32")]
 mod vault_oauth_consent;
 #[cfg(target_arch = "wasm32")]
-mod vault_oauth_resource;
 #[cfg(target_arch = "wasm32")]
 mod vault_owner_approved;
 #[cfg(target_arch = "wasm32")]
@@ -2516,7 +2514,7 @@ pub async fn main(
         )
         .delete_async(
             "/vault/records/personal/name/releases",
-            vault_claim_releases::revoke,
+            vault_claim_releases::revoke_record,
         )
         .post_async(
             "/vault/records/:collection/:record/approved",
@@ -2542,40 +2540,9 @@ pub async fn main(
         .post_async("/vault/passkeys/finish", owner_passkeys::finish)
         .get_async("/vault/agents/:operation", agent_access::route)
         .post_async("/vault/agents/:operation", agent_access::route)
-        .get_async(
-            "/vault/recipient-keys/userinfo",
-            vault_attributes::recipient_key,
-        )
-        .get_async(
-            "/vault/shares/userinfo/name",
-            vault_attributes::share_status,
-        )
-        .post_async("/vault/shares/userinfo/name", vault_attributes::share)
-        .delete_async(
-            "/vault/shares/userinfo/name",
-            vault_attributes::revoke_share,
-        )
-        .get_async("/vault/releases/name", vault_claim_releases::status)
-        .post_async("/vault/releases/name", vault_claim_releases::grant)
-        .delete_async("/vault/releases/name", vault_claim_releases::revoke)
         .get_async("/vault/vault.js", vault_ui::script)
         .get_async("/vault/search.js", vault_ui::search_script)
         .get_async("/vault/sqlite3.wasm", vault_ui::search_wasm)
-        .get_async("/vault/attributes/:attribute", vault_attributes::get)
-        .get_async(
-            "/vault-api/attributes/:attribute",
-            vault_oauth_resource::get,
-        )
-        .put_async("/vault/attributes/:attribute", vault_attributes::put)
-        .post_async(
-            "/vault/attributes/:attribute/transfer",
-            vault_attributes::transfer,
-        )
-        .post_async(
-            "/vault/attributes/:attribute/approved",
-            vault_attributes::approved,
-        )
-        .delete_async("/vault/attributes/:attribute", vault_attributes::delete)
         .run(req, env)
         .await
         .or_else(|error| {

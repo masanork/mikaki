@@ -3,14 +3,13 @@
   import { restoreActionFocus } from './action-focus.js';
   import { vaultContext, OWNER_VAULT_CONTEXT, type OwnerVaultContext } from './vault-context.js';
   import ProductHeader from './ProductHeader.svelte';
-  import AgentPanel from './AgentPanel.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
-  import { OwnerVaultController, evaluateOwnerPrf as evaluate } from './vault-owner-controller.ts';
+  import { OwnerVaultController } from './vault-owner-controller.ts';
   import { OWNER_NOTE } from './vault-owner-record-store.ts';
   import OwnerRecordEditor from './OwnerRecordEditor.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
-  import { encodeBase64Url, decodeBase64Url } from './vault-crypto.ts';
+  import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
   import ThreadSearch from './ThreadSearch.svelte';
   import type { SearchHit } from './vault-thread-search.ts';
@@ -27,9 +26,6 @@
     registerDraft: context.registerDraft,
     lock: context.lock,
   });
-  let ownerId = $state(''),
-    credentialId = $state<Uint8Array<ArrayBuffer> | null>(null),
-    agentBusy = $state(false);
   let opened = $state(false),
     busy = $state(false),
     status = $state('');
@@ -114,7 +110,7 @@
     try {
       await scope.verify();
       await scope.ensure();
-      owner = new OwnerVaultController(scope, location.origin, evaluate);
+      owner = new OwnerVaultController(scope, location.origin);
       await owner.open();
       store = new OwnerWorkspaceStore(owner);
       await loadRecords();
@@ -247,6 +243,7 @@
       pending = null;
       await loadRecords();
       selected = '';
+      if (collection === 'threads') query = '';
       status = m.vaultDeleted();
     } catch (error) {
       failure(error);
@@ -264,11 +261,9 @@
       .then(async () => {
         await scope.ensure();
         if (!scope.identity) throw new Error('unconfirmed');
-        ownerId = scope.identity.account_id;
-        credentialId = decodeBase64Url(scope.identity.credential_id);
       })
       .catch(() => scope.end('unconfirmed'));
-    const unregister = context.registerDraft(() => dirty || busy || agentBusy);
+    const unregister = context.registerDraft(() => dirty || busy);
     const clear = () => {
       owner?.dispose();
       owner = null;
@@ -279,8 +274,6 @@
       query = '';
       selected = '';
       pending = null;
-      ownerId = '';
-      credentialId = null;
     };
     scope.signal.addEventListener('abort', clear, { once: true });
     const visibility = () => {
@@ -314,9 +307,7 @@
       <div class="product-workspace">
         <nav class="product-nav" aria-label={m.vaultHeading()}>
           <a href="#profile">{m.productProfile()}</a><a href="#owner-note">{m.vaultNoteHeading()}</a
-          ><a href="#threads">{m.ownerWorkspaceThreads()}</a><a href="#connections"
-            >{m.productSharing()}</a
-          >
+          ><a href="#threads">{m.ownerWorkspaceThreads()}</a>
         </nav>
         <div class="product-content">
           <section id="profile" aria-labelledby="profile-heading" aria-busy={busy}>
@@ -404,32 +395,5 @@
         </div>
       </div>
     {/if}
-    <div class="product-content">
-      <details
-        id="connections"
-        class="product-details"
-        open={new URL(location.href).searchParams.has('agent_oauth_request')}
-      >
-        <summary>{m.productSharing()}</summary>
-        <p>{m.ownerWorkspaceSharingPending()}</p>
-        <p><a href={`/vault?lang=${locale}&storage=legacy-v1`}>{m.ownerWorkspaceLegacy()}</a></p>
-        <AgentPanel
-          connectionsOnly
-          {locale}
-          onBusy={(value) => {
-            agentBusy = value;
-          }}
-          opened={false}
-          sourceRevision={0}
-          noteRevision={0}
-          {ownerId}
-          {credentialId}
-          loadName={async () => {
-            throw new Error('not shared');
-          }}
-          evaluatePrf={async (id, input) => (await evaluate(id, input, scope.signal)).output}
-        />
-      </details>
-    </div>
   </main>
 </div>
