@@ -22,7 +22,13 @@
         {
           "identifier": "local-main",
           "windows": ["main"],
-          "permissions": ["core:default", "core:app:allow-set-app-theme"]
+          "permissions": [
+            "core:default",
+            "core:app:allow-set-app-theme",
+            "core:event:deny-listen",
+            "core:event:deny-emit",
+            "core:event:deny-emit-to"
+          ]
         }
       ],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
@@ -46,8 +52,11 @@
         {
           "scheme": ["https"],
           "host": "app.mikaki.org",
-          "pathPrefix": ["/oidc/native/"],
+          "pathPrefix": ["/oidc/native/", "/identity/issuance/callback"],
           "appLink": true
+        },
+        {
+          "scheme": ["openid4vp", "mdoc-openid4vp"]
         }
       ]
     }

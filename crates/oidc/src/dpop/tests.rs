@@ -54,6 +54,9 @@ fn signature_and_public_key_metadata_are_checked_before_returning_capability() {
         ("typ", json!("JWT")),
         ("jku", json!("https://evil.example/key")),
         ("crit", json!(["extension"])),
+        ("crit", json!(null)),
+        ("b64", json!(false)),
+        ("x5u", json!("https://evil.example/key")),
     ] {
         let mut h = header();
         h[field] = value;
@@ -70,6 +73,11 @@ fn signature_and_public_key_metadata_are_checked_before_returning_capability() {
             "{field}"
         );
     }
+    let mut extended = header();
+    extended["unknown-noncritical"] = json!(true);
+    let mut extended_claims = claims();
+    extended_claims["unknown-claim"] = json!(true);
+    assert!(verify(&sign(&extended, &extended_claims, &key()), 1000).is_ok());
     let mut h = header();
     h["jwk"]["use"] = json!("sig");
     assert!(verify(&sign(&h, &claims(), &key()), 1000).is_ok());

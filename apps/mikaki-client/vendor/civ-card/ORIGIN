@@ -1,0 +1,11 @@
+Source: /Users/masanork/repo/civ
+Repository: https://github.com/digital-go-jp/civ
+Commit: 509a08d7b45e43f5f9b056b2453f66319dbe039f
+License: MIT OR Apache-2.0 (included)
+Copied unchanged: src/apdu.rs, src/errors.rs, src/gaiji/mod.rs,
+  src/jpki_utils.rs, src/models.rs, src/utils.rs.
+Local additions: Cargo.toml, src/lib.rs, this provenance record.
+This is a selected parsing/APDU subset, not the full civ library. It contains
+no PC/SC dependency, verifier, issuer, CLI, cache, or Native Messaging surface.
+The app validates bounded TLV input before using the upstream lenient parser.
+Replace with an upstream transport-neutral feature when available.

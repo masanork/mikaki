@@ -42,19 +42,12 @@ test('reset planning rehearses the complete main schema and records source/confi
         .update(readFileSync(`${root}/${item.path}`))
         .digest('hex'),
     );
-  assert.deepEqual(op.missing_identity_tables, [
-    'identity_document',
-    'identity_transaction',
-    'identity_wallet_grant',
-    'identity_wallet_par',
-    'identity_nonce',
-    'identity_attester_challenge',
-  ]);
+  assert.deepEqual(op.missing_identity_tables, []);
   assert.ok(op.legacy_tables.includes('vault_attribute_head'));
   assert.ok(
     op.legacy_dependencies.some((item) => item.name === 'agent_attribute_commit_immutable'),
   );
-  assert.ok(plan.blockers.includes('identity-not-integrated'));
+  assert.ok(!plan.blockers.includes('identity-not-integrated'));
   assert.ok(plan.blockers.includes('baseline-not-consolidated'));
   assert.ok(plan.blockers.includes('faq-production-registration-required'));
 });

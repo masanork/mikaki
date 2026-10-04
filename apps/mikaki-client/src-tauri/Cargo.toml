@@ -24,6 +24,12 @@ base64 = "0.22"
 p256 = { version = "0.13", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
+qrcode = { version = "0.14", default-features = false }
+mikaki-identity = { path = "../../../crates/identity" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-identity-proximity = { path = "../plugins/identity-proximity" }
+tauri-plugin-identity-reader = { path = "../plugins/identity-reader" }
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-native-dpop = { path = "../plugins/native-dpop" }

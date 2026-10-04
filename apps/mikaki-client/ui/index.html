@@ -177,6 +177,168 @@
             <summary>最後のエラー</summary>
             <pre id="diagnostic-error"></pre>
           </details>
+          <section id="identity-reader" hidden>
+            <h2 class="section-title">身分証の読取</h2>
+            <button id="identity-manage" class="secondary" type="button">
+              紐付けた属性を確認・解除する
+            </button>
+            <p class="help">
+              マイナンバーカードまたは従来のIC運転免許証を読み取ります。読取後に選ぶまで、サーバーへ送信しません。
+            </p>
+            <form id="identity-form">
+              <label for="identity-type">身分証</label>
+              <select id="identity-type">
+                <option value="my_number_card">マイナンバーカード</option>
+                <option value="driving_license">IC運転免許証</option>
+              </select>
+              <label id="identity-pin-label" for="identity-pin"
+                >券面事項入力補助用の暗証番号（数字4桁）</label
+              >
+              <input
+                id="identity-pin"
+                type="password"
+                inputmode="numeric"
+                pattern="[0-9]{4}"
+                minlength="4"
+                maxlength="4"
+                autocomplete="off"
+                required
+              />
+              <div id="identity-pin2-field" hidden>
+                <label for="identity-pin2">暗証番号2（数字4桁・署名検証に必要）</label>
+                <input
+                  id="identity-pin2"
+                  type="password"
+                  inputmode="numeric"
+                  pattern="[0-9]{4}"
+                  minlength="4"
+                  maxlength="4"
+                  autocomplete="off"
+                />
+                <p class="help">
+                  本籍・写真も署名検証のために読み取ります。紐付けを選んだ場合は検証のために送信しますが、本籍・写真はサーバーに保存しません。空欄なら属性の確認のみ行います。
+                </p>
+              </div>
+              <button id="identity-read" class="secondary" type="submit">カードを読み取る</button>
+            </form>
+            <button id="identity-cancel" class="secondary" type="button" hidden>
+              読み取りを取り消す
+            </button>
+            <p id="identity-status" class="help" role="status" aria-live="polite"></p>
+            <div id="identity-preview" hidden>
+              <p class="help">読取結果です。本人確認とアカウントへの紐付けはまだ行っていません。</p>
+              <dl class="facts">
+                <dt>氏名</dt>
+                <dd id="identity-name"></dd>
+                <dt>住所</dt>
+                <dd id="identity-address"></dd>
+                <dt>生年月日</dt>
+                <dd id="identity-birth-date"></dd>
+                <dt>性別</dt>
+                <dd id="identity-gender"></dd>
+                <dt>有効期限</dt>
+                <dd id="identity-expiry-date"></dd>
+              </dl>
+              <label for="identity-credential-format">受け取る属性証明書</label>
+              <select id="identity-credential-format">
+                <option value="linked_document">SD-JWT</option>
+                <option value="linked_document_mdoc">mdoc（発行者証明書の設定が必要）</option>
+              </select>
+              <button id="identity-link" class="secondary" type="button">
+                サーバーで検証して紐付ける
+              </button>
+              <p class="help">
+                選ぶと署名検証に必要な読取データを送信し、ブラウザで属性とアカウントを確認します。個人番号そのもの・暗証番号は送信しません。署名に含まれる個人番号のハッシュは検証時だけ扱い、保存しません。
+              </p>
+              <button id="identity-clear" class="secondary" type="button">
+                読取結果を消去する
+              </button>
+            </div>
+            <div id="identity-issuance" hidden>
+              <p id="identity-issuance-status" class="help" role="status" aria-live="polite"></p>
+              <p id="identity-holder" class="help"></p>
+              <button id="identity-receive" class="secondary" type="button">
+                承認を確認して証明書を受け取る
+              </button>
+              <p class="help">
+                受け取る証明書はMikakiが発行する属性証明です。有効期限は最長5分です。Androidでは最大8件を端末の鍵で暗号化して保存し、有効期限内に復元できます。
+              </p>
+              <button id="identity-credential-clear" class="secondary" type="button">
+                紐付け操作・保存したすべての証明書を消去
+              </button>
+            </div>
+            <button id="identity-wallet-restore" class="secondary" type="button">
+              保存した証明書を確認
+            </button>
+            <label for="identity-proximity-engagement">読み手との接続方法</label>
+            <select id="identity-proximity-engagement">
+              <option value="qr">QRコードで接続</option>
+              <option value="qr_nfc">QRで接続してNFCで提示</option>
+              <option value="nfc_negotiated_data">端末をかざしてNFCで提示</option>
+              <option value="nfc_negotiated">端末をかざして接続方法を交渉</option>
+              <option value="nfc">端末をかざして接続（NFC）</option>
+            </select>
+            <button id="identity-proximity-start" class="secondary" type="button">
+              mdocを近くの読み手に提示
+            </button>
+            <div id="identity-proximity-panel" hidden>
+              <p id="identity-proximity-status" class="help" role="status" aria-live="polite"></p>
+              <div id="identity-proximity-qr" aria-label="読み手に見せる接続用QRコード"></div>
+              <div id="identity-proximity-consent" hidden>
+                <p id="identity-proximity-target" class="help"></p>
+                <dl id="identity-proximity-values" class="facts"></dl>
+                <button id="identity-proximity-approve" class="secondary" type="button">
+                  表示した属性を提示する
+                </button>
+              </div>
+              <button id="identity-proximity-cancel" class="secondary" type="button">
+                近接提示を取り消す
+              </button>
+            </div>
+            <form id="identity-vp-form">
+              <label for="identity-vp-request">提示先から受け取った署名付き要求</label>
+              <textarea
+                id="identity-vp-request"
+                rows="3"
+                maxlength="16384"
+                autocomplete="off"
+                spellcheck="false"
+              ></textarea>
+              <button id="identity-vp-review" class="secondary" type="submit">
+                提示する属性を確認
+              </button>
+            </form>
+            <p id="identity-vp-status" class="help" role="status" aria-live="polite"></p>
+            <div id="identity-vp-consent" hidden>
+              <p id="identity-vp-target" class="help"></p>
+              <dl id="identity-vp-values" class="facts"></dl>
+              <button id="identity-vp-approve" class="secondary" type="button">
+                この属性を提示する
+              </button>
+              <button id="identity-vp-deny" class="secondary" type="button">提示を取り消す</button>
+            </div>
+          </section>
+          <section id="identity-wallet-issuance" hidden>
+            <h2 class="section-title">紐付け済みの属性証明書を受け取る</h2>
+            <p class="help">
+              ブラウザでアカウントと属性を確認し、この端末への発行を承認します。カードの再読取は不要です。
+            </p>
+            <label for="identity-wallet-format">受け取る属性証明書</label>
+            <select id="identity-wallet-format">
+              <option value="linked_document">SD-JWT</option>
+              <option value="linked_document_mdoc">mdoc</option>
+            </select>
+            <button id="identity-wallet-start" class="secondary" type="button">
+              この端末で証明書を受け取る
+            </button>
+            <p id="identity-wallet-status" class="help" role="status" aria-live="polite"></p>
+            <button id="identity-wallet-receive" class="secondary" type="button" hidden>
+              承認を確認して受け取る
+            </button>
+            <button id="identity-wallet-cancel" class="secondary" type="button" hidden>
+              証明書の受取を取り消す
+            </button>
+          </section>
           <section id="vault" hidden>
             <h2 class="section-title">Vaultの検証</h2>
             <p class="help">

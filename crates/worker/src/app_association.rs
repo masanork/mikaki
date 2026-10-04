@@ -2,6 +2,7 @@
 
 const APP_ID: &str = "app.tossa.mikaki";
 const CALLBACK_PATH: &str = "/oidc/native/callback";
+const ISSUANCE_CALLBACK_PATH: &str = "/identity/issuance/callback";
 
 fn apple_document(team_id: &str) -> Option<serde_json::Value> {
     if team_id.len() != 10
@@ -15,7 +16,7 @@ fn apple_document(team_id: &str) -> Option<serde_json::Value> {
         "applinks": {
             "details": [{
                 "appIDs": [format!("{team_id}.{APP_ID}")],
-                "components": [{"/": CALLBACK_PATH}]
+                "components": [{"/": CALLBACK_PATH}, {"/": ISSUANCE_CALLBACK_PATH}]
             }]
         }
     }))
@@ -136,6 +137,10 @@ mod tests {
         assert_eq!(
             document["applinks"]["details"][0]["components"][0]["/"],
             "/oidc/native/callback"
+        );
+        assert_eq!(
+            document["applinks"]["details"][0]["components"][1]["/"],
+            "/identity/issuance/callback"
         );
         assert!(apple_document("PLACEHOLDER").is_none());
         assert!(apple_document("abcdefghij").is_none());

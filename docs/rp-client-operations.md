@@ -2,7 +2,7 @@
 
 This is the mikaki operator runbook. RP implementers should start with [RP integration](rp-integration.md).
 
-This procedure covers confidential web RPs, which use ES256 `private_key_jwt` and PKCE S256. Production also has a separate native public client with `auth_method=none` and mandatory PKCE; its registration was performed from native-enabled source on draft PR [#28](https://github.com/masanork/mikaki/pull/28). The current `main` CLI and migrations do not manage that native registration. Client registration is an operator action through D1; there is no public dynamic registration endpoint. Run the web-client commands from the repository root with the correct Wrangler config and `--remote yes` for production. Each change requires an actor and reason, is written with an audit row, and defaults to validation only (`--apply no`).
+This procedure covers confidential web RPs, which use ES256 `private_key_jwt` and PKCE S256. Production also has a separate native public client with `auth_method=none` and mandatory PKCE; the current CLI supports `register-native`, with separate native callback validation. Client registration is an operator action through D1; there is no public dynamic registration endpoint. Run the web-client commands from the repository root with the correct Wrangler config and `--remote yes` for production. Each change requires an actor and reason, is written with an audit row, and defaults to validation only (`--apply no`).
 
 Apply D1 migrations before using the CLI. The registration input is a local JSON file containing only the RP's **public** JWK:
 
@@ -33,3 +33,14 @@ Redirect changes use `add-redirect` followed by RP deployment and `retire-redire
 Register logout destinations separately. Use `add-post-logout-redirect` with `{ "post_logout_redirect_uri": "https://rp.example/logout/callback" }` and `set-backchannel-logout` with `{ "backchannel_logout_uri": "https://rp.example/backchannel" }`; supply `--client`, `--input`, `--actor`, `--reason`, and `--apply` as above. Both URLs must be canonical HTTPS on the client's sector host. The post-logout redirect uses an exact-match list of at most eight active URLs; use `retire-post-logout-redirect` to disable an old one. `set-backchannel-logout` replaces the single active delivery endpoint; `retire-backchannel-logout` disables it. Check `list` after changes. The OP logout endpoints are deployed, but registering destinations alone does not prove that a particular RP receives and processes notifications; verify it end to end.
 
 Before considering the RP ready, run an end-to-end Authorization Code flow from that RP with its exact redirect, PKCE S256, and ES256 `private_key_jwt`; verify issuer, audience, state, nonce, pairwise subject, and UserInfo. A CLI registration alone does not prove interoperability.
+
+## Current production target, observed 2026-10-04
+
+A read-only `list` using `crates/worker/wrangler.production.jsonc`, `--remote yes --apply no` returned two active clients from the current `mikaki-auth` D1 database (zero rows written). The discovery issuer is `https://auth.mikaki.org`.
+
+| Client | Method | Exact callback | Active backchannel |
+| --- | --- | --- | --- |
+| `77551450-ec73-4222-972d-cd912d9493d4` | `private_key_jwt` | `https://demo.mikaki.org/callback` | `https://demo.mikaki.org/backchannel` |
+| `dfd936fd-f33d-4f82-ae39-f25e08ec7948` | `none` | `https://app.mikaki.org/oidc/native/callback` | None |
+
+Both registrations have revision 1; only the confidential demo RP has a registered ES256 public key. Neither client has a post-logout redirect. Earlier narashi/tsudoi entries in issues #4/#6 describe the previous deployment and are not in this current DB. Do not copy those old registrations or private keys automatically. The current demo RP is the registered HTTPS target for owner-browser code-exchange, SSO, logout/backchannel and session-check qualification. These read-only observations do not establish a completed owner Passkey flow or notification E2E. No client/secret/policy was changed by the inspection.

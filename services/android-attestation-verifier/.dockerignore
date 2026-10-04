@@ -1,0 +1,4 @@
+build
+.gradle
+bridge/.dev.vars
+bridge/.wrangler

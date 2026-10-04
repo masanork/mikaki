@@ -40,6 +40,8 @@ function run(command: string, argv: string[]) {
   return execFileSync(command, argv, {
     cwd: ROOT,
     encoding: 'utf8',
+    // The complete identity dependency graph exceeds Node's default 1 MiB buffer.
+    maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
 }

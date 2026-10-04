@@ -35,7 +35,16 @@
 
 
                 <data android:pathPrefix="/oidc/native/" />
+                <data android:pathPrefix="/identity/issuance/callback" />
 
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="org.chromium.arc.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="openid4vp" />
+                <data android:scheme="mdoc-openid4vp" />
             </intent-filter>
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
         </activity>

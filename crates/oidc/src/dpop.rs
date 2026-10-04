@@ -30,11 +30,12 @@ pub struct VerifiedDpopProof {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Header {
     alg: String,
     typ: String,
     jwk: PublicKey,
+    #[serde(flatten)]
+    extensions: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -113,7 +114,10 @@ pub fn verify_dpop_proof(
     let header: Header = serde_json::from_slice(&decode(h)?).map_err(|_| InvalidDpopProof)?;
     let claims: Claims = serde_json::from_slice(&decode(c)?).map_err(|_| InvalidDpopProof)?;
     let jwk = header.jwk;
-    if header.alg != "ES256"
+    if ["crit", "b64", "jku", "x5u"]
+        .iter()
+        .any(|key| header.extensions.contains_key(*key))
+        || header.alg != "ES256"
         || header.typ != "dpop+jwt"
         || jwk.kty != "EC"
         || jwk.crv != "P-256"
