@@ -1134,16 +1134,16 @@
   },
   {
     "date": "2026-10-04",
-    "commit": "a672274",
+    "commit": "8da422f",
     "code": {
-      "implementationLines": 34797,
-      "testLines": 4620,
-      "implementationFiles": 146,
-      "testFiles": 13,
+      "implementationLines": 34971,
+      "testLines": 4761,
+      "implementationFiles": 148,
+      "testFiles": 14,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 12351,
-          "testLines": 2292
+          "implementationLines": 12525,
+          "testLines": 2433
         },
         "rust": {
           "implementationLines": 16980,
