@@ -2,6 +2,7 @@
 const ORIGIN = 'https://api.cloudflare.com/client/v4';
 const PAGE_SIZE = 20;
 const MAX_PAGES = 5;
+const MAX_REQUEST_PAGES = MAX_PAGES + 1; // The sixth request can only prove an empty end.
 const MAX_BYTES = 2 * 1024 * 1024;
 const namePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -110,80 +111,127 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
   return projected;
 }
 
+function valueType(value: unknown) {
+  return value === undefined
+    ? 'missing'
+    : value === null
+      ? 'null'
+      : Array.isArray(value)
+        ? 'array'
+        : typeof value;
+}
+/** Diagnostics expose only known field presence/types and array sizes, never values or row keys. */
+export function rosterShape(envelope: unknown, requestedPage: number) {
+  const fields = ['success', 'result', 'result_info', 'pagination', 'errors', 'messages'] as const;
+  const counters = ['page', 'per_page', 'count', 'total_count', 'total_pages'] as const;
+  const info = row(envelope) ? envelope.result_info : undefined;
+  return JSON.stringify({
+    requested_page: requestedPage,
+    envelope_type: valueType(envelope),
+    fields: Object.fromEntries(
+      fields.map((key) => [key, valueType(row(envelope) ? envelope[key] : undefined)]),
+    ),
+    result_items: row(envelope) && Array.isArray(envelope.result) ? envelope.result.length : null,
+    pagination_fields: Object.fromEntries(
+      counters.map((key) => [key, valueType(row(info) ? info[key] : undefined)]),
+    ),
+  });
+}
+
 async function roster(get: MetadataGet, base: string): Promise<string[]> {
   const names: string[] = [];
   let total: number | undefined, pages: number | undefined;
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    // Official unfiltered paginated roster; never follow a returned URL.
+  for (let page = 1; page <= MAX_REQUEST_PAGES; page++) {
+    // The API documents page/per_page but makes result_info and every counter optional.
+    // Always fetch an explicit empty end page; a short page or missing totals is not an end.
     // https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/search/
     const envelope = await get(
       `${base}/scripts-search?order_by=name&page=${page}&per_page=${PAGE_SIZE}`,
     );
     const items = result(envelope);
-    gate(
-      row(envelope) && Array.isArray(items) && row(envelope.result_info),
-      'Incomplete Worker roster pagination.',
-    );
+    function pageGate(ok: unknown, message: string): asserts ok {
+      gate(ok, `${message} Roster shape: ${rosterShape(envelope, page)}`);
+    }
+    pageGate(row(envelope) && Array.isArray(items), 'Worker roster result is not an array.');
+    pageGate(items.length <= PAGE_SIZE, 'Worker roster page exceeds requested size.');
     const info = envelope.result_info;
-    gate(
-      info.page === page && info.per_page === PAGE_SIZE && info.count === items.length,
-      'Worker roster page metadata disagrees.',
-    );
-    gate(
-      Number.isSafeInteger(info.total_count) &&
-        Number(info.total_count) >= 0 &&
-        Number(info.total_count) <= PAGE_SIZE * MAX_PAGES,
+    pageGate(info === undefined || row(info), 'Worker roster pagination metadata is malformed.');
+    if (row(info)) {
+      for (const key of ['page', 'per_page', 'count', 'total_count', 'total_pages'] as const) {
+        if (!Object.hasOwn(info, key)) continue;
+        pageGate(
+          Number.isSafeInteger(info[key]) && Number(info[key]) >= 0,
+          `Worker roster ${key} is malformed.`,
+        );
+      }
+      if (Object.hasOwn(info, 'page'))
+        pageGate(info.page === page, 'Worker roster page metadata disagrees.');
+      if (Object.hasOwn(info, 'per_page'))
+        pageGate(info.per_page === PAGE_SIZE, 'Worker roster page-size metadata disagrees.');
+      if (Object.hasOwn(info, 'count'))
+        pageGate(info.count === items.length, 'Worker roster result count disagrees.');
+      if (Object.hasOwn(info, 'total_count')) {
+        pageGate(
+          Number(info.total_count) <= PAGE_SIZE * MAX_PAGES,
+          'Worker roster exceeds reviewed inventory limit.',
+        );
+        total ??= Number(info.total_count);
+        pageGate(total === info.total_count, 'Worker roster total changed during pagination.');
+      }
+      if (Object.hasOwn(info, 'total_pages')) {
+        pageGate(Number(info.total_pages) <= MAX_PAGES, 'Worker roster pagination overflow.');
+        pages ??= Number(info.total_pages);
+        pageGate(pages === info.total_pages, 'Worker roster page total changed during pagination.');
+      }
+    }
+    if (total !== undefined && pages !== undefined) {
+      pageGate(
+        pages === Math.ceil(total / PAGE_SIZE) || (total === 0 && pages === 1),
+        'Worker roster total/page count disagrees.',
+      );
+    }
+    if (items.length === 0) {
+      if (total !== undefined)
+        pageGate(names.length === total, 'Worker roster ended before its declared total.');
+      if (pages !== undefined)
+        pageGate(
+          names.length === 0 ? pages === 0 || pages === 1 : page - 1 === pages,
+          'Worker roster end disagrees with its declared pages.',
+        );
+      return names.sort();
+    }
+    pageGate(
+      page <= MAX_PAGES && names.length + items.length <= PAGE_SIZE * MAX_PAGES,
       'Worker roster exceeds reviewed inventory limit.',
     );
-    gate(
-      Number.isSafeInteger(info.total_pages) &&
-        Number(info.total_pages) >= 0 &&
-        Number(info.total_pages) <= MAX_PAGES,
-      'Worker roster pagination overflow.',
-    );
-    const expectedPages = Math.max(1, Math.ceil(Number(info.total_count) / PAGE_SIZE));
-    gate(
-      info.total_pages === expectedPages || (info.total_count === 0 && info.total_pages === 0),
-      'Worker roster total/page count disagrees.',
-    );
-    total ??= Number(info.total_count);
-    pages ??= expectedPages;
-    gate(
-      total === info.total_count && pages === expectedPages,
-      'Worker roster changed during pagination.',
-    );
-    gate(
-      items.length === Math.min(PAGE_SIZE, total - names.length),
-      'Worker roster page is incomplete.',
-    );
+    if (pages !== undefined)
+      pageGate(page <= pages, 'Worker roster continued beyond its declared pages.');
     for (const item of items) {
-      gate(row(item), 'Malformed Worker roster entry.');
+      pageGate(row(item), 'Malformed Worker roster entry.');
       const name = safeName(item.script_name);
-      gate(!names.includes(name), 'Duplicate Worker roster entry.');
-      gate(
+      pageGate(!names.includes(name), 'Duplicate Worker roster entry.');
+      pageGate(
         item.environment_is_default === undefined || item.environment_is_default === true,
         'Nondefault/unknown Worker environment requires review.',
       );
       if (item.environment_name !== undefined || item.service_name !== undefined) {
-        gate(
+        pageGate(
           item.environment_is_default === true,
           'Unqualified Worker environment requires review.',
         );
         if (item.environment_name !== undefined) safeName(item.environment_name);
         if (item.service_name !== undefined)
-          gate(
+          pageGate(
             safeName(item.service_name) === name,
             'Worker service identity differs; review required.',
           );
       }
       names.push(name);
     }
-    if (page === pages) {
-      gate(names.length === total, 'Incomplete Worker roster.');
-      return names.sort();
-    }
+    if (total !== undefined)
+      pageGate(names.length <= total, 'Worker roster exceeds its declared total.');
   }
-  throw new InventoryError('Worker roster pagination overflow.');
+  throw new InventoryError('Worker roster lacked an explicit empty end page.');
 }
 
 async function activeVersions(get: MetadataGet, path: string): Promise<string[]> {
@@ -337,7 +385,7 @@ export function cloudflareMetadataGet(
   return async (path) => {
     gate(
       path.startsWith(base) &&
-        /^(?:scripts-search\?order_by=name&page=[1-5]&per_page=20|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
+        /^(?:scripts-search\?order_by=name&page=[1-6]&per_page=20|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
           path.slice(base.length),
         ),
       'Unapproved Cloudflare metadata endpoint.',

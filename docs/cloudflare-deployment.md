@@ -133,7 +133,11 @@ restore cleared data; after v2 use, reassess compatibility before rolling back.
 Plan, apply and post-application inspection each check the complete ordinary
 account-Worker roster using [paginated script search](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/search/).
 Pagination must be complete and consistent, without duplicates or ambiguous/
-nondefault environments, within five pages/100 scripts. Check each script's
+nondefault environments. Follow at most five nonempty pages/100 scripts plus an
+explicit empty sentinel page. Missing optional counters are not zero or proof of
+completion; a short page must continue. Validate every counter that is supplied.
+Failure diagnostics contain only allowlisted field presence/types and array counts.
+Check each script's
 [current settings](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/)
 and every version in its [active deployment](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list/),
 using [version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/).

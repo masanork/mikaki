@@ -936,12 +936,15 @@ function compatibilityMetadata(extraService = false, advance: () => void = () =>
   return async (path: string) => {
     advance();
     const target = COMPATIBILITY_TARGET;
-    if (path.includes('/scripts-search'))
+    if (path.includes('/scripts-search')) {
+      const page = Number(new URL('https://fixture.test' + path).searchParams.get('page'));
+      const items = page === 1 ? [{ script_name: target.op }, { script_name: target.claim }] : [];
       return {
         success: true,
-        result: [{ script_name: target.op }, { script_name: target.claim }],
-        result_info: { page: 1, per_page: 20, count: 2, total_count: 2, total_pages: 1 },
+        result: items,
+        result_info: { page, per_page: 20, count: items.length, total_count: 2, total_pages: 1 },
       };
+    }
     const op = path.includes(`/scripts/${target.op}/`);
     const id = op ? target.versions.op : target.versions.claim;
     const bindings = [

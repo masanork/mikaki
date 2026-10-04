@@ -4,6 +4,7 @@ import {
   cloudflareMetadataGet,
   inspectWorkerInventory,
   projectBindings,
+  rosterShape,
   type MetadataGet,
 } from './production-worker-inventory.ts';
 const version = '11111111-1111-4111-8111-111111111111';
@@ -150,7 +151,7 @@ test('extra D1 consumers and OP AGENT_ACCESS fail in settings or any active vers
 test('denied, duplicate, missing, unknown and excessive roster pages fail closed', async () => {
   for (const mutate of [
     (v: any) => {
-      delete v.result_info;
+      v.result_info = null;
     },
     (v: any) => {
       v.result_info.total_count = 101;
@@ -230,7 +231,8 @@ test('binding, deployment and roster ambiguity or drift stops planning', async (
         v.result.bindings.push({ name: 'NEW', type: 'service', service: 'new-target' });
     },
     (p: string, v: any, n: number) => {
-      if (p.includes('/scripts-search') && n > 1) v.result[1].script_name = 'changed';
+      if (p.includes('/scripts-search') && n > 1 && v.result.length > 1)
+        v.result[1].script_name = 'changed';
     },
   ])
     await assert.rejects(
@@ -350,4 +352,217 @@ test('both active versions of an unrelated Worker are checked for the production
     ),
     /Another ordinary Worker/,
   );
+});
+
+function pageOf(path: string) {
+  return Number(new URL('https://fixture.test' + path).searchParams.get('page'));
+}
+
+test('optional pagination fields can be absent, partial or appear/disappear without treating them as zero', async () => {
+  for (const keep of [[], ['page'], ['per_page'], ['count'], ['total_count'], ['total_pages']]) {
+    const pages: number[] = [];
+    const value = await inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search')) {
+          pages.push(pageOf(path));
+          response.result_info = Object.fromEntries(
+            keep.map((key) => [key, response.result_info[key]]),
+          );
+        }
+        return response;
+      }),
+      target,
+    );
+    assert.equal(value.workers.length, 2);
+    assert.deepEqual(pages, [1, 2, 1, 2]);
+  }
+  for (const omit of [1, 2, 0]) {
+    const pages: number[] = [];
+    const value = await inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search')) {
+          pages.push(pageOf(path));
+          if (omit === 0 || pageOf(path) === omit) delete response.result_info;
+        }
+        return response;
+      }),
+      target,
+    );
+    assert.equal(value.workers.length, 2);
+    assert.deepEqual(pages, [1, 2, 1, 2]);
+  }
+});
+
+test('a short page containing both declared Workers still continues and detects a later D1 consumer', async () => {
+  for (const unsafe of [false, true]) {
+    const seen: number[] = [];
+    const get = fixture([target.op, target.claim, 'other'], (path, response) => {
+      if (path.includes('/scripts-search')) {
+        const page = pageOf(path);
+        seen.push(page);
+        delete response.result_info;
+        response.result =
+          page === 1
+            ? [{ script_name: target.op }, { script_name: target.claim }]
+            : page === 2
+              ? [{ script_name: 'other' }]
+              : [];
+      }
+      if (unsafe && path.includes('/scripts/other/') && path.endsWith('/settings'))
+        response.result.bindings.push(db);
+      return response;
+    });
+    if (unsafe) {
+      await assert.rejects(inspectWorkerInventory(get, target), /Another ordinary Worker/);
+      assert.deepEqual(seen, [1, 2, 3]);
+    } else {
+      assert.equal((await inspectWorkerInventory(get, target)).workers.length, 3);
+      assert.deepEqual(seen, [1, 2, 3, 1, 2, 3]);
+    }
+  }
+});
+
+test('100 Workers need a sixth empty sentinel; a nonempty sixth page or repeated page fails closed', async () => {
+  const names = [target.op, target.claim, ...Array.from({ length: 98 }, (_, i) => `other-${i}`)];
+  const pages: number[] = [];
+  assert.equal(
+    (
+      await inspectWorkerInventory(
+        fixture(names, (path, response) => {
+          if (path.includes('/scripts-search')) {
+            pages.push(pageOf(path));
+            delete response.result_info;
+          }
+          return response;
+        }),
+        target,
+      )
+    ).workers.length,
+    100,
+  );
+  assert.deepEqual(pages, [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]);
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture([...names, 'last'], (path, response) => {
+        if (path.includes('/scripts-search')) delete response.result_info;
+        return response;
+      }),
+      target,
+    ),
+    /inventory limit/,
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search')) {
+          delete response.result_info;
+          response.result = [{ script_name: target.op }, { script_name: target.claim }];
+        }
+        return response;
+      }),
+      target,
+    ),
+    /Duplicate Worker/,
+  );
+});
+
+test('present metadata is validated even when other fields are omitted', async () => {
+  for (const key of ['page', 'per_page', 'count', 'total_count', 'total_pages']) {
+    for (const value of [null, 'MUST_NOT_APPEAR', -1, 1.5]) {
+      await assert.rejects(
+        inspectWorkerInventory(
+          fixture(undefined, (path, response) => {
+            if (path.includes('/scripts-search')) response.result_info = { [key]: value };
+            return response;
+          }),
+          target,
+        ),
+        (error: Error) => {
+          assert.match(error.message, /malformed/);
+          assert.doesNotMatch(error.message, /MUST_NOT_APPEAR/);
+          return true;
+        },
+      );
+    }
+  }
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search'))
+          response.result_info = { total_count: 3, total_pages: 2 };
+        return response;
+      }),
+      target,
+    ),
+    /total\/page count/,
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search')) response.result_info = { total_count: 3 };
+        return response;
+      }),
+      target,
+    ),
+    /ended before its declared total/,
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search'))
+          response.result_info = { total_count: pageOf(path) === 1 ? 2 : 3 };
+        return response;
+      }),
+      target,
+    ),
+    /total changed/,
+  );
+  // Supplying an understated total cannot cause an early stop before a later nonempty page.
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, response) => {
+        if (path.includes('/scripts-search')) {
+          response.result_info = { total_count: 2 };
+          if (pageOf(path) === 2) response.result = [{ script_name: 'other' }];
+        }
+        return response;
+      }),
+      target,
+    ),
+    /exceeds its declared total/,
+  );
+});
+
+test('shape-only failures never disclose rows, arbitrary keys or field values', async () => {
+  const payload = {
+    success: true,
+    result: { private: 'MUST_NOT_APPEAR' },
+    result_info: { page: 'MUST_NOT_APPEAR', secret: 'MUST_NOT_APPEAR' },
+    SECRET_ENV: 'MUST_NOT_APPEAR',
+  };
+  const shape = rosterShape(payload, 1);
+  assert.match(shape, /"result":"object"/);
+  assert.match(shape, /"page":"string"/);
+  assert.doesNotMatch(shape, /MUST_NOT_APPEAR|SECRET_ENV|secret|private/);
+  await assert.rejects(
+    inspectWorkerInventory(async () => payload, target),
+    (error: Error) => {
+      assert.match(error.message, /not an array.*Roster shape:/);
+      assert.doesNotMatch(error.message, /MUST_NOT_APPEAR|SECRET_ENV|secret|private/);
+      return true;
+    },
+  );
+});
+
+test('metadata endpoint allowlist permits only the bounded sixth sentinel page', async () => {
+  const calls: string[] = [];
+  const get = cloudflareMetadataGet(target.account, 'synthetic-token', async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({ success: true, result: [] }));
+  });
+  const prefix = `/accounts/${target.account}/workers/scripts-search?order_by=name&page=`;
+  await get(prefix + '6&per_page=20');
+  await assert.rejects(get(prefix + '7&per_page=20'), /Unapproved/);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!, /page=6&per_page=20$/);
 });
