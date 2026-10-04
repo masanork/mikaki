@@ -19,6 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(2))
+        // This current-thread runtime stops while the driver performs wallet work.
+        // Do not retain sockets whose peer may close while Tokio cannot observe it.
+        .pool_max_idle_per_host(0)
         .add_root_certificate(reqwest::Certificate::from_pem(
             config["tls_ca"]
                 .as_str()
