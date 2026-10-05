@@ -14,7 +14,7 @@ sha1 = "0.10.6"
 sha2 = { version = "0.10", features = ["oid"] }
 rsa = { version = "=0.9.10", default-features = false, features = ["std", "u64_digit"] }
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
-base64 = "0.22"
+base64 = "0.23"
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 hkdf = "0.12.4"
 miniz_oxide = "=0.9.1"
