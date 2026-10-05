@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { createTestHarness } from 'wrangler';
+import type { D1Result } from '@cloudflare/workers-types';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 const opaque = () => randomBytes(32).toString('base64url');
 
@@ -38,7 +39,7 @@ test('product ingress budgets are atomic across isolates and expired state conve
       .split(';')
       .filter((sql) => sql.trim());
     const backlog = (await DB.batch(backlogSql.map((sql) => DB.prepare(sql)))).flatMap(
-      (result) => result.results ?? [],
+      (result: D1Result) => result.results,
     );
     assert.deepEqual(
       backlog,
