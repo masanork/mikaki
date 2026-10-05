@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 import {
@@ -17,7 +18,7 @@ import {
 
 const configPath = fileURLToPath(new URL('wrangler.jsonc', import.meta.url));
 const migration = await readFile(
-  new URL('../../crates/worker/migrations/0007_vault_recipient_keys.sql', import.meta.url),
+  new URL('../../crates/worker/migrations/0001_owner_vault_initial.sql', import.meta.url),
   'utf8',
 );
 const vector = JSON.parse(
@@ -33,6 +34,26 @@ const record = {
   generation: 1,
 };
 
+async function installRecipientSchema(db: { prepare(sql: string): { run(): unknown } }) {
+  const source = new DatabaseSync(':memory:');
+  try {
+    source.exec(migration);
+    const objects = source
+      .prepare(
+        `SELECT sql FROM sqlite_master
+         WHERE sql IS NOT NULL AND (
+           name IN ('vault_recipient_atomic_guard', 'vault_recipient_key', 'vault_recipient_key_audit', 'vault_recipient_one_active')
+           OR name GLOB 'vault_recipient_key_*'
+         ) ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name`,
+      )
+      .all() as { sql: string }[];
+    assert.equal(objects.length, 8);
+    for (const { sql } of objects) await db.prepare(sql).run();
+  } finally {
+    source.close();
+  }
+}
+
 test('stage and emergency disable are audited in local D1', async () => {
   const proxy = await getPlatformProxy<{ DB: any }>({
     configPath,
@@ -42,12 +63,7 @@ test('stage and emergency disable are audited in local D1', async () => {
   });
   try {
     const db = proxy.env.DB;
-    const statements = migration.match(
-      /CREATE TABLE[\s\S]*?STRICT;|CREATE UNIQUE INDEX[\s\S]*?;|CREATE TRIGGER[\s\S]*?END;/g,
-    );
-    assert.ok(statements);
-    assert.equal(statements.length, 8);
-    for (const statement of statements) await db.prepare(statement).run();
+    await installRecipientSchema(db);
     validatePublicRecord(record);
     await stageKey(db, record, 'test-operator', 'stage test key', 100);
     let row = await db
@@ -81,11 +97,7 @@ test('activation and rotation require verified bindings and update both keys ato
   });
   try {
     const db = proxy.env.DB;
-    const statements = migration.match(
-      /CREATE TABLE[\s\S]*?STRICT;|CREATE UNIQUE INDEX[\s\S]*?;|CREATE TRIGGER[\s\S]*?END;/g,
-    );
-    assert.ok(statements);
-    for (const statement of statements) await db.prepare(statement).run();
+    await installRecipientSchema(db);
     await stageKey(db, record, 'operator', 'initial stage', 100);
     const unavailable = { fetch: async () => ({ status: 503 }) };
     await assert.rejects(activateKey(db, unavailable, record.key_id, 'operator', 'activate', 101));
