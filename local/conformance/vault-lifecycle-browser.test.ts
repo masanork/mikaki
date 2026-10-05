@@ -7,7 +7,6 @@ import { readFile } from 'node:fs/promises';
 import { createTestHarness } from 'wrangler';
 import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
-import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
 
 type Notifications = 'available' | 'storage-only' | 'unavailable';
 async function exerciseLifecycle(notifications: Notifications) {
@@ -55,30 +54,6 @@ async function exerciseLifecycle(notifications: Notifications) {
         now,
       ),
     ]);
-    const headers = {
-      Cookie: `__Host-op-sso=${cookie}`,
-      Origin: origin,
-      'Content-Type': 'application/json',
-    };
-    const sealed = await sealAttribute(
-      new TextEncoder().encode('Saved owner'),
-      prf,
-      credential,
-      new Uint8Array(32).fill(0x29),
-      origin,
-      'name',
-      1,
-    );
-    const written = await worker.fetch(`${origin}/vault/attributes/name`, {
-      method: 'PUT',
-      headers: {
-        ...headers,
-        'X-Operation-ID': randomBytes(32).toString('base64url'),
-        'If-None-Match': '*',
-      },
-      body: JSON.stringify(sealed),
-    });
-    assert.equal(written.status, 200);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await context.addInitScript((notifications) => {
@@ -143,8 +118,8 @@ async function exerciseLifecycle(notifications: Notifications) {
     );
     let sessionFailure = false;
     let holdCheck: Promise<void> | null = null;
-    let writes = 0;
     let dropMutation = false;
+    let recordWrites = 0;
     await page.context().route(`${origin}/**`, async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
@@ -155,8 +130,8 @@ async function exerciseLifecycle(notifications: Notifications) {
           return;
         }
       }
-      if (request.method() === 'PUT') {
-        writes++;
+      if (path.startsWith('/vault/records/') && request.method() === 'PUT') {
+        recordWrites++;
         if (dropMutation) {
           dropMutation = false;
           await route.abort();
@@ -204,10 +179,10 @@ async function exerciseLifecycle(notifications: Notifications) {
     const reopen = page.getByRole('button', { name: 'Check session and reopen', exact: true });
     const locked = page.getByRole('heading', { name: 'Vault is locked', exact: true });
     async function open() {
-      await page.goto(`${origin}/vault?lang=en&storage=legacy-v1`);
+      await page.goto(`${origin}/vault?lang=en`);
       await expect(page.locator('#unlock')).toBeEnabled();
       await page.locator('#unlock').click();
-      await expect(page.locator('#name')).toHaveValue('Saved owner');
+      await expect(page.locator('#name')).toHaveValue('');
     }
     async function visibility(hidden: boolean) {
       await page.evaluate((hidden) => {
@@ -216,16 +191,7 @@ async function exerciseLifecycle(notifications: Notifications) {
       }, hidden);
     }
     await open();
-    await page.locator('#connections > summary').click();
-    const agent = page.getByRole('region', { name: 'Share with an AI agent' });
-    await agent.getByRole('checkbox', { name: 'Share my saved name' }).check();
-    await agent.getByRole('checkbox', { name: 'I approve disclosure' }).check();
-    await agent.getByRole('button', { name: 'Prepare a local MCP export' }).click();
-    await expect(
-      agent.getByRole('heading', { name: 'Saved name, revision 1', exact: true }),
-    ).toBeVisible();
     await page.locator('#name').fill('Discarded private draft');
-    await page.getByRole('button', { name: 'Open note', exact: true }).click();
     await page.locator('textarea').fill('Discarded private note');
     // Cancelling a voluntary lock retains both editors and decrypted previews.
     page.once('dialog', (dialog) => {
@@ -248,18 +214,10 @@ async function exerciseLifecycle(notifications: Notifications) {
     await page.keyboard.press('Tab');
     await expect(reopen).toBeFocused();
     assert.equal(await page.locator('#name, textarea').count(), 0);
-    await expect(
-      page.getByRole('heading', { name: 'Saved name, revision 1', exact: true }),
-    ).toHaveCount(0);
     await page.keyboard.press('Enter');
     await expect(page.locator('#product-main')).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(page.getByRole('link', { name: 'Profile', exact: true })).toBeFocused();
-    await expect(page.locator('#name')).toHaveValue('');
-    await expect(page.locator('textarea')).toHaveValue('');
-    await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Saved owner');
-    await page.getByRole('button', { name: 'Reload profile', exact: true }).click();
+    await expect(page.locator('#unlock')).toBeFocused();
     // A late authenticator reply cannot revive an unmounted view or send a write.
     await page.evaluate(() => {
       (window as unknown as Window & { holdPrf: boolean }).holdPrf = true;
@@ -272,31 +230,41 @@ async function exerciseLifecycle(notifications: Notifications) {
         ),
       )
       .toBe('function');
-    await lock.click();
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })),
+    );
     await page.evaluate(() => {
       (window as unknown as Window & { releasePrf: () => void }).releasePrf();
+      (window as unknown as Window & { holdPrf: boolean }).holdPrf = false;
     });
     await expect(locked).toBeVisible();
     assert.equal(await page.locator('#name').count(), 0);
-    assert.equal(writes, 0);
-    await open();
+    assert.equal(recordWrites, 0);
+    await reopen.click();
+    await expect(page.locator('#unlock')).toBeEnabled();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('');
     await page.locator('#name').fill('Abandoned uncertain operation');
     dropMutation = true;
     await page.locator('#save').click();
-    await expect(page.locator('#status')).toHaveText(
-      'Save failed. You can retry with the same value.',
-    );
+    await expect(page.locator('#retry-write')).toBeVisible();
     page.once('dialog', (dialog) => {
       void dialog.accept();
     });
     await lock.click();
+    await expect(locked).toBeVisible();
     await reopen.click();
-    await expect(page.locator('#save')).toBeDisabled();
-    await expect(page.locator('#name')).toHaveValue('');
-    assert.equal(writes, 1);
+    await expect(page.locator('#unlock')).toBeEnabled();
+    await expect(page.locator('#retry-write')).toHaveCount(0);
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Saved owner');
+    await expect(page.locator('#name')).toHaveValue('');
+    assert.equal(recordWrites, 1);
     await page.locator('#name').fill('Preserved same-session draft');
+    await visibility(true);
+    await expect(page.locator('#name')).toBeHidden();
+    await visibility(false);
+    await expect(page.locator('#name')).toBeVisible();
+    await expect(page.locator('#name')).toHaveValue('Preserved same-session draft');
     await visibility(true);
     await expect(page.locator('#name')).toBeHidden();
     await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
@@ -315,10 +283,15 @@ async function exerciseLifecycle(notifications: Notifications) {
     finishCheck();
     holdCheck = null;
     await checkedWhileHidden;
-    await expect(page.locator('#name')).toBeHidden();
+    // Re-hiding invalidates the OwnerWorkspace resume generation. Its stale
+    // result fails closed rather than restoring the previous decrypted draft.
+    await expect(locked).toBeVisible();
+    assert.equal(await page.locator('#name').count(), 0);
     await visibility(false);
-    await expect(page.locator('#name')).toHaveValue('Preserved same-session draft');
-    await expect(page.locator('#name')).toBeVisible();
+    await expect(locked).toBeVisible();
+    await reopen.click();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('');
     // Even a new login for the same account and credential has a different session tag.
     const replacement = randomBytes(32).toString('base64url');
     await DB.batch([
@@ -339,7 +312,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     await reopen.click();
     await expect(page.locator('#unlock')).toBeEnabled();
     await page.locator('#unlock').click();
-    await expect(page.locator('#name')).toHaveValue('Saved owner');
+    await expect(page.locator('#name')).toHaveValue('');
     await visibility(true);
     sessionFailure = true;
     await visibility(false);
@@ -380,7 +353,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     if (notifications === 'unavailable') {
       // With both notification APIs denied, the visible tab receives no logout hint.
       // Server authorization must still reject its next protected operation.
-      await expect(page.locator('#name')).toHaveValue('Saved owner');
+      await expect(page.locator('#name')).toHaveValue('');
       await expect(locked).toHaveCount(0);
       await page.getByRole('button', { name: 'Reload profile', exact: true }).click();
     }
@@ -412,6 +385,6 @@ async function exerciseLifecycle(notifications: Notifications) {
 }
 
 for (const notifications of ['available', 'storage-only', 'unavailable'] as const) {
-  test(`Vault lifecycle with ${notifications} cross-tab notifications`, () =>
+  test(`OwnerWorkspace lifecycle with ${notifications} cross-tab notifications`, () =>
     exerciseLifecycle(notifications));
 }

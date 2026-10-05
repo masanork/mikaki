@@ -1,4 +1,6 @@
-# Typed attribute proposal and decision contract
+# Historical format-1 typed attribute proposal and decision contract
+
+**Retired:** the format-1 attribute proposal/capability/decision endpoints and AgentPanel controls described here were removed by the fresh Owner Vault baseline. This page is preserved as historical implementation detail, not current API support. Current generic Agent drafts remain private; exact v2 Owner-record grants and direct Owner record writes are separate contracts. The former local implementation status below is dated 2026-09-28.
 
 **Status, 2026-09-28:** the VG-03 slice implements one authority for `owner_note` proposals and owner decisions through HTTP, MCP and the owner dashboard. Migration `0016` and these features have not been deployed. Approval itself does not change owner ciphertext. The first [VG-04 encrypted commit](vault-approved-commit.md) now connects a separate owner save action to that approval. [ADR 0013](adr/0013-agent-proposal-authority.md) records the state-owner decision and authority map.
 
@@ -22,7 +24,7 @@ Both `mikaki_propose_attribute` on the remote MCP service and `POST /attribute-p
     "version": 1,
     "title": "Suggested title",
     "text": "Suggested text",
-    "provenance": {"kind": "self-asserted"}
+    "provenance": { "kind": "self-asserted" }
   },
   "expires_at": 1790000000
 }

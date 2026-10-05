@@ -4,7 +4,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
-import { sealAttribute } from '../../crates/worker/ui/vault-crypto.ts';
+import {
+  createOwnerKey,
+  sealOwnerRecord,
+  OWNER_KEY_SUITE,
+} from '../../crates/worker/ui/vault-owner-crypto.ts';
 import { newOwnerNote, encodeOwnerNote } from '../../crates/worker/ui/vault-note.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -30,6 +34,11 @@ try {
   const id = Buffer.from(credential).toString('base64url');
   const cookie = randomBytes(32).toString('base64url');
   const prf = new Uint8Array(32).fill(0x71);
+  const context = { origin, ownerId: 'preview', vaultId: 'vault', keyGeneration: 1 };
+  const credentialBytes = new Uint8Array(credential);
+  const prfInput = new Uint8Array(32).fill(0x29);
+  // Synthetic PRF output and browser credential are preview fixtures only.
+  const created = await createOwnerKey(context, credentialBytes, prfInput, new Uint8Array(prf));
   const now = Math.floor(Date.now() / 1000);
   await DB.batch([
     DB.prepare("INSERT INTO account_security VALUES('preview',1,1)"),
@@ -44,9 +53,28 @@ try {
       now,
     ),
   ]);
-  for (const [attribute, bytes] of [
-    ['name', new TextEncoder().encode('山田 太郎')],
+  const ownerKeyResponse = await worker.fetch(`${origin}/vault/owner-key`, {
+    method: 'PUT',
+    headers: {
+      Cookie: `__Host-op-sso=${cookie}`,
+      Origin: origin,
+      'Content-Type': 'application/json',
+      'X-Operation-ID': randomBytes(32).toString('base64url'),
+      'If-None-Match': '*',
+    },
+    body: JSON.stringify({
+      format_version: 2,
+      suite: OWNER_KEY_SUITE,
+      vault_id: context.vaultId,
+      key_generation: context.keyGeneration,
+      owner_envelope: created.envelope,
+    }),
+  });
+  if (ownerKeyResponse.status !== 200) throw new Error(await ownerKeyResponse.text());
+  for (const [recordId, kind, bytes] of [
+    ['name', 'name', new TextEncoder().encode('山田 太郎')],
     [
+      'owner_note',
       'owner_note',
       encodeOwnerNote(
         newOwnerNote(
@@ -56,16 +84,13 @@ try {
       ),
     ],
   ]) {
-    const sealed = await sealAttribute(
-      bytes,
-      prf,
-      credential,
-      new Uint8Array(32).fill(0x29),
-      origin,
-      attribute,
-      1,
-    );
-    const response = await worker.fetch(`${origin}/vault/attributes/${attribute}`, {
+    const sealed = await sealOwnerRecord(bytes, created.key, context, {
+      collectionId: 'personal',
+      recordId,
+      kind,
+      revision: 1,
+    });
+    const response = await worker.fetch(`${origin}/vault/records/personal/${recordId}`, {
       method: 'PUT',
       headers: {
         cookie: `__Host-op-sso=${cookie}`,
@@ -74,7 +99,14 @@ try {
         'X-Operation-ID': randomBytes(32).toString('base64url'),
         'If-None-Match': '*',
       },
-      body: JSON.stringify(sealed),
+      body: JSON.stringify({
+        ...sealed,
+        vault_id: context.vaultId,
+        key_generation: context.keyGeneration,
+        owner_key_revision: 1,
+        kind,
+        revision: 1,
+      }),
     });
     if (response.status !== 200) throw new Error(await response.text());
   }
@@ -147,50 +179,28 @@ try {
   await capture('vault-locked');
   await page.locator('#unlock').click();
   await expect(page.locator('#name')).toHaveValue('山田 太郎');
-  await page.getByRole('button', { name: 'メモを開く', exact: true }).click();
+  await page.getByRole('link', { name: '本人用メモ', exact: true }).click();
   await expect(page.getByLabel('メモのタイトル', { exact: true })).toHaveValue(
     '次のプロジェクトに向けて',
   );
   await capture('vault');
   await capture('vault-full', true);
-  await page.getByRole('link', { name: '共有と連携', exact: true }).click();
-  await expect(page.locator('#connections')).toHaveAttribute('open', '');
-  await capture('vault-connections');
-  await page.locator('#connections > summary').click();
-  await page.getByRole('link', { name: 'パスキー管理', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'パスキー管理', exact: true })).toHaveAttribute(
-    'aria-current',
-    'location',
-  );
-  await capture('vault-settings');
-  await page.locator('#security > summary').click();
+  await capture('vault-owner-note');
   await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
-    'aria-current',
-    'location',
-  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.setViewportSize({ width: 375, height: 812 });
   await capture('vault-mobile');
   await capture('vault-mobile-full', true);
-  await page.getByRole('link', { name: 'パスキー管理', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'パスキー管理', exact: true })).toHaveAttribute(
-    'aria-current',
-    'location',
-  );
-  await capture('vault-settings-mobile');
-  await page.locator('#security > summary').click();
+  await page.getByRole('link', { name: '本人用メモ', exact: true }).click();
+  await expect(page.locator('#owner-note-title')).toHaveValue('次のプロジェクトに向けて');
+  await capture('vault-owner-note-mobile');
   await page.getByRole('link', { name: 'プロフィール', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'プロフィール', exact: true })).toHaveAttribute(
-    'aria-current',
-    'location',
-  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.locator('#name').fill('山田 太郎（編集中）');
-  await expect(page.locator('[data-draft-state="profile"]')).toBeVisible();
+  await expect(page.locator('.product-draft-status')).toBeVisible();
   await capture('vault-draft-mobile', true);
   await page.locator('#name').fill('山田 太郎');
-  await expect(page.locator('[data-draft-state="profile"]')).toHaveCount(0);
+  await expect(page.locator('.product-draft-status')).toHaveCount(0);
   await page.getByRole('button', { name: 'Vaultをロック', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Vaultをロックしました', exact: true }),

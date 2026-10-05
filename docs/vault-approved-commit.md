@@ -1,6 +1,8 @@
-# Approved proposal to encrypted owner commit
+# Historical format-1 approved proposal to encrypted owner commit
 
-**Status, 2026-09-28:** the first VG-04 slice connects the typed owner-note proposal to one verified encrypted commit. Migration `0017`, the owner UI and service extension are local implementations, not a deployment. Real-device PRF and collection recovery remain [VG-01 gates](vault-passkey-transfer.md).
+**Retired:** this page describes the former owner-note attribute proposal/approval UI and its v1 attribute commit path. Those proposal/capability routes and AgentPanel controls are removed from the fresh baseline. Current OwnerWorkspace supports direct record-v2 writes; that is not the removed Agent proposal approval UI. Generic Agent private drafts and v2 OAuth grants are separate, and owner-side proposal/release UI remains follow-up work.
+
+**Historical status, 2026-09-28:** the first VG-04 slice connects the typed owner-note proposal to one verified encrypted commit. Migration `0017`, the owner UI and service extension are local implementations, not a deployment. Real-device PRF and collection recovery remain [VG-01 gates](vault-passkey-transfer.md).
 
 ## Responsibility and exact-value verification
 

@@ -13,21 +13,21 @@ historical evidence.
 
 Each listed application version received 100% of traffic at cutover.
 
-| Service | Public origin | Version ID | Storage authority |
-| --- | --- | --- | --- |
-| OP | `https://auth.mikaki.org` | `c27f2ed5-382e-4fb5-a2f7-06bc69fdd3db` | Owner D1 and Vault R2; default HTTP plus named service entrypoints |
-| Claims | OP service binding only | `bf606b14-e0a0-4ef0-a76f-fd43956272d2` | OP `ClaimStore`; no D1/R2 binding; dedicated Secrets Store key |
-| Docs RP | `https://docs.mikaki.org` | `f8001aba-db40-4940-b245-2e2601bf7aa5` | Dedicated Docs D1 and dedicated RP signing key |
+| Service | Public origin             | Version ID                             | Storage authority                                                  |
+| ------- | ------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| OP      | `https://auth.mikaki.org` | `c27f2ed5-382e-4fb5-a2f7-06bc69fdd3db` | Owner D1 and Vault R2; default HTTP plus named service entrypoints |
+| Claims  | OP service binding only   | `bf606b14-e0a0-4ef0-a76f-fd43956272d2` | OP `ClaimStore`; no D1/R2 binding; dedicated Secrets Store key     |
+| Docs RP | `https://docs.mikaki.org` | `f8001aba-db40-4940-b245-2e2601bf7aa5` | Dedicated Docs D1 and dedicated RP signing key                     |
 
 The website at `https://mikaki.org` was also deployed by this main run.
 `https://app.mikaki.org` retains the native application association. No Agent
 Worker was deployed and no `AGENT_ACCESS` binding or Identity activation flag
 was added.
 
-| Database | ID | Exact migration ledger | Schema objects |
-| --- | --- | --- | --- |
-| `mikaki-auth-owner` | `d0258938-0d27-4110-8aa9-c82e20f3885b` | `0001_owner_vault_initial.sql` only | 236 |
-| `mikaki-docs-rp` | `8527823b-5417-425d-8028-0532464e39e7` | `0001_initial.sql` only | 8 |
+| Database            | ID                                     | Exact migration ledger              | Schema objects |
+| ------------------- | -------------------------------------- | ----------------------------------- | -------------- |
+| `mikaki-auth-owner` | `d0258938-0d27-4110-8aa9-c82e20f3885b` | `0001_owner_vault_initial.sql` only | 236            |
+| `mikaki-docs-rp`    | `8527823b-5417-425d-8028-0532464e39e7` | `0001_initial.sql` only             | 8              |
 
 The OP baseline includes the retained Identity schema. Do not apply historical
 `0036`–`0044` migrations to this fresh database. Identity keys, issuer trust,
@@ -109,5 +109,34 @@ timestamp or cron metadata. The raw tail was discarded after sanitized review.
 The auth collector's six-way compound backlog SELECT was independently rejected
 by a read-only production D1 query (`too many terms in compound SELECT`); its
 two-way control passed. This is a post-cutover runtime telemetry defect, not a
-failed public smoke or a reason to repeat the data reset. #99 remains open until
-the query is corrected, deployed and successful `auth_gc` telemetry is observed.
+failed public smoke or a reason to repeat the data reset. The correction and
+subsequent production qualification are recorded below.
+
+## Telemetry correction and production qualification
+
+[PR #130](https://github.com/masanork/mikaki/pull/130) corrected the auth backlog
+query by running six independent prepared statements in one D1 batch. It also
+requires the complete binding inventory, including service entrypoints, to
+match the reviewed configuration before promotion. Retention, cleanup, schema
+and participant data were not changed.
+
+Source `210567e88ec0e2dcfae0a56e1937f9db8b8f0d3e` passed
+[main CI run 37321367592](https://github.com/masanork/mikaki/actions/runs/37321367592),
+including attested OP/Claims and Docs promotion and the source/version-matched
+public smoke. Read-only Cloudflare metadata inspection at 20:52 UTC confirmed
+100% active versions with tag `210567e88ec0` and exact approved bindings:
+
+| Worker | Active version                         |
+| ------ | -------------------------------------- |
+| OP     | `baf674d8-13a1-46cf-aeac-5aa62adcdc4c` |
+| Claims | `4b5008a5-ec54-46cd-8539-c99d5a2b45db` |
+| Docs   | `8018b250-fe68-4102-a131-63b95857fe72` |
+
+A private production tail beginning at 20:53:06.927 UTC on 2026-10-05
+captured two minute-cron events at 20:54:20.014 and 20:55:20.014 UTC. Both had
+exact event name `auth_gc`, reclaimed=0, and login/codes/tokens/sso/logout/dpop
+backlogs each expired=0/oldest=null. No `auth_gc_failure` or `vault_gc_failure`
+was captured in this window. The raw logs were discarded after independent
+parsing and sanitized receipt validation. #99–#101 and #103 were closed with
+acceptance evidence. Empty-baseline telemetry is not a load measurement; #106
+retains mixed-load and alert qualification.

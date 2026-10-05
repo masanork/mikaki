@@ -1,10 +1,10 @@
-# Mobile experience and keyboard review
+# Historical mobile experience and keyboard review
 
-Measured on 2026-10-03 using disposable local accounts and the actual Rust OP/UI bundles. This review improves two bounded problems: serial Vault metadata reads and lost keyboard focus after asynchronous actions. It does not qualify physical devices or audible screen-reader output.
+Archived measurements from 2026-10-03, using the pre-retirement format-1 Vault UI and disposable local accounts with actual Rust OP/UI bundles. The legacy profile panels and `probe:ui-experience` recorder have since been removed. These measurements are historical evidence only: they do not describe or benchmark the current OwnerWorkspace. The retained current route, keyboard and session regressions are in `product-ui-browser.test.ts`, `vault-owner-workspace-browser.test.ts` and `vault-lifecycle-browser.test.ts`. This archive does not qualify physical devices or audible screen-reader output.
 
 ## Paired performance measurement
 
-`npm run probe:ui-experience` runs Playwright/Chromium over a real loopback HTTPS bridge. Responses come from the local Rust Worker, with declared gzip level 6 compression and cache disabled. It does not use intercepted browser responses for network measurements. Chrome DevTools MCP was unavailable; Playwright's Chrome DevTools Protocol sessions provided network/CPU controls and accessibility-tree inspection instead.
+At the time, an opt-in Playwright/Chromium probe used a real loopback HTTPS bridge and local Rust Worker responses with declared gzip level 6 compression and cache disabled. The probe and its v1-specific recorder have been retired, so the archived timing run cannot be repeated from the current tree.
 
 The paired comparison used Chromium 153.0.8010.12 on the same macOS host, the same fixture origin (`https://mikaki.test:19443`), and three fresh browser contexts per screen/condition. Desktop uses 1440×900 with no throttling. Mobile uses 390×844, touch/DPR 2, CPU throttling 4×, 400 ms latency and 50,000 bytes/s upload/download. A third condition repeats mobile with reduced motion enabled. These are emulated conditions, not measurements from an actual phone or Cloudflare edge.
 
@@ -12,14 +12,14 @@ The [measurement JSON](ui-experience-measurements.json) preserves individual sam
 
 Values below are medians of three samples. “Ready” is when the sign-in/profile unlock button is detected enabled, measured from navigation start; polling overhead is included. It does not include a real authenticator ceremony.
 
-| Condition / screen | Ready before → after | FCP before → after | LCP before → after | CLS, both |
-| --- | --- | --- | --- | --- |
-| Desktop / sign-in | 507 → 482 ms | 508 → 484 ms | 508 → 484 ms | 0 |
-| Desktop / Vault | 141 → 143 ms | 120 → 116 ms | 120 → 116 ms | 0 |
-| Slow mobile / sign-in | 2,395 → 2,398 ms | 2,348 → 2,352 ms | 2,348 → 2,352 ms | 0 |
-| Slow mobile / Vault | 4,432 → 3,943 ms | 2,592 → 2,624 ms | 2,592 → 2,624 ms | 0 |
-| Reduced-motion mobile / sign-in | 2,371 → 2,402 ms | 2,348 → 2,384 ms | 2,348 → 2,384 ms | 0 |
-| Reduced-motion mobile / Vault | 4,430 → 3,913 ms | 2,600 → 2,596 ms | 2,600 → 2,596 ms | 0 |
+| Condition / screen              | Ready before → after | FCP before → after | LCP before → after | CLS, both |
+| ------------------------------- | -------------------- | ------------------ | ------------------ | --------- |
+| Desktop / sign-in               | 507 → 482 ms         | 508 → 484 ms       | 508 → 484 ms       | 0         |
+| Desktop / Vault                 | 141 → 143 ms         | 120 → 116 ms       | 120 → 116 ms       | 0         |
+| Slow mobile / sign-in           | 2,395 → 2,398 ms     | 2,348 → 2,352 ms   | 2,348 → 2,352 ms   | 0         |
+| Slow mobile / Vault             | 4,432 → 3,943 ms     | 2,592 → 2,624 ms   | 2,592 → 2,624 ms   | 0         |
+| Reduced-motion mobile / sign-in | 2,371 → 2,402 ms     | 2,348 → 2,384 ms   | 2,348 → 2,384 ms   | 0         |
+| Reduced-motion mobile / Vault   | 4,430 → 3,913 ms     | 2,600 → 2,596 ms   | 2,600 → 2,596 ms   | 0         |
 
 After verifying the owner session, profile sharing status, release status and encrypted name are fetched concurrently. All three settle before the loading state clears; optional-panel errors remain isolated and writes keep their existing serialization. Slow-mobile profile readiness improves by approximately 0.49 seconds (11%). A browser response barrier checks that all three requests start without waiting for another response; it fails with the previous serial implementation.
 
@@ -27,15 +27,7 @@ When the decorative header leaves the viewport, the woven renderer stops its ani
 
 Visible motion, origin-derived weave/color, and pointer lighting remain. Sign-in rendering is essentially unchanged; initial material generation still produces long main-thread tasks. The two-second window immediately after Vault readiness includes outstanding panel work: its mobile script time increased from 7.91 to 33.34 ms as work moved earlier. This is not a claim that all idle CPU work decreased. Resource timing, paint, maximum-session-window CLS, long tasks and bounded interaction samples are recorded; interaction samples are **not field INP**. No noisy wall-clock threshold has been added to CI.
 
-To repeat after building the Worker and generating policy/catalog fixtures:
-
-```sh
-npm run probe:ui-experience
-# Optional: fixed origin and 1–5 repeats for controlled comparisons.
-MIKAKI_UI_PROBE_PORT=19443 MIKAKI_UI_PROBE_REPEATS=3 MIKAKI_UI_PROBE_LABEL=current npm run probe:ui-experience
-```
-
-The probe writes `artifacts/ui-experience/report.json`, representative screenshots, and accessibility snapshots. It uses synthetic PRF output, cancels automatic sign-in and never contacts production. Do not run this fixture recorder against real user sessions.
+The probe used synthetic PRF output, cancelled automatic sign-in and did not contact production. Its command has been removed because it depended on retired v1 routes; the recorded results remain historical and are not current OwnerWorkspace performance evidence.
 
 ## Keyboard and browser semantics
 
