@@ -23,6 +23,8 @@ type Config = {
   secrets?: { required: string[] };
   version_metadata?: { binding: string };
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
+  assets?: { binding: string };
+  ratelimits?: { name: string; namespace_id: string; simple: { limit: number; period: number } }[];
 };
 
 export function checkBindings(
@@ -33,7 +35,11 @@ export function checkBindings(
 ) {
   assert.equal(version.resources.script_runtime.compatibility_date, config.compatibility_date);
   const bindings = version.resources.bindings;
+  const names = new Set<string>();
   for (const binding of bindings) {
+    assert.equal(typeof binding.name, 'string', 'Binding is missing its name');
+    assert.ok(!names.has(binding.name as string), `Duplicate binding ${String(binding.name)}`);
+    names.add(binding.name as string);
     if (binding.type === 'd1')
       assert.ok(
         config.d1_databases?.some((item) => item.binding === binding.name),
@@ -45,31 +51,56 @@ export function checkBindings(
         `Unexpected storage binding ${binding.name}`,
       );
   }
-  const check = (name: string, expected: Binding) => {
-    const actual = bindings.find((binding) => binding.name === name);
-    assert.ok(actual, `Missing binding ${name}`);
-    for (const [key, value] of Object.entries(expected))
-      assert.deepEqual(actual[key], value, `Binding ${name}: ${key}`);
+  const expected = new Map<string, Binding>();
+  const expect = (name: string, binding: Binding) => {
+    assert.ok(!expected.has(name), `Duplicate configured binding ${name}`);
+    expected.set(name, binding);
   };
-  for (const [name, text] of Object.entries(config.vars)) check(name, { type: 'plain_text', text });
+  for (const [name, text] of Object.entries(config.vars))
+    expect(name, { type: 'plain_text', text });
   for (const item of config.d1_databases ?? [])
-    check(item.binding, { type: 'd1', database_id: item.database_id });
+    expect(item.binding, { type: 'd1', database_id: item.database_id });
   for (const item of config.r2_buckets ?? [])
-    check(item.binding, { type: 'r2_bucket', bucket_name: item.bucket_name });
+    expect(item.binding, { type: 'r2_bucket', bucket_name: item.bucket_name });
   for (const item of config.services ?? [])
-    check(item.binding, {
+    expect(item.binding, {
       type: 'service',
       service: item.service,
-      ...(item.entrypoint ? { entrypoint: item.entrypoint } : {}),
+      entrypoint: item.entrypoint,
     });
-  for (const name of config.secrets?.required ?? []) check(name, { type: 'secret_text' });
-  if (config.version_metadata) check(config.version_metadata.binding, { type: 'version_metadata' });
+  for (const name of config.secrets?.required ?? []) expect(name, { type: 'secret_text' });
+  if (config.version_metadata)
+    expect(config.version_metadata.binding, { type: 'version_metadata' });
   for (const item of config.secrets_store_secrets ?? [])
-    check(item.binding, {
+    expect(item.binding, {
       type: 'secrets_store_secret',
       store_id: item.store_id,
       secret_name: item.secret_name,
     });
+
+  if (config.assets) expect(config.assets.binding, { type: 'assets' });
+  for (const item of config.ratelimits ?? [])
+    expect(item.name, {
+      type: 'ratelimit',
+      namespace_id: item.namespace_id,
+      simple: item.simple,
+    });
+
+  for (const name of expected.keys()) assert.ok(names.has(name), `Missing binding ${name}`);
+  for (const binding of bindings) {
+    const name = binding.name as string;
+    const approved = expected.get(name);
+    assert.ok(approved, `Unexpected binding ${name}`);
+    for (const [key, value] of Object.entries(approved))
+      // Cloudflare exposes rate-limit namespace IDs as either strings or numbers.
+      assert.deepEqual(
+        binding.type === 'ratelimit' && key === 'namespace_id'
+          ? String(binding[key])
+          : binding[key],
+        value,
+        `Binding ${name}: ${key}`,
+      );
+  }
 }
 
 export function sourceIsCurrent(changedPaths: string[]) {

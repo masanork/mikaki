@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { createTestHarness } from 'wrangler';
+import type { D1Result } from '@cloudflare/workers-types';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 const opaque = () => randomBytes(32).toString('base64url');
 
@@ -32,6 +33,22 @@ test('product ingress budgets are atomic across isolates and expired state conve
     const worker = harness.getWorker('mikaki-op-worker');
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
+    const backlogSql = (
+      await readFile(new URL('../../crates/worker/src/auth_backlog.sql', import.meta.url), 'utf8')
+    )
+      .split(';')
+      .filter((sql) => sql.trim());
+    const backlog = (await DB.batch(backlogSql.map((sql) => DB.prepare(sql)))).flatMap(
+      (result: D1Result) => result.results,
+    );
+    assert.deepEqual(
+      backlog,
+      ['login', 'codes', 'tokens', 'sso', 'logout', 'dpop'].map((kind) => ({
+        kind,
+        expired: 0,
+        oldest: null,
+      })),
+    );
     await activateWorkerPolicy(
       DB,
       JSON.parse(

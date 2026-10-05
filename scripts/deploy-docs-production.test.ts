@@ -35,6 +35,11 @@ test('Docs requires its own database, assets, limiter and secret with no extra a
     resources: { bindings, script_runtime: { compatibility_date: config.compatibility_date } },
   };
   checkDocsBindings(version, config);
+  const numericNamespace = structuredClone(version);
+  numericNamespace.resources.bindings.find(
+    (binding) => binding.name === 'AUTH_LIMITER',
+  )!.namespace_id = 17;
+  checkDocsBindings(numericNamespace, config);
   for (const extra of [
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'CLAIM_STORE', type: 'service', service: 'op' },

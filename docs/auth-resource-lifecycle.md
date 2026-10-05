@@ -1,6 +1,13 @@
 # Authentication resource limits and retention
 
-Implemented in the working tree on 2026-10-04; deployment is not recorded. Migration `0046` and the matching OP code must be released together. The policy row is mandatory; missing policy/storage fails closed.
+Deployed in the fresh `0001_owner_vault_initial.sql` baseline and OP source `140baec` on 2026-10-05. The minute schedule, exact baseline and active storage bindings were verified at [cutover](production-reset-2026-10-05.md). The historical incremental migration `0046` is retired; do not apply it to the fresh DB. The policy row is mandatory; missing policy/storage fails closed.
+
+A post-cutover tail observed repeated `auth_gc_failure` events. Read-only
+production D1 execution rejected the six-way compound backlog SELECT, although
+the two-way control query passed. Cleanup and its telemetry are separate steps:
+this failure occurs after the cleanup batch in the source and does not establish
+that participant cleanup stopped. The backlog query must be corrected and a
+successful production `auth_gc` event observed before closing #99.
 
 ## Admission
 
@@ -29,10 +36,9 @@ The minute cron executes one atomic, child-before-parent D1 batch. Each table de
 | PAR | At expiry; request/cron cleanup is bounded to 1,000 rows |
 | SSO/client sessions and their contexts | SSO expiry plus 90 days, after retained code/consent/logout references are gone |
 | Logout delivery and event | Delivery deadline plus 90 days, including failed/expired outcomes |
-| Native Vault consent/grant/context | Respective expiry plus 90 days, after retained children are gone |
 
 Account, credential, client registration, runtime-policy history and immutable administrative/disclosure audits are retained. This collector does not change token expiries or resurrect revoked sessions.
 
 At defaults, the 1,000-row per-table minute budget exceeds the 600-request deployment ingress ceiling. That is a capacity envelope, not a guarantee during cron outages or unusually high configured limits. Monitor `auth_request_limited`, `auth_gc` (reclaimed plus expired counts/oldest expiry for login, code, token, SSO, logout and DPoP), and `auth_gc_failure`. A backlog whose oldest eligible timestamp grows across successive runs needs investigation before increasing admission limits. Logs contain no accounts, IPs, codes or token values.
 
-`local/conformance/auth-resources.test.ts` exercises two real Worker instances sharing D1, parallel source limits, source isolation, window rollover, browser capacity and repeated cleanup beyond a batch. It also verifies expired token/session dependencies, retention of pending delivery, transactional cleanup failure and recovery. Production alert wiring and load qualification remain operational release gates.
+`local/conformance/auth-resources.test.ts` exercises two real Worker instances sharing D1, parallel source limits, source isolation, window rollover, browser capacity and repeated cleanup beyond a batch. It also verifies expired token/session dependencies, retention of pending delivery, transactional cleanup failure and recovery. These regressions passed [main CI run 37256255769](https://github.com/masanork/mikaki/actions/runs/37256255769). Production alert wiring and mixed-load measurements remain separate operational work under [#106](https://github.com/masanork/mikaki/issues/106); public smoke is not a throughput measurement.
