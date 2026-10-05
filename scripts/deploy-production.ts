@@ -23,6 +23,8 @@ type Config = {
   secrets?: { required: string[] };
   version_metadata?: { binding: string };
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
+  assets?: { binding: string };
+  ratelimits?: { name: string; namespace_id: string; simple: { limit: number; period: number } }[];
 };
 
 export function checkBindings(
@@ -76,15 +78,28 @@ export function checkBindings(
       secret_name: item.secret_name,
     });
 
+  if (config.assets) expect(config.assets.binding, { type: 'assets' });
+  for (const item of config.ratelimits ?? [])
+    expect(item.name, {
+      type: 'ratelimit',
+      namespace_id: item.namespace_id,
+      simple: item.simple,
+    });
+
   for (const name of expected.keys()) assert.ok(names.has(name), `Missing binding ${name}`);
   for (const binding of bindings) {
     const name = binding.name as string;
     const approved = expected.get(name);
     assert.ok(approved, `Unexpected binding ${name}`);
     for (const [key, value] of Object.entries(approved))
-      assert.deepEqual(binding[key], value, `Binding ${name}: ${key}`);
-    if (binding.type === 'service')
-      assert.equal(binding.entrypoint, approved.entrypoint, `Binding ${name}: entrypoint`);
+      // Cloudflare exposes rate-limit namespace IDs as either strings or numbers.
+      assert.deepEqual(
+        binding.type === 'ratelimit' && key === 'namespace_id'
+          ? String(binding[key])
+          : binding[key],
+        value,
+        `Binding ${name}: ${key}`,
+      );
   }
 }
 

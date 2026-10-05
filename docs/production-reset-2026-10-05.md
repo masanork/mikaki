@@ -98,3 +98,16 @@ flows, load/alert qualification and formal certification are separate checks.
 The passing public smoke does not complete those checks. Use the
 [roadmap](roadmap.md) for the next work and the [reset runbook](owner-vault-reset.md)
 for a future cutover; another reset would require its own resource inventory.
+
+## Post-cutover scheduled telemetry
+
+A subsequent read-only production tail observed ten `auth_gc_failure` events
+and one successful `vault_gc` event (collected 0, pending 0, duration 1,235 ms),
+with no sampled `vault_gc_failure`. This CLI output retained no invocation
+timestamp or cron metadata. The raw tail was discarded after sanitized review.
+
+The auth collector's six-way compound backlog SELECT was independently rejected
+by a read-only production D1 query (`too many terms in compound SELECT`); its
+two-way control passed. This is a post-cutover runtime telemetry defect, not a
+failed public smoke or a reason to repeat the data reset. #99 remains open until
+the query is corrected, deployed and successful `auth_gc` telemetry is observed.

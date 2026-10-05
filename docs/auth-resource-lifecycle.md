@@ -2,6 +2,13 @@
 
 Deployed in the fresh `0001_owner_vault_initial.sql` baseline and OP source `140baec` on 2026-10-05. The minute schedule, exact baseline and active storage bindings were verified at [cutover](production-reset-2026-10-05.md). The historical incremental migration `0046` is retired; do not apply it to the fresh DB. The policy row is mandatory; missing policy/storage fails closed.
 
+A post-cutover tail observed repeated `auth_gc_failure` events. Read-only
+production D1 execution rejected the six-way compound backlog SELECT, although
+the two-way control query passed. Cleanup and its telemetry are separate steps:
+this failure occurs after the cleanup batch in the source and does not establish
+that participant cleanup stopped. The backlog query must be corrected and a
+successful production `auth_gc` event observed before closing #99.
+
 ## Admission
 
 `/authorize`, `/token`, `/par`, `/signin`, `/enroll`, `/login`, its cue/finish/deny operations and `/enroll/complete` reserve a durable fixed-minute budget before protocol processing. Cloudflare's `CF-Connecting-IP` is hashed with a purpose prefix; absent addresses share an `unknown` source budget. Static JavaScript/CSS assets do not consume ceremony budget. No cookie can reset this source limit. D1 commits source and deployment counters atomically across isolates. Rejected/invalid requests also spend budget. Limits return HTTP 429, `Cache-Control: no-store`, `Retry-After: 60`, and `temporarily_unavailable` without identifiers.

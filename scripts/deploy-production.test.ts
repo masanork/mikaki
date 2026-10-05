@@ -69,6 +69,8 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'EXTRA_KV', type: 'kv_namespace', namespace_id: 'unapproved' },
     { name: 'EXTRA_SERVICE', type: 'service', service: 'unapproved-worker' },
     { name: 'EXTRA_SECRET', type: 'secret_text' },
+    { name: 'EXTRA_ASSETS', type: 'assets' },
+    { name: 'EXTRA_LIMITER', type: 'ratelimit', namespace_id: '17' },
   ]) {
     assert.throws(
       () =>
@@ -86,6 +88,10 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
         config,
       ),
     /Duplicate binding DB/,
+  );
+  assert.throws(
+    () => checkBindings(version, { ...config, secrets: { required: ['DB'] } }),
+    /Duplicate configured binding DB/,
   );
   const extraEntrypoint = structuredClone(version);
   extraEntrypoint.resources.bindings.find(
@@ -119,6 +125,7 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
   checkBindings(version, config);
   version.resources.bindings[2]!.secret_name = 'wrong-key';
   assert.throws(() => checkBindings(version, config), /Binding VAULT_USERINFO_MLKEM_A/);
+  version.resources.bindings[2]!.secret_name = 'VAULT_USERINFO_MLKEM_A';
   const defaultEntrypoint = structuredClone(version);
   delete defaultEntrypoint.resources.bindings[0]!.entrypoint;
   assert.throws(() => checkBindings(defaultEntrypoint, config), /Binding CLAIM_STORE: entrypoint/);

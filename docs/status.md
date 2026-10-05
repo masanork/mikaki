@@ -81,6 +81,11 @@ Product Worker contract and browser gates now run in PR verification as well as 
 
 ## Release and recovery rehearsal, 2026-09-30
 
+This section records the pre-cutover state on that date. The
+[2026-10-05 cutover](production-reset-2026-10-05.md) supersedes its then-pending
+production upload, version/readiness and attestation-mapping claims. Production
+backup/restore qualification remains separate from the completed fresh reset.
+
 The local release verifier now binds both Worker archives, their exact regular members, the source revision/cleanliness and ordered migration hashes. It rejects substituted bytes, unexpected/duplicate/linked members, migration gaps and tracked/untracked source edits. The attested-build configuration creates/verifies and separately attests this inventory. A disposable SQLite/filesystem exercise upgrades the recorded `0001`–`0013` baseline to every checked-in migration, preserves an encrypted name head/audit/closed bootstrap, rolls back a failed migration, restores a real backup and reopens matching ciphertext. It also rejects missing/corrupt objects and demonstrates historical restoration of revoked SSO/credential state. The secret-free report explicitly marks production recovery unavailable. Local tests and locally built archive checks pass; remote CI/attestation, Cloudflare restore, external recovery fencing, R2/key retention, runtime-byte mapping, intended devices and RP invalidation remain open. See [the runbook](release-and-recovery.md).
 
 The OP can now expose its Cloudflare version ID and embedded source commit through `/version`; the manual production smoke can require a reviewed version and clean commit and retain comparison evidence. Local checker and Worker tests cover this path. It has not been deployed or checked at the production issuer, and the attested archive digest is still not linked to a Cloudflare-uploaded version.
@@ -95,8 +100,11 @@ The reusable attested build is configured to perform the same preparation and ve
 [OP-owned storage capabilities](adr/0015-service-data-ownership.md) and
 [Owner-record candidate GC](vault-garbage-collection.md) are deployed in the
 fresh baseline. The minute auth/logout and ten-minute Vault schedules match
-configuration. Their actual Worker contract regressions passed main CI; load
-and operational alert qualification remain separate from public health smoke.
+configuration. Their actual Worker contract regressions passed main CI. A subsequent production
+tail observed Vault GC success but auth collector failures; read-only D1
+confirmed that the compound auth backlog query needs correction. #99 remains
+open until corrected deployment and successful telemetry. Load and operational
+alert qualification remain separate from public health smoke.
 Agent runtime integration remains local because no hosted Agent was activated.
 
 The selected v2 sharing/approval paths and legacy denials retain their product
