@@ -111,6 +111,14 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await check(503, `Bearer ${readyToken}`, '', '');
     await DB.prepare('DELETE FROM d1_migrations').run();
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0002_owner_key_wrap_operations.sql')
+      .run();
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0001_owner_vault_initial.sql')
+      .run();
+    await check(503);
+    await DB.prepare('DELETE FROM d1_migrations').run();
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
       .bind('0001_owner_vault_initial.sql')
       .run();
     await check(204);

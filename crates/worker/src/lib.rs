@@ -1770,7 +1770,7 @@ async fn ready_route(
         let db = context.env.d1("DB")?;
         WorkerRuntimePolicy::from_db(&db).await?;
         let migration = db
-            .prepare("SELECT group_concat(name, ',') AS name FROM (SELECT name FROM d1_migrations ORDER BY id)")
+            .prepare("SELECT group_concat(name, ',' ORDER BY id) AS name FROM d1_migrations")
             .first::<LatestMigrationRow>(None)
             .await?;
         if !migration
