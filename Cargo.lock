@@ -1230,7 +1230,7 @@ dependencies = [
  "base64 0.22.1",
  "ciborium",
  "civ-card",
- "der 0.7.10",
+ "der 0.8.2",
  "getrandom",
  "hkdf 0.12.4",
  "miniz_oxide",

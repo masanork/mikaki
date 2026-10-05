@@ -20,7 +20,7 @@ hkdf = "0.12.4"
 miniz_oxide = "=0.9.1"
 url = "=2.5.8"
 ciborium.workspace = true
-der = { version = "0.7", features = ["alloc"] }
+der = { version = "0.8", features = ["alloc"] }
 rustls-webpki = { version = "=0.103.15", default-features = false, features = ["alloc"] }
 rustls-pki-types = { version = "=1.15.1", default-features = false, features = ["alloc"] }
 x509-cert = { version = "0.2.5", default-features = false }
