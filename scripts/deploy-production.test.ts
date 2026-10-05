@@ -51,6 +51,52 @@ test('activation requires all configured native, Vault and runtime secret bindin
   assert.throws(() => checkBindings(changed, config), /Binding DB/);
 });
 
+test('activation rejects unknown and duplicate bindings and exacts default service entrypoints', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const bindings: Record<string, unknown>[] = [
+    { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
+    { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
+    { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
+    { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
+    { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
+    { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
+    ...Object.entries(config.vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
+  ];
+  const version = {
+    resources: { bindings, script_runtime: { compatibility_date: config.compatibility_date } },
+  };
+  for (const extra of [
+    { name: 'EXTRA_KV', type: 'kv_namespace', namespace_id: 'unapproved' },
+    { name: 'EXTRA_SERVICE', type: 'service', service: 'unapproved-worker' },
+    { name: 'EXTRA_SECRET', type: 'secret_text' },
+  ]) {
+    assert.throws(
+      () =>
+        checkBindings(
+          { resources: { ...version.resources, bindings: [...bindings, extra] } },
+          config,
+        ),
+      new RegExp(`Unexpected binding ${extra.name}`),
+    );
+  }
+  assert.throws(
+    () =>
+      checkBindings(
+        { resources: { ...version.resources, bindings: [...bindings, bindings[0]] } },
+        config,
+      ),
+    /Duplicate binding DB/,
+  );
+  const extraEntrypoint = structuredClone(version);
+  extraEntrypoint.resources.bindings.find(
+    (binding) => binding.name === 'USERINFO_CLAIMS',
+  )!.entrypoint = 'UnexpectedEntrypoint';
+  assert.throws(
+    () => checkBindings(extraEntrypoint, config),
+    /Binding USERINFO_CLAIMS: entrypoint/,
+  );
+});
+
 test('Claim Worker must retain its Secrets Store key binding', () => {
   const config = JSON.parse(
     readFileSync('crates/userinfo-claim-worker/wrangler.production.jsonc', 'utf8'),
@@ -73,6 +119,9 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
   checkBindings(version, config);
   version.resources.bindings[2]!.secret_name = 'wrong-key';
   assert.throws(() => checkBindings(version, config), /Binding VAULT_USERINFO_MLKEM_A/);
+  const defaultEntrypoint = structuredClone(version);
+  delete defaultEntrypoint.resources.bindings[0]!.entrypoint;
+  assert.throws(() => checkBindings(defaultEntrypoint, config), /Binding CLAIM_STORE: entrypoint/);
 });
 
 test('downstream production bindings exclude raw storage and preserve exact named authority', () => {
