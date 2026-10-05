@@ -13,6 +13,8 @@ const queries = readFileSync(
 
 function openDb() {
   const db = new DatabaseSync(':memory:');
+  // Keep exact cutoff fixtures deterministic across a wall-clock second boundary.
+  db.function('unixepoch', () => 1_800_000_000);
   db.exec(`
     CREATE TABLE login_transaction(expires_at INTEGER NOT NULL);
     CREATE TABLE authorization_code(expires_at INTEGER NOT NULL);
