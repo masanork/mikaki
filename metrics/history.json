@@ -1275,15 +1275,15 @@
   },
   {
     "date": "2026-10-05",
-    "commit": "210567e",
+    "commit": "7a51514",
     "code": {
-      "implementationLines": 39561,
+      "implementationLines": 39209,
       "testLines": 10112,
       "implementationFiles": 176,
       "testFiles": 28,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 12062,
+          "implementationLines": 11710,
           "testLines": 2670
         },
         "rust": {
