@@ -83,14 +83,15 @@ pub(super) async fn collect(env: &worker::Env) -> worker::Result<()> {
         .filter_map(|r| r.meta().ok().flatten())
         .map(|meta| meta.changes.unwrap_or_default() as f64)
         .sum();
-    let backlog = db.prepare(
-        "SELECT 'login' AS kind,count(*) AS expired,min(expires_at) AS oldest FROM login_transaction WHERE expires_at<unixepoch()-86400 UNION ALL \
-         SELECT 'codes',count(*),min(expires_at) FROM authorization_code WHERE expires_at<unixepoch()-7776000 UNION ALL \
-         SELECT 'tokens',count(*),min(access_expires_at) FROM token_issue WHERE access_expires_at<unixepoch()-7776000 UNION ALL \
-         SELECT 'sso',count(*),min(expires_at) FROM sso_session WHERE expires_at<unixepoch()-7776000 UNION ALL \
-         SELECT 'logout',count(*),min(deadline) FROM sso_logout_event WHERE deadline<unixepoch()-7776000 UNION ALL \
-         SELECT 'dpop',count(*),min(retain_until) FROM dpop_proof_use WHERE retain_until<unixepoch()"
-    ).all().await?.results::<serde_json::Value>()?;
+    let statements = include_str!("auth_backlog.sql")
+        .split(';')
+        .filter(|sql| !sql.trim().is_empty())
+        .map(|sql| db.prepare(sql))
+        .collect();
+    let mut backlog = Vec::with_capacity(6);
+    for result in db.batch(statements).await? {
+        backlog.extend(result.results::<serde_json::Value>()?);
+    }
     worker::console_log!(
         "{}",
         serde_json::json!({"event":"auth_gc","reclaimed":reclaimed,"backlog":backlog})
