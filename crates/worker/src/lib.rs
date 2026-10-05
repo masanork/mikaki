@@ -24,6 +24,8 @@ mod identity;
 mod logout;
 #[cfg(target_arch = "wasm32")]
 mod logout_delivery;
+#[cfg(any(target_arch = "wasm32", test))]
+mod owner_schema;
 #[cfg(target_arch = "wasm32")]
 mod par;
 #[cfg(target_arch = "wasm32")]
@@ -1768,10 +1770,12 @@ async fn ready_route(
         let db = context.env.d1("DB")?;
         WorkerRuntimePolicy::from_db(&db).await?;
         let migration = db
-            .prepare("SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1")
+            .prepare("SELECT group_concat(name, ',') AS name FROM (SELECT name FROM d1_migrations ORDER BY id)")
             .first::<LatestMigrationRow>(None)
             .await?;
-        if migration.as_ref().map(|row| row.name.as_str()) != Some(env!("MIKAKI_LATEST_MIGRATION"))
+        if !migration
+            .as_ref()
+            .is_some_and(|row| owner_schema::ready(&row.name, env!("MIKAKI_LATEST_MIGRATION")))
         {
             return Err(worker::Error::RustError(
                 "Worker migrations are incomplete".into(),
