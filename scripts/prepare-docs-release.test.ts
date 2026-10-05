@@ -57,6 +57,9 @@ test('production Docs Wrangler config is strict JSON with release worker and bin
     },
   ]);
   assert.equal(config.version_metadata.binding, 'CF_VERSION_METADATA');
-  assert.deepEqual(config.ratelimits.map(({ name }) => name), ['AUTH_LIMITER']);
+  assert.deepEqual(
+    config.ratelimits.map(({ name }) => name),
+    ['AUTH_LIMITER'],
+  );
   assert.deepEqual(config.secrets.required, ['RP_PRIVATE_JWK']);
 });
