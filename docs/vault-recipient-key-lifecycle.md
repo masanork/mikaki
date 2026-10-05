@@ -12,7 +12,7 @@ The binding uses Cloudflare's [`secrets_store_secrets` and asynchronous `get()`]
 
 ## D1 directory and local tools
 
-[Migration 0007](../crates/worker/migrations/0007_vault_recipient_keys.sql) stores `key_id`, service `userinfo`, algorithm `ML-KEM-768`, a 1,184-byte public key, private-binding reference, generation, state, monotonically increasing revision, and timestamps. There is no private-key column. The initial directory is empty; migration alone enables no sharing.
+[Migration 0007](../crates/worker/migrations/0001_owner_vault_initial.sql) stores `key_id`, service `userinfo`, algorithm `ML-KEM-768`, a 1,184-byte public key, private-binding reference, generation, state, monotonically increasing revision, and timestamps. There is no private-key column. The initial directory is empty; migration alone enables no sharing.
 
 States are `staged → active → decrypt_only → disabled`, or `staged/active → disabled`. At most one UserInfo key is active. Key material, binding reference, and generation are immutable after registration. Rows cannot be deleted or re-enabled after `disabled`. D1 checks, a unique index, triggers, and the [SQL tests](../scripts/test_vault_recipient_keys_sql.test.ts) enforce these constraints.
 
@@ -53,7 +53,7 @@ node scripts/recipient-key-admin.ts --config crates/worker/wrangler.recipient-ad
 1. Generate an independent seed. Provision it through a protected route and stage its public key in D1. Keep any backup only under an explicit recovery procedure, outside logs and CI artifacts.
 2. Deploy the claim Worker with both old and new secret bindings, and verify their public-key matches. In one D1 batch, move old `active` to `decrypt_only` and new `staged` to `active`. If the batch fails, the old key stays active.
 3. Rewrap old envelopes only for attributes with valid grants, checking attribute revision and recipient key ID. After none remain and the recovery retention period passes, disable the old key and remove its binding and seed. Reject envelopes created offline for a retired generation.
-4. On compromise, disable the key in D1 immediately and fail closed for reads, unwrap, and claim issuance. [Migration 0009](../crates/worker/migrations/0009_vault_recipient_disable_grants.sql) also revokes its active system Grants in the same D1 transaction. An attribute dependent on that key is unavailable to UserInfo until its owner unlocks and wraps it to a new key. Already disclosed plaintext cannot be recalled.
+4. On compromise, disable the key in D1 immediately and fail closed for reads, unwrap, and claim issuance. [Migration 0009](../crates/worker/migrations/0001_owner_vault_initial.sql) also revokes its active system Grants in the same D1 transaction. An attribute dependent on that key is unavailable to UserInfo until its owner unlocks and wraps it to a new key. Already disclosed plaintext cannot be recalled.
 
 ## Loss recovery policy
 

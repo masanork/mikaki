@@ -14,15 +14,15 @@ The [`vault-owner-crypto.ts`](../crates/worker/ui/vault-owner-crypto.ts) impleme
 
 All base64url values are unpadded and canonical. Parsers reject unsupported versions, extra/missing envelope fields, non-string binary fields, invalid lengths and oversized inputs before base64 decoding. Owner/collection/record/kind identifiers are opaque ASCII `[A-Za-z0-9_-]`, 1–128 characters. Generations and revisions are positive safe integers. The origin is an exact canonical HTTPS origin with no path/credentials/query. An expected context is supplied by the owner-bound caller, not trusted from an attacker-controlled record.
 
-| Owner key envelope field | Meaning |
-| --- | --- |
-| `format_version` | Integer `2`; distinct from the unchanged version-1 attribute envelope. |
-| `kind` | Literal `owner-key`. |
-| `credential_id` | Canonical base64url of the selected credential ID, 1–512 bytes. |
-| `prf_input` | Random 32-byte input, stable for this credential's wrapping of this owner-key generation. |
-| `salt` | Random 32-byte HKDF salt for this wrap. |
-| `nonce` | Random 12-byte AES-GCM wrapping nonce. |
-| `wrapped_key` | Encrypted 32-byte owner key with 16-byte tag, exactly 48 bytes. |
+| Owner key envelope field | Meaning                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `format_version`         | Integer `2`; distinct from the unchanged version-1 attribute envelope.                    |
+| `kind`                   | Literal `owner-key`.                                                                      |
+| `credential_id`          | Canonical base64url of the selected credential ID, 1–512 bytes.                           |
+| `prf_input`              | Random 32-byte input, stable for this credential's wrapping of this owner-key generation. |
+| `salt`                   | Random 32-byte HKDF salt for this wrap.                                                   |
+| `nonce`                  | Random 12-byte AES-GCM wrapping nonce.                                                    |
+| `wrapped_key`            | Encrypted 32-byte owner key with 16-byte tag, exactly 48 bytes.                           |
 
 For KDF info and AAD, encode each string as UTF-8 with an unsigned big-endian 16-bit byte-length prefix, concatenated without separators. Owner context fields are, in order, version string `2`, origin, owner ID, Vault ID and decimal key generation. Owner wrapping additionally binds the canonical credential ID and PRF input strings.
 
@@ -63,7 +63,7 @@ The future controller must also invalidate this fixed-context lease when it obse
 
 ## Bounded owner-record API
 
-The isolated [`vault_owner_records.rs`](../crates/worker/src/vault_owner_records.rs) adapter and migration [`0032`](../crates/worker/migrations/0032_vault_owner_records.sql) persist the v2 records produced by `OwnerKeySession.seal`. Existing attribute panels use v1; the default new-Vault workspace uses this API. There is no legacy import, new key hierarchy, application schema, attachment transport or recipient authority in this slice.
+The isolated [`vault_owner_records.rs`](../crates/worker/src/vault_owner_records.rs) adapter and migration [`0032`](../crates/worker/migrations/0001_owner_vault_initial.sql) persist the v2 records produced by `OwnerKeySession.seal`. Existing attribute panels use v1; the default new-Vault workspace uses this API. There is no legacy import, new key hierarchy, application schema, attachment transport or recipient authority in this slice.
 
 ### Endpoints and caller contract
 

@@ -1212,17 +1212,15 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
     );
 
     await t.test(
-      'v2 GC retains young/current objects, removes old orphans and expired ledger rows, and collects both ciphertext formats',
+      'v2 GC retains young/current objects, removes old v2 orphans and expired ledger rows',
       async () => {
         const owner = await bootstrap('garbage-collection');
         assert.equal((await mutate(owner, await candidate(owner))).status, 200);
         const oldHead = await head(owner);
         assert.equal((await mutate(owner, await candidate(owner, 'one', 2), 1)).status, 200);
         const current = await head(owner);
-        const orphan = `vault-owner-record/${id()}`,
-          legacy = `vault-attribute/${id()}`;
+        const orphan = `vault-owner-record/${id()}`;
         await env.VAULT_BLOBS.put(orphan, 'v2 orphan');
-        await env.VAULT_BLOBS.put(legacy, 'v1 is outside this collector');
         const expiredOperation = id(),
           activeOperation = id();
         await env.DB.batch([
@@ -1274,11 +1272,6 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
         assert.ok(
           await env.VAULT_BLOBS.get(current.object_key),
           'old referenced ciphertext is retained',
-        );
-        assert.equal(
-          await env.VAULT_BLOBS.get(legacy),
-          null,
-          'old v1 orphan is collected by the shared GC',
         );
         assert.equal((await decrypt(owner)).value.revision, 2);
         assert.equal(

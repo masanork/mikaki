@@ -47,7 +47,8 @@ export type InventoryTarget = {
 };
 type Bindings = {
   databases: { name: string; database_id: string }[];
-  services: { name: string; service: string; environment?: string }[];
+  services: { name: string; service: string; environment?: string; entrypoint?: string }[];
+  r2_buckets: { name: string; bucket_name: string }[];
 };
 type Worker = { name: string; settings: Bindings; versions: ({ id: string } & Bindings)[] };
 export class InventoryError extends Error {}
@@ -78,7 +79,7 @@ function result(value: unknown): unknown {
 export function projectBindings(value: unknown, requireAgentAbsent = false): Bindings {
   gate(Array.isArray(value) && value.length <= 256, 'Missing or excessive Worker bindings.');
   const names = new Set<string>();
-  const projected: Bindings = { databases: [], services: [] };
+  const projected: Bindings = { databases: [], services: [], r2_buckets: [] };
   for (const binding of value) {
     gate(row(binding), 'Malformed Worker binding.');
     const name = safeName(binding.name);
@@ -94,6 +95,8 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
     );
     if (binding.type === 'd1')
       projected.databases.push({ name, database_id: uuid(binding.database_id) });
+    if (binding.type === 'r2_bucket')
+      projected.r2_buckets.push({ name, bucket_name: safeName(binding.bucket_name) });
     if (binding.type === 'service') {
       const service = safeName(binding.service);
       const environment =
@@ -102,6 +105,7 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
         name,
         service,
         ...(environment === undefined ? {} : { environment }),
+        ...(binding.entrypoint === undefined ? {} : { entrypoint: safeName(binding.entrypoint) }),
       });
     }
   }
@@ -109,6 +113,7 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   projected.databases.sort(order);
   projected.services.sort(order);
+  projected.r2_buckets.sort(order);
   return projected;
 }
 
@@ -186,12 +191,19 @@ function checkConsumer(name: string, bindings: Bindings, target: InventoryTarget
   const consumers = bindings.databases.filter(
     (binding) => binding.database_id === target.database_id,
   );
-  if (name === target.op || name === target.claim)
+  if (name === target.op)
+    gate(consumers.length === 1 && consumers[0]!.name === 'DB', 'Declared OP D1 binding differs.');
+  else if (name === target.claim) {
+    gate(bindings.databases.length === 0, 'Claim Worker must not bind raw D1 storage.');
+    gate(bindings.r2_buckets.length === 0, 'Claim Worker must not bind raw R2 storage.');
     gate(
-      consumers.length === 1 && consumers[0]!.name === 'DB',
-      'Declared production Worker D1 binding differs.',
+      bindings.services.length === 1 &&
+        bindings.services[0]!.name === 'CLAIM_STORE' &&
+        bindings.services[0]!.service === target.op &&
+        bindings.services[0]!.entrypoint === 'ClaimStore',
+      'Claim Worker must use the named OP ClaimStore service.',
     );
-  else
+  } else
     gate(
       consumers.length === 0,
       'Another ordinary Worker consumes production D1; compatibility review required.',

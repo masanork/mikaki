@@ -24,13 +24,12 @@ const finalAudit = claimSql('audit_name_record_release').replace(
   '{ACTIVE_NAME_RELEASE}',
   claimSql('active_name_record_release'),
 );
-function fixture(before34 = false) {
+function fixture() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
   for (const name of readdirSync(directory)
     .filter((n) => /^\d{4}_.+\.sql$/.test(n))
     .sort()) {
-    if (before34 && Number(name.slice(0, 4)) >= 34) break;
     db.exec(readFileSync(new URL(name, directory), 'utf8'));
   }
   const now = Number(db.prepare('SELECT unixepoch() AS t').get()!.t);
@@ -311,61 +310,6 @@ test('invalid nullable source selector cannot bypass check triggers', () => {
     assert.throws(() =>
       db.exec("UPDATE vault_claim_release SET source_kind=NULL,status='revoked',version=version+1"),
     );
-  } finally {
-    db.close();
-  }
-});
-
-test('legacy consent never discloses through the record-only authority', () => {
-  const db = fixture(true);
-  try {
-    const now = Number(db.prepare('SELECT unixepoch() AS n').get()!.n);
-    db.prepare(
-      "INSERT INTO vault_attribute_head VALUES('owner','name',1,1,'legacy-blob',?,'legacy-wrap',0,?)",
-    ).run(token('legacy'), now);
-    db.prepare(
-      "INSERT INTO vault_attribute_recipient_envelope VALUES(?,'owner','name',1,'userinfo',?,1,'ML-KEM-768-HKDF-SHA256-AES-256-GCM-draft04-v1',?,zeroblob(1187),?)",
-    ).run(token('legacy-envelope'), keyId, token('legacy'), now);
-    db.exec(
-      'UPDATE vault_share_policy SET enabled=1,revision=2;UPDATE vault_claim_release_policy SET enabled=1,revision=2',
-    );
-    db.prepare(
-      "INSERT INTO vault_attribute_grant VALUES('owner','name','userinfo','oidc.userinfo.name',?,1,1,'active',?,?)",
-    ).run(token('legacy-envelope'), now + 600, now);
-    db.prepare(
-      "INSERT INTO vault_claim_release VALUES('owner','rp','name',1,1,1,1,1,'active',?,?)",
-    ).run(now + 300, now);
-    db.prepare(
-      "INSERT INTO vault_claim_release_audit VALUES('owner',?,?,'rp','name','grant',1,?)",
-    ).run(token('legacy-operation'), token('legacy-request'), now);
-    db.exec(readFileSync(new URL('0034_vault_record_userinfo.sql', directory), 'utf8'));
-    assert.deepEqual(
-      {
-        ...db
-          .prepare('SELECT source_storage_version,status,version FROM vault_claim_release')
-          .get(),
-      },
-      { source_storage_version: 1, status: 'active', version: 1 },
-    );
-    assert.equal(
-      db.prepare('SELECT source_storage_version FROM vault_claim_release_audit').get()!
-        .source_storage_version,
-      1,
-    );
-    assert.equal(snapshot(db), undefined, 'legacy heads cannot authorize record delivery');
-    db.exec('UPDATE vault_record_share_policy SET enabled=1,revision=2');
-    share(db);
-    assert.equal(snapshot(db), undefined, 'system v2 grant does not silently migrate RP consent');
-    assert.equal(consent(db, { 17: 1 }), 1);
-    assert.ok(snapshot(db), 'explicit record consent selects only the record source');
-    assert.equal(db.prepare('SELECT count(*) AS n FROM vault_claim_release').get()!.n, 1);
-    assert.equal(consent(db, { 17: 1 }), 0, 'a stale explicit record consent fence is rejected');
-    assert.equal(consent(db, { 17: 2 }), 1, 'the current consent fence can renew record selection');
-    assert.ok(snapshot(db));
-    db.exec("UPDATE vault_attribute_grant SET status='revoked',version=2");
-    assert.ok(snapshot(db), 'old v1 grant mutation cannot alter selected v2 consent');
-    db.exec("UPDATE vault_claim_release SET status='revoked',version=version+1");
-    assert.equal(snapshot(db), undefined, 'withdrawal has no legacy fallback');
   } finally {
     db.close();
   }

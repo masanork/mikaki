@@ -41,16 +41,16 @@ Also verify the archive SBOM/CBOM attestations in [supply-chain evidence](supply
 
 Before activation, prepare one restricted operations record containing:
 
-| Evidence | Required record |
-| --- | --- |
-| Build | Reviewed commit, verified archive/manifest digests, attestation identity and CI run |
-| Environment | Exact account, Worker names, issuer, D1 IDs and R2 buckets; no secret values |
-| Schema | Before/after migration lists and hashes; current backup bookmark and its usable restore window |
-| Configuration | Active runtime-policy generation/revisions, registered RP revision, disabled/enabled optional features |
-| Secrets and bindings | Required secret names and binding presence; independently escrowed key versions and retirement rules |
-| Deployment | Actual Cloudflare version IDs, route activation time and previous compatible version |
-| Qualification | Timestamped owner-device save/reopen/transfer, complete RP callback, session check and logout denial/delivery |
-| Rollback | Compatible code version, schema compatibility decision, preserved authority and post-rollback smoke evidence |
+| Evidence             | Required record                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Build                | Reviewed commit, verified archive/manifest digests, attestation identity and CI run                           |
+| Environment          | Exact account, Worker names, issuer, D1 IDs and R2 buckets; no secret values                                  |
+| Schema               | Before/after migration lists and hashes; current backup bookmark and its usable restore window                |
+| Configuration        | Active runtime-policy generation/revisions, registered RP revision, disabled/enabled optional features        |
+| Secrets and bindings | Required secret names and binding presence; independently escrowed key versions and retirement rules          |
+| Deployment           | Actual Cloudflare version IDs, route activation time and previous compatible version                          |
+| Qualification        | Timestamped owner-device save/reopen/transfer, complete RP callback, session check and logout denial/delivery |
+| Rollback             | Compatible code version, schema compatibility decision, preserved authority and post-rollback smoke evidence  |
 
 Follow the environment-specific [deployment procedure](cloudflare-deployment.md). A successful `/health` proves only that its handler runs. Discovery/JWKS and migration-list checks do not prove account enrollment, schema-dependent token writes, service bindings, R2 retrieval, or logout delivery. Qualify those concrete positive/negative paths against the recorded version. An archive manifest does not identify the bytes Cloudflare actually serves; promotion and runtime-version mapping remain unfinished.
 
@@ -68,11 +68,11 @@ Account login and encrypted Vault recovery are separate. The supported user path
 
 Operator backup must cover more than D1:
 
-| Component | Required protected backup and verification |
-| --- | --- |
-| D1 | A usable bookmark or independently protected export, schema/revision inventory and security audit reconciliation source |
-| Vault R2 | Every nondeleted head's immutable object, object key/digest, and owner envelope at the matching DB boundary |
-| Secrets | OP signing-key history, claim/agent recipient keys where active, binding configuration and rotation state; outside public CI artifacts |
+| Component                 | Required protected backup and verification                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1                        | A usable bookmark or independently protected export, schema/revision inventory and security audit reconciliation source                        |
+| Vault R2                  | Every nondeleted head's immutable object, object key/digest, and owner envelope at the matching DB boundary                                    |
+| Secrets                   | OP signing-key history, claim/agent recipient keys where active, binding configuration and rotation state; outside public CI artifacts         |
 | Authority outside restore | Recovery generation or equivalent external fencing, independent revoked/deleted credential/client/grant records, and RP invalidation procedure |
 
 D1 [Time Travel restores a database in place](https://developers.cloudflare.com/d1/reference/time-travel/); it does not supply the separate Vault objects or key material. The current Vault GC deletes unreferenced objects older than 24 hours. An old D1 bookmark can therefore refer to already removed ciphertext. D1 history retention alone is not the Vault recovery window.
@@ -96,7 +96,7 @@ Historical restore can revive authority that was revoked after the snapshot. The
 npm run test:release
 ```
 
-The release tests substitute archive and SQL bytes, unexpected/duplicate/linked members, source commits, tracked/untracked inputs and migration gaps. The [migration exercise](../scripts/migration-recovery.test.ts) uses a disposable SQLite database and ciphertext file, applies migrations `0001`–`0013`, seeds an encrypted head, audit and closed bootstrap, takes a real SQLite backup, then applies all remaining checked-in migrations. It verifies preserved rows and integrity, rollback after a later failing statement, restoration/upgrading of the backup, successful AEAD reopening of matching ciphertext, and rejection of missing/corrupt objects. It also demonstrates resurrection of historical revoked state. Temporary fixture DBs/objects are removed; only the secret-free summary `artifacts/migration-recovery.json` is retained by CI.
+The release tests substitute archive and SQL bytes, unexpected/duplicate/linked members, source commits, tracked/untracked inputs and migration gaps. The [migration exercise](../scripts/plan-owner-vault-reset.test.ts) uses a disposable SQLite database and ciphertext file, applies migrations `0001`–`0013`, seeds an encrypted head, audit and closed bootstrap, takes a real SQLite backup, then applies all remaining checked-in migrations. It verifies preserved rows and integrity, rollback after a later failing statement, restoration/upgrading of the backup, successful AEAD reopening of matching ciphertext, and rejection of missing/corrupt objects. It also demonstrates resurrection of historical revoked state. Temporary fixture DBs/objects are removed; only the secret-free summary `artifacts/migration-recovery.json` is retained by CI.
 
 This checks SQL/data compatibility and a local backup round trip. It does not emulate D1 Time Travel, distributed consistency, R2 permissions/GC, production credential removal, signing-key escrow, binding preservation, RP logout, runtime byte promotion or real device recovery. The production recovery gate remains open.
 
@@ -118,14 +118,9 @@ The final reusable `production-smoke` job checks the exact OP version, clean sou
 
 ## Vault schema reconciliation recovery boundary
 
-The [bounded 0033–0035 reconciliation procedure](cloudflare-deployment.md#manual-reconciliation-of-reviewed-migrations-0033-through-0035)
-records its source/DB/migration hashes, pending state, schema fingerprint,
-Time Travel timestamp and bookmark before applying. The same timestamp is read
-back to confirm the service returns the same bookmark. The apply step checks
-that record is less than two minutes old and the reviewed ledger/schema state
-still matches. The original timestamp is checked again at the mutation boundary
-after remote inspection and staging. This verifies a currently readable recovery coordinate; it is
-not a restore rehearsal, an export, or proof of a quiesced database boundary.
+The former bounded 0033–0035 reconciliation procedure is retired. The current
+release path requires the exact fresh-baseline ledger and schema gate before
+source activation. This is not an upgrade path for an existing database.
 
 The sanitized preflight artifact is retained before any write; a separate result
 artifact distinguishes verified completion from an uncertain attempted operation.

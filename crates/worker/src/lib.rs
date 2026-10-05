@@ -1621,9 +1621,8 @@ async fn discovery_route(
             .d1("DB")?
             .prepare(
                 "SELECT 1 AS active FROM vault_claim_release_policy rp \
-             WHERE rp.id=1 AND rp.enabled=1 AND ( \
-             EXISTS(SELECT 1 FROM vault_share_policy WHERE id=1 AND enabled=1) OR \
-             EXISTS(SELECT 1 FROM vault_record_share_policy WHERE id=1 AND enabled=1))",
+             JOIN vault_record_share_policy sp ON sp.id=rp.id \
+             WHERE rp.id=1 AND rp.enabled=1 AND sp.enabled=1",
             )
             .first::<i64>(Some("active"))
             .await?
@@ -2018,7 +2017,6 @@ async fn userinfo_route_inner(
                 JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
                 JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
                 WHERE ti.access_hash=?1 AND ti.revoked=0 \
-                AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash) \
                 AND ti.access_expires_at>CAST(strftime('%s','now') AS INTEGER)",
             )
             .bind(&[wasm_bindgen::JsValue::from_str(&token_hash)])?
@@ -2102,8 +2100,7 @@ async fn userinfo_route_inner(
             "SELECT v.sub FROM token_issue ti \
              JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
              JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
-             WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>?2 AND ti.dpop_jkt IS NULL \
-             AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash)",
+             WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>?2 AND ti.dpop_jkt IS NULL",
         )
         .bind(&[
             wasm_bindgen::JsValue::from_str(&token_hash),

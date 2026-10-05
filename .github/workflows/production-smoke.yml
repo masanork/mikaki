@@ -81,6 +81,35 @@ jobs:
               curl --config - -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$issuer/ready" > ready-status.txt
           fi
           node scripts/check-production-smoke.ts
+      - name: Check the source-matched Docs RP and bilingual public entry
+        env:
+          MIKAKI_EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+        run: |
+          set -euo pipefail
+          for path in health version; do
+            curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "https://docs.mikaki.org/$path" -o "docs-$path.json"
+          done
+          for lang in ja en; do
+            curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "https://docs.mikaki.org/session?lang=$lang" -o "docs-session-$lang.html"
+          done
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const health = JSON.parse(readFileSync('docs-health.json', 'utf8'));
+          assert.equal(health.status, 'ok');
+          assert.equal(health.issuer, 'https://auth.mikaki.org');
+          assert.equal(health.origin, 'https://docs.mikaki.org');
+          const version = JSON.parse(readFileSync('docs-version.json', 'utf8'));
+          assert.match(version.id, /^[a-f0-9-]{36}$/);
+          const expected = process.env.MIKAKI_EXPECTED_SOURCE_COMMIT;
+          if (expected) assert.equal(version.tag, expected.slice(0, 12));
+          for (const lang of ['ja', 'en']) {
+            const html = readFileSync(`docs-session-${lang}.html`, 'utf8');
+            assert.ok(html.includes(`<html lang="${lang}">`));
+            assert.ok(html.includes('action="/login"'));
+          }
+          console.log('Docs runtime identity, health and bilingual login entries passed');
+          JS
       - name: Audit public website findability
         run: node website/audit-public.ts
       - name: Retain public website audit

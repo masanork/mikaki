@@ -177,7 +177,6 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       new URL(receiptRejected.headers.get('location')!).searchParams.get('error'),
       'invalid_request',
     );
-    assert.equal(await DB.prepare('SELECT count(*) AS n FROM vault_oauth_consent').first('n'), 0);
     assert.equal((await worker.fetch(`${issuer}/vault/oauth/consent?tx=historical`)).status, 404);
     assert.equal(
       (await worker.fetch(`${issuer}/vault/oauth/consent`, { method: 'POST' })).status,
@@ -257,85 +256,6 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
 
     const second = await authorize();
     assert.equal((await token(second.code, second.verifier)).status, 200);
-
-    const historicalVaultCode = await authorize();
-    const historicalCodeHash = await DB.prepare(
-      'SELECT code_hash FROM authorization_code WHERE pkce_challenge=? AND consumed_by IS NULL',
-    )
-      .bind(digest(historicalVaultCode.verifier))
-      .first('code_hash');
-    assert.ok(historicalCodeHash);
-    await DB.batch([
-      DB.prepare('DELETE FROM code_context WHERE code_hash=?').bind(historicalCodeHash),
-      DB.prepare('INSERT INTO code_context(code_hash,nonce,scope) VALUES(?,?,?)').bind(
-        historicalCodeHash,
-        historicalVaultCode.nonce,
-        'openid vault.read',
-      ),
-    ]);
-    const legacyConsentId = secret();
-    const legacyGrantId = secret();
-    const legacyNow = Math.floor(Date.now() / 1000);
-    await DB.prepare(
-      `INSERT INTO vault_oauth_consent
-       (tx_id,sso_secret_hash,sso_id,account_id,client_id,client_revision,authorization_url,redirect_uri,state,attribute_id,resource,expires_at,created_at)
-       VALUES(?,?,'sso','account',?,1,?,?,?,'owner_note','https://mikaki.tossa.app/vault-api/',?,?)`,
-    )
-      .bind(
-        legacyConsentId,
-        digest('cookie-secret'),
-        clientId,
-        `${issuer}/authorize?client_id=${clientId}`,
-        callback,
-        secret(),
-        legacyNow + 300,
-        legacyNow,
-      )
-      .run();
-    await DB.prepare("UPDATE vault_oauth_consent SET decision='approved' WHERE tx_id=?")
-      .bind(legacyConsentId)
-      .run();
-    await DB.prepare("UPDATE vault_oauth_consent SET decision='consumed' WHERE tx_id=?")
-      .bind(legacyConsentId)
-      .run();
-    await DB.prepare(
-      `INSERT INTO vault_oauth_grant
-       (grant_id,consent_tx_id,account_id,client_id,client_revision,attribute_id,resource,action,version,expires_at,revoked,created_at)
-       VALUES(?,?,'account',?,1,'owner_note','https://mikaki.tossa.app/vault-api/','read_ciphertext',1,?,0,?)`,
-    )
-      .bind(legacyGrantId, legacyConsentId, clientId, legacyNow + 300, legacyNow)
-      .run();
-    await DB.prepare(
-      `INSERT INTO vault_oauth_code_context
-       (code_hash,grant_id,grant_version,resource,attribute_id)
-       VALUES(?,?,1,'https://mikaki.tossa.app/vault-api/','owner_note')`,
-    )
-      .bind(historicalCodeHash, legacyGrantId)
-      .run();
-    const dpopKeys = await generateKeyPair('ES256');
-    const dpopJwk = await exportJWK(dpopKeys.publicKey);
-    const dpop = await new SignJWT({
-      htm: 'POST',
-      htu: `${issuer}/token`,
-      iat: Math.floor(Date.now() / 1000),
-      jti: secret(),
-    })
-      .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: dpopJwk })
-      .sign(dpopKeys.privateKey);
-    const rejectedVaultToken = await token(
-      historicalVaultCode.code,
-      historicalVaultCode.verifier,
-      { resource: 'https://mikaki.tossa.app/vault-api/' },
-      dpop,
-    );
-    assert.equal(rejectedVaultToken.status, 400, await rejectedVaultToken.clone().text());
-    assert.equal(
-      await DB.prepare('SELECT count(*) AS n FROM token_issue WHERE code_hash=?')
-        .bind(historicalCodeHash)
-        .first('n'),
-      0,
-      'a legacy Vault-scoped authorization code cannot mint an ordinary token',
-    );
 
     const desktopId = randomUUID();
     const registeredLoopback = 'http://127.0.0.1:0/oidc/callback';

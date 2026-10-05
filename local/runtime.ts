@@ -12,11 +12,13 @@ export async function startLocal({
   scheduler = true,
   helpdesk = false,
   demo = false,
+  docs = false,
   beforeSessionCheckResponse,
 }: {
   scheduler?: boolean;
   helpdesk?: boolean;
   demo?: boolean;
+  docs?: boolean;
   beforeSessionCheckResponse?: () => Promise<void>;
 } = {}) {
   async function keys(kid: string) {
@@ -38,12 +40,13 @@ export async function startLocal({
   }
   const opKeys = await keys('local-op-1'),
     rpKeys = await keys('local-rp-1');
+  const localRpOrigin = RP;
   const publicVars = {
     LOCAL_ONLY: 'true',
     OP_PUBLIC_JWK: opKeys.public,
     RP_PUBLIC_JWK: rpKeys.public,
     ISSUER: OP,
-    RP_ORIGIN: RP,
+    RP_ORIGIN: localRpOrigin,
     CLIENT_ID: CLIENT,
   };
   const servers: Server[] = [];
@@ -74,11 +77,13 @@ export async function startLocal({
           secrets: { OP_PRIVATE_JWK: opKeys.private },
         },
         {
-          configPath: helpdesk
-            ? demo
-              ? 'crates/helpdesk-rp/wrangler.demo-local.jsonc'
-              : 'crates/helpdesk-rp/wrangler.local.jsonc'
-            : 'local/wrangler.rp.jsonc',
+          configPath: docs
+            ? 'apps/mikaki-docs/wrangler.local.jsonc'
+            : helpdesk
+              ? demo
+                ? 'crates/helpdesk-rp/wrangler.demo-local.jsonc'
+                : 'crates/helpdesk-rp/wrangler.local.jsonc'
+              : 'local/wrangler.rp.jsonc',
           vars: publicVars,
           secrets: { RP_PRIVATE_JWK: rpKeys.private },
         },
@@ -87,7 +92,13 @@ export async function startLocal({
     await harness.listen();
     const op = harness.getWorker('mikaki-local-op'),
       rp = harness.getWorker(
-        helpdesk ? (demo ? 'mikaki-demo-local' : 'mikaki-helpdesk-local') : 'mikaki-local-rp',
+        docs
+          ? 'mikaki-docs-local'
+          : helpdesk
+            ? demo
+              ? 'mikaki-demo-local'
+              : 'mikaki-helpdesk-local'
+            : 'mikaki-local-rp',
       );
     const opEnv = await op.getEnv(),
       rpEnv = await rp.getEnv();
@@ -99,7 +110,11 @@ export async function startLocal({
     await schema(opEnv.DB, 'schema.sql');
     await schema(
       rpEnv.DB,
-      helpdesk ? '../crates/helpdesk-rp/migrations/0001_initial.sql' : 'rp-schema.sql',
+      docs
+        ? '../apps/mikaki-docs/migrations/0001_initial.sql'
+        : helpdesk
+          ? '../crates/helpdesk-rp/migrations/0001_initial.sql'
+          : 'rp-schema.sql',
     );
     if (helpdesk) await schema(rpEnv.DB, '../crates/helpdesk-rp/migrations/0002_backchannel.sql');
     const invitation = random();
@@ -152,7 +167,7 @@ export async function startLocal({
       });
     }
     await listen(OP, op);
-    await listen(RP, rp);
+    await listen(localRpOrigin, rp);
     // The harness does not fire cron automatically. The policy controls local
     // intervals; cron strings route to the corresponding Worker handler.
     function schedule(workers: Array<typeof op>, cron: string, seconds: number) {

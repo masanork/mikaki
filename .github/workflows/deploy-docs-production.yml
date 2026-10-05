@@ -1,0 +1,65 @@
+name: deploy-docs-production
+on:
+  workflow_call:
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'masanork/mikaki'
+    environment:
+      name: production
+      url: https://docs.mikaki.org
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      WRANGLER_SEND_METRICS: false
+      GITHUB_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: attested-worker-${{ github.sha }}
+          path: artifacts/
+      - name: Verify source-bound Docs RP artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s artifacts/mikaki-docs-rp.tar.gz
+          gh attestation verify artifacts/mikaki-docs-rp.tar.gz -R "$GITHUB_REPOSITORY" \
+            --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml \
+            --source-digest "$GITHUB_SHA" --source-ref refs/heads/main --deny-self-hosted-runners
+          tar -tzf artifacts/mikaki-docs-rp.tar.gz | grep -Fx 'artifacts/docs-promotion/bundle/worker.js'
+          tar -tzf artifacts/mikaki-docs-rp.tar.gz | grep -Fx 'artifacts/docs-promotion/manifest.json'
+          tar -tzf artifacts/mikaki-docs-rp.tar.gz | grep -Fx 'apps/mikaki-docs/dist/index.html'
+          tar -xzf artifacts/mikaki-docs-rp.tar.gz -C .
+      - name: Verify the prepared bundle against the checked out source and assets
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: npm run verify:docs-release
+      - name: Inspect and activate the prepared Docs version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DOCS_RP_PRIVATE_JWK: ${{ secrets.DOCS_RP_PRIVATE_JWK }}
+        run: node scripts/deploy-docs-production.ts
+      - name: Retain Docs RP deployment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-production-deployment-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/production-docs-deployment.json
+          if-no-files-found: ignore
+          retention-days: 30

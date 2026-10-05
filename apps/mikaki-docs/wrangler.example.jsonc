@@ -1,0 +1,43 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mikaki-docs-rp-example",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "dist",
+    "binding": "DOCS_ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": true,
+  },
+  "vars": {
+    "ISSUER": "https://issuer.example",
+    "RP_ORIGIN": "https://docs.example",
+    "CLIENT_ID": "replace-with-registered-client-id",
+  },
+  "secrets": { "required": ["RP_PRIVATE_JWK"] },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "replace-with-dedicated-docs-database",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "replace-with-unique-rate-limit-namespace",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "invocation_logs": false },
+    "traces": { "enabled": false },
+  },
+}

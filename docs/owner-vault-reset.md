@@ -1,16 +1,14 @@
 # Owner Vault reset preparation (#121)
 
-Status (2026-10-05): source retirement is in progress on
-`feat/issue-121-agent-v1-retirement`, integrated with main `b6ed5c0`
-(merged PR #105, PR #125, PR #126 and PR #127). The
-browser/API and native OAuth source slices remove the legacy Vault UI/routes,
-Vault consent and token issuance, and Tauri ciphertext operations while keeping
-OwnerWorkspace archive/import/search, ordinary OIDC/Identity, and historical
-token-isolation guards. This Agent slice removes v1 Agent grants and attribute
-proposal paths while retaining v2 record grants and approval. Historical
-tables/migrations and stored data remain for a later baseline/reset decision.
-No production reset, service deletion, migration renumbering, or release is
-authorized here.
+Status (2026-10-05): the source-only baseline work is on
+`ops/owner-vault-baseline-20261005`, based on main `d033b35` (PRs #105 and
+#125–#128 merged). It consolidates the retained OP schema into
+`0001_owner_vault_initial.sql`, excluding retired Vault attribute/share/OAuth
+tables, and removes their runtime dependencies. Current Owner Vault, Agent v2,
+Identity, enrollment, session, and policy schema are retained. The production
+upload path now has a fail-closed exact fresh-ledger/schema gate. This worktree
+does not reset, inspect, or delete production data, deploy services, or change
+the production binding; those steps remain separately controlled.
 
 ## Source and ordering prerequisites
 
@@ -18,9 +16,10 @@ authorized here.
 Vault with Owner Vault and creates a fresh deployment; it does not upgrade
 existing accounts or migrate their ciphertext. Its source baseline includes the
 identity features from [PR #105](https://github.com/masanork/mikaki/pull/105),
-merged to main as `559a73a`; migrations 0036–0044 are present. The reset remains
-blocked on the remaining Vault retirement, schema/baseline choice, RP
-qualification, and reviewed production inventory.
+and the completed browser/API, native OAuth, and Agent v1 source retirements.
+The fresh baseline includes the retained Identity schema. A reset never upgrades
+existing accounts or migrates their ciphertext; it requires an explicitly fresh
+target and a separately reviewed cutover.
 
 Keep #105's identity tables and issuance paths in every intermediate build.
 Resolve the execution order with [#116](https://github.com/masanork/mikaki/issues/116): if its
@@ -102,17 +101,17 @@ the absence of additional agent, identity-verifier, or RP deployments.
 
 Cloudflare account: `4b749427a0c80c547e726a42aff4b6fc`.
 
-| Resource           | Configured target                                        | Planned disposition                                                                                                         |
-| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| OP Worker          | `mikaki-auth`, `auth.mikaki.org`                         | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact                            |
-| OP D1              | `mikaki-auth`, `f9299d62-2dbf-4bae-ae49-8b75674572d4`    | Reset all application state and old `d1_migrations` ledger                                                                  |
-| Vault R2           | `mikaki-auth-vault`                                      | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening |
-| Claim Worker       | `mikaki-auth-claims`                                     | Preserve key boundary; redeploy Owner Vault-only claim release                                                              |
-| Claim DB authority | OP `ClaimStore` service binding                          | No separately configured claim D1; reset authority with OP DB                                                               |
-| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                      | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                               |
-| Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408` | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                               |
-| Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                   | Disable before retirement; omit from fresh seed                                                                             |
-| FAQ RP             | Unresolved                                               | Provision separate RP storage/key and initialize an active OP registration                                                  |
+| Resource           | Configured target                                                 | Planned disposition                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| OP Worker          | `mikaki-auth`, `auth.mikaki.org`                                  | Preserve name/domain/bindings; stop writers during cutover; redeploy qualified baseline artifact                                              |
+| OP D1              | Fresh `mikaki-auth-owner`, `d0258938-0d27-4110-8aa9-c82e20f3885b` | Initialize the single Owner Vault baseline; retire former `mikaki-auth` DB `f9299d62-2dbf-4bae-ae49-8b75674572d4` after stopping every writer |
+| Vault R2           | `mikaki-auth-vault`                                               | Remove all objects and any recoverable object versions/state applicable to the actual bucket; verify empty before reopening                   |
+| Claim Worker       | `mikaki-auth-claims`                                              | Preserve key boundary; redeploy Owner Vault-only claim release                                                                                |
+| Claim DB authority | OP `ClaimStore` service binding                                   | No separately configured claim D1; reset authority with OP DB                                                                                 |
+| Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                               | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                                                 |
+| Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408`          | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                                                 |
+| Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                            | Disable before retirement; omit from fresh seed                                                                                               |
+| FAQ RP             | Unresolved                                                        | Provision separate RP storage/key and initialize an active OP registration                                                                    |
 
 Configured OP schedules are `* * * * *` and `*/10 * * * *`; demo cleanup is
 `*/15 * * * *`. Suspend all actual writers, including older traffic-bearing
@@ -143,8 +142,9 @@ transfer and AgentPanel components are removed. Thirteen v1 resource/share/relea
 and attribute routes return 404, including `/vault-api/attributes/:attribute`.
 The native OAuth slice also removes both `/vault/oauth/consent` methods, old
 Vault authorization-code issuance and Tauri ciphertext commands. Ordinary OIDC,
-Identity and token-class isolation remain. Historical tables, migrations, GC
-protections and live data are untouched, so this is not a completed Vault cutover.
+Identity and ordinary-token isolation remain. The new baseline removes retired
+tables and legacy GC protection from new databases. Existing production data is
+untouched and must never receive this baseline as an incremental migration.
 The unmounted `OwnerVault`/`OwnerVaultSession` name-and-note qualification
 preview, its exclusive browser test and the unused v1 attribute-commit UI helper
 are removed in the Native follow-up. `VaultSession` and the default
@@ -156,7 +156,7 @@ are removed in the Native follow-up. `VaultSession` and the default
 | OP storage         | Done in this slice: remove `/vault/attributes/*`, v1 share/release/recipient-key routes, `/vault-api/attributes/*`, and their attribute handlers                                                                                                      | Owner-key wraps, opaque record heads and ciphertext storage, record release revoke and atomic commit proof                                                    |
 | UserInfo           | Record-only ClaimStore selection and recipient-secret boundary are done in merged #125; the Native retirement follow-up branch removes legacy issuance while retaining the historical-token cross-authority denial fence until expiry/reset           | Recipient directory/secret boundary, record envelope, exact consent/source/authority fences and disclosure audit                                              |
 | Agent              | In this follow-up branch, new grants, authorization details and active tokens are v2 record-only; v1 rows remain visible only for revocation, with payload redaction/retention preserved. Legacy attribute tool/routes/source predicates are removed. | Record grant/disclosure, explicit record approval, owner/session authorization, optional RAR with exact v2 source binding, and per-operation freshness checks |
-| GC                 | Remove historical attribute-prefix cleanup only with the later baseline/reset; this browser/API slice does not change GC or old data                                                                                                                  | Owner record candidates and, while legacy heads remain, the live-head R2 deletion guard                                                                       |
+| GC                 | New baseline and runtime GC use only Owner Record candidates; old database and R2 objects remain untouched pending separately reviewed cutover                                                                                                        | Owner record candidate lifecycle; do not apply fresh baseline to old D1                                                                                       |
 | Native Vault OAuth | Done in this slice: remove consent routes, `vault.read` authorization/code issuance, old OIDC Vault profile and Tauri ciphertext commands; reject legacy inputs and preserve historical-token isolation                                               | Ordinary native OIDC/PKCE, Identity wallet/presentation, generic DPoP checks and historical retention/schema guards                                           |
 | Demo RP            | Remove login-only mode/config/generated types, demo-only fixtures/tests and product links                                                                                                                                                             | Helpdesk/FAQ shared OIDC, CSRF, logout tombstones, session checks and help code                                                                               |
 
@@ -179,7 +179,8 @@ clients but only with an active grant whose exact v2 source and authority remain
 live. Supplied RAR details must match that same record. Historical v1 grant rows
 remain available only for owner revocation; revoke clears snapshots, and pending
 legacy proposal payloads continue through the existing redaction and cleanup
-window. The D1 tables and migrations remain for historical retention.
+window. Those rows remain only in existing databases; the fresh baseline omits
+the v1 tables and migration history.
 
 Replace migration-upgrade and legacy compatibility fixtures with fresh baseline
 and record-only tests. Keep denial tests for retired URLs, v1 grants/envelopes,
@@ -188,13 +189,13 @@ the evidence that old authorization is rejected.
 
 ## Baseline contract
 
-Consolidate the OP schema to `0001_owner_vault_initial.sql` after all source
-dependencies and record-only changes are qualified. Consolidate the FAQ RP's
-separate schema independently to its own `0001`; never apply RP SQL to OP D1.
-The claim and agent services with OP-owned storage get no additional DB baseline.
-Include every retained table/index/trigger/view and singleton policy/initial
-registration. Preserve bootstrap enrollment, auth retention/capacity, Owner Vault
-atomicity and revocation triggers, and the merged identity profiles.
+The OP schema is consolidated in `0001_owner_vault_initial.sql`. An empty
+in-memory SQLite rehearsal checks integrity, foreign keys, required Owner
+Record/Agent v2/Identity tables, policy seeds, and absence of retired tables and
+user rows. The FAQ RP's schema remains separate; never apply RP SQL to OP D1.
+The claim and agent services with OP-owned storage get no additional DB
+baseline. Preserve bootstrap enrollment, auth retention/capacity, Owner Vault
+atomicity and revocation triggers, and merged Identity profiles.
 
 Apply final DDL directly, rather than concatenating historical `ALTER TABLE`
 files. Compare the retained schema and defaults against the frozen main schema,
@@ -210,17 +211,19 @@ initialization is a failure of this issue's acceptance condition.
 
 Reject any target with an old application table or migration ledger before
 applying the baseline. Renaming `0001` or changing a ledger table is not an
-upgrade: neither method permits applying fresh DDL to an old DB. The planner's
-`assertFreshBaselineTarget` is tested against old ledgers, old and new Vault
-tables, and unknown internal-looking tables. It is preparation for a future
-executor; no current deploy command invokes it.
+upgrade: neither method permits applying fresh DDL to an old DB. The deploy gate
+requires the exact singleton baseline ledger and compares the remote schema
+digest with the compiled baseline before upload. Planner and gate tests reject
+old ledgers, old and new Vault tables, and unknown internal-looking tables.
+This gate is a prerequisite for source activation, not authorization to operate
+on production.
 
-Update readiness/schema markers, release manifest SQL digests, upload/deploy
-gates, all local fixture initializers and CI at the same boundary. Retire the
-0031 reconciliation workflow/script and its incremental assumptions, and mark
-old import/recovery instructions historical. Do not merge an auto-promoted
-baseline artifact while production still requires the old schema. Coordinate
-the existing production concurrency gate with the approved reset window.
+The release manifest includes the single baseline digest, local SQL fixtures
+apply that baseline, and the obsolete 0031 reconciliation workflow is retired.
+The new production D1 target and its public seed still require owner review and
+qualification. Do not activate a baseline artifact against the previous D1.
+Coordinate the existing production concurrency gate with an approved reset
+window.
 
 ## Cutover sequence to review before execution
 

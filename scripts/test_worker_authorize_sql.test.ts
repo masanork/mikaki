@@ -16,17 +16,7 @@ const scalar = (db: DatabaseSync, statement: string) =>
 function seededDb() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
-  for (const name of [
-    '0001_oidc_initial.sql',
-    '0003_client_administration.sql',
-    '0004_client_redirect_lifecycle.sql',
-    '0023_oidc_profile_scope.sql',
-    '0026_native_loopback_redirect.sql',
-  ])
-    db.exec(migration(name));
-  // This fixture has only the tables needed by authorization issuance; mirror
-  // the public-client discriminator introduced by migration 0025.
-  db.exec("ALTER TABLE client ADD COLUMN client_type TEXT NOT NULL DEFAULT 'web'");
+  db.exec(migration('0001_owner_vault_initial.sql'));
   const now = Math.floor(Date.now() / 1000);
   db.exec("INSERT INTO account_security VALUES('account',0,1)");
   db.exec("INSERT INTO credential VALUES('cred','account',1)");

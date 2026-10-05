@@ -19,6 +19,12 @@ jobs:
           cache: npm
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
       - run: npm ci
+      - name: Build bilingual Docs RP
+        run: npm run build:docs
+      - name: Prepare source-bound Docs RP bundle
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: npm run prepare:docs-release
       - uses: ./.github/actions/setup-cargo-tools
         with:
           profile: release
@@ -72,6 +78,7 @@ jobs:
         run: |
           tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+          tar -C . -czf artifacts/mikaki-docs-rp.tar.gz artifacts/docs-promotion apps/mikaki-docs/dist
       - name: Bind release bytes and migrations to the clean source revision
         run: |
           npm run release:inventory
@@ -124,6 +131,10 @@ jobs:
         with:
           subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
           sbom-path: artifacts/supply-chain/userinfo-claim-crypto.cdx.json
+      - name: Attest Docs RP source and built assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/mikaki-docs-rp.tar.gz
       - name: Upload Worker and inventories
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -71,7 +71,7 @@ const ASSETS: Asset[] = [
     'OP signing public keys',
     'related-crypto-material',
     { type: 'public-key', id: 'signing_key.public_jwk' },
-    'crates/worker/migrations/0001_oidc_initial.sql',
+    'crates/worker/migrations/0001_owner_vault_initial.sql',
     'public_jwk TEXT NOT NULL',
   ],
 ];
@@ -115,7 +115,7 @@ const CLAIM_ASSETS: Asset[] = [
     'UserInfo recipient public keys',
     'related-crypto-material',
     { type: 'public-key', id: 'vault_recipient_key.public_key' },
-    'crates/worker/migrations/0007_vault_recipient_keys.sql',
+    'crates/worker/migrations/0001_owner_vault_initial.sql',
     'public_key BLOB NOT NULL',
   ],
 ];

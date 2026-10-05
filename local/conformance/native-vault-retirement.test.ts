@@ -5,7 +5,7 @@ import { createTestHarness } from 'wrangler';
 
 const issuer = 'https://issuer.example';
 
-test('retired native Vault consent endpoints return 404 even for historical transactions', async () => {
+test('fresh baseline omits retired Vault OAuth tables and consent endpoints return 404', async () => {
   const config = JSON.parse(
     await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
   );
@@ -32,8 +32,11 @@ test('retired native Vault consent endpoints return 404 even for historical tran
       body: new URLSearchParams({ tx: 'historical', decision: 'approve' }).toString(),
     });
     assert.equal(post.status, 404);
-    assert.equal(await DB.prepare('SELECT count(*) AS n FROM vault_oauth_consent').first('n'), 0);
-    assert.equal(await DB.prepare('SELECT count(*) AS n FROM vault_oauth_grant').first('n'), 0);
+    const tables = await DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    assert.equal(
+      tables.results.some((row: { name: string }) => row.name.startsWith('vault_oauth_')),
+      false,
+    );
   } finally {
     await harness.close();
   }

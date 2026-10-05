@@ -39,13 +39,22 @@ function fixture(
     } else {
       const name = /\/scripts\/([^/]+)\//.exec(url.pathname)![1]!;
       const bindings = [
-        ...([target.op, target.claim].includes(name) ? [db] : []),
+        ...(name === target.op ? [db] : []),
         { name: 'PUBLIC_VALUE', type: 'plain_text', text: 'MUST_NOT_APPEAR' },
         { name: 'JSON_VALUE', type: 'json', json: { secret: 'MUST_NOT_APPEAR' } },
         { name: 'SECRET_NAME', type: 'secret_text' },
         ...(name === target.op
           ? [{ name: 'USERINFO_CLAIMS', type: 'service', service: target.claim }]
-          : []),
+          : name === target.claim
+            ? [
+                {
+                  name: 'CLAIM_STORE',
+                  type: 'service',
+                  service: target.op,
+                  entrypoint: 'ClaimStore',
+                },
+              ]
+            : []),
       ];
       if (url.pathname.endsWith('/settings')) value = envelope({ bindings });
       else if (url.pathname.endsWith('/deployments'))
@@ -84,6 +93,11 @@ test('complete single-page roster retains only sanitized ordinary-Worker evidenc
   assert.deepEqual(value.workers[0]!.settings.databases, [
     { name: 'DB', database_id: target.database_id },
   ]);
+  assert.deepEqual(value.workers[1]!.settings.databases, []);
+  assert.deepEqual(value.workers[1]!.settings.r2_buckets, []);
+  assert.deepEqual(value.workers[1]!.settings.services, [
+    { name: 'CLAIM_STORE', service: target.op, entrypoint: 'ClaimStore' },
+  ]);
   assert.match(JSON.stringify(value), /USERINFO_CLAIMS/);
   assert.doesNotMatch(
     JSON.stringify(value),
@@ -108,7 +122,7 @@ test('projection never accesses text/json/secret values', () => {
         },
         enumerable: true,
       });
-    assert.deepEqual(projectBindings([binding]), { databases: [], services: [] });
+    assert.deepEqual(projectBindings([binding]), { databases: [], services: [], r2_buckets: [] });
   }
 });
 
@@ -236,6 +250,40 @@ test('extra D1 consumers and OP AGENT_ACCESS fail in settings or any active vers
         target,
       ),
       /AGENT_ACCESS/,
+    );
+  }
+});
+
+test('Claim Worker uses only the named ClaimStore service, never raw D1 or R2', async () => {
+  for (const endpoint of ['/settings', '/versions/' + version]) {
+    for (const binding of [db, { ...db, database_id: nextVersion }])
+      await assert.rejects(
+        inspectWorkerInventory(
+          fixture(undefined, (path, value) => {
+            if (path.includes('/scripts/mikaki-auth-claims/') && path.endsWith(endpoint))
+              (endpoint === '/settings' ? value.result : value.result.resources).bindings.push(
+                binding,
+              );
+            return value;
+          }),
+          target,
+        ),
+        /Claim Worker must not bind raw D1 storage/,
+      );
+    await assert.rejects(
+      inspectWorkerInventory(
+        fixture(undefined, (path, value) => {
+          if (path.includes('/scripts/mikaki-auth-claims/') && path.endsWith(endpoint))
+            (endpoint === '/settings' ? value.result : value.result.resources).bindings.push({
+              name: 'VAULT_BLOBS',
+              type: 'r2_bucket',
+              bucket_name: 'mikaki-auth-vault',
+            });
+          return value;
+        }),
+        target,
+      ),
+      /Claim Worker must not bind raw R2 storage/,
     );
   }
 });

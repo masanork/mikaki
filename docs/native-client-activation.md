@@ -23,9 +23,9 @@ unchanged from the successful [CI run for 6706cf1](https://github.com/masanork/m
 Both Workers were uploaded as non-active versions and their bindings were
 inspected before 100% activation:
 
-| Worker | Previous version | Activated version |
-| --- | --- | --- |
-| OP | `4046b879-ae02-4b7d-9600-b5dc01827ddf` | `eeea96e0-12f6-4d14-993a-9b73e562e0e4` |
+| Worker         | Previous version                       | Activated version                      |
+| -------------- | -------------------------------------- | -------------------------------------- |
+| OP             | `4046b879-ae02-4b7d-9600-b5dc01827ddf` | `eeea96e0-12f6-4d14-993a-9b73e562e0e4` |
 | UserInfo Claim | `92adc947-4831-4adc-93b8-5b7bc7eaa175` | `381f73cf-94b2-4b1c-b7e7-28a35560cea3` |
 
 The Claim Worker update supplies the readiness endpoint required by the new
@@ -60,11 +60,11 @@ code; the synthetic browser login transaction expires normally.
 
 Build-output SHA-256 inventory for these uploads:
 
-| Input | SHA-256 |
-| --- | --- |
-| OP `build/index.js` | `e41e15f50eb2c6807f76414f6c96764cb7aa0e113f0f90adc5c5459f01862485` |
-| OP `build/index_bg.wasm` | `18bc0eea51060704ae596371f7a8b98ab43ebf4679ae5d7800e655139ad890bc` |
-| Claim `build/index.js` | `9b2cbdcaa5f92c48a89ad40db8ed11c98ffbde1379ca1feceecc8bc39f2d8406` |
+| Input                       | SHA-256                                                            |
+| --------------------------- | ------------------------------------------------------------------ |
+| OP `build/index.js`         | `e41e15f50eb2c6807f76414f6c96764cb7aa0e113f0f90adc5c5459f01862485` |
+| OP `build/index_bg.wasm`    | `18bc0eea51060704ae596371f7a8b98ab43ebf4679ae5d7800e655139ad890bc` |
+| Claim `build/index.js`      | `9b2cbdcaa5f92c48a89ad40db8ed11c98ffbde1379ca1feceecc8bc39f2d8406` |
 | Claim `build/index_bg.wasm` | `3f3ab6a96c8a9aa431a69f59017a6931952454f7c392c9dda0031fd9dbf72615` |
 
 Wrangler bundled these inputs during upload. These hashes identify the local
@@ -86,7 +86,7 @@ signing key. Provision a fresh monitoring token in that ignored file and
 the GitHub Actions secret before uploading the new OP version. Never print
 the values or place them in command arguments.
 
-The existing [migration recovery rehearsal](../scripts/migration-recovery.test.ts)
+The existing [fresh baseline rehearsal](../scripts/plan-owner-vault-reset.test.ts)
 passed an upgrade from schema 0013 through all 29 migrations, with synthetic
 account, credential, session and encrypted Vault data. It checks integrity,
 preservation of existing records, and restore boundaries. This is SQLite

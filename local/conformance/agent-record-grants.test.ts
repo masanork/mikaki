@@ -129,13 +129,10 @@ function adapter(sqlite: DatabaseSync) {
     },
   };
 }
-function fixture(before33 = false) {
+function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
-  for (const name of migrations) {
-    if (before33 && Number(name.slice(0, 4)) >= 33) break;
-    sqlite.exec(readFileSync(new URL(name, migrationDir), 'utf8'));
-  }
+  for (const name of migrations) sqlite.exec(readFileSync(new URL(name, migrationDir), 'utf8'));
   const time = Math.floor(Date.now() / 1000),
     cookie = hash('synthetic-owner-cookie');
   sqlite.exec("INSERT INTO account_security VALUES('owner',1,1),('other',1,1);");
@@ -145,12 +142,6 @@ function fixture(before33 = false) {
     .run(time + 3600);
   sqlite.prepare("INSERT INTO sso_context VALUES('session',?,?)").run(cookie, time);
   sqlite.prepare("INSERT INTO agent_recipient_key VALUES(?,'active')").run(keyId);
-  sqlite
-    .prepare(
-      `INSERT INTO vault_attribute_head(account_id,attribute_id,revision,format_version,object_key,ciphertext_sha256,owner_envelope,deleted,updated_at)
-    VALUES('owner','name',1,1,'old-name','synthetic-hash','synthetic-envelope',0,?)`,
-    )
-    .run(time);
   sqlite
     .prepare(
       `INSERT INTO vault_owner_key_head VALUES('owner','vault',?,1,1,2,'PRF-HKDF-SHA256-AES256GCM-v2',?,?,?)`,
@@ -349,17 +340,17 @@ function stopped(f: Fixture, grantId: string) {
   assert.equal(row(f, grantId).encrypted_snapshot, null);
 }
 
-// Pre-migration populated v1 state must retain its shape, hash and authorization.
-test('0033 preserves historical v1 grants while access and new authorization fail closed', async () => {
-  const f = fixture(true);
+// Historical Agent v1 grants remain revocable but never regain authorization.
+test('historical v1 grants remain revocable while access and new authorization fail closed', async () => {
+  const f = fixture();
   try {
     const v1 = await legacy(f),
       requestHash = hash(JSON.stringify(v1.input));
     f.sqlite
       .prepare(
         `INSERT INTO agent_grant(grant_id,account_id,owner_epoch,credential_id,delegate,provider,resource,source_revision,
-      recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,created_at,expires_at)
-      VALUES(?,'owner',1,'passkey','synthetic','Synthetic provider',?,1,?,?,?,?,?,?,?,?)`,
+      recipient_key_id,operations,document_ids,encrypted_snapshot,token_hash,request_hash,created_at,expires_at,storage_version)
+      VALUES(?,'owner',1,'passkey','synthetic','Synthetic provider',?,1,?,?,?,?,?,?,?,?,1)`,
       )
       .run(
         v1.input.grant_id,
@@ -373,7 +364,6 @@ test('0033 preserves historical v1 grants while access and new authorization fai
         f.time,
         f.time + 600,
       );
-    f.sqlite.exec(readFileSync(new URL('0033_agent_record_sources.sql', migrationDir), 'utf8'));
     assert.equal(row(f, v1.input.grant_id).storage_version, 1);
     assert.equal(row(f, v1.input.grant_id).request_hash, requestHash);
     assert.throws(() => model.grantInput.parse(v1.input));
@@ -383,8 +373,8 @@ test('0033 preserves historical v1 grants while access and new authorization fai
     f.sqlite
       .prepare(
         `INSERT INTO agent_attribute_proposal
-        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state)
-        VALUES(?1,?2,1,?3,'owner_note',0,'legacy secret proposal',?4,?5,'pending')`,
+        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state,storage_version)
+        VALUES(?1,?2,1,?3,'owner_note',0,'legacy secret proposal',?4,?5,'pending',1)`,
       )
       .run(id(), v1.input.grant_id, hash('legacy-proposal'), f.time + 300, f.time);
     const revoke = await f.ownerRequest('/revoke', { grant_id: v1.input.grant_id });
@@ -417,8 +407,8 @@ test('scheduled cleanup redacts expired legacy payloads and retains grant until 
     f.sqlite
       .prepare(
         `INSERT INTO agent_attribute_proposal
-        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state)
-        VALUES(?,?,1,?,'owner_note',0,'expired legacy secret',?,?,'pending')`,
+        (proposal_id,grant_id,grant_revision,request_hash,attribute_id,base_revision,payload,expires_at,created_at,state,storage_version)
+        VALUES(?,?,1,?,'owner_note',0,'expired legacy secret',?,?,'pending',1)`,
       )
       .run(proposalId, v1.input.grant_id, hash('old-proposal'), expiresAt, createdAt);
 

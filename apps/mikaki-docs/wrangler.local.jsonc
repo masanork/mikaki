@@ -1,0 +1,40 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mikaki-docs-local",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "dist",
+    "binding": "DOCS_ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": true,
+  },
+  "vars": {
+    "LOCAL_ONLY": "true",
+    "ISSUER": "http://localhost:18877",
+    "RP_ORIGIN": "http://127.0.0.1:18878",
+    "CLIENT_ID": "local-rp",
+  },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikaki-docs-local",
+      "database_id": "00000000-0000-0000-0000-000000000005",
+      "migrations_dir": "migrations",
+      "remote": false,
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "2026100501",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": false },
+}

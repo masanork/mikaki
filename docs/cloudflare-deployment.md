@@ -90,14 +90,11 @@ After activating a version with the `CF_VERSION_METADATA` binding, fetch `/versi
 
 The retained tossa.app test deployment has one administrator and an active narashi registration, but a completed RP callback, production logout delivery, and account recovery remain unverified. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
-## Manual reconciliation of reviewed migrations 0033 through 0035
+## Retired incremental migration workflow
 
-The [reconcile-production-0033-0035 workflow](../.github/workflows/reconcile-production-0031.yml)
-keeps its stable file/helper paths, existing production environment/token and
-production deployment concurrency group. It is main-only, manual, read-only by
-default, and never deploys Workers. Coordinate against external schema changes,
-restores or deployments. Do not create/widen credentials or change protections
-to get past a failure; existing metadata-read and D1-write permission must suffice.
+The former manual `reconcile-production-0033-0035` workflow was retired when
+the supported schema became a single fresh-database baseline. It must not be
+used to upgrade an existing production database.
 
 Its separate migration/dependency input checkout is pinned to
 `af0b89963761b4ecda2adbf3ed7fb77bfda507d4`. This does not select or downgrade the
@@ -305,18 +302,17 @@ If the Worker fails, inspect the deployment and use the [Worker rollback procedu
 
 Production recovery and web RP completion remain unverified; signed Android ordinary OIDC completion has the bounded device evidence above. Do not treat its availability as a user-ready launch or an OIDF certification result.
 
-
 ## Woven bamboo login gate activation, 2026-10-01
 
 At the user's request, clean merged PR #35 commit `2028a2baa1d615847c4cb0e3da092938bd05ad78` supplied OP version `663dae51-6088-47d7-9e2d-b7c9dc4f42ad`, activated at 100% on 2026-10-01T01:25:07Z. The login and invitation registration screens use upright woven bamboo leaves, a Passkey crossbar, a compact application/domain plaque and ambient grazing light. Domain-derived colors/weaves remain decorative.
 
 The repository-pinned Wrangler built the production-configured dry-run bundle, uploaded it with `--no-bundle` and both required secrets, and inspected the new version's binding inventory before activation. DB, Vault R2, UserInfo service, issuer, Android certificate fingerprint, version metadata, signing key and readiness token were preserved. No migration was pending or applied, and no Claim Worker or trigger change was required. The previous compatible OP version is `118f7682-2857-46ec-a2ed-b0f9e5c98ab7`.
 
-| Reviewed input | SHA-256 |
-| --- | --- |
-| Uploaded `shim.js` | `eb59d4ec25ae3fdabb7c3108c36e67193a26f5e77bb1ee947c5aab3b995c2b6d` |
-| Uploaded Wasm module | `e123da2a4d68fb165d6fc6c6f3ebf0b9bae32b9f4d13f6f3dcef92f993de6e2c` |
-| Served `/login/login.js` | `846963275eb70bace0d0836c81ed1a6dde5072bc077350790b30471bbe693cb4` |
+| Reviewed input            | SHA-256                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| Uploaded `shim.js`        | `eb59d4ec25ae3fdabb7c3108c36e67193a26f5e77bb1ee947c5aab3b995c2b6d` |
+| Uploaded Wasm module      | `e123da2a4d68fb165d6fc6c6f3ebf0b9bae32b9f4d13f6f3dcef92f993de6e2c` |
+| Served `/login/login.js`  | `846963275eb70bace0d0836c81ed1a6dde5072bc077350790b30471bbe693cb4` |
 | Served `/login/login.css` | `c2ad0ed9e184965630eb35772135f9fb457f39a2aef7317c689020979a23849c` |
 
 The initial [public smoke](https://github.com/masanork/mikaki/actions/runs/36801021810) passed health, Discovery/JWKS, exact version/clean source identity, authenticated readiness 204 and both login asset hashes. Its Android step rejected the callback's 303 because the script still expected 404. PR #33 had intentionally replaced this response with a redirect to `/native-link-help`; the source discards code/state rather than forwarding them. The smoke expectation now checks 303 with an exact code-free destination, no-store/no-referrer, while retaining 404 for `/authorize` on the callback host.

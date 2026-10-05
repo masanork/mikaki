@@ -193,7 +193,6 @@ pub(super) async fn authorize_resource(
             JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
             JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
             WHERE ti.access_hash=?6 AND ti.dpop_jkt=?1 AND ti.revoked=0 \
-            AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash) \
             AND ti.access_expires_at>CAST(strftime('%s','now') AS INTEGER)) \
             {nonce_check} ON CONFLICT(jkt,jti_hash) DO NOTHING"
             ))
@@ -204,7 +203,6 @@ pub(super) async fn authorize_resource(
             JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
             JOIN dpop_proof_use p ON p.jkt=ti.dpop_jkt \
             WHERE ti.access_hash=?6 AND ti.revoked=0 \
-            AND NOT EXISTS (SELECT 1 FROM vault_oauth_token_context vt WHERE vt.access_hash=ti.access_hash) \
             AND ti.access_expires_at>CAST(strftime('%s','now') AS INTEGER) \
             AND p.jkt=?1 AND p.jti_hash=?2 AND p.accepted_by=?3 \
             AND p.retain_until>=CAST(strftime('%s','now') AS INTEGER)",

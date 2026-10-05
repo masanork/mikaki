@@ -26,8 +26,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mikaki-auth",
-      "database_id": "f9299d62-2dbf-4bae-ae49-8b75674572d4",
+      "database_name": "mikaki-auth-owner",
+      "database_id": "d0258938-0d27-4110-8aa9-c82e20f3885b",
       "migrations_dir": "migrations",
       "remote": true
     }
