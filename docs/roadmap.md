@@ -2,24 +2,31 @@
 
 This page groups the project's intended stages. It is a direction of work, not a release promise. [Status](status.md) lists what has actually been verified or deployed.
 
-## Retirement-first delivery order, 2026-10-05
+## Delivery order after the 2026-10-05 reset
 
-The current sequence removes obsolete authority before adding integrations. Each
-source change receives an independent review and preserves actual Worker/browser
-contracts for supported paths.
+Obsolete browser/API, native OAuth and Agent v1 authority are retired by
+PRs #125–#128. PR #129 consolidated the supported schema, reset production,
+retired the old Demo/Tossa resources and deployed the dedicated Docs RP.
+The [cutover record](production-reset-2026-10-05.md) links successful attested
+promotion and public smoke; source retirement and actual data deletion are both
+established. Historical `0036`–`0046` migration files are not an upgrade path for
+the fresh database.
 
-| Order | Work                                                                                                                                                                                         | Dependency and completion evidence                                                                                                                                                                                                                |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Integrate #125, remove legacy browser/API paths in #126, then Native paths in #127 and Agent v1 authority                                                                                    | #125, #126 and #127 are merged. Native and Agent follow-ups retain OwnerWorkspace, ordinary OIDC/Identity and record-v2 tests; source CI is separate from deployment evidence.                                                                    |
-| 2     | Remove unused v1 crypto and exclusive tests ([#102](https://github.com/masanork/mikaki/issues/102))                                                                                          | Remove callers first. Keep migration recovery, old-head isolation and owner-key contracts with opaque historical fixtures.                                                                                                                        |
-| 3     | Resolve baseline/reset versus incremental migration ([#121](https://github.com/masanork/mikaki/issues/121), [#116](https://github.com/masanork/mikaki/issues/116))                           | Reconcile schema and deployment inventory before choosing artifacts. Reset follows writer quiescence, review and the [cutover runbook](owner-vault-reset.md); no source deletion itself resets data.                                              |
-| 4     | Connect record sharing/approval ([#113](https://github.com/masanork/mikaki/issues/113)) and conversation ingestion ([#115](https://github.com/masanork/mikaki/issues/115))                   | Establish key-continuity/recovery requirements in [#114](https://github.com/masanork/mikaki/issues/114) before broadening sharing. Conversation ingestion can proceed independently once record/import contracts and schema direction are stable. |
-| 5     | Qualify owner PRF/lifecycle and recovery ([#112](https://github.com/masanork/mikaki/issues/112), #114)                                                                                       | Parallel device checks use a stable, versioned target; synthetic browser tests do not replace them.                                                                                                                                               |
-| 6     | Deploy/qualify Identity ([#116](https://github.com/masanork/mikaki/issues/116), [#117](https://github.com/masanork/mikaki/issues/117)–[#120](https://github.com/masanork/mikaki/issues/120)) | Physical-card and external-wallet interoperability checks follow a qualified deployment SHA. Conformance reports/certification remain separate from test-feature activation.                                                                      |
+| Order | Work | Completion boundary |
+| --- | --- | --- |
+| 1 | Review deployed retention, service ownership and candidate GC against #99/#100/#103; keep the production privilege gate exact | Use real Worker regressions, actual active bindings/schedules and the fresh baseline. Keep production load/alerts separate from functional completion. |
+| 2 | Finish authority/test-model cleanup under [#102](https://github.com/masanork/mikaki/issues/102) | Remove obsolete callers and exclusive crypto/fixtures; retain denial, exact retry, old-head isolation and current Owner-key contracts. |
+| 3 | Add Owner wrapper/key continuity under [#114](https://github.com/masanork/mikaki/issues/114), then broader selected sharing/approval under [#113](https://github.com/masanork/mikaki/issues/113) | Define additional-passkey registration, retry, revocation and all-key-loss limits before broadening access. Never distribute the parent key. |
+| 4 | Connect one real conversation archive source under [#115](https://github.com/masanork/mikaki/issues/115) | Reuse encrypted record import/search; establish stable source IDs, edit/delete/reimport semantics and limits. Archive import precedes any separately qualified live E2EE delivery. |
+| 5 | Qualify real-device Owner PRF and recovery under [#112](https://github.com/masanork/mikaki/issues/112) and #114 | Use the new source/version and fresh registrations. Synthetic browser results do not complete physical-device checks. |
+| 6 | Activate prepared Identity profiles under [#116](https://github.com/masanork/mikaki/issues/116), then qualify [#117](https://github.com/masanork/mikaki/issues/117)–[#120](https://github.com/masanork/mikaki/issues/120) | Identity schema is already in the single fresh baseline. Remaining gates are keys/trust, bindings/verifier configuration, activation and profile smoke; full certification remains separate. |
 
-Production retention, service ownership and ciphertext GC evidence remain gates
-for #99, #100 and #103. Load measurements and storage alternatives (#106–111)
-can proceed separately without blocking obsolete Vault retirement.
+The scaling track starts with [#106](https://github.com/masanork/mikaki/issues/106)
+measurements, followed by business-operation storage contracts in
+[#107](https://github.com/masanork/mikaki/issues/107). Queue delivery (#109/#110)
+can build on those contracts. DO state (#108) and Hyperdrive/PostgreSQL (#111)
+remain alternatives to evaluate against measured needs; no additional backend
+is required to complete this retirement or the first Vault integrations.
 
 ## Longer-term stages
 

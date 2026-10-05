@@ -1,14 +1,12 @@
 # Owner Vault reset preparation (#121)
 
-Status (2026-10-05): the source-only baseline work is on
-`ops/owner-vault-baseline-20261005`, based on main `d033b35` (PRs #105 and
-#125–#128 merged). It consolidates the retained OP schema into
-`0001_owner_vault_initial.sql`, excluding retired Vault attribute/share/OAuth
-tables, and removes their runtime dependencies. Current Owner Vault, Agent v2,
-Identity, enrollment, session, and policy schema are retained. The production
-upload path now has a fail-closed exact fresh-ledger/schema gate. This worktree
-does not reset, inspect, or delete production data, deploy services, or change
-the production binding; those steps remain separately controlled.
+Status (2026-10-05): PR #129 merged, the fresh baseline was initialized and
+source `140baec` was promoted by the attested main pipeline. The production
+reset and public reopening are complete; all final CI and public smoke checks
+passed. The [cutover record](production-reset-2026-10-05.md) gives actual version
+IDs, exact schema/ledger evidence, deleted resources and retained-key boundaries.
+The procedure below describes a future reset, rather than remaining work on
+this completed cutover. It does not authorize another reset.
 
 ## Source and ordering prerequisites
 
@@ -33,9 +31,10 @@ The user selected `https://docs.mikaki.org` for the initial RP. It will share
 bilingual guide/FAQ content and preserve real OIDC login, session checking,
 local logout and backchannel logout. Its dedicated client, database, public JWK
 and `RP_PRIVATE_JWK` secret must be included in the initialization workflow.
-Do not reuse the demo's client or key. The initial Docs application prototype is
-saved separately while the Owner Vault refactor proceeds; it is not a deployed
-or qualified RP.
+Do not reuse the demo's client or key. Docs is now deployed with its separate client, key and database; its local
+RP journey and production health/source/bilingual entry are qualified in the
+[cutover record](production-reset-2026-10-05.md). Real-device callback/logout
+completion and private inquiries remain follow-up work.
 
 ### Implementation order and scope
 
@@ -111,7 +110,7 @@ Cloudflare account: `4b749427a0c80c547e726a42aff4b6fc`.
 | Demo Worker/domain | `mikaki-demo-rp`, `demo.mikaki.org`                               | Revoke client, stop serving/cron, then retire Worker and dedicated routes/DNS                                                                 |
 | Demo D1            | `mikaki-demo-rp`, `ce11d383-758b-4574-8bcc-7febc505a408`          | Discard sessions, transactions, logout tombstones and unused ticket data; retire dedicated DB                                                 |
 | Demo OP client     | `77551450-ec73-4222-972d-cd912d9493d4`                            | Disable before retirement; omit from fresh seed                                                                                               |
-| FAQ RP             | Unresolved                                                        | Provision separate RP storage/key and initialize an active OP registration                                                                    |
+| Docs RP | `mikaki-docs-rp`, `docs.mikaki.org` | Dedicated DB `8527823b-5417-425d-8028-0532464e39e7`, new client/key; initialized and deployed at cutover |
 
 Configured OP schedules are `* * * * *` and `*/10 * * * *`; demo cleanup is
 `*/15 * * * *`. Suspend all actual writers, including older traffic-bearing
