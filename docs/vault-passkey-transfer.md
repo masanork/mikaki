@@ -1,6 +1,6 @@
-# Owner passkey addition and Vault transfer
+# Historical format-1 passkey and Vault transfer
 
-**Implementation evidence:** local source and tests, 2026-09-28; saved-note UI added and tested 2026-09-29. This is the first VG-01 delivery from the [fit/gap backlog](vault-fit-gap.md), not a completed real-device recovery gate or production deployment.
+**Retired:** this document describes the former attribute-transfer interface and `/vault/attributes/{attribute}/transfer` path. The format-1 transfer route, component and old happy-path suite were removed with the fresh schema baseline. Current passkey addition endpoints remain, but only the registration contract is retained in `vault-transfer.test.ts`; no owner-key wrapper, v2 record rewrap, migration or recovery flow is implied. The details below are archived 2026-09-28/29 implementation evidence, not current supported operations.
 
 ## Supported operation
 
@@ -41,7 +41,7 @@ Transferring the note does not rewrite the name or its envelope. Observing the n
 
 The 2026-09-29 note tests additionally cover saved title/text/provenance preservation, a different login/source/target credential, missing/cancelled PRF, exact operation/body retry after lost response, unchanged name, fresh-page reopening, stale-base conflict and unknown-schema blocking. Browser PRF remains mocked.
 
-After building the OP Worker, run `npm run test:vault-transfer`. Tests use real local workerd/D1/R2, generated WebAuthn registration fixtures, real envelope cryptography, and a browser with mocked PRF output. They cover fresh-login gating, registration replay/payload changes/failure bounds, different-account/inactive-target rejection, audit rollback, old-base/delete conflicts, grant invalidation, saved-versus-unsaved data, absent target PRF, lost-response retries, and reopening from a fresh browser page. Existing storage and agent-browser regressions also passed during implementation.
+The old transfer suite and API are retired. The retained `npm run test:vault-transfer` still runs Owner-key/record tests and `vault-transfer.test.ts`, which now exercises only current passkey registration: unauthenticated access, bad Origin, stale SSO, successful same-account registration, replay/idempotent retries, changed-response rejection and failure lockout. It no longer tests moving v1 encrypted attributes between credentials. V2 additional-wrapper registration, loss/recovery and record rewrapping remain unqualified.
 
 Before marking VG-01 complete, exercise the supported same-account flow on intended real passkeys/devices. A second browser with synthetic PRF output is not second-device hardware evidence. Qualify synchronized-passkey behavior and cross-device availability explicitly; do not assume every device/transport returns the same usable PRF result. Test real cancellations, expired authentication, and credential removal separately.
 

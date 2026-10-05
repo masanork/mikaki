@@ -3,7 +3,7 @@
 **Historical format 1 candidate, 2026-09-24; receiver retired by #121.**
 The production claim Worker no longer validates or decrypts this format. Its
 receiver and release-authority SQL were removed; the retained sender/probes
-record the earlier experiment while legacy UI cleanup continues. The generation-1
+record the earlier experiment in the pre-retirement implementation stage. The generation-1
 ML-KEM key remains usable with the supported [record-v2 profile](vault-record-userinfo.md).
 Historical local/probe success does not qualify production owner approval or
 profile delivery.
@@ -20,15 +20,15 @@ The candidate uses HPKE base mode with KEM `0x0041` (ML-KEM-768), KDF `0x0001` (
 
 One envelope wraps exactly one 32-byte Vault data key. The 1,088-byte HPKE `enc` and 48-byte `ct` (32-byte plaintext plus 16-byte GCM tag) are separate values. An envelope record must carry the following fields, with exact lengths and no omitted or unknown security fields:
 
-| Field | Candidate encoding | Purpose |
-| --- | --- | --- |
-| `format_version` | integer `1` | Reject unknown parsers and future changes |
-| `kem_id`, `kdf_id`, `aead_id` | unsigned 16-bit identifiers above | Bind the complete suite |
-| `recipient_service` | exact ASCII `userinfo` | Separate services |
-| `recipient_key_id` | 32 raw digest bytes or canonical 43-character base64url | Select the matching D1 key and Secrets Store binding |
-| `recipient_generation` | positive unsigned 64-bit integer | Reject retired/offline keys |
-| `enc` | exactly 1,088 raw bytes | HPKE encapsulation |
-| `ct` | exactly 48 raw bytes | Encrypted data key |
+| Field                         | Candidate encoding                                      | Purpose                                              |
+| ----------------------------- | ------------------------------------------------------- | ---------------------------------------------------- |
+| `format_version`              | integer `1`                                             | Reject unknown parsers and future changes            |
+| `kem_id`, `kdf_id`, `aead_id` | unsigned 16-bit identifiers above                       | Bind the complete suite                              |
+| `recipient_service`           | exact ASCII `userinfo`                                  | Separate services                                    |
+| `recipient_key_id`            | 32 raw digest bytes or canonical 43-character base64url | Select the matching D1 key and Secrets Store binding |
+| `recipient_generation`        | positive unsigned 64-bit integer                        | Reject retired/offline keys                          |
+| `enc`                         | exactly 1,088 raw bytes                                 | HPKE encapsulation                                   |
+| `ct`                          | exactly 48 raw bytes                                    | Encrypted data key                                   |
 
 The product modules exercise one candidate binary frame. Its exact 1,187-byte layout is `MKVE` (4 bytes), version `01` (1), KEM/KDF/AEAD IDs in network byte order (6), raw key-ID digest (32), generation in network byte order (8), `enc` (1,088), and `ct` (48). The receiver rejects other total lengths, unknown version or suite, and key identity or generation mismatches before HPKE. Changed `enc` or `ct` must fail authenticated decryption. This frame is an experiment, not a production serialization commitment.
 

@@ -19,12 +19,7 @@ import {
   VAULT_IDLE_MS,
   VAULT_ABSOLUTE_MS,
 } from '../../crates/worker/ui/vault-lifecycle.ts';
-import {
-  encodeBase64Url,
-  decodeBase64Url,
-  sealAttribute,
-  openAttribute,
-} from '../../crates/worker/ui/vault-crypto.ts';
+import { encodeBase64Url, decodeBase64Url } from '../../crates/worker/ui/vault-crypto.ts';
 
 const bytes = (n = 32) => crypto.getRandomValues(new Uint8Array(n));
 const text = (s: string) => new TextEncoder().encode(s);
@@ -464,18 +459,8 @@ test('idle/absolute expiry, session replacement and pagehide abort the owner-key
   }
 });
 
-test('new format preserves legacy readability; plaintext input/context are snapshotted before async encryption', async () => {
-  const f = fixture(),
-    input = bytes(),
-    legacy = await sealAttribute(
-      text('legacy'),
-      f.output,
-      f.credential,
-      input,
-      context.origin,
-      'name',
-      1,
-    );
+test('new format rejects an opaque v1 envelope; plaintext input/context are snapshotted', async () => {
+  const f = fixture();
   const created = await createOwnerKey(context, f.credential, bytes(), f.output.slice());
   const c = { ...context },
     r = { ...item },
@@ -486,9 +471,6 @@ test('new format preserves legacy readability; plaintext input/context are snaps
   r.recordId = 'changed';
   const record = await pending;
   assert.deepEqual(await openOwnerRecord(record, created.key, context, item), text('original'));
-  assert.deepEqual(
-    await openAttribute(legacy, f.output, f.credential, context.origin, 'name', 1),
-    text('legacy'),
-  );
-  await assert.rejects(openOwnerRecord(legacy, created.key, context, item));
+  const retired = { format_version: 1, ciphertext: 'opaque-retired-data' } as never;
+  await assert.rejects(openOwnerRecord(retired, created.key, context, item));
 });
