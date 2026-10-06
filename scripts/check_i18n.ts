@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 const messages = Object.fromEntries(
   await Promise.all(
     ['ja', 'en'].map(async (locale) => [
@@ -18,5 +18,14 @@ for (const [key, japanese] of Object.entries(messages.ja)) {
   assert.ok(japanese.trim(), `${key}: ja is empty`);
   assert.ok(english.trim(), `${key}: en is empty`);
   assert.deepEqual(placeholders(japanese), placeholders(english), `${key}: placeholder mismatch`);
+}
+// Svelte builds can erase a missing Paraglide export into `void 0`, leaving a
+// runtime failure even when both locale catalogs have the same keys.
+for (const entry of await readdir('crates/worker/ui')) {
+  if (!/\.(svelte|ts)$/.test(entry)) continue;
+  const source = await readFile(`crates/worker/ui/${entry}`, 'utf8');
+  if (!source.includes('paraglide/messages')) continue;
+  for (const match of source.matchAll(/\bm\.(\w+)\s*\(/g))
+    assert.ok(Object.hasOwn(messages.en, match[1]), `${entry}: unknown message ${match[1]}`);
 }
 console.log(`i18n: ${Object.keys(messages.ja).length} keys; ja/en complete`);

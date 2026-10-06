@@ -30,11 +30,17 @@ export type OwnerNoteHead = Readonly<{
 }>;
 export type OwnerNoteGrant = Readonly<{
   grant_id: string;
+  delegate: string;
+  provider: string;
   revision: number;
   active: boolean;
   expires_at: number;
   recipient_key_id: string;
   resource: string;
+  operations: readonly ('list' | 'search' | 'read' | 'propose' | 'execute')[];
+  document_ids: readonly ('name' | 'owner_note')[];
+  source: ReturnType<typeof parseVaultRecordSource>;
+  authority: VaultRecordAuthority;
 }>;
 export type OwnerNoteRecipient = Readonly<AgentRecipient>;
 export type OwnerNoteProposal = Readonly<{
@@ -243,13 +249,63 @@ function parseGrant(value: unknown, ownerId: string): OwnerNoteGrant {
     throw new OwnerNoteProposalError('invalid_status');
   if (item['active'] === 1 && item['revoked'] !== 0)
     throw new OwnerNoteProposalError('invalid_status');
+  let operations: unknown, documentIds: unknown;
+  try {
+    operations = JSON.parse(String(item['operations']));
+    documentIds = JSON.parse(String(item['document_ids']));
+  } catch {
+    throw new OwnerNoteProposalError('invalid_status');
+  }
+  if (
+    !Array.isArray(operations) ||
+    operations.length < 1 ||
+    operations.length > 5 ||
+    operations.some(
+      (entry: unknown) =>
+        typeof entry !== 'string' ||
+        !['list', 'search', 'read', 'propose', 'execute'].includes(entry),
+    ) ||
+    new Set(operations).size !== operations.length ||
+    !Array.isArray(documentIds) ||
+    documentIds.length < 1 ||
+    documentIds.length > 2 ||
+    documentIds.some(
+      (entry: unknown) => typeof entry !== 'string' || !['name', 'owner_note'].includes(entry),
+    ) ||
+    new Set(documentIds).size !== documentIds.length
+  )
+    throw new OwnerNoteProposalError('invalid_status');
+  const source = parseVaultRecordSource({
+    storage_version: item['storage_version'],
+    origin: item['source_origin'],
+    owner_id: item['account_id'],
+    vault_id: item['source_vault_id'],
+    collection_id: item['source_collection_id'],
+    record_id: item['source_record_id'],
+    kind: item['source_kind'],
+    revision: item['source_revision'],
+    ciphertext_sha256: item['source_ciphertext_sha256'],
+  });
+  const authority = parseVaultRecordAuthority({
+    key_generation: item['source_key_generation'],
+    owner_key_revision: item['source_owner_key_revision'],
+  });
+  if (source.owner_id !== ownerId) throw new OwnerNoteProposalError('invalid_status');
+  if (documentIds.length !== 1 || source.record_id !== documentIds[0])
+    throw new OwnerNoteProposalError('invalid_status');
   return Object.freeze({
     grant_id: id(item['grant_id']),
+    delegate: text(item['delegate'], 80),
+    provider: text(item['provider'], 160),
     revision: int(item['revision'], 1),
     active: item['active'] === 1,
     expires_at: int(item['expires_at'], 1),
     recipient_key_id: id(item['recipient_key_id']),
     resource: text(item['resource'], 2048),
+    operations: Object.freeze(operations as OwnerNoteGrant['operations']),
+    document_ids: Object.freeze(documentIds as OwnerNoteGrant['document_ids']),
+    source,
+    authority,
   });
 }
 function parseRecipient(value: unknown): OwnerNoteRecipient {

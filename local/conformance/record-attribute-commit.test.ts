@@ -32,6 +32,7 @@ import type { VaultRecordSource } from '../../crates/worker/ui/vault-record-sour
 import { VaultScope } from '../../crates/worker/ui/vault-lifecycle.ts';
 import { OwnerVaultController } from '../../crates/worker/ui/vault-owner-controller.ts';
 import { OwnerNoteProposals } from '../../crates/worker/ui/vault-owner-note-proposals.ts';
+import { OwnerAgentGrants } from '../../crates/worker/ui/vault-owner-agent-grants.ts';
 
 const origin = 'https://mikaki.test',
   resource = 'https://agent.mikaki.test/mcp';
@@ -628,6 +629,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
         condition: string | null;
       }[] = [];
       let loseSaveResponse = false;
+      let loseAgentResponse: string | null = null;
       const transport: typeof fetch = async (input, init) => {
         const url = new URL(
           typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
@@ -652,6 +654,14 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
           loseSaveResponse = false;
           throw new Error('synthetic lost approved-save response');
         }
+        if (
+          loseAgentResponse &&
+          url.pathname.endsWith(`/agents/${loseAgentResponse}`) &&
+          response.ok
+        ) {
+          loseAgentResponse = null;
+          throw new Error('synthetic lost Agent operation response');
+        }
         return new Response(await response.arrayBuffer(), {
           status: response.status,
           headers: Object.fromEntries(response.headers),
@@ -673,12 +683,185 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
       return {
         controller,
         helper: new OwnerNoteProposals(controller),
+        grants: new OwnerAgentGrants(controller),
         requests,
+        loseNextAgentResponse: (path: string) => {
+          loseAgentResponse = path;
+        },
         loseNextSave: () => {
           loseSaveResponse = true;
         },
       };
     };
+
+    await t.test(
+      'Owner grant helper encrypts one record and retries grant/capability/revoke exactly in paired Workers',
+      async () => {
+        const owner = await bootstrap('ui-grant-owner');
+        await write(owner, 'name', 1, bytes('Selected name 🗾'));
+        const f = await browserHelper(owner);
+        const rpcRead = async (token: string, selected: string) => {
+          const response = await agent.fetch(resource, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json, text/event-stream',
+              'MCP-Protocol-Version': '2025-11-25',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'tools/call',
+              params: { name: 'mikaki_read', arguments: { id: selected } },
+            }),
+          });
+          return {
+            status: response.status,
+            data:
+              response.status === 200
+                ? ((await response.json()) as {
+                    result: { isError?: boolean; structuredContent?: { text?: string } };
+                  })
+                : null,
+          };
+        };
+        try {
+          const snapshot = await f.grants.load();
+          assert.equal(snapshot.sources.name.text, 'Selected name 🗾');
+          assert.equal(snapshot.sources.owner_note.revision, 0);
+          const prepared = await f.grants.prepareGrant(snapshot, 'name', {
+            delegate: 'synthetic-agent',
+            provider: 'fixture',
+            operations: ['list', 'read', 'propose'],
+            expiresAt: Math.floor(Date.now() / 1000) + 7200,
+          });
+          f.loseNextAgentResponse('grants');
+          await assert.rejects(f.grants.commitGrant(prepared), /grant_unavailable/);
+          const granted = await f.grants.commitGrant(prepared);
+          assert.match(granted.token, /^mag_[A-Za-z0-9_-]{43}$/);
+          assert.equal(
+            granted.snapshot.grants.find((g) => g.grant_id === prepared.grantId)?.active,
+            true,
+          );
+          const creates = f.requests.filter((r) => r.path.endsWith('/agents/grants'));
+          assert.equal(creates.length, 2);
+          assert.deepEqual(creates[1], creates[0]);
+          assert.equal(
+            creates[0]!.body.includes(granted.token),
+            false,
+            'raw bearer never enters grant body',
+          );
+          assert.equal(
+            (await rpcRead(granted.token, 'name')).data?.result.structuredContent?.text,
+            'Selected name 🗾',
+          );
+          assert.equal((await rpcRead(granted.token, 'owner_note')).data?.result.isError, true);
+          assert.equal(await head(owner), null, 'read grant creates no note');
+          await assert.rejects(f.grants.commitGrant(prepared), /token_already_delivered/);
+
+          const cap = await f.grants.prepareCapability(granted.snapshot, prepared.grantId);
+          f.loseNextAgentResponse('record-capability');
+          await assert.rejects(f.grants.commitCapability(cap), /capability_unavailable/);
+          const stored = await env.DB.prepare(
+            'SELECT expires_at FROM agent_attribute_capability WHERE grant_id=?',
+          )
+            .bind(prepared.grantId)
+            .first();
+          const issued = await f.grants.commitCapability(cap);
+          assert.equal(
+            issued.expiresAt,
+            stored.expires_at,
+            'exact retry does not renew capability deadline',
+          );
+          assert.ok(issued.expiresAt <= Math.floor(Date.now() / 1000) + 3600);
+          const caps = f.requests.filter((r) => r.path.endsWith('/agents/record-capability'));
+          assert.equal(caps.length, 2);
+          assert.deepEqual(caps[1], caps[0]);
+          const known = issued.snapshot.grants.find(
+            (g) => g.grant_id === prepared.grantId,
+          )!.capability;
+          assert.equal(known.state, 'active');
+          assert.equal(known.target?.revision, 0);
+          assert.equal(await head(owner), null, 'capability alone creates no note');
+          const reloaded = await new OwnerAgentGrants(f.controller).load();
+          assert.equal(
+            reloaded.grants.find((g) => g.grant_id === prepared.grantId)?.capability.state,
+            'unknown',
+          );
+          const audit = await env.DB.prepare(
+            "SELECT operation,count(*) AS n FROM agent_audit WHERE grant_id=? AND outcome='created' AND operation IN ('grant','record-capability') GROUP BY operation",
+          )
+            .bind(prepared.grantId)
+            .all();
+          assert.equal(audit.results.length, 2);
+          assert.ok(
+            audit.results.every((row: { n: number }) => row.n === 1),
+            'exact retries produce one creation audit each',
+          );
+          const revoke = await f.grants.prepareRevoke(issued.snapshot, prepared.grantId);
+          f.loseNextAgentResponse('revoke');
+          await assert.rejects(f.grants.revoke(revoke), /revoke_unavailable/);
+          const revoked = await f.grants.revoke(revoke);
+          assert.equal(revoked.grants.find((g) => g.grant_id === prepared.grantId)?.active, false);
+          assert.equal((await rpcRead(granted.token, 'name')).status, 401);
+          const revokes = f.requests.filter((r) => r.path.endsWith('/agents/revoke'));
+          assert.deepEqual(revokes[1], revokes[0]);
+        } finally {
+          f.controller.dispose();
+          owner.prf.fill(0);
+        }
+      },
+    );
+
+    await t.test(
+      'Historical grant acknowledgments do not deliver an inactive bearer or reactivate changed source',
+      async () => {
+        const owner = await bootstrap('ui-stale-grant-owner');
+        await write(owner, 'name', 1, bytes('Original saved source'));
+        const f = await browserHelper(owner);
+        try {
+          const snapshot = await f.grants.load();
+          const prepared = await f.grants.prepareGrant(snapshot, 'name', {
+            delegate: 'synthetic-agent',
+            provider: 'fixture',
+            operations: ['list', 'read'],
+            expiresAt: Math.floor(Date.now() / 1000) + 7200,
+          });
+          f.loseNextAgentResponse('grants');
+          await assert.rejects(f.grants.commitGrant(prepared), /grant_unavailable/);
+          await write(owner, 'name', 2, bytes('Later saved source'));
+          await assert.rejects(f.grants.commitGrant(prepared), /grant_inactive/);
+          const fresh = await f.grants.load();
+          assert.equal(fresh.sources.name.revision, 2);
+          assert.equal(fresh.sources.name.text, 'Later saved source');
+          assert.equal(fresh.grants.find((g) => g.grant_id === prepared.grantId)?.active, false);
+          await assert.rejects(f.grants.commitGrant(prepared), /token_already_delivered/);
+          const creates = f.requests.filter((r) => r.path.endsWith('/agents/grants'));
+          assert.equal(creates.length, 2);
+          assert.deepEqual(creates[1], creates[0]);
+          const audit = await env.DB.prepare(
+            "SELECT count(*) AS n FROM agent_audit WHERE grant_id=? AND operation='grant' AND outcome='created'",
+          )
+            .bind(prepared.grantId)
+            .first();
+          assert.equal(audit.n, 1);
+          const stored = await env.DB.prepare(
+            'SELECT encrypted_snapshot FROM agent_grant WHERE grant_id=?',
+          )
+            .bind(prepared.grantId)
+            .first();
+          assert.equal(
+            stored.encrypted_snapshot,
+            null,
+            'historical retry never restores stale snapshot',
+          );
+        } finally {
+          f.controller.dispose();
+          owner.prf.fill(0);
+        }
+      },
+    );
 
     await t.test(
       'Owner UI helper keeps decisions separate and recovers a lost save after a newer note',
