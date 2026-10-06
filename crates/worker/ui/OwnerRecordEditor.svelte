@@ -16,7 +16,17 @@
     ownerNoteInputError,
   } from './vault-note.ts';
   import * as m from './paraglide/messages.js';
-  let { target, disabled = false }: { target: OwnerRecordTarget; disabled?: boolean } = $props();
+  let {
+    target,
+    disabled = false,
+    onheadchange = () => {},
+    refreshEpoch = 0,
+  }: {
+    target: OwnerRecordTarget;
+    disabled?: boolean;
+    onheadchange?: (revision: number) => void;
+    refreshEpoch?: number;
+  } = $props();
   const context = ownerVaultContext(),
     owner = context.current();
   const store = new OwnerRecordStore(
@@ -36,6 +46,7 @@
   let pending: PreparedOwnerMutation | null = $state.raw(null);
   let status = $state(m.vaultLoading());
   let invalid = $state<'name' | 'title' | 'text' | null>(null);
+  let observedRefreshEpoch = untrack(() => refreshEpoch);
   const edited = $derived(JSON.stringify([title, value]));
   const dirty = $derived(pending !== null || (loaded && edited !== original));
   function assertCurrent(epoch: number, token: number): void {
@@ -70,6 +81,7 @@
     }
     assertCurrent(epoch, token);
     head = next;
+    onheadchange(next.revision);
     title = nextTitle;
     value = nextValue;
     original = JSON.stringify([title, value]);
@@ -107,6 +119,29 @@
       }
     }
   }
+
+  $effect(() => {
+    const currentEpoch = refreshEpoch;
+    const previousEpoch = untrack(() => observedRefreshEpoch);
+    if (currentEpoch === previousEpoch) return;
+    observedRefreshEpoch = currentEpoch;
+    if (!mounted || busy || dirty) return;
+    const previousFocus = document.activeElement;
+    busy = true;
+    pending = null;
+    void load()
+      .catch((cause: unknown) => {
+        if (mounted) status = failure(cause);
+      })
+      .finally(async () => {
+        if (mounted) {
+          busy = false;
+          await restoreActionFocus(previousFocus, () =>
+            document.getElementById(`${prefix}-reload`),
+          );
+        }
+      });
+  });
   async function mutate(method: 'PUT' | 'DELETE'): Promise<void> {
     if (
       busy ||

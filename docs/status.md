@@ -2,8 +2,8 @@
 
 This page distinguishes deployed behavior, local verification and planned work.
 The latest recorded production source is
-`210567e88ec0e2dcfae0a56e1937f9db8b8f0d3e` (PR #130), promoted by
-[main CI run 37321367592](https://github.com/masanork/mikaki/actions/runs/37321367592).
+`1c7c7318a4fd9ca54b6e9a355ecb093f541395e9` (PR #142), promoted by
+[main CI run 37418559797](https://github.com/masanork/mikaki/actions/runs/37418559797).
 All production promotions and the source/version-matched public smoke passed.
 The [2026-10-05 cutover record](production-reset-2026-10-05.md) gives exact Worker
 versions, fresh database ledgers, empty-data checks and retired resources.
@@ -41,7 +41,7 @@ The [DPoP/FAPI readiness slice](fapi2-readiness.md) subsequently passes 45 compo
 
 Before use by real users, complete and exercise production RP integrations; qualify invitation and administrator operations beyond the recorded first enrollment; verify passkeys and PRF with intended devices; validate callback, session, and logout behavior end to end; exercise operational recovery and monitoring; and resolve the relevant conformance and security review gates. The [deployment guide](cloudflare-deployment.md) records the environment-specific state.
 
-Record-v2 claim delivery and encrypted archive import/search are implemented, with sharing policy still disabled. The first [Owner name-sharing panel](vault-owner-name-sharing.md) connects a saved name to separate system and RP approvals. Broader record sharing, AI write approval, real conversation-service ingestion, live messaging, file APIs and hosted MCP activation remain work in the [roadmap](roadmap.md). A system Grant alone does not make UserInfo claim sharing available.
+Record-v2 claim delivery and encrypted archive import/search are implemented, with sharing policy still disabled. The deployed [Owner name-sharing panel](vault-owner-name-sharing.md) connects a saved name to separate system and RP approvals. The [OwnerNote proposal panel](vault-owner-note-proposals.md) connects existing proposals to review, approve/reject and separate approved saves. Its helper, paired Worker and browser tests cover exact retry/recovery and fresh current-head display; the production version is qualified through the attested main pipeline. Broader record sharing, grant/capability issuance UI, real conversation-service ingestion, live messaging, file APIs and hosted MCP activation remain work in the [roadmap](roadmap.md). A system Grant alone does not make UserInfo claim sharing available.
 
 ## Historical local and deployment evidence
 

@@ -11,6 +11,7 @@
   import OwnerRecordEditor from './OwnerRecordEditor.svelte';
   import OwnerPasskeys from './OwnerPasskeys.svelte';
   import OwnerNameSharing from './OwnerNameSharing.svelte';
+  import OwnerNoteProposals from './OwnerNoteProposals.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -34,11 +35,16 @@
     passkeysBusy = $state(false),
     wrapperUnconfirmed = $state(false),
     sharingUnconfirmed = $state(false),
+    noteProposalUnconfirmed = $state(false),
     status = $state('');
-  const editingBlocked = $derived(busy || wrapperUnconfirmed || sharingUnconfirmed);
+  const editingBlocked = $derived(
+    busy || wrapperUnconfirmed || sharingUnconfirmed || noteProposalUnconfirmed,
+  );
   let name = $state(''),
     savedName = $state(''),
-    profileRevision = $state(0);
+    profileRevision = $state(0),
+    noteRevision = $state(0),
+    noteRefreshEpoch = $state(0);
   let pending: PreparedOwnerWrite | null = $state(null);
   let query = $state('');
   let threads: { id: string; revision: number; archive: ThreadArchive }[] = $state([]);
@@ -385,12 +391,31 @@
               >{m.vaultDelete()}</button
             >
           </section>
-          <OwnerRecordEditor target={OWNER_NOTE} disabled={editingBlocked} />
+          <OwnerRecordEditor
+            target={OWNER_NOTE}
+            disabled={editingBlocked}
+            refreshEpoch={noteRefreshEpoch}
+            onheadchange={(revision) => (noteRevision = revision)}
+          />
+          {#if owner}
+            <OwnerNoteProposals
+              {owner}
+              sourceRevision={noteRevision}
+              disabled={busy || wrapperUnconfirmed || sharingUnconfirmed}
+              hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
+              onbusy={(value) => {
+                passkeysBusy = value;
+                busy = value;
+              }}
+              onunconfirmed={(value) => (noteProposalUnconfirmed = value)}
+              onapplied={() => (noteRefreshEpoch += 1)}
+            />
+          {/if}
           {#if owner}
             <OwnerNameSharing
               {owner}
               sourceRevision={profileRevision}
-              disabled={busy || wrapperUnconfirmed}
+              disabled={busy || wrapperUnconfirmed || noteProposalUnconfirmed}
               hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
               onbusy={(value) => {
                 passkeysBusy = value;
@@ -402,7 +427,11 @@
           {#if owner}<OwnerPasskeys
               {owner}
               hasDrafts={() => context.hasDrafts?.() ?? false}
-              disabled={busy || sharingUnconfirmed || dirty || (context.hasDrafts?.() ?? false)}
+              disabled={busy ||
+                sharingUnconfirmed ||
+                noteProposalUnconfirmed ||
+                dirty ||
+                (context.hasDrafts?.() ?? false)}
               onunconfirmed={(value) => (wrapperUnconfirmed = value)}
               onbusy={(value) => {
                 passkeysBusy = value;
