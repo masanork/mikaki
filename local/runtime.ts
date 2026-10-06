@@ -152,7 +152,12 @@ export async function startLocal({
           });
           if (origin === OP && incoming.url === '/session/check' && beforeSessionCheckResponse)
             await beforeSessionCheckResponse();
-          outgoing.writeHead(result.status, Object.fromEntries(result.headers));
+          const responseHeaders: Record<string, string | string[]> = Object.fromEntries(
+            result.headers,
+          );
+          const setCookies = result.headers.getSetCookie();
+          if (setCookies.length) responseHeaders['set-cookie'] = setCookies;
+          outgoing.writeHead(result.status, responseHeaders);
           if (result.body) Readable.fromWeb(result.body).pipe(outgoing);
           else outgoing.end();
         } catch {
