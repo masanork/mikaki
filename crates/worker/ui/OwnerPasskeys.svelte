@@ -19,11 +19,13 @@
     disabled,
     hasDrafts,
     onbusy,
+    onunconfirmed,
   }: {
     owner: OwnerVaultController;
     disabled: boolean;
     hasDrafts: () => boolean;
     onbusy: (value: boolean) => void;
+    onunconfirmed: (value: boolean) => void;
   } = $props();
   let rows: { id: string; wrapped: boolean; active: boolean }[] = $state([]);
   let loading = $state(false);
@@ -96,11 +98,13 @@
     await owner.scope.verify();
     owner.assertCurrent(token);
     if (hasDrafts()) throw new Error('owner_unsaved_changes');
+    onunconfirmed(true);
     try {
       await commitOwnerKeyWrapperOperation(owner.scope, pending);
     } catch (error) {
       if (error instanceof Error && error.message === 'owner_wrapper_conflict') {
         pending = null;
+        onunconfirmed(false);
         owner.lock('unconfirmed');
       } else if (
         error instanceof Error &&
@@ -109,12 +113,14 @@
         )
       ) {
         pending = null;
+        onunconfirmed(false);
         if (error.message === 'owner_wrapper_session') owner.lock('unconfirmed');
       }
       throw error;
     }
     owner.assertCurrent(token);
     pending = null;
+    onunconfirmed(false);
     owner.lock();
   }
   async function authorize(id: string) {
@@ -130,6 +136,7 @@
   onMount(() => {
     const clear = () => {
       pending = null;
+      onunconfirmed(false);
       registration = null;
       rows = [];
       status = '';

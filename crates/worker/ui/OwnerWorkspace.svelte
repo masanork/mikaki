@@ -31,7 +31,9 @@
   let opened = $state(false),
     busy = $state(false),
     passkeysBusy = $state(false),
+    wrapperUnconfirmed = $state(false),
     status = $state('');
+  const editingBlocked = $derived(busy || wrapperUnconfirmed);
   let name = $state(''),
     savedName = $state(''),
     profileRevision = $state(0);
@@ -65,7 +67,7 @@
   const active = $derived(threads.find((t) => t.id === selected));
   async function selectHit(hit: SearchHit) {
     try {
-      if (!owner || busy) return;
+      if (!owner || editingBlocked) return;
       const token = owner.checkpoint();
       await owner.verifyAuthority();
       owner.assertCurrent(token);
@@ -156,7 +158,7 @@
     }
   }
   async function save() {
-    if (!opened || busy || !store) return;
+    if (!opened || editingBlocked || !store) return;
     if (!pending && (!name.trim() || name.length > 256)) {
       status = m.vaultInvalidName();
       return;
@@ -187,7 +189,7 @@
     }
   }
   async function reload() {
-    if (!store || busy || (dirty && !confirm(m.productProfileDiscard()))) return;
+    if (!store || editingBlocked || (dirty && !confirm(m.productProfileDiscard()))) return;
     const previousFocus = document.activeElement;
     busy = true;
     try {
@@ -206,7 +208,7 @@
     const input = event.currentTarget as HTMLInputElement,
       file = input.files?.[0];
     input.value = '';
-    if (!file || !store || busy || pending) return;
+    if (!file || !store || editingBlocked || pending) return;
     const previousFocus = document.activeElement;
     busy = true;
     try {
@@ -239,7 +241,7 @@
     }
   }
   async function retry() {
-    if (!pending || !store || busy) return;
+    if (!pending || !store || editingBlocked) return;
     const previousFocus = document.activeElement;
     busy = true;
     try {
@@ -258,7 +260,7 @@
     }
   }
   async function remove(collection: string, id: string, kind: string, revision: number) {
-    if (!store || busy || pending || !confirm(m.ownerWorkspaceDeleteConfirm())) return;
+    if (!store || editingBlocked || pending || !confirm(m.ownerWorkspaceDeleteConfirm())) return;
     const previousFocus = document.activeElement;
     busy = true;
     try {
@@ -356,16 +358,16 @@
               id="name"
               autocomplete="name"
               maxlength="256"
-              disabled={busy || pending !== null}
+              disabled={editingBlocked || pending !== null}
               bind:value={name}
             />
             <div class="product-actions">
               <button
                 id="save"
                 class="product-primary"
-                disabled={busy || pending !== null}
+                disabled={editingBlocked || pending !== null}
                 onclick={save}>{m.vaultSave()}</button
-              ><button id="reload-profile" disabled={busy} onclick={reload}
+              ><button id="reload-profile" disabled={editingBlocked} onclick={reload}
                 >{m.productProfileReload()}</button
               >
             </div>
@@ -375,16 +377,17 @@
             <button
               id="delete"
               class="product-danger"
-              disabled={busy || pending !== null || !savedName}
+              disabled={editingBlocked || pending !== null || !savedName}
               onclick={() => remove('personal', 'name', 'name', profileRevision)}
               >{m.vaultDelete()}</button
             >
           </section>
-          <OwnerRecordEditor target={OWNER_NOTE} disabled={busy} />
+          <OwnerRecordEditor target={OWNER_NOTE} disabled={editingBlocked} />
           {#if owner}<OwnerPasskeys
               {owner}
               hasDrafts={() => context.hasDrafts?.() ?? false}
               disabled={busy || dirty || (context.hasDrafts?.() ?? false)}
+              onunconfirmed={(value) => (wrapperUnconfirmed = value)}
               onbusy={(value) => {
                 passkeysBusy = value;
                 busy = value;
@@ -396,20 +399,20 @@
               id="archive-file"
               type="file"
               accept="application/json,.json"
-              disabled={busy || pending !== null}
+              disabled={editingBlocked || pending !== null}
               onchange={importArchive}
             />
             {#if owner}<ThreadSearch
                 records={threads}
                 {owner}
-                disabled={busy}
+                disabled={editingBlocked}
                 bind:query
                 onselect={selectHit}
               />{/if}
             {#if threads.length === 0}<p>{m.ownerVaultEmpty()}</p>{/if}
             <div class="product-actions">
               {#each visibleThreads as thread (thread.id)}<button
-                  disabled={busy}
+                  disabled={editingBlocked}
                   onclick={() => (selected = thread.id)}>{thread.archive.title}</button
                 >{/each}
             </div>
@@ -417,7 +420,7 @@
                 <h3 id="thread-title" tabindex="-1">{active.archive.title}</h3>
                 <button
                   class="product-danger"
-                  disabled={busy || pending !== null}
+                  disabled={editingBlocked || pending !== null}
                   onclick={() =>
                     active && remove('threads', active.id, 'thread-archive', active.revision)}
                   >{m.vaultDelete()}</button
@@ -436,7 +439,7 @@
               </article>{/if}
           </section>
           <p id="status" role="status" aria-live="polite">{status}</p>
-          {#if pending}<button id="retry-write" disabled={busy} onclick={retry}
+          {#if pending}<button id="retry-write" disabled={editingBlocked} onclick={retry}
               >{m.ownerVaultRetrySave()}</button
             >{/if}
         </div>
@@ -445,7 +448,7 @@
     {#if hasAgentRequest}
       <details id="connections" open>
         <summary>{m.agentOAuthHeading()}</summary>
-        <AgentOAuth grants={agentConnections} disabled={busy} />
+        <AgentOAuth grants={agentConnections} disabled={editingBlocked} />
       </details>
     {/if}
   </main>
