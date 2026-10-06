@@ -153,6 +153,63 @@ function ready() {
   return db;
 }
 
+const shareStatus = sql('select-record-share-status').replace(
+  '{CURRENT_RECORD_SHARE}',
+  sql('select-current-record-share'),
+);
+const releaseStatus = sql('select-record-claim-release-status').replace(
+  '{CURRENT_RECORD_SHARE}',
+  sql('select-current-record-share'),
+);
+function displayedAuthority(db: DatabaseSync, time?: number) {
+  const at = (query: string) =>
+    time === undefined ? query : query.replaceAll('unixepoch()', String(time));
+  return {
+    share: db.prepare(at(shareStatus)).get('owner'),
+    rp: db.prepare(at(releaseStatus)).get('owner'),
+  };
+}
+test('sharing status distinguishes encrypted preparation from current RP permission', () => {
+  const db = fixture();
+  try {
+    assert.equal(displayedAuthority(db).share, undefined);
+    assert.equal(displayedAuthority(db).rp!.authority_current, 0);
+    enable(db);
+    share(db);
+    const prepared = displayedAuthority(db);
+    assert.equal(prepared.share!.authority_current, 1);
+    assert.equal(prepared.share!.recipient_key_id, keyId);
+    assert.equal(prepared.share!.recipient_generation, 1);
+    assert.equal(prepared.share!.directory_revision, 2);
+    assert.equal(prepared.share!.policy_revision, 2);
+    assert.equal(prepared.rp!.authority_current, 0);
+    assert.equal(consent(db), 1);
+    assert.equal(displayedAuthority(db).rp!.authority_current, 1);
+  } finally {
+    db.close();
+  }
+});
+test('sharing status expires permissions without waiting for stored active rows to be revoked', () => {
+  const db = fixture();
+  try {
+    enable(db);
+    db.exec('UPDATE vault_claim_release_policy SET ttl_seconds=60,revision=3');
+    share(db);
+    assert.equal(consent(db, { 15: 3 }), 1);
+    const current = displayedAuthority(db);
+    const afterRp = Number(current.rp!.expires_at) + 1;
+    const partiallyExpired = displayedAuthority(db, afterRp);
+    assert.equal(partiallyExpired.share!.status, 'active');
+    assert.equal(partiallyExpired.share!.authority_current, 1);
+    assert.equal(partiallyExpired.rp!.release_status, 'active');
+    assert.equal(partiallyExpired.rp!.authority_current, 0);
+    const afterShare = Number(current.share!.expires_at) + 1;
+    assert.equal(displayedAuthority(db, afterShare).share!.authority_current, 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('v2 policy defaults disabled and system sharing alone never creates RP consent', () => {
   const db = fixture();
   try {
@@ -245,10 +302,12 @@ for (const [label, change] of [
     try {
       const selected = snapshot(db)!;
       assert.ok(selected);
+      assert.equal(displayedAuthority(db).rp!.authority_current, 1);
       db.exec(change);
       assert.equal(disclose(db, selected).length, 0);
       assert.equal(snapshot(db), undefined);
       assert.equal(db.prepare('SELECT status FROM vault_claim_release').get()!.status, 'revoked');
+      assert.equal(displayedAuthority(db).rp?.authority_current ?? 0, 0);
     } finally {
       db.close();
     }

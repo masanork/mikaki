@@ -422,6 +422,12 @@ window.recordProbe=async()=>{
     });
     const sharing = origin + '/vault/records/personal/name/sharing',
       releases = origin + '/vault/records/personal/name/releases';
+    const sharingStatus = async (path: string) => {
+      const result = await op.fetch(path, { headers: { Cookie: `__Host-op-sso=${cookie}` } });
+      assert.equal(result.status, 200);
+      assert.equal(result.headers.get('Cache-Control'), 'no-store');
+      return result.json() as Promise<Record<string, unknown>>;
+    };
     const shareBody = {
       source: prepared.source,
       authority: prepared.authority,
@@ -442,6 +448,7 @@ window.recordProbe=async()=>{
     const disabledShare = await share();
     assert.equal(disabledShare.status, 403);
     assert.deepEqual(await disabledShare.json(), { error: 'sharing_disabled_or_changed' });
+    assert.equal((await sharingStatus(sharing))['enabled'], false);
     await db.prepare('UPDATE vault_record_share_policy SET enabled=1,revision=2').run();
     let response = await share();
     assert.equal(response.status, 200, await response.text());
@@ -480,6 +487,18 @@ window.recordProbe=async()=>{
     );
     await db.prepare('DROP TRIGGER fail_share_audit').run();
     await db.prepare('UPDATE vault_claim_release_policy SET enabled=1,revision=2').run();
+    const systemStatus = await sharingStatus(sharing);
+    assert.equal(systemStatus['enabled'], true);
+    assert.equal(systemStatus['grant_ttl_seconds'], 604800);
+    assert.equal((systemStatus['grant'] as Record<string, unknown>)['authority_current'], 1);
+    assert.equal((systemStatus['grant'] as Record<string, unknown>)['recipient_key_id'], keyId);
+    const beforeConsent = await sharingStatus(releases);
+    assert.equal(beforeConsent['enabled'], true);
+    assert.equal(beforeConsent['ttl_seconds'], 86400);
+    const candidate = (beforeConsent['clients'] as Record<string, unknown>[])[0]!;
+    assert.equal(candidate['client_id'], 'rp');
+    assert.equal(candidate['release_status'], null);
+    assert.equal(candidate['authority_current'], 0);
     const consentBody = {
       source: prepared.source,
       authority: prepared.authority,
@@ -497,6 +516,12 @@ window.recordProbe=async()=>{
       });
     response = await consent();
     assert.equal(response.status, 200, await response.text());
+    assert.equal(
+      ((await sharingStatus(releases))['clients'] as Record<string, unknown>[])[0]![
+        'authority_current'
+      ],
+      1,
+    );
     response = await userinfo();
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { sub: 'pairwise', name: 'Alice 山田 😀' });
@@ -564,6 +589,9 @@ window.recordProbe=async()=>{
     assert.equal((await pending).status, 503);
     assert.equal(await audits(), 1);
     assert.deepEqual(await (await userinfo()).json(), { sub: 'pairwise' });
+    const withdrawn = ((await sharingStatus(releases))['clients'] as Record<string, unknown>[])[0]!;
+    assert.equal(withdrawn['release_status'], 'revoked');
+    assert.equal(withdrawn['authority_current'], 0);
     consentBody.expected_release_version = 2;
     response = await consent();
     assert.equal(response.status, 200, await response.text());

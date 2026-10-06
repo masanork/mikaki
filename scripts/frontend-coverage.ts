@@ -22,6 +22,7 @@ const child = spawn(
       'vault-note',
       'vault-freshness',
       'vault-lifecycle',
+      'vault-owner-name-sharing',
       'recipient-directory-browser',
     ].map((name) => `local/conformance/${name}.test.ts`),
   ],

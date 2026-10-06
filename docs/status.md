@@ -41,7 +41,7 @@ The [DPoP/FAPI readiness slice](fapi2-readiness.md) subsequently passes 45 compo
 
 Before use by real users, complete and exercise production RP integrations; qualify invitation and administrator operations beyond the recorded first enrollment; verify passkeys and PRF with intended devices; validate callback, session, and logout behavior end to end; exercise operational recovery and monitoring; and resolve the relevant conformance and security review gates. The [deployment guide](cloudflare-deployment.md) records the environment-specific state.
 
-Record-v2 claim delivery and encrypted archive import/search are implemented, with sharing policy still disabled. Broader sharing/approval UI, real conversation-service ingestion, live messaging, file APIs and hosted MCP activation remain work in the [roadmap](roadmap.md). A system Grant alone does not make UserInfo claim sharing available.
+Record-v2 claim delivery and encrypted archive import/search are implemented, with sharing policy still disabled. The first [Owner name-sharing panel](vault-owner-name-sharing.md) connects a saved name to separate system and RP approvals. Broader record sharing, AI write approval, real conversation-service ingestion, live messaging, file APIs and hosted MCP activation remain work in the [roadmap](roadmap.md). A system Grant alone does not make UserInfo claim sharing available.
 
 ## Historical local and deployment evidence
 
