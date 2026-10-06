@@ -444,7 +444,10 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     loseWrapper = true;
     await page.locator('#owner-passkeys-retry').click();
     await expect(page.locator('#owner-passkeys-retry')).toBeVisible();
+    await expect(page.locator('#owner-passkeys-retry')).toBeEnabled();
     assert.equal(ceremonies, 5, 'Adding a wrapper requires fresh source and target PRF');
+    await expect(page.locator('#owner-note-text')).toBeDisabled();
+    await expect(page.locator('#name')).toBeDisabled();
     await page.locator('#owner-passkeys-retry').click();
     await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
     assert.deepEqual(
