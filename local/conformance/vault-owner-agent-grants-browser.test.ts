@@ -322,7 +322,8 @@ test('OwnerWorkspace grants one selected encrypted record, separately allows not
     assert.equal(capabilityBodies.length, 1);
     assert.deepEqual(JSON.parse(capabilityBodies[0]!).target, currentTarget());
     assert.ok(capabilityReceipts[0]);
-    assert.equal(Number(capabilityReceipts[0].expires_at) - now <= 3600, true);
+    assert.ok(Number(capabilityReceipts[0].expires_at) <= Math.floor(Date.now() / 1000) + 3600);
+    assert.ok(Number(capabilityReceipts[0].expires_at) <= Number(grantRow!.expires_at));
 
     await page.locator(`#owner-agent-grant-revoke-${grantId}`).click();
     await expect(page.locator(`#owner-agent-grant-${grantId}`)).toContainText(

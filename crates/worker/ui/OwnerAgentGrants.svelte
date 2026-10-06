@@ -572,7 +572,7 @@
                   <p>{m.ownerAgentCapabilityRequiresProposal()}</p>
                 {:else if capabilityIsLive(grant) && grant.capability.expires_at}
                   <p>
-                    {m.ownerAgentCapabilityActive({
+                    {m.ownerAgentCapabilityCreated({
                       expires: new Date(grant.capability.expires_at * 1000).toLocaleString(),
                     })}
                   </p>
