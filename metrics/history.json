@@ -1416,16 +1416,16 @@
   },
   {
     "date": "2026-10-06",
-    "commit": "c6c3b05",
+    "commit": "8491046",
     "code": {
-      "implementationLines": 43912,
-      "testLines": 10136,
+      "implementationLines": 43917,
+      "testLines": 10204,
       "implementationFiles": 185,
       "testFiles": 28,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 14212,
-          "testLines": 2670
+          "implementationLines": 14217,
+          "testLines": 2738
         },
         "rust": {
           "implementationLines": 25348,
