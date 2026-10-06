@@ -16,9 +16,15 @@
   let generation = $state(0);
   let scope = new VaultScope(locked);
   const drafts = new SvelteSet<() => boolean>();
+  const resumeChecks = new Set<() => Promise<void>>();
   const dirty = $derived([...drafts].some((read) => read()));
   setContext(VAULT_CONTEXT, {
     current: () => scope,
+    hasDrafts: () => dirty,
+    registerResume: (check: () => Promise<void>) => {
+      resumeChecks.add(check);
+      return () => resumeChecks.delete(check);
+    },
     registerDraft: (read: () => boolean) => {
       drafts.add(read);
       return () => {
@@ -51,11 +57,13 @@
     checking = true;
     try {
       await scope.verify();
+      await scope.ensure();
+      for (const check of resumeChecks) await check();
     } catch {
       scope.end('unconfirmed');
     } finally {
       checking = false;
-      suspended = document.visibilityState !== 'visible';
+      suspended = !reason && document.visibilityState !== 'visible';
     }
   }
   async function reopen(): Promise<void> {

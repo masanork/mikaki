@@ -96,11 +96,7 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
       .run();
     await check(204);
     const { VAULT_BLOBS } = await op.getEnv();
-    // The baseline binary remains usable during the separately reviewed additive migration.
-    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
-      .bind('0002_owner_key_wrap_operations.sql')
-      .run();
-    await check(204);
+    // A feature binary requires the complete upgraded ledger, unlike the preceding bridge.
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)').bind('0003_unknown.sql').run();
     await check(503);
     await DB.prepare('DELETE FROM d1_migrations WHERE name=?').bind('0003_unknown.sql').run();
@@ -120,6 +116,10 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await DB.prepare('DELETE FROM d1_migrations').run();
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
       .bind('0001_owner_vault_initial.sql')
+      .run();
+    await check(503);
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0002_owner_key_wrap_operations.sql')
       .run();
     await check(204);
     assert.equal((await VAULT_BLOBS.list()).objects.length, 0, 'Probe writes no sentinel');

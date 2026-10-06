@@ -8,6 +8,7 @@ import {
   OWNER_NOTE,
 } from '../../crates/worker/ui/vault-owner-record-store.ts';
 import { encodeBase64Url } from '../../crates/worker/ui/vault-crypto.ts';
+import type { OwnerPrfEvaluator } from '../../crates/worker/ui/vault-owner-session.ts';
 
 const credential = new Uint8Array(32).fill(8);
 const identity = {
@@ -15,7 +16,7 @@ const identity = {
   credential_id: encodeBase64Url(credential),
   session_tag: 's'.repeat(43),
 };
-function fixture() {
+function fixture(evaluate?: OwnerPrfEvaluator) {
   let root: Record<string, unknown> | null = null;
   const heads = new Map<string, Record<string, unknown>>(),
     operations = new Map<string, { bytes: string; revision: number; deleted: boolean }>();
@@ -104,8 +105,9 @@ function fixture() {
   const owner = new OwnerVaultController(
     scope,
     'https://mikaki.test',
-    async () => {
+    async (id, input, signal) => {
       calls++;
+      if (evaluate) return evaluate(id, input, signal);
       return { credentialId: credential, output: new Uint8Array(32).fill(9) };
     },
     () => visible,
@@ -179,6 +181,55 @@ test('unified owner controller opens once, preserves exact retries, uses fresh r
   assert.equal((await name.read()).revision, 4);
   f.owner.lock();
   await assert.rejects(name.commit(first));
+});
+
+test('additional wrapper preparation pins both fresh ceremonies and clears PRF outputs on success, cancellation and wrong credential', async () => {
+  const target = new Uint8Array(32).fill(17),
+    targetId = encodeBase64Url(target);
+  for (const mode of ['success', 'cancel', 'wrong-source', 'wrong-target', 'hidden'] as const) {
+    const outputs: Uint8Array<ArrayBuffer>[] = [];
+    let preparing = false;
+    const f = fixture(async (id) => {
+      const isSource = encodeBase64Url(id) === identity.credential_id;
+      if (preparing && !isSource && mode === 'cancel')
+        throw new DOMException('Cancelled', 'NotAllowedError');
+      const output = new Uint8Array(32).fill(isSource ? 9 : 19);
+      outputs.push(output);
+      if (preparing && !isSource && mode === 'hidden') {
+        f.visible(false);
+        f.owner.suspend();
+      }
+      return {
+        credentialId:
+          preparing &&
+          ((isSource && mode === 'wrong-source') || (!isSource && mode === 'wrong-target'))
+            ? new Uint8Array(32).fill(27)
+            : id,
+        output,
+      };
+    });
+    await f.owner.open();
+    preparing = true;
+    if (mode === 'success') {
+      const operation = await f.owner.prepareWrapper(targetId);
+      assert.equal(operation.method, 'PUT');
+      assert.equal(operation.expectedRevision, 1);
+      assert.equal(JSON.parse(operation.body).owner_envelope.credential_id, targetId);
+      assert.equal(f.calls(), 3, 'Unlock then fresh source and target ceremonies');
+      const removal = await f.owner.prepareWrapperRemoval(targetId);
+      assert.equal(removal.method, 'DELETE');
+      assert.equal(f.calls(), 3);
+      await assert.rejects(
+        f.owner.prepareWrapperRemoval(identity.credential_id),
+        /source_wrapper_required/,
+      );
+    } else await assert.rejects(f.owner.prepareWrapper(targetId));
+    assert.ok(
+      outputs.every((output) => output.every((byte) => byte === 0)),
+      `${mode} consumes all returned PRF outputs`,
+    );
+    f.owner.dispose();
+  }
 });
 
 test('late reads and observed root authority changes cannot restore or continue a lease', async () => {
@@ -311,6 +362,18 @@ test('authority recheck cannot preserve a lease under a replacement same-owner s
   f.rejectRecord('record_changed');
   f.replaceSession();
   await assert.rejects(store.read());
+  assert.equal(f.scope.signal.aborted, true);
+  assert.throws(() => f.owner.lease());
+});
+
+test('resuming after a wrapper registry change clears the lease before plaintext can reappear', async () => {
+  const f = fixture();
+  await f.owner.open();
+  f.visible(false);
+  f.owner.suspend();
+  f.rootRevision(2);
+  f.visible(true);
+  await assert.rejects(f.owner.resume(), /owner_key_changed/);
   assert.equal(f.scope.signal.aborted, true);
   assert.throws(() => f.owner.lease());
 });

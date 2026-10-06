@@ -2288,6 +2288,12 @@ pub async fn main(
         )
         .get_async("/vault/owner-key", vault_owner_keys::get)
         .put_async("/vault/owner-key", vault_owner_keys::create)
+        .get_async("/vault/owner-key/wrappers", vault_owner_keys::wrappers)
+        .put_async("/vault/owner-key/wrappers", vault_owner_keys::add_wrapper)
+        .delete_async(
+            "/vault/owner-key/wrappers",
+            vault_owner_keys::remove_wrapper,
+        )
         .get_async("/vault/passkeys", owner_passkeys::list)
         .post_async("/vault/passkeys/start", owner_passkeys::start)
         .post_async("/vault/passkeys/finish", owner_passkeys::finish)

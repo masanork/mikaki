@@ -56,7 +56,8 @@ test('reset planning rehearses the complete main schema and records source/confi
   assert.ok(op.tables.includes('identity_wallet_attestation_replay'));
   assert.ok(!plan.blockers.includes('identity-not-integrated'));
   assert.ok(!plan.blockers.includes('legacy-vault-still-present'));
-  assert.ok(!plan.blockers.includes('baseline-not-consolidated'));
+  // The feature chain cannot be mistaken for a freshly consolidated reset baseline.
+  assert.ok(plan.blockers.includes('baseline-not-consolidated'));
   assert.ok(plan.blockers.includes('faq-production-registration-required'));
 });
 
@@ -120,8 +121,10 @@ test('a rewritten 0001 is rejected on old ledgers, application tables, and unkno
     assert.throws(() => assertFreshBaselineTarget([{ name }]), /fresh database/);
 });
 
-test('the single baseline installs current Owner Vault and Identity schema only into an empty database', () => {
-  const migrations = readMigrations(`${root}/crates/worker/migrations`);
+test('the frozen reset baseline installs Owner Vault and Identity only into an empty database', () => {
+  const migrations = readMigrations(`${root}/crates/worker/migrations`).filter(
+    (migration) => migration.name === BASELINE_NAME,
+  );
   assert.deepEqual(
     migrations.map((item) => item.name),
     [BASELINE_NAME],

@@ -16,7 +16,7 @@
     ownerNoteInputError,
   } from './vault-note.ts';
   import * as m from './paraglide/messages.js';
-  let { target }: { target: OwnerRecordTarget } = $props();
+  let { target, disabled = false }: { target: OwnerRecordTarget; disabled?: boolean } = $props();
   const context = ownerVaultContext(),
     owner = context.current();
   const store = new OwnerRecordStore(
@@ -218,7 +218,7 @@
       id="owner-note-title"
       type="text"
       maxlength="256"
-      disabled={busy || !loaded || pending !== null}
+      disabled={disabled || busy || !loaded || pending !== null}
       bind:value={title}
       aria-invalid={invalid === 'title' || undefined}
       aria-describedby={`${prefix}-status`}
@@ -228,7 +228,7 @@
       id="owner-note-text"
       rows="5"
       maxlength="4096"
-      disabled={busy || !loaded || pending !== null}
+      disabled={disabled || busy || !loaded || pending !== null}
       bind:value
       aria-invalid={invalid === 'text' || undefined}
       aria-describedby={`${prefix}-status`}></textarea>
@@ -239,7 +239,7 @@
       type="text"
       maxlength="256"
       autocomplete="name"
-      disabled={busy || !loaded || pending !== null}
+      disabled={disabled || busy || !loaded || pending !== null}
       bind:value
       aria-invalid={invalid === 'name' || undefined}
       aria-describedby={`${prefix}-status`}
@@ -250,7 +250,7 @@
       id={`${prefix}-save`}
       class="product-primary"
       type="button"
-      disabled={busy || !loaded || pending?.method === 'DELETE'}
+      disabled={disabled || busy || !loaded || pending?.method === 'DELETE'}
       onclick={() => mutate('PUT')}
       >{pending?.method === 'PUT'
         ? m.ownerVaultRetrySave()
@@ -264,7 +264,7 @@
       id={`${prefix}-delete`}
       class="product-danger"
       type="button"
-      disabled={busy || !loaded || !head?.record || pending?.method === 'PUT'}
+      disabled={disabled || busy || !loaded || !head?.record || pending?.method === 'PUT'}
       onclick={() => mutate('DELETE')}
       >{pending?.method === 'DELETE'
         ? m.ownerVaultRetryDelete()
@@ -272,7 +272,7 @@
           ? m.vaultNoteDelete()
           : m.vaultDelete()}</button
     >
-    <button id={`${prefix}-reload`} type="button" disabled={busy} onclick={reload}
+    <button id={`${prefix}-reload`} type="button" disabled={disabled || busy} onclick={reload}
       >{note ? m.vaultNoteReload() : m.productProfileReload()}</button
     >
   </div>

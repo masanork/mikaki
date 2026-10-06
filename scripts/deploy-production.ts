@@ -6,11 +6,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseSource } from './release-inventory.ts';
 import { verifyPreparedUpload } from './prepare-release-upload.ts';
-import {
-  assertProductionBaseline,
-  BASELINE_NAME,
-  BASELINE_SCHEMA_QUERY,
-} from './production-baseline.ts';
+import { readdirSync } from 'node:fs';
+import { BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
+import { assertProductionOwnerSchema } from './production-owner-schema.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -168,8 +166,11 @@ async function main() {
   );
   assert.equal(schemaProbe.length, 2, 'Expected ledger and schema results');
   assert.ok(schemaProbe.every((result: { success: boolean }) => result.success === true));
-  assertProductionBaseline(
-    readFileSync(join(root, 'crates/worker/migrations', BASELINE_NAME), 'utf8'),
+  const migrationDirectory = join(root, 'crates/worker/migrations');
+  assertProductionOwnerSchema(
+    readdirSync(migrationDirectory)
+      .sort()
+      .map((name) => ({ name, sql: readFileSync(join(migrationDirectory, name), 'utf8') })),
     schemaProbe[0].results,
     schemaProbe[1].results,
   );

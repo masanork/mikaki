@@ -24,6 +24,7 @@ async function exerciseLifecycle(notifications: Notifications) {
   let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
   let failure: unknown;
   let finishCheck = () => {};
+  let finishOwnerCheck = () => {};
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -118,11 +119,14 @@ async function exerciseLifecycle(notifications: Notifications) {
     );
     let sessionFailure = false;
     let holdCheck: Promise<void> | null = null;
+    let holdOwnerCheck: Promise<void> | null = null;
     let dropMutation = false;
     let recordWrites = 0;
     await page.context().route(`${origin}/**`, async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
+      if (path === '/vault/owner-key' && request.method() === 'GET' && holdOwnerCheck)
+        await holdOwnerCheck;
       if (path === '/vault/session') {
         if (holdCheck) await holdCheck;
         if (sessionFailure) {
@@ -262,7 +266,20 @@ async function exerciseLifecycle(notifications: Notifications) {
     await page.locator('#name').fill('Preserved same-session draft');
     await visibility(true);
     await expect(page.locator('#name')).toBeHidden();
+    holdOwnerCheck = new Promise<void>((resolve) => {
+      finishOwnerCheck = resolve;
+    });
+    const ownerCheckStarted = page.waitForRequest(`${origin}/vault/owner-key`);
     await visibility(false);
+    await ownerCheckStarted;
+    await expect(
+      page.getByRole('heading', { name: 'Checking your session', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('#name')).toBeHidden();
+    const ownerChecked = page.waitForResponse(`${origin}/vault/owner-key`);
+    finishOwnerCheck();
+    holdOwnerCheck = null;
+    await ownerChecked;
     await expect(page.locator('#name')).toBeVisible();
     await expect(page.locator('#name')).toHaveValue('Preserved same-session draft');
     await visibility(true);
@@ -378,6 +395,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     throw error;
   } finally {
     finishCheck();
+    finishOwnerCheck();
     await evidence?.finish(failure);
     await browser?.close();
     await harness.close();
