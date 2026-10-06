@@ -21,6 +21,7 @@
   "ownerNameSharingCopyWarning": "共有を停止しても、サービスやアプリがすでに読み取ったりコピーした名前は回収できません。",
   "ownerNameSharingPreviewHeading": "共有する保存済みの名前",
   "ownerNameSharingSource": "現在の暗号化レコード版：{revision}",
+  "ownerNameSharingSourceChanged": "保存名が変更されました。共有状態を更新してアクセス権を確認してください。",
   "ownerNameSharingNoSavedName": "名前の共有を管理するには、先に表示名を保存してください。",
   "ownerNameSharingRecipient": "確認済みの受信先：{service}・{algorithm}・鍵世代{generation}。",
   "ownerNameSharingRecipientUnavailable": "UserInfo受信者の鍵を確認できません。新しい共有許可は作成できませんが、既存の許可は表示・取り消しできます。",

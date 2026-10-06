@@ -389,6 +389,7 @@
           {#if owner}
             <OwnerNameSharing
               {owner}
+              sourceRevision={profileRevision}
               disabled={busy || wrapperUnconfirmed}
               hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
               onbusy={(value) => {

@@ -12,12 +12,14 @@
 
   let {
     owner,
+    sourceRevision,
     disabled,
     hasDrafts,
     onbusy,
     onunconfirmed,
   }: {
     owner: OwnerVaultController;
+    sourceRevision: number;
     disabled: boolean;
     hasDrafts: () => boolean;
     onbusy: (value: boolean) => void;
@@ -40,6 +42,7 @@
   let status = $state('');
   let snapshotTime = $state(0);
   let renderClock = $state(Date.now());
+  let observedSourceRevision = untrack(() => sourceRevision);
   const canPrepare = $derived(!disabled && !loading && pending === null);
   const systemActive = $derived(
     !!snapshot?.sharing.grant &&
@@ -47,6 +50,18 @@
       snapshot.sharing.grant.expires_at > renderClock / 1000,
   );
   const sharingCurrent = $derived(!!snapshot?.sharing.authorityCurrent && systemActive);
+
+  $effect(() => {
+    const currentRevision = sourceRevision;
+    const previousRevision = untrack(() => observedSourceRevision);
+    if (currentRevision === previousRevision) return;
+    observedSourceRevision = currentRevision;
+    const hadSnapshot = untrack(() => snapshot !== null);
+    snapshot = null;
+    selectedClient = '';
+    if (!submittedUnknown) pending = null;
+    status = hadSnapshot ? m.ownerNameSharingSourceChanged() : '';
+  });
 
   $effect(() => {
     if (!snapshot) return;

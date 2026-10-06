@@ -9,6 +9,8 @@ After unlocking Vault, the owner explicitly opens the name-sharing panel. It
 reads and decrypts the saved record again, displays that exact name and revision,
 and checks the current Owner key, recipient directory and sharing policies.
 Unsaved changes must be saved or discarded before approving an operation.
+Saving, reloading a changed record, or deleting the name clears an outdated
+sharing preview. Refresh sharing status before approving the new saved version.
 
 The first approval encrypts only this record's key for the dedicated `userinfo`
 recipient, for `oidc.userinfo.name`. It never distributes the Vault root key.

@@ -21,6 +21,7 @@
   "ownerNameSharingCopyWarning": "Revoking access cannot recall a name already read or copied by a service or app.",
   "ownerNameSharingPreviewHeading": "Saved name to share",
   "ownerNameSharingSource": "Current encrypted record revision: {revision}",
+  "ownerNameSharingSourceChanged": "The saved name changed. Refresh sharing status before reviewing access.",
   "ownerNameSharingNoSavedName": "Save a display name before managing name sharing.",
   "ownerNameSharingRecipient": "Verified recipient: {service} · {algorithm} · key generation {generation}.",
   "ownerNameSharingRecipientUnavailable": "The UserInfo recipient key could not be verified. New sharing grants are unavailable; existing access can still be withdrawn.",

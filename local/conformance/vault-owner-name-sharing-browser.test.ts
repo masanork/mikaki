@@ -195,6 +195,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
           }
           fixture.nameSource = submitted['source'] as Record<string, unknown>;
           fixture.authority = submitted['authority'] as Record<string, unknown>;
+          const grantVersion = Number(fixture.systemGrant?.['version'] ?? 0) + 1;
           const grant: Record<string, unknown> = {
             storage_version: 2,
             owner_id: 'owner',
@@ -207,7 +208,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
             ciphertext_sha256: fixture.nameSource['ciphertext_sha256'],
             key_generation: fixture.authority['key_generation'],
             owner_key_revision: fixture.authority['owner_key_revision'],
-            version: 1,
+            version: grantVersion,
             status: 'active',
             expires_at: mockNow + 604800,
             authority_current: 1,
@@ -226,7 +227,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
-              grant_version: 1,
+              grant_version: grantVersion,
               record_revision: fixture.nameSource['revision'],
               acknowledged: true,
             }),
@@ -273,7 +274,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
             source_key_generation: fixture.release?.['source_key_generation'] ?? null,
             source_owner_key_revision: fixture.release?.['source_owner_key_revision'] ?? null,
             system_grant_version: fixture.release?.['system_grant_version'] ?? null,
-            authority_current: fixture.release?.['release_status'] === 'active' ? 1 : 0,
+            authority_current: fixture.release?.['authority_current'] ?? 0,
           };
           await route.fulfill({
             status: 200,
@@ -311,6 +312,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
             release_version: version,
             release_status: 'active',
             expires_at: mockNow + 60,
+            authority_current: 1,
             source_storage_version: 2,
             source_origin: (submitted['source'] as Record<string, unknown>)['origin'],
             source_vault_id: (submitted['source'] as Record<string, unknown>)['vault_id'],
@@ -375,6 +377,22 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
         headers: { ...headers, cookie: `__Host-op-sso=${secret}` },
         ...(body ? { body } : {}),
       });
+      if (
+        url.pathname === '/vault/records/personal/name' &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        if (fixture.systemGrant) {
+          fixture.systemGrant['status'] = 'revoked';
+          fixture.systemGrant['version'] = Number(fixture.systemGrant['version']) + 1;
+          fixture.systemGrant['authority_current'] = 0;
+        }
+        if (fixture.release) {
+          fixture.release['release_version'] = Number(fixture.release['release_version']) + 1;
+          fixture.release['release_status'] = 'revoked';
+          fixture.release['authority_current'] = 0;
+        }
+      }
       await route.fulfill({
         status: response.status,
         headers: Object.fromEntries(response.headers),
@@ -596,6 +614,59 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
       (JSON.parse(releaseAttempts[3]!.body) as Record<string, unknown>)['expected_release_version'],
       3,
       'renewal after expiry uses the version observed by the fresh status read',
+    );
+
+    await page.locator('#name').fill('Updated self-asserted name');
+    await page.locator('#save').click();
+    await expect(page.locator('#name')).toHaveValue('Updated self-asserted name');
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'The saved name changed. Refresh sharing status before reviewing access.',
+    );
+    await expect(page.locator('#owner-name-sharing-preview-heading')).toHaveCount(0);
+    await expect(page.locator('#owner-name-sharing')).not.toContainText(
+      'This app can receive the name until',
+    );
+    await page.locator('#owner-name-sharing-refresh').click();
+    await expect(page.locator('#owner-name-sharing')).toContainText('Updated self-asserted name');
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'Current encrypted record revision: 3',
+    );
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'The previous UserInfo share was revoked.',
+    );
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'The prior app permission was withdrawn.',
+    );
+    await expect(page.locator('#owner-name-sharing-withdraw')).toHaveCount(0);
+    await expect(page.locator('#owner-name-sharing')).not.toContainText(
+      'Shared with UserInfo service until',
+    );
+    await expect(page.locator('#owner-name-sharing')).not.toContainText(
+      'This app can receive the name until',
+    );
+    await page.locator('#owner-name-sharing-share').click();
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'Shared with UserInfo service until',
+    );
+    await page.locator('#owner-name-sharing-allow').click();
+    await expect(page.locator('#owner-name-sharing')).toContainText(
+      'This app can receive the name until',
+    );
+    const revisedShare = mutations
+      .filter((request) => request.path.endsWith('/sharing') && request.method === 'POST')
+      .at(-1)!;
+    const revisedShareBody = JSON.parse(revisedShare.body) as Record<string, unknown>;
+    assert.equal(revisedShare.ifMatch, '"3"', 'new name share uses its saved revision');
+    assert.equal((revisedShareBody['source'] as Record<string, unknown>)['revision'], 3);
+    assert.equal(revisedShareBody['expected_grant_version'], 2);
+    const revisedRelease = mutations
+      .filter((request) => request.path.endsWith('/releases') && request.method === 'POST')
+      .at(-1)!;
+    assert.equal(revisedRelease.ifMatch, '"3"', 'RP consent uses the new system grant version');
+    assert.equal(
+      (JSON.parse(revisedRelease.body) as Record<string, unknown>)['expected_release_version'],
+      5,
+      'RP reconsent uses the trigger-revoked release version',
     );
 
     recipientUnavailable = true;
