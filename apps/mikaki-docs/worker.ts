@@ -63,7 +63,6 @@ function page(env: Env, locale: 'ja' | 'en', content: string, status = 200, brow
   const headers = baseHeaders(env);
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Content-Language', locale);
-  headers.set('Referrer-Policy', 'no-referrer');
   headers.set(
     'Content-Security-Policy',
     `default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' ${env.ISSUER}; frame-ancestors 'none'; base-uri 'none'`,

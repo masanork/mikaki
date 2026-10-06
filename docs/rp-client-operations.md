@@ -34,13 +34,23 @@ Register logout destinations separately. Use `add-post-logout-redirect` with `{ 
 
 Before considering the RP ready, run an end-to-end Authorization Code flow from that RP with its exact redirect, PKCE S256, and ES256 `private_key_jwt`; verify issuer, audience, state, nonce, pairwise subject, and UserInfo. A CLI registration alone does not prove interoperability.
 
-## Current production target, observed 2026-10-04
+## Historical production inventory before the 2026-10-05 reset
 
-A read-only `list` using `crates/worker/wrangler.production.jsonc`, `--remote yes --apply no` returned two active clients from the current `mikaki-auth` D1 database (zero rows written). The discovery issuer is `https://auth.mikaki.org`.
+The 2026-10-04 observation below came from the pre-reset `mikaki-auth` database. It is historical and must not be used as the current client inventory or as a source for recreating registrations or keys. The 2026-10-05 production reset replaced that database with the configured `mikaki-auth-owner` database.
 
-| Client | Method | Exact callback | Active backchannel |
-| --- | --- | --- | --- |
-| `77551450-ec73-4222-972d-cd912d9493d4` | `private_key_jwt` | `https://demo.mikaki.org/callback` | `https://demo.mikaki.org/backchannel` |
-| `dfd936fd-f33d-4f82-ae39-f25e08ec7948` | `none` | `https://app.mikaki.org/oidc/native/callback` | None |
+| Client                                 | Method            | Exact callback                                | Active backchannel                    |
+| -------------------------------------- | ----------------- | --------------------------------------------- | ------------------------------------- |
+| `77551450-ec73-4222-972d-cd912d9493d4` | `private_key_jwt` | `https://demo.mikaki.org/callback`            | `https://demo.mikaki.org/backchannel` |
+| `dfd936fd-f33d-4f82-ae39-f25e08ec7948` | `none`            | `https://app.mikaki.org/oidc/native/callback` | None                                  |
 
-Both registrations have revision 1; only the confidential demo RP has a registered ES256 public key. Neither client has a post-logout redirect. Earlier narashi/tsudoi entries in issues #4/#6 describe the previous deployment and are not in this current DB. Do not copy those old registrations or private keys automatically. The current demo RP is the registered HTTPS target for owner-browser code-exchange, SSO, logout/backchannel and session-check qualification. These read-only observations do not establish a completed owner Passkey flow or notification E2E. No client/secret/policy was changed by the inspection.
+Both registrations were revision 1; only the confidential demo RP had a registered ES256 public key. Neither had a post-logout redirect. These rows described the deployment before reset; they do not describe the current production target.
+
+## Current production target, observed 2026-10-06
+
+A read-only six-query preflight of the configured OP D1 reported zero rows written and `changed_db=false`. The current Docs RP registration is:
+
+| Client ID                              | Type / method             | Client revision / active | Key ID / algorithm / active          | Callback                           | Post-logout redirect | Backchannel logout                    |
+| -------------------------------------- | ------------------------- | ------------------------ | ------------------------------------ | ---------------------------------- | -------------------- | ------------------------------------- |
+| `301abb06-5573-42bb-a924-434ecf75dd06` | `web` / `private_key_jwt` | `1` / yes                | `mikaki-docs-20261005` / ES256 / yes | `https://docs.mikaki.org/callback` | None registered      | `https://docs.mikaki.org/backchannel` |
+
+The client has `allow_missing_pkce=0` and sector `docs.mikaki.org`. The OP's managed-session policy row is lease TTL 300 seconds, app idle timeout 604800 seconds, revision 1. Main source-bound deployment CI run [37446468520](https://github.com/masanork/mikaki/actions/runs/37446468520) completed successfully for source `c6c3b05cbf0bd23db941f00f7eb3af02961b785b`. The observed active production versions are OP `7e07ca19-fd05-4034-a586-4257aff354b0` and Docs Worker `16c13bcb-d831-49c7-b788-acc0afc62ac0`. Deployment and D1-registration checks do not establish a successful browser login, owner Passkey flow, or end-to-end Back-Channel Logout. Investigation tied the Chrome attempt's generic invalid-request response before Passkey to the Docs form's no-referrer behavior: its `formOrigin` is `null` at the Docs RP's exact-origin check. The Docs RP source now inherits the shared strict-origin policy to preserve the real browser form Origin; its exact-origin and CSRF checks remain unchanged. This source update is not represented by the deployment observation above; its rollout and qualification are tracked in issues #4 and #6. Issues #4 and #6 remain open for the outstanding real-RP and session/logout qualification. No client, key, policy, or user/session data was changed by the preflight.

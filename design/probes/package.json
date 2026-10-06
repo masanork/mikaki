@@ -25,5 +25,8 @@
     "cborg": "6.1.2",
     "jose": "6.2.12",
     "wrangler": "4.144.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
   }
 }

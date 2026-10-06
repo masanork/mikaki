@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { chromium } from '@playwright/test';
 import { importJWK, SignJWT } from 'jose';
 import { startLocal } from '../runtime.ts';
-import { CLIENT, OP, RP, hash, random } from '../shared.ts';
+import { CLIENT, OP, RP } from '../shared.ts';
 
 test('Docs RP serves bilingual guides and keeps only isolated OIDC session state', async () => {
   const local = await startLocal({ scheduler: false, docs: true });
@@ -55,19 +55,43 @@ test('Docs RP serves bilingual guides and keeps only isolated OIDC session state
       },
     });
 
-    const browserId = random();
-    const loginResponse = await local.rp.fetch(`${RP}/login`, {
-      method: 'POST',
-      headers: {
-        Origin: RP,
+    const browserId = (await context.cookies()).find(
+      (entry) => entry.name === '__Host-help-browser' && entry.domain === new URL(RP).hostname,
+    )?.value;
+    assert.ok(browserId, 'the Docs session page establishes its browser-bound CSRF cookie');
+    const csrf = await page.locator('form[action="/login"] input[name="csrf"]').inputValue();
+    for (const origin of [undefined, 'null', 'https://attacker.example']) {
+      const headers: Record<string, string> = {
         Cookie: `__Host-help-browser=${browserId}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ csrf: await hash(browserId) }),
-      redirect: 'manual',
-    });
-    assert.equal(loginResponse.status, 303);
-    const authorize = new URL(loginResponse.headers.get('Location')!);
+      };
+      if (origin) headers.Origin = origin;
+      const denied = await local.rp.fetch(`${RP}/login`, {
+        method: 'POST',
+        headers,
+        body: new URLSearchParams({ csrf }),
+        redirect: 'manual',
+      });
+      assert.equal(denied.status, 403, 'CSRF alone does not bypass the same-origin check');
+    }
+    assert.equal(
+      (await local.rpDB.prepare('SELECT COUNT(*) AS count FROM login_transaction').first()).count,
+      0,
+      'rejected origins create no OIDC transaction',
+    );
+    const loginRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/login' && request.method() === 'POST',
+    );
+    const loginResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/login' && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Sign in with mikaki' }).click();
+    const request = await loginRequest;
+    const response = await loginResponse;
+    assert.equal(request.headers().origin, RP, 'same-origin HTML form POST carries its Origin');
+    assert.equal(response.status(), 303);
+    const authorize = new URL(response.headers()['location']!);
     assert.equal(authorize.origin, OP);
     assert.equal(authorize.pathname, '/authorize');
     assert.equal(authorize.searchParams.get('scope'), 'openid');
@@ -77,30 +101,74 @@ test('Docs RP serves bilingual guides and keeps only isolated OIDC session state
       .first()) as { count: number } | null;
     assert.equal(loginCount?.count, 1);
 
-    await context.route(`${RP}/callback**`, async (route) => {
-      const response = await local.rp.fetch(route.request().url(), {
-        headers: { Cookie: `__Host-help-browser=${browserId}` },
-        redirect: 'manual',
-      });
-      await route.fulfill({
-        status: response.status,
-        headers: Object.fromEntries(response.headers),
-        body: await response.text(),
-      });
-    });
-    await page.goto(authorize.href);
     await page.waitForURL(`${OP}/login?**`);
     await page.getByRole('checkbox').check();
     await page.locator('#invitation').fill(local.invitation);
-    await page.getByRole('button', { name: /招待で登録する/ }).click();
+    await page.getByRole('button', { name: /Register with invitation/ }).click();
     await page.waitForURL(`${RP}/session*`);
 
     const stored = (await local.rpDB.prepare('SELECT sid,sub FROM rp_session LIMIT 1').first()) as {
       sid: string;
       sub: string;
     } | null;
-    assert.ok(stored?.sid && stored.sub, 'the OIDC callback establishes the isolated Docs session');
-    const { sid, sub } = stored;
+    assert.ok(
+      stored?.sid && stored.sub,
+      'the Docs form, OIDC callback and session check establish the isolated session',
+    );
+    const docsSessionCookie = async () =>
+      (await context.cookies()).find(
+        (entry) => entry.name === '__Host-help-session' && entry.domain === new URL(RP).hostname,
+      );
+    assert.ok(await docsSessionCookie(), 'the callback sets the Docs-only session cookie');
+    const sessionCheckRequest = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === '/session/check' && request.method() === 'POST',
+    );
+    const sessionCheckResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/session/check' &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Check session again' }).click();
+    const checkedRequest = await sessionCheckRequest;
+    assert.equal(checkedRequest.headers().origin, RP);
+    const checkedResponse = await sessionCheckResponse;
+    assert.equal(checkedResponse.status(), 303);
+    assert.equal(checkedResponse.headers()['location'], `${RP}/session`);
+    await page.waitForURL(`${RP}/session*`);
+    const opSession = (await local.opDB
+      .prepare('SELECT revoked FROM client_session WHERE client_id=? AND sid=?')
+      .bind(CLIENT, stored.sid)
+      .first()) as { revoked: number } | null;
+    assert.equal(opSession?.revoked, 0);
+
+    await page.getByRole('button', { name: 'Sign out of Docs' }).click();
+    await page.waitForURL(`${RP}/`);
+    assert.equal(await local.rpDB.prepare('SELECT sid FROM rp_session').first(), null);
+    assert.equal(
+      await docsSessionCookie(),
+      undefined,
+      'RP logout expires the Docs-only browser cookie',
+    );
+    assert.equal(
+      (
+        (await local.opDB
+          .prepare('SELECT revoked FROM client_session WHERE client_id=? AND sid=?')
+          .bind(CLIENT, stored.sid)
+          .first()) as { revoked: number } | null
+      )?.revoked,
+      0,
+      'Docs logout leaves the OP SSO session active',
+    );
+
+    await page.goto(`${RP}/session?lang=en`);
+    await page.getByRole('button', { name: 'Sign in with mikaki' }).click();
+    await page.waitForURL(`${RP}/session*`);
+    const storedAfterLogout = (await local.rpDB
+      .prepare('SELECT sid,sub FROM rp_session LIMIT 1')
+      .first()) as { sid: string; sub: string } | null;
+    assert.ok(storedAfterLogout?.sid && storedAfterLogout.sub);
+    const { sid, sub } = storedAfterLogout;
 
     const opKey = await importJWK(JSON.parse(local.opKeys.private), 'ES256');
     const logoutToken = (audience: string) =>
