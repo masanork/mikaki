@@ -4,7 +4,7 @@ The OP commits session revocation and the `sso_logout_event` / `logout_delivery`
 
 The logout transaction snapshots eligible active RP sessions and their then-active back-channel URI into D1. Disabling a client or changing its URI before logout prevents/changes which rows are snapshotted; changing or disabling it after the logout transaction does not cancel or rewrite an already-snapshotted delivery. The snapshot is the logout event's delivery target, while D1 state, deadline, and lease remain authoritative for whether it can still be sent.
 
-The production Worker config declares the producer binding `LOGOUT_QUEUE` and the worker consumer. The strict message body is `{ "version": 1, "event_id": "<opaque id>" }`. Do not put a SID, subject, cookie, logout token, callback URL, or other user data in a Queue message. D1's existing lease and `jti` logic remains the duplicate guard. Queues are at-least-once, so duplicate wake-ups are expected. Malformed or unknown IDs are acknowledged with sanitized counters; only transient failures before durable D1 completion should request Queue retry.
+The production Worker config declares the producer binding `LOGOUT_QUEUE` and the worker consumer. The strict message body is `{ "version": 1, "event_id": "<opaque id>" }`. Do not put a SID, subject, cookie, logout token, callback URL, or other user data in a Queue message. D1's existing lease and `jti` logic remains the duplicate guard. Queues are at-least-once, so duplicate wake-ups are expected. Malformed messages are logged with sanitized counters and acknowledged. Unknown event IDs are acknowledged without logging identifiers; only transient failures before durable D1 completion should request Queue retry.
 
 ## Provision and attach
 
