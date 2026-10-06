@@ -12,6 +12,7 @@
   import OwnerPasskeys from './OwnerPasskeys.svelte';
   import OwnerNameSharing from './OwnerNameSharing.svelte';
   import OwnerNoteProposals from './OwnerNoteProposals.svelte';
+  import OwnerAgentGrants from './OwnerAgentGrants.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -36,15 +37,23 @@
     wrapperUnconfirmed = $state(false),
     sharingUnconfirmed = $state(false),
     noteProposalUnconfirmed = $state(false),
+    agentGrantUnconfirmed = $state(false),
+    agentOAuthBusy = $state(false),
     status = $state('');
   const editingBlocked = $derived(
-    busy || wrapperUnconfirmed || sharingUnconfirmed || noteProposalUnconfirmed,
+    busy ||
+      agentOAuthBusy ||
+      wrapperUnconfirmed ||
+      sharingUnconfirmed ||
+      noteProposalUnconfirmed ||
+      agentGrantUnconfirmed,
   );
   let name = $state(''),
     savedName = $state(''),
     profileRevision = $state(0),
     noteRevision = $state(0),
-    noteRefreshEpoch = $state(0);
+    noteRefreshEpoch = $state(0),
+    agentGrantRefreshEpoch = $state(0);
   let pending: PreparedOwnerWrite | null = $state(null);
   let query = $state('');
   let threads: { id: string; revision: number; archive: ThreadArchive }[] = $state([]);
@@ -73,6 +82,23 @@
   const dirty = $derived(pending !== null || name !== savedName);
   const visibleThreads = $derived(query.trim() ? [] : threads);
   const active = $derived(threads.find((t) => t.id === selected));
+  async function reloadAgentConnections() {
+    if (!hasAgentRequest) return;
+    const response = await scope.request('/vault/agents/connections', { cache: 'no-store' });
+    if (!response.ok) throw new Error('connections unavailable');
+    const value: unknown = await response.json();
+    if (typeof value !== 'object' || value === null || !Array.isArray(value.grants))
+      throw new Error('invalid connections');
+    agentConnections = value.grants as AgentConnection[];
+  }
+  async function agentGrantChanged() {
+    agentGrantRefreshEpoch += 1;
+    try {
+      await reloadAgentConnections();
+    } catch {
+      if (!scope.signal.aborted) status = m.error();
+    }
+  }
   async function selectHit(hit: SearchHit) {
     try {
       if (!owner || editingBlocked) return;
@@ -295,16 +321,7 @@
       .then(async () => {
         await scope.ensure();
         if (!scope.identity) throw new Error('unconfirmed');
-        if (hasAgentRequest) {
-          const response = await scope.request('/vault/agents/connections', {
-            cache: 'no-store',
-          });
-          if (!response.ok) throw new Error('connections unavailable');
-          const value: unknown = await response.json();
-          if (typeof value !== 'object' || value === null || !Array.isArray(value.grants))
-            throw new Error('invalid connections');
-          agentConnections = value.grants as AgentConnection[];
-        }
+        await reloadAgentConnections();
       })
       .catch(() => scope.end('unconfirmed'));
     const unregister = context.registerDraft(() => dirty || (busy && !passkeysBusy));
@@ -322,6 +339,8 @@
       selected = '';
       pending = null;
       sharingUnconfirmed = false;
+      agentGrantUnconfirmed = false;
+      agentConnections = [];
     };
     scope.signal.addEventListener('abort', clear, { once: true });
     const visibility = () => {
@@ -401,7 +420,12 @@
             <OwnerNoteProposals
               {owner}
               sourceRevision={noteRevision}
-              disabled={busy || wrapperUnconfirmed || sharingUnconfirmed}
+              disabled={busy ||
+                agentOAuthBusy ||
+                wrapperUnconfirmed ||
+                sharingUnconfirmed ||
+                agentGrantUnconfirmed}
+              refreshEpoch={agentGrantRefreshEpoch}
               hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
               onbusy={(value) => {
                 passkeysBusy = value;
@@ -415,7 +439,11 @@
             <OwnerNameSharing
               {owner}
               sourceRevision={profileRevision}
-              disabled={busy || wrapperUnconfirmed || noteProposalUnconfirmed}
+              disabled={busy ||
+                agentOAuthBusy ||
+                wrapperUnconfirmed ||
+                noteProposalUnconfirmed ||
+                agentGrantUnconfirmed}
               hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
               onbusy={(value) => {
                 passkeysBusy = value;
@@ -424,12 +452,33 @@
               onunconfirmed={(value) => (sharingUnconfirmed = value)}
             />
           {/if}
+          {#if owner}
+            <OwnerAgentGrants
+              {owner}
+              nameRevision={profileRevision}
+              {noteRevision}
+              disabled={busy ||
+                agentOAuthBusy ||
+                wrapperUnconfirmed ||
+                sharingUnconfirmed ||
+                noteProposalUnconfirmed}
+              hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
+              onbusy={(value) => {
+                passkeysBusy = value;
+                busy = value;
+              }}
+              onunconfirmed={(value) => (agentGrantUnconfirmed = value)}
+              onchanged={agentGrantChanged}
+            />
+          {/if}
           {#if owner}<OwnerPasskeys
               {owner}
               hasDrafts={() => context.hasDrafts?.() ?? false}
               disabled={busy ||
+                agentOAuthBusy ||
                 sharingUnconfirmed ||
                 noteProposalUnconfirmed ||
+                agentGrantUnconfirmed ||
                 dirty ||
                 (context.hasDrafts?.() ?? false)}
               onunconfirmed={(value) => (wrapperUnconfirmed = value)}
@@ -493,7 +542,18 @@
     {#if hasAgentRequest}
       <details id="connections" open>
         <summary>{m.agentOAuthHeading()}</summary>
-        <AgentOAuth grants={agentConnections} disabled={editingBlocked} />
+        <AgentOAuth
+          grants={agentConnections}
+          disabled={busy ||
+            wrapperUnconfirmed ||
+            sharingUnconfirmed ||
+            noteProposalUnconfirmed ||
+            agentGrantUnconfirmed}
+          onBusy={(value) => {
+            agentOAuthBusy = value;
+            passkeysBusy = value;
+          }}
+        />
       </details>
     {/if}
   </main>

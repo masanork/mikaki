@@ -19,6 +19,9 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault-owner-name-sharing.ts");
     println!("cargo:rerun-if-changed=ui/OwnerNoteProposals.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-note-proposals.ts");
+    println!("cargo:rerun-if-changed=ui/vault-owner-agent-grants.ts");
+    println!("cargo:rerun-if-changed=ui/OwnerAgentGrants.svelte");
+    println!("cargo:rerun-if-changed=ui/vault-owner-disclosure.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-passkeys.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-workspace-store.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-crypto.ts");

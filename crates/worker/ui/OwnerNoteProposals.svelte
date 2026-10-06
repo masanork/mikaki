@@ -19,6 +19,7 @@
   let {
     owner,
     sourceRevision,
+    refreshEpoch = 0,
     disabled,
     hasDrafts,
     onbusy,
@@ -27,6 +28,7 @@
   }: {
     owner: OwnerVaultController;
     sourceRevision: number;
+    refreshEpoch?: number;
     disabled: boolean;
     hasDrafts: () => boolean;
     onbusy: (value: boolean) => void;
@@ -44,7 +46,20 @@
   let status = $state('');
   let renderClock = $state(Date.now());
   let observedSourceRevision = untrack(() => sourceRevision);
+  let observedRefreshEpoch = untrack(() => refreshEpoch);
   const canStart = $derived(!disabled && !loading && pending === null);
+
+  $effect(() => {
+    const nextEpoch = refreshEpoch;
+    if (nextEpoch === untrack(() => observedRefreshEpoch)) return;
+    // Grant callbacks run while the other panel is still busy. Wait for it and
+    // retain any uncertain proposal operation before refreshing this preview.
+    if (!expanded || disabled || loading || pending !== null) return;
+    observedRefreshEpoch = nextEpoch;
+    untrack(() => {
+      void load();
+    });
+  });
 
   $effect(() => {
     const currentRevision = sourceRevision;

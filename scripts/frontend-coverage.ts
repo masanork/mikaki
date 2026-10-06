@@ -24,6 +24,7 @@ const child = spawn(
       'vault-lifecycle',
       'vault-owner-name-sharing',
       'vault-owner-note-proposals',
+      'vault-owner-agent-grants',
       'recipient-directory-browser',
     ].map((name) => `local/conformance/${name}.test.ts`),
   ],

@@ -110,7 +110,7 @@ async function fixture(
     resource: 'https://agent.test/mcp',
     source_revision: 1,
     operations: '["read","propose","execute"]',
-    document_ids: '["owner_note"]',
+    document_ids: '["name"]',
     created_at: expires - 600,
     expires_at: expires + 3600,
     revoked: 0,
