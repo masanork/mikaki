@@ -105,6 +105,8 @@
     "wrangler": "4.144.0"
   },
   "overrides": {
+    "katex": "0.18.2",
+    "source-map-js": "1.2.2",
     "@zenuml/core": {
       "playwright-core": "1.63.0"
     },
