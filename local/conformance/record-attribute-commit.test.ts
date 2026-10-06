@@ -29,6 +29,9 @@ import type {
   RecordNoteTarget,
 } from '../../crates/worker/ui/vault-record-approval.ts';
 import type { VaultRecordSource } from '../../crates/worker/ui/vault-record-source.ts';
+import { VaultScope } from '../../crates/worker/ui/vault-lifecycle.ts';
+import { OwnerVaultController } from '../../crates/worker/ui/vault-owner-controller.ts';
+import { OwnerNoteProposals } from '../../crates/worker/ui/vault-owner-note-proposals.ts';
 
 const origin = 'https://mikaki.test',
   resource = 'https://agent.mikaki.test/mcp';
@@ -615,6 +618,172 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
         plaintext.fill(0);
       }
     };
+
+    const browserHelper = async (owner: Owner) => {
+      const requests: {
+        path: string;
+        method: string;
+        body: string;
+        operation: string | null;
+        condition: string | null;
+      }[] = [];
+      let loseSaveResponse = false;
+      const transport: typeof fetch = async (input, init) => {
+        const url = new URL(
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+          origin,
+        );
+        const headers = new Headers(init?.headers);
+        headers.set('Cookie', owner.headers.Cookie);
+        headers.set('Origin', origin);
+        requests.push({
+          path: url.pathname,
+          method: init?.method ?? 'GET',
+          body: typeof init?.body === 'string' ? init.body : '',
+          operation: headers.get('X-Operation-ID'),
+          condition: headers.get('If-Match') ?? headers.get('If-None-Match'),
+        });
+        const response = await op.fetch(url.href, {
+          method: init?.method,
+          headers: Object.fromEntries(headers),
+          ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+        });
+        if (loseSaveResponse && url.pathname.endsWith('/owner_note/approved') && response.ok) {
+          loseSaveResponse = false;
+          throw new Error('synthetic lost approved-save response');
+        }
+        return new Response(await response.arrayBuffer(), {
+          status: response.status,
+          headers: Object.fromEntries(response.headers),
+        });
+      };
+      const scope = new VaultScope(
+        () => {},
+        () => Date.now(),
+        () => performance.now(),
+        transport,
+      );
+      const controller = new OwnerVaultController(
+        scope,
+        origin,
+        async () => ({ credentialId: owner.credential.slice(), output: owner.prf.slice() }),
+        () => true,
+      );
+      await controller.open();
+      return {
+        controller,
+        helper: new OwnerNoteProposals(controller),
+        requests,
+        loseNextSave: () => {
+          loseSaveResponse = true;
+        },
+      };
+    };
+
+    await t.test(
+      'Owner UI helper keeps decisions separate and recovers a lost save after a newer note',
+      async () => {
+        const owner = await bootstrap('ui-helper-owner');
+        const rejected = await propose(owner);
+        const f = await browserHelper(owner);
+        try {
+          const first = await f.helper.load();
+          const reject = await f.helper.prepareDecision(first, rejected.proposal_id, false);
+          const afterReject = await f.helper.decide(reject);
+          assert.equal(
+            afterReject.proposals.find((p) => p.proposal_id === rejected.proposal_id)?.state,
+            'rejected',
+          );
+          assert.equal(
+            afterReject.proposals.find((p) => p.proposal_id === rejected.proposal_id)?.payload,
+            null,
+          );
+          assert.equal(await head(owner), null, 'reject does not create a note');
+
+          const proposed = await propose(owner);
+          const loaded = await f.helper.load();
+          const approveOperation = await f.helper.prepareDecision(
+            loaded,
+            proposed.proposal_id,
+            true,
+          );
+          const approved = await f.helper.decide(approveOperation);
+          assert.equal(await head(owner), null, 'approval alone does not save a note');
+          const save = await f.helper.prepareCommit(approved, proposed.proposal_id);
+          assert.equal(await head(owner), null, 'local candidate sealing does not write');
+          f.loseNextSave();
+          await assert.rejects(f.helper.commit(save), (error: unknown) => {
+            assert.ok(error instanceof Error && error.message === 'commit_unavailable');
+            assert.equal((error as { definitelyRejected?: boolean }).definitelyRejected, false);
+            return true;
+          });
+          assert.deepEqual(
+            (await reopen(owner)).value,
+            proposed.value,
+            'the exact approved note was committed before response loss',
+          );
+          const newer = newOwnerNote('Later owner edit', 'This value is current');
+          await write(owner, 'owner_note', 2, encodeOwnerNote(newer));
+          const confirmed = await f.helper.commit(save);
+          assert.equal(
+            confirmed.head.revision,
+            2,
+            'historical acknowledgment is followed by a fresh current head',
+          );
+          assert.deepEqual(confirmed.head.value, newer);
+          const prepareRequests = f.requests.filter((r) => r.path.endsWith('/record-prepare'));
+          assert.equal(
+            prepareRequests.length,
+            1,
+            'prepared acknowledgment is retained through final-save response loss',
+          );
+          const saves = f.requests.filter((r) => r.path.endsWith('/owner_note/approved'));
+          assert.equal(saves.length, 2);
+          assert.deepEqual(
+            saves[1],
+            saves[0],
+            'retry uses the identical candidate, operation, and revision condition',
+          );
+          assert.equal(saves[0]!.condition, '*');
+          const stored = await env.DB.prepare(
+            'SELECT count(*) AS n FROM vault_owner_record_mutation WHERE operation_id=?',
+          )
+            .bind(save.operationId)
+            .first();
+          assert.equal(stored.n, 1, 'historical retry cannot apply another write');
+        } finally {
+          f.controller.dispose();
+          owner.prf.fill(0);
+        }
+      },
+    );
+
+    await t.test(
+      'Owner UI helper recovers a stored prepared candidate without resealing or preparation replay',
+      async () => {
+        const owner = await bootstrap('ui-recovery-owner');
+        const prepared = await ready(owner);
+        const f = await browserHelper(owner);
+        try {
+          const snapshot = await f.helper.load();
+          const row = snapshot.proposals.find((p) => p.proposal_id === prepared.p.proposal_id)!;
+          assert.equal(row.operation_id, prepared.c.operation_id);
+          assert.equal(row.candidate, prepared.c.candidate);
+          const recovered = await f.helper.recoverCommit(snapshot, prepared.p.proposal_id);
+          assert.equal(recovered.operationId, prepared.c.operation_id);
+          const saved = await f.helper.commit(recovered);
+          assert.equal(saved.head.revision, 1);
+          assert.deepEqual(saved.head.value, prepared.p.value);
+          assert.equal(f.requests.filter((r) => r.path.endsWith('/record-prepare')).length, 0);
+          const request = f.requests.find((r) => r.path.endsWith('/owner_note/approved'))!;
+          assert.equal(request.body, prepared.c.candidate);
+          assert.equal(request.operation, prepared.c.operation_id);
+        } finally {
+          f.controller.dispose();
+          owner.prf.fill(0);
+        }
+      },
+    );
 
     await t.test(
       'exact value, purpose, identity and canonical encoding must verify before preparation',
