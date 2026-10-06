@@ -10,6 +10,7 @@
   import { OWNER_NOTE } from './vault-owner-record-store.ts';
   import OwnerRecordEditor from './OwnerRecordEditor.svelte';
   import OwnerPasskeys from './OwnerPasskeys.svelte';
+  import OwnerNameSharing from './OwnerNameSharing.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -32,8 +33,9 @@
     busy = $state(false),
     passkeysBusy = $state(false),
     wrapperUnconfirmed = $state(false),
+    sharingUnconfirmed = $state(false),
     status = $state('');
-  const editingBlocked = $derived(busy || wrapperUnconfirmed);
+  const editingBlocked = $derived(busy || wrapperUnconfirmed || sharingUnconfirmed);
   let name = $state(''),
     savedName = $state(''),
     profileRevision = $state(0);
@@ -313,6 +315,7 @@
       query = '';
       selected = '';
       pending = null;
+      sharingUnconfirmed = false;
     };
     scope.signal.addEventListener('abort', clear, { once: true });
     const visibility = () => {
@@ -383,10 +386,22 @@
             >
           </section>
           <OwnerRecordEditor target={OWNER_NOTE} disabled={editingBlocked} />
+          {#if owner}
+            <OwnerNameSharing
+              {owner}
+              disabled={busy || wrapperUnconfirmed}
+              hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
+              onbusy={(value) => {
+                passkeysBusy = value;
+                busy = value;
+              }}
+              onunconfirmed={(value) => (sharingUnconfirmed = value)}
+            />
+          {/if}
           {#if owner}<OwnerPasskeys
               {owner}
               hasDrafts={() => context.hasDrafts?.() ?? false}
-              disabled={busy || dirty || (context.hasDrafts?.() ?? false)}
+              disabled={busy || sharingUnconfirmed || dirty || (context.hasDrafts?.() ?? false)}
               onunconfirmed={(value) => (wrapperUnconfirmed = value)}
               onbusy={(value) => {
                 passkeysBusy = value;

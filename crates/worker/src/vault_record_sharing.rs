@@ -163,7 +163,10 @@ pub async fn status(request: Request, context: RouteContext<()>) -> worker::Resu
         return error(503, "policy_unavailable");
     };
     let grant = db
-        .prepare(include_str!("../sql/select-record-share-status.sql"))
+        .prepare(
+            include_str!("../sql/select-record-share-status.sql")
+                .replace("{CURRENT_RECORD_SHARE}", CURRENT_SHARE),
+        )
         .bind(&[JsValue::from_str(&owner.account_id)])?
         .first::<serde_json::Value>(None)
         .await?;
@@ -172,6 +175,7 @@ pub async fn status(request: Request, context: RouteContext<()>) -> worker::Resu
 
 // Shared with RP consent: no root or key envelope is included in this query/result.
 pub(crate) const LIVE_SOURCE: &str = include_str!("../sql/select-record-share-source.sql");
+pub(crate) const CURRENT_SHARE: &str = include_str!("../sql/select-current-record-share.sql");
 pub(crate) fn source_params(source: &Source, authority: &Authority, owner: &Owner) -> Vec<JsValue> {
     vec![
         JsValue::from_str(&source.owner_id),

@@ -15,6 +15,8 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/VaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerPasskeys.svelte");
+    println!("cargo:rerun-if-changed=ui/OwnerNameSharing.svelte");
+    println!("cargo:rerun-if-changed=ui/vault-owner-name-sharing.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-passkeys.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-workspace-store.ts");
     println!("cargo:rerun-if-changed=ui/vault-owner-crypto.ts");

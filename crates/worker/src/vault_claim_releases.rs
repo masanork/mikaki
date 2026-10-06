@@ -13,6 +13,7 @@ use crate::{conformance_deployment, now_seconds, read_bounded_body, vault_authze
 struct ReleasePolicy {
     enabled: i64,
     revision: i64,
+    ttl_seconds: i64,
 }
 
 #[derive(Deserialize)]
@@ -28,7 +29,7 @@ fn valid_client_id(value: &str) -> bool {
 }
 
 async fn policy(db: &D1Database) -> worker::Result<ReleasePolicy> {
-    db.prepare("SELECT enabled,revision FROM vault_claim_release_policy WHERE id=1")
+    db.prepare("SELECT enabled,revision,ttl_seconds FROM vault_claim_release_policy WHERE id=1")
         .first::<ReleasePolicy>(None)
         .await?
         .ok_or_else(|| worker::Error::RustError("claim_release_policy_unavailable".into()))
@@ -294,6 +295,16 @@ pub async fn status_record(
         .prepare("SELECT enabled FROM vault_record_share_policy WHERE id=1")
         .first::<serde_json::Value>(None)
         .await?;
-    let clients=db.prepare("SELECT c.client_id,c.sector_identifier,c.revision AS client_revision,a.grant_version AS connection_grant_version,r.version AS release_version,r.status AS release_status,r.expires_at,r.source_storage_version,r.source_origin,r.source_vault_id,r.source_collection_id,r.source_record_id,r.source_kind,r.attribute_revision,r.source_ciphertext_sha256,r.source_key_generation,r.source_owner_key_revision,r.system_grant_version FROM app_connection a JOIN client c ON c.client_id=a.client_id LEFT JOIN vault_claim_release r ON r.account_id=a.account_id AND r.client_id=a.client_id AND r.claim='name' WHERE a.account_id=?1 AND a.active=1 AND c.active=1 AND c.auth_method='private_key_jwt' ORDER BY c.client_id LIMIT 100").bind(&[JsValue::from_str(&owner.account_id)])?.all().await?.results::<serde_json::Value>()?;
-    Response::builder().with_header("Cache-Control","no-store")?.from_json(&serde_json::json!({"enabled":policy.enabled==1&&share.as_ref().and_then(|p|p.get("enabled")).and_then(serde_json::Value::as_i64)==Some(1)&&!conformance_deployment(&context.env)?,"policy_revision":policy.revision,"clients":clients}))
+    let clients = db
+        .prepare(
+            include_str!("../sql/select-record-claim-release-status.sql").replace(
+                "{CURRENT_RECORD_SHARE}",
+                crate::vault_record_sharing::CURRENT_SHARE,
+            ),
+        )
+        .bind(&[JsValue::from_str(&owner.account_id)])?
+        .all()
+        .await?
+        .results::<serde_json::Value>()?;
+    Response::builder().with_header("Cache-Control","no-store")?.from_json(&serde_json::json!({"enabled":policy.enabled==1&&share.as_ref().and_then(|p|p.get("enabled")).and_then(serde_json::Value::as_i64)==Some(1)&&!conformance_deployment(&context.env)?,"policy_revision":policy.revision,"ttl_seconds":policy.ttl_seconds,"clients":clients}))
 }
