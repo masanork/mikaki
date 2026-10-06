@@ -120,6 +120,7 @@ test('OwnerWorkspace reviews an untrusted note proposal and separately retries i
       { credentialBytes: [...credential] },
     );
 
+    const sourceDigest = encodeBase64Url(randomBytes(32));
     const grant = () => ({
       grant_id: grantId,
       account_id: 'owner',
@@ -128,7 +129,7 @@ test('OwnerWorkspace reviews an untrusted note proposal and separately retries i
       resource: 'https://agent.test/mcp',
       source_revision: 1,
       operations: '["read","propose"]',
-      document_ids: '["owner_note"]',
+      document_ids: '["name"]',
       created_at: now - 60,
       expires_at: expiresAt + 3600,
       revoked: 0,
@@ -140,7 +141,7 @@ test('OwnerWorkspace reviews an untrusted note proposal and separately retries i
       source_collection_id: 'personal',
       source_record_id: 'name',
       source_kind: 'name',
-      source_ciphertext_sha256: encodeBase64Url(randomBytes(32)),
+      source_ciphertext_sha256: sourceDigest,
       source_key_generation: 1,
       source_owner_key_revision: 1,
       active: 1,
