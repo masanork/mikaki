@@ -102,7 +102,7 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vite": "8.3.0",
-    "wrangler": "4.144.0"
+    "wrangler": "4.147.0"
   },
   "overrides": {
     "katex": "0.18.2",
