@@ -18,10 +18,7 @@
     "MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT": "FC:51:38:FE:5C:6E:05:55:AD:08:5E:4D:68:DA:F9:DB:F6:76:93:63:1E:72:C9:41:A1:7D:17:80:0D:EB:00:66"
   },
   "secrets": {
-    "required": [
-      "OP_PRIVATE_JWK",
-      "MIKAKI_READY_TOKEN"
-    ]
+    "required": ["OP_PRIVATE_JWK", "MIKAKI_READY_TOKEN"]
   },
   "d1_databases": [
     {
@@ -44,22 +41,40 @@
       "service": "mikaki-auth-claims"
     }
   ],
-  "triggers": {
-    "crons": [
-      "* * * * *",
-      "*/10 * * * *"
+  "queues": {
+    "producers": [
+      {
+        "binding": "LOGOUT_QUEUE",
+        "queue": "mikaki-logout-wakeups"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "mikaki-logout-wakeups",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "mikaki-logout-wakeups-dlq",
+        "max_concurrency": 2,
+        "retry_delay": 30
+      }
     ]
+  },
+  "triggers": {
+    "crons": ["* * * * *", "*/10 * * * *"]
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
   },
   "rules": [
     {
       "type": "Text",
-      "globs": [
-        "**/*.sql"
-      ],
+      "globs": ["**/*.sql"],
       "fallthrough": true
     }
   ]

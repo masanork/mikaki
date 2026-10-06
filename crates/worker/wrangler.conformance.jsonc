@@ -5,6 +5,22 @@
   "vars": {
     "MIKAKI_DEPLOYMENT_PROFILE": "conformance"
   },
+  "queues": {
+    "producers": [
+      { "binding": "LOGOUT_QUEUE", "queue": "mikaki-logout-wakeups-conformance", "remote": false }
+    ],
+    "consumers": [
+      {
+        "queue": "mikaki-logout-wakeups-conformance",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "mikaki-logout-wakeups-dlq-conformance",
+        "max_concurrency": 2,
+        "retry_delay": 30
+      }
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",

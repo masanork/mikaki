@@ -12,11 +12,27 @@
       "remote": false
     }
   ],
-  "r2_buckets": [
-    { "binding": "VAULT_BLOBS", "bucket_name": "mikaki-vault-dev" }
-  ],
-  "services": [
-    { "binding": "USERINFO_CLAIMS", "service": "mikaki-userinfo-claim-worker" }
-  ],
+  "r2_buckets": [{ "binding": "VAULT_BLOBS", "bucket_name": "mikaki-vault-dev" }],
+  "services": [{ "binding": "USERINFO_CLAIMS", "service": "mikaki-userinfo-claim-worker" }],
+  "queues": {
+    "producers": [
+      {
+        "binding": "LOGOUT_QUEUE",
+        "queue": "mikaki-logout-wakeups-recipient-local",
+        "remote": false
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "mikaki-logout-wakeups-recipient-local",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "mikaki-logout-wakeups-dlq-recipient-local",
+        "max_concurrency": 2,
+        "retry_delay": 30
+      }
+    ]
+  },
   "triggers": { "crons": ["* * * * *", "0 3 * * *"] }
 }

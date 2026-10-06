@@ -23,6 +23,18 @@ type Config = {
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
   assets?: { binding: string };
   ratelimits?: { name: string; namespace_id: string; simple: { limit: number; period: number } }[];
+  queues?: {
+    producers?: { binding: string; queue: string; delivery_delay?: number; remote?: boolean }[];
+    consumers?: {
+      queue: string;
+      max_batch_size?: number;
+      max_batch_timeout?: number;
+      max_retries?: number;
+      dead_letter_queue?: string;
+      max_concurrency?: number | null;
+      retry_delay?: number;
+    }[];
+  };
 };
 
 export function checkBindings(
@@ -83,6 +95,8 @@ export function checkBindings(
       namespace_id: item.namespace_id,
       simple: item.simple,
     });
+  for (const item of config.queues?.producers ?? [])
+    expect(item.binding, { type: 'queue', queue_name: item.queue });
 
   for (const name of expected.keys()) assert.ok(names.has(name), `Missing binding ${name}`);
   for (const binding of bindings) {
@@ -98,6 +112,22 @@ export function checkBindings(
         value,
         `Binding ${name}: ${key}`,
       );
+  }
+  if (config.name === 'mikaki-auth') {
+    assert.deepEqual(config.queues?.producers, [
+      { binding: 'LOGOUT_QUEUE', queue: 'mikaki-logout-wakeups' },
+    ]);
+    assert.deepEqual(config.queues?.consumers, [
+      {
+        queue: 'mikaki-logout-wakeups',
+        max_batch_size: 1,
+        max_batch_timeout: 1,
+        max_retries: 3,
+        dead_letter_queue: 'mikaki-logout-wakeups-dlq',
+        max_concurrency: 2,
+        retry_delay: 30,
+      },
+    ]);
   }
 }
 

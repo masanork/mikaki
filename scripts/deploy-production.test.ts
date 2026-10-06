@@ -3,6 +3,37 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { checkBindings, sourceIsCurrent } from './deploy-production.ts';
 
+test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {
+  const production = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  assert.deepEqual(production.queues.producers, [
+    { binding: 'LOGOUT_QUEUE', queue: 'mikaki-logout-wakeups' },
+  ]);
+  assert.deepEqual(production.queues.consumers, [
+    {
+      queue: 'mikaki-logout-wakeups',
+      max_batch_size: 1,
+      max_batch_timeout: 1,
+      max_retries: 3,
+      dead_letter_queue: 'mikaki-logout-wakeups-dlq',
+      max_concurrency: 2,
+      retry_delay: 30,
+    },
+  ]);
+  assert.equal(production.observability.traces.enabled, true);
+  for (const path of [
+    'crates/worker/wrangler.jsonc',
+    'crates/worker/wrangler.conformance.jsonc',
+    'crates/worker/wrangler.recipient-local.jsonc',
+  ]) {
+    const local = JSON.parse(readFileSync(path, 'utf8'));
+    assert.equal(local.queues.producers[0].binding, 'LOGOUT_QUEUE');
+    assert.notEqual(local.queues.producers[0].queue, 'mikaki-logout-wakeups');
+    assert.equal(local.queues.consumers[0].queue, local.queues.producers[0].queue);
+    assert.notEqual(local.queues.consumers[0].dead_letter_queue, 'mikaki-logout-wakeups-dlq');
+    assert.equal(local.queues.producers[0].remote, false);
+  }
+});
+
 test('only bot metrics descendants may deploy an older source revision', () => {
   assert.equal(sourceIsCurrent([]), true);
   assert.equal(sourceIsCurrent(['metrics/history.json', 'metrics/coverage.svg']), true);
@@ -16,6 +47,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
     { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
     { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
+    { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
@@ -29,6 +61,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'DB',
     'VAULT_BLOBS',
     'USERINFO_CLAIMS',
+    'LOGOUT_QUEUE',
     'MIKAKI_READY_TOKEN',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
   ]) {
@@ -57,6 +90,7 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
     { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
     { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
+    { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
@@ -101,6 +135,13 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     () => checkBindings(extraEntrypoint, config),
     /Binding USERINFO_CLAIMS: entrypoint/,
   );
+  const wrongQueue = structuredClone(version);
+  wrongQueue.resources.bindings.find((binding) => binding.name === 'LOGOUT_QUEUE')!.queue_name =
+    'unapproved-queue';
+  assert.throws(() => checkBindings(wrongQueue, config), /Binding LOGOUT_QUEUE: queue_name/);
+  const wrongConsumer = structuredClone(config);
+  wrongConsumer.queues.consumers[0].dead_letter_queue = 'unapproved-dlq';
+  assert.throws(() => checkBindings(version, wrongConsumer), /strictly deep-equal/);
 });
 
 test('Claim Worker must retain its Secrets Store key binding', () => {

@@ -229,6 +229,7 @@ pub(super) async fn get(
 pub(super) async fn post(
     mut request: worker::Request,
     context: worker::RouteContext<()>,
+    event_context: std::rc::Rc<worker::Context>,
 ) -> worker::Result<worker::Response> {
     let Some(content_type) = request.headers().get("content-type")? else {
         return invalid(&request);
@@ -260,7 +261,7 @@ pub(super) async fn post(
         if values.len() != 1 || !vault_http::same_origin(&request)? {
             return invalid(&request);
         }
-        return confirm(request, context, &db, &values["csrf"]).await;
+        return confirm(request, context, event_context, &db, &values["csrf"]).await;
     }
     // A top-level cross-site POST does not carry the Lax SSO cookie. Convert
     // the validated form to a same-site GET before showing the confirmation.
@@ -286,6 +287,7 @@ pub(super) async fn post(
 async fn confirm(
     request: worker::Request,
     context: worker::RouteContext<()>,
+    event_context: std::rc::Rc<worker::Context>,
     db: &worker::D1Database,
     csrf: &str,
 ) -> worker::Result<worker::Response> {
@@ -379,9 +381,18 @@ async fn confirm(
     if result.is_err() {
         return invalid(&request);
     }
-    // The SSO is already revoked. A failed notification remains leased or
-    // pending in the outbox and the minute cron retries it.
-    let _ = logout_delivery::run_event(&context.env, &event_id).await;
+    // D1 is authoritative and the revocation is already committed. Queue is
+    // only a wake-up; a failed enqueue cannot change the logout response, and
+    // the minute cron recovers pending outbox rows.
+    let env = context.env.clone();
+    event_context.wait_until(async move {
+        if logout_delivery::enqueue_wakeup(&env, event_id)
+            .await
+            .is_err()
+        {
+            worker::console_error!("{{\"event\":\"logout_queue_enqueue_failure\"}}");
+        }
+    });
     let mut response = if transaction.redirect_uri.is_empty() {
         let strings = i18n::catalog(i18n::select(&request, None)?);
         worker::Response::builder()
