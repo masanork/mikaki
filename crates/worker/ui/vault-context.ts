@@ -4,6 +4,8 @@ export const VAULT_CONTEXT = Symbol('Vault lifecycle');
 export type VaultContext = {
   current: () => VaultScope;
   registerDraft: (dirty: () => boolean) => () => void;
+  registerResume: (check: () => Promise<void>) => () => void;
+  hasDrafts?: () => boolean;
   lock: () => void;
 };
 export function vaultContext(): VaultContext {

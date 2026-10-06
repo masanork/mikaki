@@ -1,6 +1,13 @@
 import { VaultScope, type LockReason } from './vault-lifecycle.ts';
-import { encodeBase64Url } from './vault-crypto.ts';
-import { openOwnerVault, readOwnerKey, type StoredOwnerKey } from './vault-owner-store.ts';
+import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { rewrapOwnerKey } from './vault-owner-crypto.ts';
+import {
+  openOwnerVault,
+  readOwnerKey,
+  createOwnerKeyWrapperOperation,
+  type OwnerKeyWrapperOperation,
+  type StoredOwnerKey,
+} from './vault-owner-store.ts';
 import type { OwnerKeySession, OwnerPrfEvaluator } from './vault-owner-session.ts';
 
 // WebAuthn performs the required user-verification ceremony. Check the returned
@@ -121,9 +128,60 @@ export class OwnerVaultController {
       if (!current || JSON.stringify(current) !== JSON.stringify(stored))
         throw new Error('owner_key_changed');
     } catch (error) {
-      this.lock('unconfirmed');
+      if (token === this.epoch && !this.suspended && !this.disposed && this.visible())
+        this.lock('unconfirmed');
       throw error;
     }
+  }
+  async prepareWrapper(targetId: string): Promise<OwnerKeyWrapperOperation> {
+    const token = this.checkpoint();
+    const { stored } = this.lease();
+    if (targetId === stored.envelope.credential_id) throw new Error('source_wrapper_required');
+    await this.verifyAuthority();
+    this.assertCurrent(token);
+    let sourceOutput: Uint8Array<ArrayBuffer> | undefined;
+    let targetOutput: Uint8Array<ArrayBuffer> | undefined;
+    try {
+      const sourceId = decodeBase64Url(stored.envelope.credential_id);
+      const source = await this.evaluate(
+        sourceId,
+        decodeBase64Url(stored.envelope.prf_input),
+        this.scope.signal,
+      );
+      sourceOutput = source.output;
+      this.assertCurrent(token);
+      if (encodeBase64Url(source.credentialId) !== stored.envelope.credential_id)
+        throw new Error('wrong_credential');
+      const targetInput = crypto.getRandomValues(new Uint8Array(32));
+      const target = await this.evaluate(decodeBase64Url(targetId), targetInput, this.scope.signal);
+      targetOutput = target.output;
+      this.assertCurrent(token);
+      if (encodeBase64Url(target.credentialId) !== targetId) throw new Error('wrong_credential');
+      const envelope = await rewrapOwnerKey(
+        stored.envelope,
+        stored.context,
+        sourceId,
+        sourceOutput,
+        target.credentialId,
+        targetInput,
+        targetOutput,
+      );
+      this.assertCurrent(token);
+      await this.verifyAuthority();
+      this.assertCurrent(token);
+      return createOwnerKeyWrapperOperation('PUT', stored, targetId, envelope);
+    } finally {
+      sourceOutput?.fill(0);
+      targetOutput?.fill(0);
+    }
+  }
+  async prepareWrapperRemoval(targetId: string): Promise<OwnerKeyWrapperOperation> {
+    const token = this.checkpoint();
+    const { stored } = this.lease();
+    if (targetId === stored.envelope.credential_id) throw new Error('source_wrapper_required');
+    await this.verifyAuthority();
+    this.assertCurrent(token);
+    return createOwnerKeyWrapperOperation('DELETE', stored, targetId);
   }
   suspend(): void {
     this.epoch++;
@@ -133,10 +191,20 @@ export class OwnerVaultController {
   async resume(): Promise<void> {
     if (this.disposed || !this.visible()) throw new DOMException('Unavailable', 'AbortError');
     const token = this.epoch;
-    if (this.opened) await this.opened.session.resume();
-    else {
-      await this.scope.verify();
-      await this.scope.ensure();
+    const opened = this.opened;
+    try {
+      if (opened) {
+        await opened.session.resume();
+        const current = await readOwnerKey(this.scope, this.origin);
+        if (!current || JSON.stringify(current) !== JSON.stringify(opened.stored))
+          throw new Error('owner_key_changed');
+      } else {
+        await this.scope.verify();
+        await this.scope.ensure();
+      }
+    } catch (error) {
+      if (token === this.epoch) this.lock('unconfirmed');
+      throw error;
     }
     if (token !== this.epoch || this.disposed || !this.visible())
       throw new DOMException('Stale Vault resume', 'AbortError');

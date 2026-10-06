@@ -13,8 +13,10 @@
   } from './vault-record-source.js';
   let {
     grants,
+    disabled = false,
     onBusy = () => {},
   }: {
+    disabled?: boolean;
     onBusy?: (busy: boolean) => void;
     grants: {
       grant_id: string;
@@ -228,7 +230,7 @@
       <label
         >{m.agentOAuthGrant()}<select
           bind:value={selected}
-          disabled={busy}
+          disabled={busy || disabled}
           onchange={() => (consent = false)}
         >
           <option value="">{m.agentOAuthChoose()}</option>
@@ -261,20 +263,23 @@
         ><input
           type="checkbox"
           bind:checked={consent}
-          disabled={busy}
+          disabled={busy || disabled}
         />{m.agentOAuthConsent()}</label
       >
       <button
         class="product-primary"
         type="button"
-        disabled={busy || !consent || !choices.some((g) => g.grant_id === selected)}
+        disabled={busy || disabled || !consent || !choices.some((g) => g.grant_id === selected)}
         onclick={() => decide(true)}>{m.agentOAuthAllow()}</button
       >
-      <button class="product-danger" type="button" disabled={busy} onclick={() => decide(false)}
-        >{m.agentReject()}</button
+      <button
+        class="product-danger"
+        type="button"
+        disabled={busy || disabled}
+        onclick={() => decide(false)}>{m.agentReject()}</button
       >
     {/if}
     {#if failed || !requestId}<p role="status">{m.agentOAuthFailed()}</p>{/if}
-    <button type="button" disabled={busy} onclick={load}>{m.agentRefresh()}</button>
+    <button type="button" disabled={busy || disabled} onclick={load}>{m.agentRefresh()}</button>
   </section>
 {/if}

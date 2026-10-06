@@ -9,6 +9,7 @@
   import { OwnerVaultController } from './vault-owner-controller.ts';
   import { OWNER_NOTE } from './vault-owner-record-store.ts';
   import OwnerRecordEditor from './OwnerRecordEditor.svelte';
+  import OwnerPasskeys from './OwnerPasskeys.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -29,6 +30,7 @@
   });
   let opened = $state(false),
     busy = $state(false),
+    passkeysBusy = $state(false),
     status = $state('');
   let name = $state(''),
     savedName = $state(''),
@@ -295,7 +297,10 @@
         }
       })
       .catch(() => scope.end('unconfirmed'));
-    const unregister = context.registerDraft(() => dirty || busy);
+    const unregister = context.registerDraft(() => dirty || (busy && !passkeysBusy));
+    const unregisterResume = context.registerResume(async () => {
+      if (owner) await owner.resume();
+    });
     const clear = () => {
       owner?.dispose();
       owner = null;
@@ -310,12 +315,12 @@
     scope.signal.addEventListener('abort', clear, { once: true });
     const visibility = () => {
       if (document.visibilityState === 'hidden') owner?.suspend();
-      else if (owner) void owner.resume().catch(() => scope.end('unconfirmed'));
     };
     document.addEventListener('visibilitychange', visibility);
     return () => {
       clear();
       unregister();
+      unregisterResume();
       scope.signal.removeEventListener('abort', clear);
       document.removeEventListener('visibilitychange', visibility);
     };
@@ -375,7 +380,16 @@
               >{m.vaultDelete()}</button
             >
           </section>
-          <OwnerRecordEditor target={OWNER_NOTE} />
+          <OwnerRecordEditor target={OWNER_NOTE} disabled={busy} />
+          {#if owner}<OwnerPasskeys
+              {owner}
+              hasDrafts={() => context.hasDrafts?.() ?? false}
+              disabled={busy || dirty || (context.hasDrafts?.() ?? false)}
+              onbusy={(value) => {
+                passkeysBusy = value;
+                busy = value;
+              }}
+            />{/if}
           <section id="threads" aria-labelledby="threads-heading" aria-busy={busy}>
             <h2 id="threads-heading">{m.ownerWorkspaceThreads()}</h2>
             <label for="archive-file">{m.ownerWorkspaceImport()}</label><input
@@ -395,6 +409,7 @@
             {#if threads.length === 0}<p>{m.ownerVaultEmpty()}</p>{/if}
             <div class="product-actions">
               {#each visibleThreads as thread (thread.id)}<button
+                  disabled={busy}
                   onclick={() => (selected = thread.id)}>{thread.archive.title}</button
                 >{/each}
             </div>
@@ -430,7 +445,7 @@
     {#if hasAgentRequest}
       <details id="connections" open>
         <summary>{m.agentOAuthHeading()}</summary>
-        <AgentOAuth grants={agentConnections} />
+        <AgentOAuth grants={agentConnections} disabled={busy} />
       </details>
     {/if}
   </main>

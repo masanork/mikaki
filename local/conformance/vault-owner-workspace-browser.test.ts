@@ -63,11 +63,39 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         now,
       ),
     ]);
+    const targetCredential = randomBytes(32),
+      targetId = targetCredential.toString('base64url'),
+      targetSecret = randomBytes(32).toString('base64url');
+    await DB.batch([
+      DB.prepare("INSERT INTO credential VALUES(?,'owner',1)").bind(targetId),
+      DB.prepare(
+        "INSERT INTO passkey_credential VALUES(?,'synthetic-target-key','synthetic-user',0,0,0,1)",
+      ).bind(targetId),
+      DB.prepare("INSERT INTO sso_session VALUES('target-session','owner',?,1,?,0)").bind(
+        targetId,
+        now + 3600,
+      ),
+      DB.prepare("INSERT INTO sso_context VALUES('target-session',?,?)").bind(
+        createHash('sha256').update(targetSecret).digest('base64url'),
+        now,
+      ),
+    ]);
+    let activeSecret = secret;
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     let ceremonies = 0;
-    await context.exposeFunction('recordCeremony', () => {
+    let holdCeremonyAt = 0;
+    const ceremonyControl: {
+      started: (() => void) | null;
+      release: (() => void) | null;
+      gate: Promise<void>;
+    } = { started: null, release: null, gate: new Promise<void>(() => {}) };
+    await context.exposeFunction('recordCeremony', async () => {
       ceremonies++;
+      if (ceremonies === holdCeremonyAt) {
+        ceremonyControl.started?.();
+        await new Promise<void>((resolve) => (ceremonyControl.release = resolve));
+      }
     });
     await context.addInitScript(
       ({ credential }) => {
@@ -84,15 +112,32 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         class MockCredential {
           rawId = Uint8Array.from(credential).buffer;
           getClientExtensionResults() {
-            return { prf: { results: { first: new Uint8Array(32).fill(0x71).buffer } } };
+            const source = new Uint8Array(this.rawId).every(
+              (byte, index) => byte === credential[index],
+            );
+            return {
+              prf: { results: { first: new Uint8Array(32).fill(source ? 0x71 : 0x72).buffer } },
+            };
           }
         }
         Object.defineProperty(window, 'PublicKeyCredential', { value: MockCredential });
         Object.defineProperty(navigator, 'credentials', {
           value: {
-            get: async () => {
+            get: async (options: CredentialRequestOptions) => {
               await (window as unknown as { recordCeremony: () => Promise<void> }).recordCeremony();
-              return new MockCredential();
+              const result = new MockCredential();
+              const requested = options.publicKey?.allowCredentials?.[0]?.id;
+              if (!(requested instanceof ArrayBuffer || ArrayBuffer.isView(requested)))
+                throw new Error('Pinned credential required');
+              result.rawId =
+                requested instanceof ArrayBuffer
+                  ? requested.slice(0)
+                  : new Uint8Array(
+                      requested.buffer,
+                      requested.byteOffset,
+                      requested.byteLength,
+                    ).slice().buffer;
+              return result;
             },
           },
         });
@@ -105,6 +150,11 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     const searchAssets: string[] = [];
     const recordBodies: string[] = [];
     const errors: string[] = [];
+    let loseWrapper = false,
+      rejectWrapper = false;
+    let bootstrapWrites = 0;
+    const wrapperRequests: { body: string; operation: string | null; revision: string | null }[] =
+      [];
     await context.route(`${origin}/**`, async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
@@ -121,9 +171,25 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       }
       if (path.startsWith('/vault/records/') && request.method() === 'PUT')
         recordBodies.push(request.postData()!);
+      if (path === '/vault/owner-key' && request.method() === 'PUT') bootstrapWrites++;
+      if (path === '/vault/owner-key/wrappers' && request.method() === 'PUT')
+        wrapperRequests.push({
+          body: request.postData()!,
+          operation: request.headers()['x-operation-id'] ?? null,
+          revision: request.headers()['if-match'] ?? null,
+        });
+      if (rejectWrapper && path === '/vault/owner-key/wrappers' && request.method() === 'DELETE') {
+        rejectWrapper = false;
+        await route.fulfill({
+          status: 400,
+          contentType: 'text/html',
+          body: '<h1>Bad Request</h1>',
+        });
+        return;
+      }
       const response = await worker.fetch(request.url(), {
         method: request.method(),
-        headers: { ...(await request.allHeaders()), cookie: `__Host-op-sso=${secret}` },
+        headers: { ...(await request.allHeaders()), cookie: `__Host-op-sso=${activeSecret}` },
         ...(request.postData() ? { body: request.postData()! } : {}),
       });
       if (path === '/vault/search.js') {
@@ -140,6 +206,16 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
       }
       const body = Buffer.from(await response.arrayBuffer());
+      if (
+        loseWrapper &&
+        path === '/vault/owner-key/wrappers' &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        loseWrapper = false;
+        await route.abort();
+        return;
+      }
       if (
         lose &&
         path === '/vault/records/personal/name' &&
@@ -334,6 +410,94 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     );
     assert.equal(ceremonies, 3);
     assert.deepEqual(errors, []);
+    await page.locator('#owner-passkeys summary').click();
+    await expect(page.locator('#owner-passkeys')).toContainText(
+      'Login only · Vault access not enabled',
+    );
+    await page.locator('#owner-note-text').fill('Unsaved draft');
+    await expect(
+      page
+        .locator('#owner-passkeys')
+        .getByRole('button', { name: 'Allow Vault access', exact: true }),
+    ).toBeDisabled();
+    await page.locator('#owner-note-text').fill('Same record in both presentations.');
+    holdCeremonyAt = ceremonies + 1;
+    ceremonyControl.gate = new Promise<void>((resolve) => (ceremonyControl.started = resolve));
+    await page
+      .locator('#owner-passkeys')
+      .getByRole('button', { name: 'Allow Vault access', exact: true })
+      .click();
+    await ceremonyControl.gate;
+    await expect(page.locator('#owner-note-text')).toBeDisabled();
+    await page.locator('#owner-note-text').evaluate((element) => {
+      const input = element as HTMLTextAreaElement;
+      input.value = 'Injected draft during PRF';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    ceremonyControl.release?.();
+    holdCeremonyAt = 0;
+    await expect(page.locator('#owner-passkeys [role="status"]')).toHaveText(
+      'Unsaved changes. Save before leaving this page.',
+    );
+    assert.equal(wrapperRequests.length, 0, 'A draft appearing during PRF prevents submission');
+    await page.locator('#owner-note-text').fill('Same record in both presentations.');
+    loseWrapper = true;
+    await page.locator('#owner-passkeys-retry').click();
+    await expect(page.locator('#owner-passkeys-retry')).toBeVisible();
+    assert.equal(ceremonies, 5, 'Adding a wrapper requires fresh source and target PRF');
+    await page.locator('#owner-passkeys-retry').click();
+    await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
+    assert.deepEqual(
+      wrapperRequests[0],
+      wrapperRequests[1],
+      'Lost response reuses exact body, revision and operation',
+    );
+    assert.ok(
+      wrapperRequests.every(
+        (request) => !request.body.includes('Recreated') && !request.body.includes('Same record'),
+      ),
+    );
+    assert.equal(ceremonies, 5, 'Retry does not repeat a ceremony');
+    activeSecret = targetSecret;
+    await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Recreated');
+    await expect(page.locator('#owner-note-text')).toHaveValue(
+      'Same record in both presentations.',
+    );
+    await expect(page.getByRole('button', { name: '別の相談', exact: true })).toBeVisible();
+    assert.equal(
+      ceremonies,
+      6,
+      'Fresh target login opens the existing profile, note and conversation',
+    );
+    activeSecret = secret;
+    await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Recreated');
+    await page.locator('#owner-passkeys summary').click();
+    rejectWrapper = true;
+    await page
+      .locator('#owner-passkeys')
+      .getByRole('button', { name: 'Remove Vault access', exact: true })
+      .click();
+    await expect(page.locator('#owner-passkeys-retry')).toHaveCount(0);
+    await expect(page.locator('#name')).toHaveValue('Recreated');
+    await page
+      .locator('#owner-passkeys')
+      .getByRole('button', { name: 'Remove Vault access', exact: true })
+      .click();
+    await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
+    activeSecret = targetSecret;
+    await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#owner-passkeys')).toHaveCount(0);
+    assert.equal(bootstrapWrites, 1, 'A login-only credential never bootstraps a replacement root');
+    activeSecret = secret;
+    await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Recreated');
+    assert.equal(ceremonies, 8);
     failSession = true;
     await page.evaluate(() =>
       (window as unknown as { setVaultHidden: (value: boolean) => void }).setVaultHidden(true),
@@ -343,7 +507,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     );
     await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
     await expect(page.locator('#name')).toHaveCount(0);
-    assert.equal(ceremonies, 3);
+    assert.equal(ceremonies, 8);
     assert.ok(
       recordBodies.every((body) => !body.includes('New owner') && !body.includes('保育園')),
     );
