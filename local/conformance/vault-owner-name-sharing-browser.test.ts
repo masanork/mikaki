@@ -86,6 +86,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
     let recipientStarted = () => {};
     let recipientGate = Promise.resolve();
     const statusReads = { sharing: 0, releases: 0 };
+    let completedProfileWrites = 0;
     const mutations: {
       path: string;
       method: string;
@@ -382,6 +383,7 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
         request.method() === 'PUT' &&
         response.ok
       ) {
+        completedProfileWrites++;
         if (fixture.systemGrant) {
           fixture.systemGrant['status'] = 'revoked';
           fixture.systemGrant['version'] = Number(fixture.systemGrant['version']) + 1;
@@ -410,9 +412,15 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
     await expect(page.locator('#name')).toBeEnabled();
     await page.locator('#name').fill('Initial name');
     await page.locator('#save').click();
+    await expect.poll(() => completedProfileWrites).toBe(1);
+    await expect(page.locator('#status')).toHaveText('Saved.');
+    await expect(page.locator('#save')).toBeEnabled();
     await page.locator('#name').fill('A self-asserted name');
     await page.locator('#save').click();
     await expect(page.locator('#name')).toHaveValue('A self-asserted name');
+    await expect.poll(() => completedProfileWrites).toBe(2);
+    await expect(page.locator('#status')).toHaveText('Saved.');
+    await expect(page.locator('#save')).toBeEnabled();
     assert.equal(statusReads.sharing, 0, 'unlock and save do not load sharing state');
     assert.equal(statusReads.releases, 0, 'unlock and save do not load RP permissions');
 
@@ -619,6 +627,8 @@ test('OwnerWorkspace shares the fresh saved name separately with UserInfo and on
     await page.locator('#name').fill('Updated self-asserted name');
     await page.locator('#save').click();
     await expect(page.locator('#name')).toHaveValue('Updated self-asserted name');
+    await expect.poll(() => completedProfileWrites).toBe(3);
+    await expect(page.locator('#status')).toHaveText('Saved.');
     await expect(page.locator('#owner-name-sharing')).toContainText(
       'The saved name changed. Refresh sharing status before reviewing access.',
     );
