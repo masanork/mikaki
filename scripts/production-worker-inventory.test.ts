@@ -14,6 +14,8 @@ const target = {
   qualified_source: '04b94d951465f5f5ab02a3c71eaa55bbfe117448',
   op: 'mikaki-auth',
   claim: 'mikaki-auth-claims',
+  logout_queue: 'mikaki-logout-wakeups',
+  logout_dlq: 'mikaki-logout-wakeups-dlq',
   versions: { op: version, claim: version },
 };
 const db = { type: 'd1', name: 'DB', database_id: target.database_id };
@@ -33,13 +35,51 @@ function fixture(
     calls.set(path, (calls.get(path) ?? 0) + 1);
     const url = new URL('https://fixture.test' + path);
     let value: unknown;
-    if (url.pathname.endsWith('/scripts')) {
+    if (url.pathname.endsWith('/queues')) {
+      assert.equal(url.search, '?page=1&per_page=100');
+      value = envelope(
+        [
+          {
+            queue_id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            queue_name: target.logout_queue,
+            producers: [{ type: 'worker', script: target.op }],
+            consumers_total_count: 1,
+            consumers: [
+              {
+                consumer_id: 'logout-consumer',
+                type: 'worker',
+                script_name: target.op,
+                queue_name: target.logout_queue,
+                dead_letter_queue: target.logout_dlq,
+                settings: {
+                  batch_size: 1,
+                  max_wait_time_ms: 1000,
+                  max_retries: 3,
+                  max_concurrency: 2,
+                  retry_delay: 30,
+                },
+              },
+            ],
+          },
+          {
+            queue_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            queue_name: target.logout_dlq,
+            consumers_total_count: 0,
+            consumers: [],
+          },
+        ],
+        { page: 1, per_page: 100, total_count: 2, total_pages: 1 },
+      );
+    } else if (url.pathname.endsWith('/scripts')) {
       assert.equal(url.search, '');
       value = envelope(sorted.map((id) => ({ id })));
     } else {
       const name = /\/scripts\/([^/]+)\//.exec(url.pathname)![1]!;
       const bindings = [
         ...(name === target.op ? [db] : []),
+        ...(name === target.op
+          ? [{ name: 'LOGOUT_QUEUE', type: 'queue', queue_name: target.logout_queue }]
+          : []),
         { name: 'PUBLIC_VALUE', type: 'plain_text', text: 'MUST_NOT_APPEAR' },
         { name: 'JSON_VALUE', type: 'json', json: { secret: 'MUST_NOT_APPEAR' } },
         { name: 'SECRET_NAME', type: 'secret_text' },
@@ -95,6 +135,19 @@ test('complete single-page roster retains only sanitized ordinary-Worker evidenc
   ]);
   assert.deepEqual(value.workers[1]!.settings.databases, []);
   assert.deepEqual(value.workers[1]!.settings.r2_buckets, []);
+  assert.deepEqual(value.workers[0]!.settings.queues, [
+    { name: 'LOGOUT_QUEUE', queue_name: target.logout_queue },
+  ]);
+  assert.deepEqual(value.workers[1]!.settings.queues, []);
+  assert.deepEqual(value.logout_queues.consumer, {
+    script_name: target.op,
+    batch_size: 1,
+    max_batch_timeout_ms: 1000,
+    max_retries: 3,
+    max_concurrency: 2,
+    retry_delay: 30,
+    dead_letter_queue: target.logout_dlq,
+  });
   assert.deepEqual(value.workers[1]!.settings.services, [
     { name: 'CLAIM_STORE', service: target.op, entrypoint: 'ClaimStore' },
   ]);
@@ -103,6 +156,28 @@ test('complete single-page roster retains only sanitized ordinary-Worker evidenc
     JSON.stringify(value),
     /MUST_NOT_APPEAR|PUBLIC_VALUE|JSON_VALUE|SECRET_NAME|plain_text|secret_text/,
   );
+});
+
+test('live Queue metadata must match the exact OP producer, bounded consumer, and empty DLQ consumer set', async () => {
+  for (const mutate of [
+    (v: any) => (v.result[0].consumers[0].script_name = 'other-worker'),
+    (v: any) => (v.result[0].consumers[0].dead_letter_queue = 'other-dlq'),
+    (v: any) => (v.result[0].consumers[0].settings.max_concurrency = 10),
+    (v: any) => v.result[0].consumers.push({ ...v.result[0].consumers[0] }),
+    (v: any) => (v.result[1].consumers_total_count = 1),
+    (v: any) => (v.result[1].queue_id = v.result[0].queue_id),
+    (v: any) => (v.result_info.total_count = 3),
+  ]) {
+    await assert.rejects(
+      inspectWorkerInventory(
+        fixture(undefined, (path, value) => {
+          if (path.includes('/queues?')) mutate(value);
+          return value;
+        }),
+        target,
+      ),
+    );
+  }
 });
 
 test('projection never accesses text/json/secret values', () => {
@@ -122,7 +197,12 @@ test('projection never accesses text/json/secret values', () => {
         },
         enumerable: true,
       });
-    assert.deepEqual(projectBindings([binding]), { databases: [], services: [], r2_buckets: [] });
+    assert.deepEqual(projectBindings([binding]), {
+      databases: [],
+      services: [],
+      r2_buckets: [],
+      queues: [],
+    });
   }
 });
 
@@ -456,6 +536,19 @@ test('transport allows only the unfiltered full roster endpoint', async () => {
     return new Response(JSON.stringify(envelope([{ id: target.op }])));
   });
   assert.deepEqual(await get(path), envelope([{ id: target.op }]));
+  const queuePath = `/accounts/${target.account}/queues?page=1&per_page=100`;
+  const queueGet = cloudflareMetadataGet(target.account, 'synthetic-token', async (url, init) => {
+    assert.equal(url, 'https://api.cloudflare.com/client/v4' + queuePath);
+    assert.equal(init?.method, 'GET');
+    return new Response(
+      JSON.stringify(envelope([], { page: 1, per_page: 100, total_count: 0, total_pages: 1 })),
+    );
+  });
+  assert.deepEqual(
+    await queueGet(queuePath),
+    envelope([], { page: 1, per_page: 100, total_count: 0, total_pages: 1 }),
+  );
+  await assert.rejects(queueGet(`/accounts/${target.account}/queues?page=1`), /Unapproved/);
 });
 
 test('source annotations cannot replace exact qualified activation versions', async () => {

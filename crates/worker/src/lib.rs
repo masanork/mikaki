@@ -2131,7 +2131,7 @@ async fn userinfo_route_inner(
 pub async fn main(
     req: worker::Request,
     env: worker::Env,
-    _ctx: worker::Context,
+    ctx: worker::Context,
 ) -> worker::Result<worker::Response> {
     // The native callback host must not become a second OP origin. A browser
     // reaching the callback gets a fixed redirect that drops the code and
@@ -2156,6 +2156,7 @@ pub async fn main(
     if !auth_resources::admit(&req, &env).await? {
         return auth_resources::limited();
     }
+    let logout_context = std::rc::Rc::new(ctx);
     worker::Router::with_data(())
         .get_async("/", home::get)
         .get_async("/signin", passkey_login::web_signin)
@@ -2201,7 +2202,13 @@ pub async fn main(
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
         .get_async("/logout", logout::get)
-        .post_async("/logout", logout::post)
+        .post_async("/logout", {
+            let logout_context = std::rc::Rc::clone(&logout_context);
+            move |request, route_context| {
+                let logout_context = std::rc::Rc::clone(&logout_context);
+                async move { logout::post(request, route_context, logout_context).await }
+            }
+        })
         .get_async("/admin", admin_invitations::page)
         .get_async("/admin/admin.js", admin_invitations::script)
         .get_async("/jwks", jwks_route)
@@ -2397,9 +2404,9 @@ pub async fn scheduled(
     if identity::purge(&env).await.is_err() {
         worker::console_error!("{{\"event\":\"identity_gc_failure\"}}");
     }
-    logout_delivery::run_due(&env)
-        .await
-        .expect("Logout delivery failed");
+    if logout_delivery::run_due(&env).await.is_err() {
+        worker::console_error!("{{\"event\":\"logout_delivery_failure\"}}");
+    }
     if event.cron() == "* * * * *" {
         vault_owner_records::collect(&env, event.schedule() as u64)
             .await

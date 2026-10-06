@@ -43,14 +43,30 @@ export type InventoryTarget = {
   qualified_source: string;
   op: string;
   claim: string;
+  logout_queue: string;
+  logout_dlq: string;
   versions: { op: string; claim: string };
 };
 type Bindings = {
   databases: { name: string; database_id: string }[];
   services: { name: string; service: string; environment?: string; entrypoint?: string }[];
   r2_buckets: { name: string; bucket_name: string }[];
+  queues: { name: string; queue_name: string }[];
 };
 type Worker = { name: string; settings: Bindings; versions: ({ id: string } & Bindings)[] };
+type LogoutQueues = {
+  producer: { name: string; queue_id: string; queue_name: string };
+  dead_letter: { name: string; queue_id: string; queue_name: string };
+  consumer: {
+    script_name: string;
+    batch_size: number;
+    max_batch_timeout_ms: number;
+    max_retries: number;
+    max_concurrency: number;
+    retry_delay: number;
+    dead_letter_queue: string;
+  };
+};
 export class InventoryError extends Error {}
 function gate(ok: unknown, message: string): asserts ok {
   if (!ok) throw new InventoryError(message);
@@ -79,7 +95,7 @@ function result(value: unknown): unknown {
 export function projectBindings(value: unknown, requireAgentAbsent = false): Bindings {
   gate(Array.isArray(value) && value.length <= 256, 'Missing or excessive Worker bindings.');
   const names = new Set<string>();
-  const projected: Bindings = { databases: [], services: [], r2_buckets: [] };
+  const projected: Bindings = { databases: [], services: [], r2_buckets: [], queues: [] };
   for (const binding of value) {
     gate(row(binding), 'Malformed Worker binding.');
     const name = safeName(binding.name);
@@ -97,6 +113,8 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
       projected.databases.push({ name, database_id: uuid(binding.database_id) });
     if (binding.type === 'r2_bucket')
       projected.r2_buckets.push({ name, bucket_name: safeName(binding.bucket_name) });
+    if (binding.type === 'queue')
+      projected.queues.push({ name, queue_name: safeName(binding.queue_name) });
     if (binding.type === 'service') {
       const service = safeName(binding.service);
       const environment =
@@ -114,6 +132,7 @@ export function projectBindings(value: unknown, requireAgentAbsent = false): Bin
   projected.databases.sort(order);
   projected.services.sort(order);
   projected.r2_buckets.sort(order);
+  projected.queues.sort(order);
   return projected;
 }
 
@@ -192,7 +211,14 @@ function checkConsumer(name: string, bindings: Bindings, target: InventoryTarget
     (binding) => binding.database_id === target.database_id,
   );
   if (name === target.op)
-    gate(consumers.length === 1 && consumers[0]!.name === 'DB', 'Declared OP D1 binding differs.');
+    gate(
+      consumers.length === 1 &&
+        consumers[0]!.name === 'DB' &&
+        bindings.queues.length === 1 &&
+        bindings.queues[0]!.name === 'LOGOUT_QUEUE' &&
+        bindings.queues[0]!.queue_name === target.logout_queue,
+      'Declared OP D1 or logout Queue binding differs.',
+    );
   else if (name === target.claim) {
     gate(bindings.databases.length === 0, 'Claim Worker must not bind raw D1 storage.');
     gate(bindings.r2_buckets.length === 0, 'Claim Worker must not bind raw R2 storage.');
@@ -210,6 +236,119 @@ function checkConsumer(name: string, bindings: Bindings, target: InventoryTarget
     );
 }
 
+async function logoutQueueMetadata(
+  get: MetadataGet,
+  account: string,
+  target: InventoryTarget,
+): Promise<LogoutQueues> {
+  const pageSize = 100;
+  const maxPages = 20;
+  const queues: Row[] = [];
+  let totalPages: number | undefined;
+  let totalCount: number | undefined;
+  for (let page = 1; page <= (totalPages ?? 1); page++) {
+    const path = `/accounts/${account}/queues?page=${page}&per_page=${pageSize}`;
+    const envelope = await get(path);
+    const values = result(envelope);
+    gate(Array.isArray(values) && values.length <= pageSize, 'Malformed Queue metadata page.');
+    gate(row(envelope) && row(envelope.result_info), 'Queue list lacks pagination metadata.');
+    const info = envelope.result_info;
+    gate(
+      Number.isSafeInteger(info.page) &&
+        info.page === page &&
+        Number.isSafeInteger(info.total_pages) &&
+        Number(info.total_pages) >= 1 &&
+        Number(info.total_pages) <= maxPages &&
+        Number.isSafeInteger(info.total_count) &&
+        Number(info.total_count) >= 1 &&
+        Number.isSafeInteger(info.per_page) &&
+        Number(info.per_page) === pageSize,
+      'Queue list pagination is ambiguous.',
+    );
+    if (totalPages === undefined) {
+      totalPages = Number(info.total_pages);
+      totalCount = Number(info.total_count);
+    } else {
+      gate(
+        totalPages === info.total_pages && totalCount === info.total_count,
+        'Queue roster changed during pagination.',
+      );
+    }
+    for (const value of values) {
+      gate(row(value), 'Malformed Queue metadata.');
+      queues.push(value);
+    }
+  }
+  gate(queues.length === totalCount, 'Queue roster is incomplete.');
+  const matches = queues.filter(
+    (queue) => queue.queue_name === target.logout_queue || queue.queue_name === target.logout_dlq,
+  );
+  gate(matches.length === 2, 'Expected logout Queue resources are absent or ambiguous.');
+  const find = (name: string) => matches.find((queue) => queue.queue_name === name);
+  const producer = find(target.logout_queue);
+  const deadLetter = find(target.logout_dlq);
+  gate(producer && deadLetter, 'Expected logout Queue resources are absent.');
+  const queueId = (value: unknown) => {
+    gate(typeof value === 'string' && /^[a-f0-9]{32}$/.test(value), 'Malformed Queue identifier.');
+    return value;
+  };
+  const producerId = queueId(producer.queue_id);
+  const deadLetterId = queueId(deadLetter.queue_id);
+  gate(producerId !== deadLetterId, 'Logout Queue and DLQ identifiers collide.');
+  gate(
+    Array.isArray(producer.producers) &&
+      producer.producers.length === 1 &&
+      row(producer.producers[0]) &&
+      producer.producers[0].type === 'worker' &&
+      producer.producers[0].script === target.op,
+    'Logout Queue producer is not the qualified OP Worker.',
+  );
+  gate(
+    Array.isArray(producer.consumers) &&
+      producer.consumers.length === 1 &&
+      producer.consumers_total_count === 1,
+    'Logout Queue consumer is absent or ambiguous.',
+  );
+  const consumer = producer.consumers[0];
+  gate(
+    row(consumer) &&
+      consumer.type === 'worker' &&
+      consumer.script_name === target.op &&
+      consumer.queue_name === target.logout_queue &&
+      consumer.dead_letter_queue === target.logout_dlq &&
+      row(consumer.settings),
+    'Logout Queue consumer target or DLQ differs.',
+  );
+  const settings = consumer.settings;
+  gate(
+    settings.batch_size === 1 &&
+      settings.max_wait_time_ms === 1000 &&
+      settings.max_retries === 3 &&
+      settings.max_concurrency === 2 &&
+      settings.retry_delay === 30,
+    'Logout Queue consumer bounds differ from source configuration.',
+  );
+  gate(
+    (deadLetter.consumers_total_count ?? 0) === 0 &&
+      (deadLetter.consumers === undefined ||
+        (Array.isArray(deadLetter.consumers) && deadLetter.consumers.length === 0)),
+    'Logout DLQ must not have an unexpected consumer.',
+  );
+  return {
+    producer: { name: target.logout_queue, queue_id: producerId, queue_name: target.logout_queue },
+    dead_letter: { name: target.logout_dlq, queue_id: deadLetterId, queue_name: target.logout_dlq },
+    consumer: {
+      script_name: target.op,
+      batch_size: 1,
+      max_batch_timeout_ms: 1000,
+      max_retries: 3,
+      max_concurrency: 2,
+      retry_delay: 30,
+      dead_letter_queue: target.logout_dlq,
+    },
+  };
+}
+
 export async function inspectWorkerInventory(
   get: MetadataGet,
   target: InventoryTarget,
@@ -217,12 +356,15 @@ export async function inspectWorkerInventory(
   scope: 'ordinary_account_workers_only';
   not_inventoried: readonly ['pages_functions', 'workers_for_platforms'];
   workers: Worker[];
+  logout_queues: LogoutQueues;
 }> {
   gate(/^[a-f0-9]{32}$/.test(target.account), 'Malformed account identifier.');
   uuid(target.database_id);
   gate(/^[a-f0-9]{40}$/.test(target.qualified_source), 'Missing qualified live source.');
   safeName(target.op);
   safeName(target.claim);
+  safeName(target.logout_queue);
+  safeName(target.logout_dlq);
   uuid(target.versions.op);
   uuid(target.versions.claim);
   gate(target.op !== target.claim, 'Expected distinct production Workers.');
@@ -288,10 +430,12 @@ export async function inspectWorkerInventory(
       'Worker settings changed during compatibility inspection.',
     );
   }
+  const logoutQueues = await logoutQueueMetadata(get, target.account, target);
   return {
     scope: 'ordinary_account_workers_only',
     not_inventoried: ['pages_functions', 'workers_for_platforms'],
     workers,
+    logout_queues: logoutQueues,
   };
 }
 
@@ -306,12 +450,16 @@ export function cloudflareMetadataGet(
     'Existing metadata credentials unavailable.',
   );
   const base = `/accounts/${account}/workers/`;
+  const queues = `/accounts/${account}/queues`;
   return async (path) => {
     gate(
-      path.startsWith(base) &&
-        /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
-          path.slice(base.length),
-        ),
+      path.startsWith(base)
+        ? /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
+            path.slice(base.length),
+          )
+        : new RegExp(`^${queues.replaceAll('/', '\\/')}\\?page=[1-9][0-9]*&per_page=100$`).test(
+            path,
+          ),
       'Unapproved Cloudflare metadata endpoint.',
     );
     try {

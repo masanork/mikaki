@@ -18,6 +18,8 @@ test('product ingress budgets are atomic across isolates and expired state conve
     import.meta.url,
   ).pathname;
   config.vars = { MIKAKI_ISSUER: 'https://auth.test' };
+  // Both isolates share the outbox and producer; only the primary consumes it.
+  config.queues.consumers = [];
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
     workers: [

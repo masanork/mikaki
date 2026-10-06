@@ -16,6 +16,8 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
       'utf8',
     ),
   );
+  // This identity-only multi-worker fixture does not exercise logout delivery.
+  config.queues.consumers = [];
   config.main = new URL('../../crates/worker/service/entrypoint.ts', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = new URL(
     '../../crates/worker/migrations',

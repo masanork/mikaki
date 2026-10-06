@@ -34,7 +34,17 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
   config.vars = { MIKAKI_ISSUER: issuer, OP_PRIVATE_JWK: JSON.stringify(privateJwk) };
   const options = {
     root: new URL('../..', import.meta.url).pathname,
-    workers: [{ config }, { config: { ...config, name: 'mikaki-dpop-second' } }],
+    workers: [
+      { config },
+      {
+        // This second OP shares the producer queue but does not need another consumer.
+        config: {
+          ...config,
+          name: 'mikaki-dpop-second',
+          queues: { ...config.queues, consumers: [] },
+        },
+      },
+    ],
   };
   const harness = createTestHarness(options);
   try {
