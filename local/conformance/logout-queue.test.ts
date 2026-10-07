@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { exportJWK, jwtVerify, generateKeyPair } from 'jose';
-import { chromium } from '@playwright/test';
+import { chromium, type BrowserContext, type Page } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import type { D1Database, Queue } from '@cloudflare/workers-types';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
@@ -36,6 +36,7 @@ async function startInstance(options: {
   backchannel: (request: Request, logout: CapturedLogout) => Promise<Response>;
   recipientCount?: number;
   recipientClients?: string[];
+  sessionCount?: number;
   issuer?: string;
   ackLoss?: boolean;
 }) {
@@ -133,10 +134,12 @@ async function startInstance(options: {
     const DB = env.DB as D1Database;
     const now = Math.floor(Date.now() / 1000);
     const recipientCount = options.recipientCount ?? 1;
+    const sessions = Array.from({ length: options.sessionCount ?? 1 }, (_, index) => ({
+      sso: index === 0 ? 'logout-queue-sso' : `logout-queue-sso-${index}`,
+      cookie: opaque(),
+    }));
     const account = 'logout-queue-account';
     const credential = 'logout-queue-credential';
-    const sso = 'logout-queue-sso';
-    const cookie = opaque();
     const policy = JSON.parse(
       await readFile(new URL('../generated/worker-policy.json', import.meta.url), 'utf8'),
     );
@@ -150,38 +153,52 @@ async function startInstance(options: {
       DB.prepare("INSERT INTO signing_key VALUES('logout-queue-op',1,1,'ES256',?)").bind(
         JSON.stringify(publicJwk),
       ),
-      DB.prepare('INSERT INTO sso_session VALUES(?,?,?,?,?,0)').bind(
-        sso,
-        account,
-        credential,
-        1,
-        now + 3600,
-      ),
-      DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(sso, digest(cookie), now),
     ];
-    for (let i = 0; i < recipientCount; i++) {
-      const clientId =
-        options.recipientClients?.[i] ?? (i % 2 === 0 ? 'logout-rp-a' : 'logout-rp-b');
+    for (const [sessionIndex, session] of sessions.entries()) {
       statements.push(
-        DB.prepare(
-          'INSERT OR IGNORE INTO client(client_id,revision,active,sector_identifier) VALUES(?,1,1,?)',
-        ).bind(clientId, `${clientId}.example.test`),
-        DB.prepare('INSERT OR IGNORE INTO app_connection VALUES(?,?,1,1)').bind(account, clientId),
-        DB.prepare(
-          'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) VALUES(?,?,1) ON CONFLICT(client_id) DO UPDATE SET logout_uri=excluded.logout_uri,active=1',
-        ).bind(clientId, `https://rp.example.test/${clientId}/backchannel`),
-        DB.prepare('INSERT INTO client_session VALUES(?,?,?,?,?,1,0)').bind(
-          clientId,
-          `logout-sid-${i}`,
-          sso,
+        DB.prepare('INSERT INTO sso_session VALUES(?,?,?,?,?,0)').bind(
+          session.sso,
           account,
-          `pairwise-sub-${i}`,
+          credential,
+          1,
+          now + 3600,
+        ),
+        DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(
+          session.sso,
+          digest(session.cookie),
+          now,
         ),
       );
+      for (let i = 0; i < recipientCount; i++) {
+        const clientId =
+          options.recipientClients?.[i] ?? (i % 2 === 0 ? 'logout-rp-a' : 'logout-rp-b');
+        const sid = sessionIndex === 0 ? `logout-sid-${i}` : `logout-sid-${sessionIndex}-${i}`;
+        statements.push(
+          DB.prepare(
+            'INSERT OR IGNORE INTO client(client_id,revision,active,sector_identifier) VALUES(?,1,1,?)',
+          ).bind(clientId, `${clientId}.example.test`),
+          DB.prepare('INSERT OR IGNORE INTO app_connection VALUES(?,?,1,1)').bind(
+            account,
+            clientId,
+          ),
+          DB.prepare(
+            'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) VALUES(?,?,1) ON CONFLICT(client_id) DO UPDATE SET logout_uri=excluded.logout_uri,active=1',
+          ).bind(clientId, `https://rp.example.test/${clientId}/backchannel`),
+          DB.prepare('INSERT INTO client_session VALUES(?,?,?,?,?,1,0)').bind(
+            clientId,
+            sid,
+            session.sso,
+            account,
+            sessionIndex === 0 ? `pairwise-sub-${i}` : `pairwise-sub-${sessionIndex}-${i}`,
+          ),
+        );
+      }
     }
-    await DB.batch(statements);
+    for (let offset = 0; offset < statements.length; offset += 80) {
+      await DB.batch(statements.slice(offset, offset + 80));
+    }
 
-    const logout = async () => {
+    const logoutFor = async (cookie: string) => {
       const initial = await worker.fetch(`${issuer}/logout`, {
         headers: { Cookie: `__Host-op-sso=${cookie}` },
       });
@@ -205,13 +222,24 @@ async function startInstance(options: {
       });
       return { response, elapsedMs: performance.now() - started };
     };
+    const logout = () => logoutFor(sessions[0]!.cookie);
     const ssoState = async () =>
-      DB.prepare('SELECT revoked FROM sso_session WHERE sso_id=?').bind(sso).first('revoked');
+      DB.prepare('SELECT revoked FROM sso_session WHERE sso_id=?')
+        .bind(sessions[0]!.sso)
+        .first('revoked');
     const deliveryRows = async () =>
       (
         await DB.prepare(
           'SELECT event_id,client_id,sid,state,attempts,next_at,last_status FROM logout_delivery ORDER BY client_id,sid',
         ).all()
+      ).results as Array<Record<string, unknown>>;
+    const deliveryRowsForSession = async (sso: string) =>
+      (
+        await DB.prepare(
+          'SELECT d.event_id,d.client_id,d.sid,d.state,d.attempts,d.next_at,d.last_status FROM logout_delivery d JOIN sso_logout_event e ON e.event_id=d.event_id WHERE e.sso_id=? ORDER BY d.client_id,d.sid',
+        )
+          .bind(sso)
+          .all()
       ).results as Array<Record<string, unknown>>;
     const queueObservations = async () => {
       const response = await worker.fetch(`${issuer}/__test/queue-observations`);
@@ -225,7 +253,19 @@ async function startInstance(options: {
       globalThis.fetch = originalFetch;
       await harness.close();
     };
-    return { worker, DB, cookie, logout, ssoState, deliveryRows, queueObservations, close };
+    return {
+      worker,
+      DB,
+      sessions,
+      cookie: sessions[0]!.cookie,
+      logout,
+      logoutFor,
+      ssoState,
+      deliveryRows,
+      deliveryRowsForSession,
+      queueObservations,
+      close,
+    };
   } catch (error) {
     globalThis.fetch = originalFetch;
     await harness.close();
@@ -610,3 +650,358 @@ test('a Queue ack lost after D1 and RP success retries without duplicate RP deli
     await instance.close();
   }
 });
+
+// Opt-in local capacity probe. Run with:
+// MIKAKI_LOGOUT_BENCHMARK=1 node --test --test-concurrency=1 \
+//   --test-name-pattern='local-only logout benchmark' local/conformance/logout-queue.test.ts
+// This measures the real local workerd/D1/Queue path; it is not production capacity evidence.
+if (process.env.MIKAKI_LOGOUT_BENCHMARK === '1') {
+  test('local-only logout benchmark reports browser, first-delivery, and D1 terminal latency', async () => {
+    const warmupCount = 2;
+    const sampleCount = 20;
+    const batchSize = 4;
+    const observationIntervalMs = 100;
+    const scenarios = [
+      { name: 'single-rp', clients: ['logout-rp-a'] },
+      {
+        name: 'balanced-8',
+        clients: [
+          'logout-rp-a',
+          'logout-rp-b',
+          'logout-rp-c',
+          'logout-rp-d',
+          'logout-rp-a',
+          'logout-rp-b',
+          'logout-rp-c',
+          'logout-rp-d',
+        ],
+      },
+      {
+        name: 'skewed-24-22-to-2',
+        clients: [...Array.from({ length: 22 }, () => 'logout-rp-a'), 'logout-rp-b', 'logout-rp-b'],
+      },
+    ];
+    const percentile = (values: number[], fraction: number) => {
+      const sorted = [...values].sort((left, right) => left - right);
+      return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? null;
+    };
+    const rounded = (value: number | null) =>
+      value === null ? null : Math.round(value * 1000) / 1000;
+    const reports: Array<Record<string, unknown>> = [];
+    const failures: string[] = [];
+
+    for (const scenario of scenarios) {
+      const sidToSession = new Map<string, string>();
+      const startedAt = new Map<string, number>();
+      const firstDeliveryAt = new Map<string, number>();
+      const terminalObservedAt = new Map<string, number>();
+      const measured: Array<{
+        responseMs: number;
+        firstDeliveryMs: number;
+        firstDeliveryVsResponseMs: number;
+        d1TerminalObservedMs: number;
+        responseStatus: number;
+        rpSuccesses: number;
+        rpRetries: number;
+        rpFailures: number;
+        rpExpired: number;
+        rpAttempts: number;
+      }> = [];
+      let successfulResponses = 0;
+      let instance: Awaited<ReturnType<typeof startInstance>> | undefined;
+      let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+      let server: Awaited<ReturnType<typeof journeyServer>> | undefined;
+      let peakPending = 0;
+      let peakLeased = 0;
+      let backlogReads = 0;
+      const contexts: BrowserContext[] = [];
+      try {
+        let dispatch: Parameters<typeof journeyServer>[0] = async () => {
+          throw new Error('Logout benchmark bridge is not ready');
+        };
+        server = await journeyServer((url, init) => dispatch(url, init));
+        const issuer = `https://mikaki.test:${server.port}`;
+        const fanout = scenario.clients.length;
+        instance = await startInstance({
+          queue: true,
+          issuer,
+          recipientCount: fanout,
+          recipientClients: scenario.clients,
+          sessionCount: sampleCount + warmupCount,
+          backchannel: async (_request, token) => {
+            const sid = String(token.sid);
+            const sso = sidToSession.get(sid);
+            if (sso) {
+              if (!firstDeliveryAt.has(sso)) firstDeliveryAt.set(sso, performance.now());
+            }
+            return new Response(null, { status: 204 });
+          },
+        });
+        dispatch = async (url, init) => {
+          assert.equal(new URL(url).origin, issuer);
+          return instance!.worker.fetch(url, {
+            method: init.method,
+            headers: init.headers,
+            ...(init.body ? { body: init.body } : {}),
+            redirect: 'manual',
+          });
+        };
+        for (const [sessionIndex, session] of instance.sessions.entries()) {
+          for (let recipientIndex = 0; recipientIndex < fanout; recipientIndex++) {
+            const sid =
+              sessionIndex === 0
+                ? `logout-sid-${recipientIndex}`
+                : `logout-sid-${sessionIndex}-${recipientIndex}`;
+            sidToSession.set(sid, session.sso);
+          }
+        }
+        browser = await chromium.launch({
+          headless: true,
+          args: ['--host-resolver-rules=MAP mikaki.test 127.0.0.1', '--no-proxy-server'],
+        });
+        const pages: Page[] = [];
+        for (let lane = 0; lane < batchSize; lane++) {
+          const context = await browser.newContext({ ignoreHTTPSErrors: true });
+          contexts.push(context);
+          pages.push(await context.newPage());
+        }
+
+        const observeBacklog = async () => {
+          const ids = instance!.sessions.map((session) => session.sso);
+          const placeholders = ids.map((_, index) => `?${index + 1}`).join(',');
+          const results = await instance!.DB.prepare(
+            `SELECT e.sso_id,COUNT(*) AS deliveries, \
+               SUM(CASE WHEN d.state IN ('delivered','failed','expired') THEN 1 ELSE 0 END) AS terminal, \
+               SUM(CASE WHEN d.state='pending' THEN 1 ELSE 0 END) AS pending, \
+               SUM(CASE WHEN d.state='leased' THEN 1 ELSE 0 END) AS leased \
+             FROM logout_delivery d JOIN sso_logout_event e ON e.event_id=d.event_id \
+             WHERE e.sso_id IN (${placeholders}) GROUP BY e.sso_id`,
+          )
+            .bind(...ids)
+            .all<{
+              sso_id: string;
+              deliveries: number;
+              terminal: number;
+              pending: number;
+              leased: number;
+            }>();
+          let pending = 0;
+          let leased = 0;
+          for (const result of results.results) {
+            pending += Number(result.pending);
+            leased += Number(result.leased);
+            if (
+              Number(result.deliveries) === fanout &&
+              Number(result.terminal) === fanout &&
+              !terminalObservedAt.has(result.sso_id)
+            ) {
+              terminalObservedAt.set(result.sso_id, performance.now());
+            }
+          }
+          peakPending = Math.max(peakPending, pending);
+          peakLeased = Math.max(peakLeased, leased);
+          backlogReads++;
+          return { pending, leased };
+        };
+        const batches = [
+          Array.from({ length: warmupCount }, (_, index) => index),
+          ...Array.from({ length: Math.ceil(sampleCount / batchSize) }, (_, batch) =>
+            Array.from(
+              { length: Math.min(batchSize, sampleCount - batch * batchSize) },
+              (_, index) => warmupCount + batch * batchSize + index,
+            ),
+          ),
+        ];
+        for (const batch of batches) {
+          await observeBacklog();
+          const responses = await Promise.all(
+            batch.map(async (index) => {
+              const session = instance!.sessions[index]!;
+              const sso = session.sso;
+              const lane = index % batchSize;
+              const page = pages[lane]!;
+              await contexts[lane]!.addCookies([
+                {
+                  url: issuer,
+                  name: '__Host-op-sso',
+                  value: session.cookie,
+                  secure: true,
+                  httpOnly: true,
+                  sameSite: 'Lax',
+                },
+              ]);
+              await page.goto(`${issuer}/logout`, {
+                waitUntil: 'domcontentloaded',
+                timeout: 10_000,
+              });
+              assert.match(await page.content(), /name="csrf"/);
+              const formStarted = performance.now();
+              startedAt.set(sso, formStarted);
+              const responsePromise = page
+                .waitForResponse((response) => {
+                  const request = response.request();
+                  return (
+                    request.method() === 'POST' && new URL(response.url()).pathname === '/logout'
+                  );
+                })
+                .then((response) => ({ response, responseAt: performance.now() }));
+              await page
+                .locator('form[action^="/logout"] button[type="submit"]')
+                .click({ timeout: 10_000 });
+              const { response, responseAt } = await within(
+                responsePromise,
+                'browser logout response',
+                10_000,
+              );
+              return { index, sso, responseAt, responseStatus: response.status() };
+            }),
+          );
+          successfulResponses += responses.filter(
+            (item) => item.index >= warmupCount && item.responseStatus === 200,
+          ).length;
+          const successful = responses.filter((item) => item.responseStatus === 200);
+          const terminalRows = new Map<string, Array<Record<string, unknown>>>();
+          if (successful.length > 0) {
+            const deadline = Date.now() + 45_000;
+            while (
+              successful.some((item) => !terminalObservedAt.has(item.sso)) &&
+              Date.now() < deadline
+            ) {
+              await observeBacklog();
+              if (successful.every((item) => terminalObservedAt.has(item.sso))) break;
+              await delay(observationIntervalMs);
+            }
+            if (successful.some((item) => !terminalObservedAt.has(item.sso))) {
+              failures.push(`Timed out waiting for D1 terminal state in ${scenario.name}`);
+            }
+            for (const item of successful) {
+              terminalRows.set(item.sso, await instance!.deliveryRowsForSession(item.sso));
+            }
+          }
+          for (const item of responses) {
+            if (item.index < warmupCount || item.responseStatus !== 200) continue;
+            const formStarted = startedAt.get(item.sso)!;
+            const firstDelivery = firstDeliveryAt.get(item.sso);
+            const terminalAt = terminalObservedAt.get(item.sso);
+            const rows = terminalRows.get(item.sso) ?? [];
+            if (firstDelivery === undefined || terminalAt === undefined || rows.length !== fanout) {
+              failures.push(`Missing RP timing or D1 rows for ${scenario.name}`);
+              continue;
+            }
+            measured.push({
+              responseMs: item.responseAt - formStarted,
+              firstDeliveryMs: firstDelivery! - formStarted,
+              firstDeliveryVsResponseMs: firstDelivery! - item.responseAt,
+              d1TerminalObservedMs: terminalAt - formStarted,
+              responseStatus: item.responseStatus,
+              rpSuccesses: rows.filter((row) => row.state === 'delivered').length,
+              rpRetries: rows.reduce((sum, row) => sum + Math.max(0, Number(row.attempts) - 1), 0),
+              rpFailures: rows.filter((row) => row.state === 'failed').length,
+              rpExpired: rows.filter((row) => row.state === 'expired').length,
+              rpAttempts: rows.reduce((sum, row) => sum + Number(row.attempts), 0),
+            });
+          }
+        }
+        const finalBacklog = await observeBacklog();
+        const series = (field: keyof (typeof measured)[number]) =>
+          measured.map((sample) => Number(sample[field]));
+        const responseSeries = series('responseMs');
+        const deliverySeries = series('firstDeliveryMs');
+        const deliveryResponseSeries = series('firstDeliveryVsResponseMs');
+        const terminalSeries = series('d1TerminalObservedMs');
+        const percentileSummary = (values: number[]) => ({
+          p50_ms: rounded(percentile(values, 0.5)),
+          p95_ms: rounded(percentile(values, 0.95)),
+          p99_ms: rounded(percentile(values, 0.99)),
+        });
+        const rpSuccesses = measured.reduce((sum, sample) => sum + sample.rpSuccesses, 0);
+        const rpRetries = measured.reduce((sum, sample) => sum + sample.rpRetries, 0);
+        const rpFailures = measured.reduce((sum, sample) => sum + sample.rpFailures, 0);
+        const rpExpired = measured.reduce((sum, sample) => sum + sample.rpExpired, 0);
+        reports.push({
+          scenario: scenario.name,
+          recipient_fanout: fanout,
+          sample_count: sampleCount,
+          valid_latency_samples: measured.length,
+          complete:
+            measured.length === sampleCount &&
+            successfulResponses === sampleCount &&
+            rpFailures + rpExpired === 0 &&
+            finalBacklog.pending + finalBacklog.leased === 0,
+          warmup_count: warmupCount,
+          warmup_policy:
+            'two logout events per scenario; excluded from latency percentiles and outcome counts',
+          percentiles: {
+            browser_logout_response: percentileSummary(responseSeries),
+            first_rp_post_from_form_submit: percentileSummary(deliverySeries),
+            first_rp_post_minus_browser_response: percentileSummary(deliveryResponseSeries),
+            d1_terminal_observation_from_form_submit: percentileSummary(terminalSeries),
+          },
+          logout: {
+            successful: successfulResponses,
+            failed: sampleCount - successfulResponses,
+            valid_latency_samples: measured.length,
+            response_success_rate: Number((successfulResponses / sampleCount).toFixed(4)),
+          },
+          rp_delivery: {
+            successful: rpSuccesses,
+            retried_attempts: rpRetries,
+            failed_terminal: rpFailures,
+            expired_terminal: rpExpired,
+            attempt_count: measured.reduce((sum, sample) => sum + sample.rpAttempts, 0),
+          },
+          backlog: {
+            peak_pending_observed: peakPending,
+            peak_leased_observed: peakLeased,
+            final_pending: finalBacklog.pending,
+            final_leased: finalBacklog.leased,
+            observation_interval_ms: observationIntervalMs,
+            observations: backlogReads,
+          },
+          sample_rows: measured,
+          qualification:
+            'local-only workerd/Miniflare/D1/Queue result; not production capacity or SLO evidence',
+        });
+        if (measured.length !== sampleCount)
+          failures.push(`Incomplete samples in ${scenario.name}`);
+        if (successfulResponses !== sampleCount)
+          failures.push(`Logout HTTP failures in ${scenario.name}`);
+        if (rpFailures + rpExpired !== 0) failures.push(`Terminal RP failures in ${scenario.name}`);
+        if (finalBacklog.pending + finalBacklog.leased !== 0) {
+          failures.push(`Outbox backlog in ${scenario.name}`);
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        failures.push(`${scenario.name}: ${detail}`);
+        reports.push({
+          scenario: scenario.name,
+          recipient_fanout: scenario.clients.length,
+          sample_count: sampleCount,
+          valid_latency_samples: measured.length,
+          complete: false,
+          failure: detail,
+          observed_peak_pending: peakPending,
+          observed_peak_leased: peakLeased,
+        });
+      } finally {
+        for (const context of contexts) await context.close();
+        await browser?.close();
+        await instance?.close();
+        await server?.close();
+      }
+    }
+
+    console.log(
+      `MIKAKI_LOGOUT_BENCHMARK_JSON ${JSON.stringify({
+        schema_version: 1,
+        measured_at: new Date().toISOString(),
+        local_only: true,
+        production_capacity_qualified: false,
+        percentile_method:
+          'nearest-rank; with 20 samples p95/p99 are near the observed maximum, not stable tail-SLO estimates',
+        scenarios: reports,
+      })}`,
+    );
+    assert.deepEqual(failures, [], `Local logout benchmark failures: ${failures.join('; ')}`);
+  });
+}
