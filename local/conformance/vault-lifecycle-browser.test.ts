@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createTestHarness } from 'wrangler';
-import { chromium, expect } from '@playwright/test';
+import { chromium, expect, type Page } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
 type Notifications = 'available' | 'storage-only' | 'unavailable';
@@ -57,14 +57,39 @@ async function exerciseLifecycle(notifications: Notifications) {
     ]);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const logoutDenials = {
+      confirm: { channel: 0, storage: 0 },
+      ended: { channel: 0, storage: 0 },
+    };
+    let logoutPage: Page | undefined;
+    await context.exposeBinding(
+      'recordVaultNotificationDenial',
+      (source, api: 'channel' | 'storage', sessionState: string) => {
+        if (source.page !== logoutPage) return;
+        assert.ok(api === 'channel' || api === 'storage');
+        assert.ok(sessionState === 'confirm' || sessionState === 'ended');
+        logoutDenials[sessionState][api]++;
+      },
+    );
     await context.addInitScript((notifications) => {
       const denied = { channel: 0, storage: 0 };
       Object.defineProperty(window, 'deniedVaultNotifications', { value: denied });
+      const recordDenial = (api: 'channel' | 'storage') => {
+        void (
+          window as unknown as Window & {
+            recordVaultNotificationDenial: (
+              api: 'channel' | 'storage',
+              sessionState: string,
+            ) => Promise<void>;
+          }
+        ).recordVaultNotificationDenial(api, document.body?.dataset['sessionState'] ?? '');
+      };
       if (notifications !== 'available') {
         Object.defineProperty(window, 'BroadcastChannel', {
           value: class {
             constructor() {
               denied.channel++;
+              recordDenial('channel');
               throw new DOMException('Channel access denied', 'SecurityError');
             }
           },
@@ -74,6 +99,7 @@ async function exerciseLifecycle(notifications: Notifications) {
         Object.defineProperty(window, 'localStorage', {
           get() {
             denied.storage++;
+            recordDenial('storage');
             throw new DOMException('Storage access denied', 'SecurityError');
           },
         });
@@ -361,6 +387,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     await expect(page.locator('#unlock')).toBeEnabled();
     await page.locator('#unlock').click();
     const other = await page.context().newPage();
+    logoutPage = other;
     other.on('pageerror', (error) => errors.push(error.message));
     await other.goto(`${origin}/logout?lang=en`);
     await other.getByRole('button', { name: 'Log out', exact: true }).click();
@@ -376,16 +403,11 @@ async function exerciseLifecycle(notifications: Notifications) {
     }
     await expect(locked).toBeVisible();
     assert.equal(await page.locator('#name, textarea').count(), 0);
-    const denied = await other.evaluate(
-      () =>
-        (
-          window as unknown as Window & {
-            deniedVaultNotifications: { channel: number; storage: number };
-          }
-        ).deniedVaultNotifications,
-    );
-    if (notifications !== 'available') assert.ok(denied.channel > 0);
-    if (notifications === 'unavailable') assert.ok(denied.storage > 0);
+    // The init script creates fresh counters on navigation. Capture denied API
+    // attempts from the logout tab in the Node binding, keyed by page and
+    // document state, so the confirm-form attempt survives the result document.
+    if (notifications !== 'available') assert.ok(logoutDenials.confirm.channel > 0);
+    if (notifications === 'unavailable') assert.ok(logoutDenials.confirm.storage > 0);
     await reopen.click();
     await expect(locked).toBeVisible();
     await expect(page.locator('#unlock')).toHaveCount(0);
