@@ -17,6 +17,19 @@ type Transport = (
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
 }>;
+type JourneySessionCheckMode = 'always' | 'lease';
+type JourneyRpOptions = {
+  nowMonotonicMs?: () => number;
+  wallNowSeconds?: () => number;
+};
+type SessionCheckBody = {
+  response_ok?: boolean;
+  active?: boolean;
+  sub?: string;
+  auth_time?: number;
+  expires_at?: number;
+  lease_ttl?: number;
+};
 const secret = () => randomBytes(32).toString('base64url');
 const hash = (value: string) => createHash('sha256').update(value).digest('base64url');
 const html = (body: string, status = 200) =>
@@ -32,6 +45,7 @@ export async function journeyRp(
   publicJwk: JWK,
   transport: Transport,
   profile = false,
+  options: JourneyRpOptions = {},
 ) {
   const opKey = await importJWK(publicJwk, 'ES256');
   const transactions = new Map<string, { browser: string; nonce: string; verifier: string }>();
@@ -40,6 +54,18 @@ export async function journeyRp(
   let lastSubject: string | null = null;
   let lastProfile: { sub: string; name?: string } | null = null;
   let lastAccessToken: string | null = null;
+  let sessionCheckMode: JourneySessionCheckMode = 'always';
+  let lastSessionCheck: { responseOk: boolean; active: boolean | null } | null = null;
+  let sessionLease: {
+    sid: string;
+    sub: string;
+    authTime: number;
+    expiresAtMonotonicMs: number;
+    leaseTtlSeconds: number;
+    parentExpiresAtUnixSeconds: number;
+  } | null = null;
+  const monotonicNow = options.nowMonotonicMs ?? (() => performance.now());
+  const wallNowSeconds = options.wallNowSeconds ?? (() => Date.now() / 1000);
   async function post(path: string, values: Record<string, string>) {
     const endpoint = `${issuer}${path}`;
     const assertion = await new SignJWT({ sub: clientId, jti: randomUUID() })
@@ -75,6 +101,39 @@ export async function journeyRp(
     if (name) headers.set('Set-Cookie', `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=/`);
     return new Response(null, { status: 302, headers });
   };
+  const checkSession = async (sid: string): Promise<SessionCheckBody> => {
+    const requestStartedMonotonicMs = monotonicNow();
+    const requestStartedWallSeconds = wallNowSeconds();
+    const response = await post('/session/check', { sid });
+    const body = (await response.json()) as SessionCheckBody;
+    lastSessionCheck = {
+      responseOk: response.ok,
+      active: typeof body.active === 'boolean' ? body.active : null,
+    };
+    if (
+      response.ok &&
+      body.active === true &&
+      typeof body.sub === 'string' &&
+      Number.isSafeInteger(body.auth_time) &&
+      Number.isSafeInteger(body.expires_at) &&
+      Number.isSafeInteger(body.lease_ttl) &&
+      body.lease_ttl! > 0
+    ) {
+      const ssoRemainingSeconds = body.expires_at! - requestStartedWallSeconds;
+      const validForSeconds = Math.max(0, Math.min(body.lease_ttl!, ssoRemainingSeconds));
+      sessionLease = {
+        sid,
+        sub: body.sub,
+        authTime: body.auth_time!,
+        expiresAtMonotonicMs: requestStartedMonotonicMs + validForSeconds * 1000,
+        leaseTtlSeconds: body.lease_ttl!,
+        parentExpiresAtUnixSeconds: body.expires_at!,
+      };
+    } else {
+      sessionLease = null;
+    }
+    return { ...body, response_ok: response.ok };
+  };
   return {
     post,
     get lastExchange() {
@@ -88,6 +147,15 @@ export async function journeyRp(
     },
     get lastSubject() {
       return lastSubject;
+    },
+    get sessionLease() {
+      return sessionLease ? { ...sessionLease } : null;
+    },
+    get lastSessionCheck() {
+      return lastSessionCheck ? { ...lastSessionCheck } : null;
+    },
+    setSessionCheckMode(mode: JourneySessionCheckMode) {
+      sessionCheckMode = mode;
     },
     async userinfo() {
       if (!lastAccessToken) throw new Error('UserInfo requires a completed token exchange');
@@ -107,6 +175,8 @@ export async function journeyRp(
         lastAccessToken = null;
         lastSubject = null;
         lastExchange = null;
+        sessionLease = null;
+        lastSessionCheck = null;
         const state = secret(),
           browser = secret(),
           nonce = secret(),
@@ -161,14 +231,9 @@ export async function journeyRp(
           typeof payload.auth_time !== 'number'
         )
           return html('<h1>ID token rejected</h1>', 401);
-        const checked = await post('/session/check', { sid: payload.sid });
-        const status = (await checked.json()) as {
-          active?: boolean;
-          sub?: string;
-          auth_time?: number;
-        };
+        const status = await checkSession(payload.sid);
         if (
-          !checked.ok ||
+          !status.response_ok ||
           !status.active ||
           status.sub !== payload.sub ||
           status.auth_time !== payload.auth_time
@@ -202,14 +267,18 @@ export async function journeyRp(
       if (url.pathname === '/protected') {
         const session = sessions.get(hash(cookie(request, '__Host-journey-session') ?? ''));
         if (!session) return html('<h1>Sign-in required</h1>', 401);
-        const checked = await post('/session/check', { sid: session.sid });
-        const status = (await checked.json()) as {
-          active?: boolean;
-          sub?: string;
-          auth_time?: number;
-        };
+        const now = monotonicNow();
+        const leaseCacheHit =
+          sessionCheckMode === 'lease' &&
+          sessionLease?.sid === session.sid &&
+          sessionLease.sub === session.sub &&
+          sessionLease.authTime === session.authTime &&
+          now < sessionLease.expiresAtMonotonicMs;
+        const status = leaseCacheHit
+          ? { response_ok: true, active: true, sub: session.sub, auth_time: session.authTime }
+          : await checkSession(session.sid);
         if (
-          !checked.ok ||
+          !status.response_ok ||
           !status.active ||
           status.sub !== session.sub ||
           status.auth_time !== session.authTime
