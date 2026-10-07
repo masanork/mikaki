@@ -29,8 +29,13 @@ type RequestSample = {
 };
 
 const enabled = process.env.MIKAKI_MIXED_BENCHMARK === '1';
+const countSessionChecks = (cycle: number, requests: RequestSample[], phase: string) =>
+  requests.filter(
+    (request) =>
+      request.cycle === cycle && request.path === '/session/check' && request.phase === phase,
+  ).length;
 test(
-  'local-only mixed auth benchmark: Passkey/PRF, PKCE, UserInfo, protected session, and logout',
+  'local-only mixed auth and RP session-lease comparison: Passkey/PRF, PKCE, UserInfo, protected requests, and logout',
   { skip: !enabled, timeout: 180_000 },
   async () => {
     const warmups = 1;
@@ -45,6 +50,8 @@ test(
     const failures: string[] = [];
     let cycleNumber: number | null = null;
     let cycleKind: RequestSample['kind'] = 'setup';
+    let simulatedMonotonicMs = 0;
+    let simulatedWallSeconds = Date.now() / 1000;
     let setupMs = 0;
     const percentile = (values: number[], fraction: number) => {
       const sorted = [...values].sort((a, b) => a - b);
@@ -72,7 +79,7 @@ test(
         status === 401 &&
         method === 'GET' &&
         path === '/protected' &&
-        started.phase === 'post_logout_check';
+        ['post_logout_at_expiry', 'post_logout_after_expiry'].includes(started.phase);
       const expectedAbsence =
         status === 404 &&
         method === 'GET' &&
@@ -214,6 +221,11 @@ test(
         rpKeys.privateKey,
         publicJwk,
         (url, init) => timedFetch(url, init),
+        false,
+        {
+          nowMonotonicMs: () => simulatedMonotonicMs,
+          wallNowSeconds: () => simulatedWallSeconds,
+        },
       );
       dispatch = async (url, init) => {
         const target = new URL(url);
@@ -310,6 +322,9 @@ test(
         );
         cycleNumber = index;
         cycleKind = warmup ? 'warmup' : 'sample';
+        simulatedMonotonicMs += 10_000;
+        simulatedWallSeconds = Date.now() / 1000;
+        rp.setSessionCheckMode('always');
         const before = performance.now();
         const row: Record<string, unknown> = {
           index,
@@ -318,9 +333,17 @@ test(
           auth_ms: null,
           prf_ms: null,
           userinfo_ms: null,
-          protected_ms: null,
+          protected_always_ms: null,
+          protected_lease_ms: null,
           logout_ms: null,
-          post_logout_status: null,
+          lease_ttl_seconds: null,
+          effective_lease_duration_ms: null,
+          parent_expiry_remaining_seconds: null,
+          lease_before_expiry_statuses: null,
+          lease_at_expiry_active_status: null,
+          post_logout_before_expiry_status: null,
+          post_logout_at_expiry_status: null,
+          post_logout_after_expiry_status: null,
           passkey_assertions: null,
         };
         outcomes.push(row);
@@ -368,14 +391,61 @@ test(
             'openid-only UserInfo is sub-only in this fixture; it does not benchmark profile/name',
           );
 
-          phase = 'protected';
+          phase = 'protected-always';
+          rp.setSessionCheckMode('always');
           const protectedStart = performance.now();
           const protectedResponses = await Promise.all(
             protectedPages.map((protectedPage) => protectedPage.goto(`${rpOrigin}/protected`)),
           );
           for (const response of protectedResponses) assert.equal(response?.status(), 200);
-          row.protected_ms = Math.round((performance.now() - protectedStart) * 1000) / 1000;
-          row.protected_concurrency = concurrency;
+          row.protected_always_ms = Math.round((performance.now() - protectedStart) * 1000) / 1000;
+          row.always_mode_check_count = countSessionChecks(index, requests, 'protected-always');
+          assert.equal(row.always_mode_check_count, concurrency);
+
+          const issuedLease = rp.sessionLease;
+          assert.ok(issuedLease && issuedLease.leaseTtlSeconds > 0);
+          rp.setSessionCheckMode('lease');
+          simulatedMonotonicMs = issuedLease.expiresAtMonotonicMs;
+          simulatedWallSeconds = issuedLease.parentExpiresAtUnixSeconds - 2;
+          phase = 'lease-at-expiry-active';
+          const activeExpiryStart = performance.now();
+          const activeAtExpiry = await protectedPages[0].goto(`${rpOrigin}/protected`);
+          row.lease_active_recheck_ms =
+            Math.round((performance.now() - activeExpiryStart) * 1000) / 1000;
+          row.lease_at_expiry_active_status = activeAtExpiry?.status();
+          assert.equal(activeAtExpiry?.status(), 200);
+          assert.equal(countSessionChecks(index, requests, 'lease-at-expiry-active'), 1);
+          const cappedLease = rp.sessionLease;
+          assert.ok(cappedLease);
+          row.lease_ttl_seconds = cappedLease.leaseTtlSeconds;
+          row.effective_lease_duration_ms = cappedLease.expiresAtMonotonicMs - simulatedMonotonicMs;
+          row.parent_expiry_remaining_seconds = 2;
+          row.lease_parent_cap_applied =
+            cappedLease.expiresAtMonotonicMs <
+            simulatedMonotonicMs + cappedLease.leaseTtlSeconds * 1000;
+          assert.equal(row.lease_parent_cap_applied, true, 'Lease is capped by parent SSO expiry');
+          assert.equal(
+            row.effective_lease_duration_ms,
+            2000,
+            'Injected parent expiry has two seconds remaining',
+          );
+          simulatedMonotonicMs = cappedLease.expiresAtMonotonicMs - 1;
+          phase = 'lease-before-expiry';
+          const leaseStart = performance.now();
+          const leaseResponses = await Promise.all(
+            protectedPages.map((protectedPage) => protectedPage.goto(`${rpOrigin}/protected`)),
+          );
+          row.lease_before_expiry_statuses = leaseResponses.map((response) => response?.status());
+          assert.deepEqual(row.lease_before_expiry_statuses, [200, 200]);
+          row.protected_lease_ms = Math.round((performance.now() - leaseStart) * 1000) / 1000;
+          row.lease_burst_check_count = countSessionChecks(index, requests, 'lease-before-expiry');
+          assert.equal(row.lease_burst_check_count, 0);
+          assert.equal(
+            rp.sessionLease?.expiresAtMonotonicMs,
+            cappedLease.expiresAtMonotonicMs,
+            'Cached requests must not slide the lease deadline',
+          );
+          const refreshedLease = cappedLease;
 
           phase = 'logout';
           const logoutStart = performance.now();
@@ -383,11 +453,35 @@ test(
           await page.getByRole('button', { name: 'Log out', exact: true }).click();
           await expect(page.getByRole('heading', { name: 'You have logged out' })).toBeVisible();
           row.logout_ms = Math.round((performance.now() - logoutStart) * 1000) / 1000;
-          phase = 'post_logout_check';
-          const rejected = await protectedPages[0].goto(`${rpOrigin}/protected`);
-          assert.ok(rejected);
-          row.post_logout_status = rejected.status();
-          assert.equal(rejected.status(), 401, 'Protected access must reject the ended OP session');
+          simulatedMonotonicMs = refreshedLease.expiresAtMonotonicMs - 1;
+          phase = 'post_logout_before_expiry';
+          const staleStart = performance.now();
+          const staleAccepted = await protectedPages[0].goto(`${rpOrigin}/protected`);
+          row.post_logout_stale_ms = Math.round((performance.now() - staleStart) * 1000) / 1000;
+          row.post_logout_before_expiry_status = staleAccepted?.status();
+          assert.equal(staleAccepted?.status(), 200);
+          assert.equal(countSessionChecks(index, requests, phase), 0);
+          simulatedMonotonicMs = refreshedLease.expiresAtMonotonicMs;
+          phase = 'post_logout_at_expiry';
+          const expiredStart = performance.now();
+          const rejectedAtExpiry = await protectedPages[0].goto(`${rpOrigin}/protected`);
+          row.post_logout_recheck_ms = Math.round((performance.now() - expiredStart) * 1000) / 1000;
+          row.post_logout_at_expiry_status = rejectedAtExpiry?.status();
+          assert.equal(rejectedAtExpiry?.status(), 401);
+          assert.equal(countSessionChecks(index, requests, phase), 1);
+          assert.equal(rp.lastSessionCheck?.responseOk, true);
+          row.post_logout_at_expiry_op_active = rp.lastSessionCheck?.active;
+          assert.equal(rp.lastSessionCheck?.active, false, 'OP recheck must observe revoked SSO');
+          assert.equal(rp.sessionLease, null);
+          simulatedMonotonicMs = refreshedLease.expiresAtMonotonicMs + 1;
+          phase = 'post_logout_after_expiry';
+          const rejectedAfterExpiry = await protectedPages[0].goto(`${rpOrigin}/protected`);
+          row.post_logout_after_expiry_status = rejectedAfterExpiry?.status();
+          assert.equal(rejectedAfterExpiry?.status(), 401);
+          assert.equal(countSessionChecks(index, requests, phase), 1);
+          row.post_logout_after_expiry_op_active = rp.lastSessionCheck?.active;
+          assert.equal(rp.lastSessionCheck?.responseOk, true);
+          assert.equal(rp.lastSessionCheck?.active, false);
           const cycleRequests = requests.filter((request) => request.cycle === index);
           const count = (path: string, requestPhase?: string) =>
             cycleRequests.filter(
@@ -415,11 +509,27 @@ test(
             [200, 200],
           );
           assert.deepEqual(
-            count('/session/check', 'protected').map((request) => request.status),
+            count('/session/check', 'protected-always').map((request) => request.status),
             [200, 200],
           );
           assert.deepEqual(
-            count('/session/check', 'post_logout_check').map((request) => request.status),
+            count('/session/check', 'lease-before-expiry').map((request) => request.status),
+            [],
+          );
+          assert.deepEqual(
+            count('/session/check', 'lease-at-expiry-active').map((request) => request.status),
+            [200],
+          );
+          assert.deepEqual(
+            count('/session/check', 'post_logout_before_expiry').map((request) => request.status),
+            [],
+          );
+          assert.deepEqual(
+            count('/session/check', 'post_logout_at_expiry').map((request) => request.status),
+            [200],
+          );
+          assert.deepEqual(
+            count('/session/check', 'post_logout_after_expiry').map((request) => request.status),
             [200],
           );
           assert.deepEqual(
@@ -427,17 +537,43 @@ test(
             [200],
           );
           assert.deepEqual(
-            count('/protected', 'protected').map((request) => request.status),
+            count('/protected', 'protected-always').map((request) => request.status),
             [200, 200],
           );
           assert.deepEqual(
-            count('/protected', 'post_logout_check').map((request) => request.status),
+            count('/protected', 'lease-before-expiry').map((request) => request.status),
+            [200, 200],
+          );
+          assert.deepEqual(
+            count('/protected', 'lease-at-expiry-active').map((request) => request.status),
+            [200],
+          );
+          assert.deepEqual(
+            count('/protected', 'post_logout_before_expiry').map((request) => request.status),
+            [200],
+          );
+          assert.deepEqual(
+            count('/protected', 'post_logout_at_expiry').map((request) => request.status),
+            [401],
+          );
+          assert.deepEqual(
+            count('/protected', 'post_logout_after_expiry').map((request) => request.status),
             [401],
           );
           assert.equal(count('/logout').length, 2);
           row.outcome = 'success';
           if (!warmup) {
-            for (const key of ['auth_ms', 'prf_ms', 'userinfo_ms', 'protected_ms', 'logout_ms']) {
+            for (const key of [
+              'auth_ms',
+              'prf_ms',
+              'userinfo_ms',
+              'protected_always_ms',
+              'protected_lease_ms',
+              'lease_active_recheck_ms',
+              'post_logout_stale_ms',
+              'post_logout_recheck_ms',
+              'logout_ms',
+            ]) {
               (phaseLatency[key] ??= []).push(Number(row[key]));
             }
           }
@@ -470,11 +606,11 @@ test(
       );
       assert.equal(
         requests.filter((request) => request.path === '/protected').length,
-        perCycle * (concurrency + 2),
+        perCycle * (concurrency * 2 + 5),
       );
       assert.equal(
         requests.filter((request) => request.path === '/session/check').length,
-        perCycle * (2 + concurrency + 1),
+        perCycle * (concurrency + 5),
       );
       assert.equal(
         requests.filter((request) => request.path === '/session/check' && request.phase === 'login')
@@ -483,15 +619,43 @@ test(
       );
       assert.equal(
         requests.filter(
-          (request) => request.path === '/session/check' && request.phase === 'protected',
+          (request) => request.path === '/session/check' && request.phase === 'protected-always',
         ).length,
         (warmups + samples) * concurrency,
       );
       assert.equal(
         requests.filter(
-          (request) => request.path === '/session/check' && request.phase === 'post_logout_check',
+          (request) => request.path === '/session/check' && request.phase === 'lease-before-expiry',
         ).length,
-        warmups + samples,
+        0,
+      );
+      assert.equal(
+        requests.filter(
+          (request) =>
+            request.path === '/session/check' && request.phase === 'lease-at-expiry-active',
+        ).length,
+        perCycle,
+      );
+      assert.equal(
+        requests.filter(
+          (request) =>
+            request.path === '/session/check' && request.phase === 'post_logout_before_expiry',
+        ).length,
+        0,
+      );
+      assert.equal(
+        requests.filter(
+          (request) =>
+            request.path === '/session/check' && request.phase === 'post_logout_at_expiry',
+        ).length,
+        perCycle,
+      );
+      assert.equal(
+        requests.filter(
+          (request) =>
+            request.path === '/session/check' && request.phase === 'post_logout_after_expiry',
+        ).length,
+        perCycle,
       );
       assert.equal(
         requests.filter((request) => request.outcome === 'unexpected_http_error').length,
@@ -523,10 +687,10 @@ test(
         }
       }
       const report = {
-        schema: 'mikaki.local-mixed-auth-benchmark.v1',
+        schema: 'mikaki.local-mixed-auth-benchmark.v2',
         scope: 'local-only; no production capacity, CPU, or remote SQL claim',
         generated_at: new Date().toISOString(),
-        benchmark_base_commit: 'bb45ce230f2077de32b1c961184eaafe44b027fb',
+        benchmark_base_commit: '5d9e8abe4095d288d0e423ece42ad7d71a84f62a',
         measured_source_head: execFileSync('git', ['rev-parse', 'HEAD'], {
           encoding: 'utf8',
         }).trim(),
@@ -540,10 +704,39 @@ test(
         authentication_cycles_serial: true,
         deadline_ms: deadlineMs,
         session_check_profile:
-          'check on callback and every protected request; 300-second lease not exercised',
+          'always-check vs local lease-cache mode; uses actual response lease_ttl and parent SSO expiry; local injected monotonic and wall clocks only',
         userinfo_profile: 'openid-only sub response; Claims Worker/name profile not exercised',
         logout_profile:
-          'front-channel logout plus protected-session rejection; BCL/Queue measured separately',
+          'front-channel logout; lease mode intentionally demonstrates stale acceptance before expiry and OP recheck rejection at/after expiry; no BCL receiver or immediate logout guarantee',
+        lease_model: {
+          effective_duration_field:
+            'effective_lease_duration_ms is deadline minus monotonic request-start time, not an absolute timestamp',
+          parent_expiry_cap_test:
+            'client-side wall clock is injected to leave two seconds until the actual returned expires_at; Worker policy and D1 state are unchanged',
+          time_source:
+            'injected monotonic milliseconds; simulated elapsed does not represent wall time',
+          expiry_rule:
+            'request-start monotonic time + actual session-check lease_ttl, capped by parent expires_at remaining at request-start wall time',
+          boundary: 'strict now < deadline; exact deadline forces OP recheck',
+          no_sliding_expiry: true,
+          parent_expiry_remaining_seconds: outcomes
+            .filter((row) => row.kind === 'sample')
+            .map((row) => row.parent_expiry_remaining_seconds),
+          parent_cap_applied: outcomes
+            .filter((row) => row.kind === 'sample')
+            .map((row) => row.lease_parent_cap_applied),
+          observed_ttl_seconds: outcomes
+            .filter((row) => row.kind === 'sample')
+            .map((row) => row.lease_ttl_seconds),
+          always_check_burst_calls: outcomes
+            .filter((row) => row.kind === 'sample')
+            .map((row) => row.always_mode_check_count),
+          cached_burst_calls: outcomes
+            .filter((row) => row.kind === 'sample')
+            .map((row) => row.lease_burst_check_count),
+          bcl_or_queue_delivery: 'not measured by this RP fixture',
+          note: 'parent expiry cap is exercised using an injected client wall clock; Worker and D1 state are unchanged',
+        },
         outcomes,
         setup_scope:
           'local OP harness, isolated D1, disposable client/owner, virtual authenticator enrollment',
