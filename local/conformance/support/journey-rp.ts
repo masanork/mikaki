@@ -37,6 +37,7 @@ export async function journeyRp(
   const transactions = new Map<string, { browser: string; nonce: string; verifier: string }>();
   const sessions = new Map<string, { sid: string; sub: string; authTime: number }>();
   let lastExchange: { code: string; verifier: string } | null = null;
+  let lastSubject: string | null = null;
   let lastProfile: { sub: string; name?: string } | null = null;
   let lastAccessToken: string | null = null;
   async function post(path: string, values: Record<string, string>) {
@@ -85,6 +86,17 @@ export async function journeyRp(
     get lastAccessToken() {
       return lastAccessToken;
     },
+    get lastSubject() {
+      return lastSubject;
+    },
+    async userinfo() {
+      if (!lastAccessToken) throw new Error('UserInfo requires a completed token exchange');
+      const response = await transport(`${issuer}/userinfo`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${lastAccessToken}` },
+      });
+      return { status: response.status, body: await response.json() };
+    },
     async handle(request: Request): Promise<Response> {
       const url = new URL(request.url);
       if (url.origin !== origin) return html('Wrong origin', 400);
@@ -93,6 +105,8 @@ export async function journeyRp(
       if (url.pathname === '/login') {
         lastProfile = null;
         lastAccessToken = null;
+        lastSubject = null;
+        lastExchange = null;
         const state = secret(),
           browser = secret(),
           nonce = secret(),
@@ -160,6 +174,8 @@ export async function journeyRp(
           status.auth_time !== payload.auth_time
         )
           return html('<h1>Session rejected</h1>', 401);
+        lastSubject = payload.sub;
+        lastAccessToken = token.access_token ?? null;
         if (profile) {
           if (typeof token.access_token !== 'string')
             return html('<h1>Access token missing</h1>', 401);
@@ -173,7 +189,6 @@ export async function journeyRp(
                 headers: Object.fromEntries(new Headers(init?.headers)),
               }),
           );
-          lastAccessToken = token.access_token;
         }
         const session = secret();
         sessions.set(hash(session), {
