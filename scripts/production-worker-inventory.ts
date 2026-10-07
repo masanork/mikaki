@@ -303,17 +303,42 @@ async function logoutQueueMetadata(
       producer.producers[0].script === target.op,
     'Logout Queue producer is not the qualified OP Worker.',
   );
+  async function consumers(queueId: string): Promise<Row[]> {
+    const envelope = await get(`/accounts/${account}/queues/${queueId}/consumers`);
+    const value = result(envelope);
+    gate(Array.isArray(value), 'Malformed Queue consumer metadata.');
+    gate(row(envelope) && row(envelope.result_info), 'Missing Queue consumer pagination metadata.');
+    const info = envelope.result_info;
+    gate(
+      Number.isSafeInteger(info.total_count) &&
+        info.total_count === value.length &&
+        Number.isSafeInteger(info.page) &&
+        info.page === 1 &&
+        Number.isSafeInteger(info.per_page) &&
+        info.per_page === 100 &&
+        Number.isSafeInteger(info.total_pages) &&
+        (value.length === 0 ? info.total_pages === 0 : info.total_pages === 1),
+      'Queue consumer list is incomplete or ambiguous.',
+    );
+    return value.map((item: unknown) => {
+      gate(row(item), 'Malformed Queue consumer metadata.');
+      return item;
+    });
+  }
+
+  const producerConsumers = await consumers(producerId);
+  gate(producerConsumers.length === 1, 'Logout Queue consumer is absent or ambiguous.');
+  const consumer = producerConsumers[0]!;
+  const scripts = [consumer.script_name, consumer.script].filter((value) => value !== undefined);
   gate(
-    Array.isArray(producer.consumers) &&
-      producer.consumers.length === 1 &&
-      producer.consumers_total_count === 1,
-    'Logout Queue consumer is absent or ambiguous.',
+    scripts.length > 0 &&
+      scripts.every((value) => typeof value === 'string' && value === scripts[0]) &&
+      scripts[0] === target.op,
+    'Logout Queue consumer script identity differs or is ambiguous.',
   );
-  const consumer = producer.consumers[0];
   gate(
     row(consumer) &&
       consumer.type === 'worker' &&
-      consumer.script_name === target.op &&
       consumer.queue_name === target.logout_queue &&
       consumer.dead_letter_queue === target.logout_dlq &&
       row(consumer.settings),
@@ -328,12 +353,8 @@ async function logoutQueueMetadata(
       settings.retry_delay === 30,
     'Logout Queue consumer bounds differ from source configuration.',
   );
-  gate(
-    (deadLetter.consumers_total_count ?? 0) === 0 &&
-      (deadLetter.consumers === undefined ||
-        (Array.isArray(deadLetter.consumers) && deadLetter.consumers.length === 0)),
-    'Logout DLQ must not have an unexpected consumer.',
-  );
+  const deadLetterConsumers = await consumers(deadLetterId);
+  gate(deadLetterConsumers.length === 0, 'Logout DLQ must not have an unexpected consumer.');
   return {
     producer: { name: target.logout_queue, queue_id: producerId, queue_name: target.logout_queue },
     dead_letter: { name: target.logout_dlq, queue_id: deadLetterId, queue_name: target.logout_dlq },
@@ -459,7 +480,8 @@ export function cloudflareMetadataGet(
           )
         : new RegExp(`^${queues.replaceAll('/', '\\/')}\\?page=[1-9][0-9]*&per_page=100$`).test(
             path,
-          ),
+          ) ||
+            new RegExp(`^${queues.replaceAll('/', '\\/')}\\/[a-f0-9]{32}\\/consumers$`).test(path),
       'Unapproved Cloudflare metadata endpoint.',
     );
     try {

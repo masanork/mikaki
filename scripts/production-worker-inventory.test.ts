@@ -48,8 +48,7 @@ function fixture(
               {
                 consumer_id: 'logout-consumer',
                 type: 'worker',
-                script_name: target.op,
-                queue_name: target.logout_queue,
+                script: 'stale-embedded-shape',
                 dead_letter_queue: target.logout_dlq,
                 settings: {
                   batch_size: 1,
@@ -70,6 +69,30 @@ function fixture(
         ],
         { page: 1, per_page: 100, total_count: 2, total_pages: 1 },
       );
+    } else if (url.pathname.endsWith('/consumers')) {
+      if (url.pathname.endsWith('/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/consumers')) {
+        value = envelope(
+          [
+            {
+              consumer_id: 'logout-consumer',
+              type: 'worker',
+              script: target.op,
+              queue_name: target.logout_queue,
+              dead_letter_queue: target.logout_dlq,
+              settings: {
+                batch_size: 1,
+                max_wait_time_ms: 1000,
+                max_retries: 3,
+                max_concurrency: 2,
+                retry_delay: 30,
+              },
+            },
+          ],
+          { page: 1, per_page: 100, total_count: 1, total_pages: 1 },
+        );
+      } else {
+        value = envelope([], { page: 1, per_page: 100, total_count: 0, total_pages: 0 });
+      }
     } else if (url.pathname.endsWith('/scripts')) {
       assert.equal(url.search, '');
       value = envelope(sorted.map((id) => ({ id })));
@@ -160,24 +183,64 @@ test('complete single-page roster retains only sanitized ordinary-Worker evidenc
 
 test('live Queue metadata must match the exact OP producer, bounded consumer, and empty DLQ consumer set', async () => {
   for (const mutate of [
-    (v: any) => (v.result[0].consumers[0].script_name = 'other-worker'),
-    (v: any) => (v.result[0].consumers[0].dead_letter_queue = 'other-dlq'),
-    (v: any) => (v.result[0].consumers[0].settings.max_concurrency = 10),
-    (v: any) => v.result[0].consumers.push({ ...v.result[0].consumers[0] }),
-    (v: any) => (v.result[1].consumers_total_count = 1),
-    (v: any) => (v.result[1].queue_id = v.result[0].queue_id),
-    (v: any) => (v.result_info.total_count = 3),
+    (v: any) => (v.result[0].script = 'other-worker'),
+    (v: any) => (v.result[0].queue_name = 'other-queue'),
+    (v: any) => (v.result[0].script_name = 'other-worker'),
+    (v: any) => (v.result[0].dead_letter_queue = 'other-dlq'),
+    (v: any) => (v.result[0].settings.max_concurrency = 10),
+    (v: any) => v.result.push({ ...v.result[0] }),
+    (v: any) => v.result.push({ script: 'unexpected-consumer' }),
   ]) {
     await assert.rejects(
       inspectWorkerInventory(
         fixture(undefined, (path, value) => {
-          if (path.includes('/queues?')) mutate(value);
+          if (path.includes('/consumers') && path.includes('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))
+            mutate(value);
           return value;
         }),
         target,
       ),
     );
   }
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, value) => {
+        if (path.includes('/queues?')) value.result[1].queue_id = value.result[0].queue_id;
+        return value;
+      }),
+      target,
+    ),
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, value) => {
+        if (path.endsWith('/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/consumers'))
+          value.result.push({ type: 'worker', script: 'unexpected' });
+        return value;
+      }),
+      target,
+    ),
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, value) => {
+        if (path.endsWith('/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/consumers'))
+          value.result_info.total_pages = 1;
+        return value;
+      }),
+      target,
+    ),
+  );
+  await assert.rejects(
+    inspectWorkerInventory(
+      fixture(undefined, (path, value) => {
+        if (path.endsWith('/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/consumers')) delete value.result_info;
+        return value;
+      }),
+      target,
+    ),
+    /Missing Queue consumer pagination metadata/,
+  );
 });
 
 test('projection never accesses text/json/secret values', () => {
@@ -549,6 +612,18 @@ test('transport allows only the unfiltered full roster endpoint', async () => {
     envelope([], { page: 1, per_page: 100, total_count: 0, total_pages: 1 }),
   );
   await assert.rejects(queueGet(`/accounts/${target.account}/queues?page=1`), /Unapproved/);
+  const consumerPath = `/accounts/${target.account}/queues/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/consumers`;
+  const consumerGet = cloudflareMetadataGet(
+    target.account,
+    'synthetic-token',
+    async (url, init) => {
+      assert.equal(url, 'https://api.cloudflare.com/client/v4' + consumerPath);
+      assert.equal(init?.method, 'GET');
+      return new Response(JSON.stringify(envelope([])));
+    },
+  );
+  assert.deepEqual(await consumerGet(consumerPath), envelope([]));
+  await assert.rejects(consumerGet(consumerPath + '?page=1'), /Unapproved/);
 });
 
 test('source annotations cannot replace exact qualified activation versions', async () => {
