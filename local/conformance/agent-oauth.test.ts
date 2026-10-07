@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
@@ -42,7 +44,32 @@ test('public-client registration requires exact HTTPS or IP loopback callbacks',
   assert.throws(() => registration({ ...input, token_endpoint_auth_method: 'client_secret_post' }));
 });
 
+const agentBenchmarkEnabled = process.env.MIKAKI_AGENT_BENCHMARK === '1';
 test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, rollback and browser review in workerd', async () => {
+  const benchmarkRequests: Array<{
+    kind: 'warmup' | 'sample' | 'negative';
+    operation: 'mikaki_list' | 'mikaki_read';
+    phase: 'authorized_read' | 'post_grant_revoke';
+    method: string;
+    endpoint_class: 'mcp';
+    status: number;
+    duration_ms: number;
+    transport_error?: boolean;
+  }> = [];
+  const benchmarkRows: Array<Record<string, unknown>> = [];
+  const benchmarkBackgroundRequests: Array<{
+    method: 'GET';
+    endpoint_class: 'mcp';
+    status: number;
+    duration_ms: number;
+    transport_error?: boolean;
+  }> = [];
+  let benchmarkPhase: 'authorized_read' | 'post_grant_revoke' | null = null;
+  let benchmarkKind: 'warmup' | 'sample' | 'negative' = 'sample';
+  let benchmarkOperation: 'mikaki_list' | 'mikaki_read' = 'mikaki_list';
+  let benchmarkFailure: string | null = null;
+  let benchmarkStartedAt: number | null = null;
+  let benchmarkTestFailed = false;
   const keys = await crypto.subtle.generateKey(
     {
       name: 'RSA-OAEP',
@@ -476,16 +503,73 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     );
     const fetchFn: typeof fetch = async (input, init) => {
       const req = input instanceof Request ? input : new Request(input, init);
-      assert.equal(new URL(req.url).origin, origin);
-      const response = await agent.fetch(req.url, {
-        method: req.method,
-        headers: Object.fromEntries(req.headers),
-        ...(req.method === 'GET' || req.method === 'HEAD' ? {} : { body: await req.text() }),
-      });
-      return new Response(await response.arrayBuffer(), {
-        status: response.status,
-        headers: Object.fromEntries(response.headers),
-      });
+      const requestUrl = new URL(req.url);
+      assert.equal(requestUrl.origin, origin);
+      const startedBenchmark =
+        agentBenchmarkEnabled && requestUrl.pathname === '/mcp' && benchmarkPhase !== null
+          ? {
+              phase: benchmarkPhase,
+              kind: benchmarkKind,
+              operation: benchmarkOperation,
+            }
+          : null;
+      const measurePost = startedBenchmark !== null && req.method === 'POST';
+      const recordBackgroundGet = startedBenchmark !== null && req.method === 'GET';
+      const before = performance.now();
+      try {
+        const response = await agent.fetch(req.url, {
+          method: req.method,
+          headers: Object.fromEntries(req.headers),
+          ...(req.method === 'GET' || req.method === 'HEAD' ? {} : { body: await req.text() }),
+        });
+        const responseBody = await response.arrayBuffer();
+        if (measurePost && startedBenchmark) {
+          benchmarkRequests.push({
+            kind: startedBenchmark.kind,
+            operation: startedBenchmark.operation,
+            phase: startedBenchmark.phase,
+            method: req.method,
+            endpoint_class: 'mcp',
+            status: response.status,
+            duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+          });
+        }
+        if (recordBackgroundGet) {
+          benchmarkBackgroundRequests.push({
+            method: 'GET',
+            endpoint_class: 'mcp',
+            status: response.status,
+            duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+          });
+        }
+        return new Response(responseBody, {
+          status: response.status,
+          headers: Object.fromEntries(response.headers),
+        });
+      } catch (error) {
+        if (measurePost && startedBenchmark) {
+          benchmarkRequests.push({
+            kind: startedBenchmark.kind,
+            operation: startedBenchmark.operation,
+            phase: startedBenchmark.phase,
+            method: req.method,
+            endpoint_class: 'mcp',
+            status: 0,
+            duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+            transport_error: true,
+          });
+        }
+        if (recordBackgroundGet) {
+          benchmarkBackgroundRequests.push({
+            method: 'GET',
+            endpoint_class: 'mcp',
+            status: 0,
+            duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+            transport_error: true,
+          });
+        }
+        throw error;
+      }
     };
     const connect = async (token: string) => {
       const client = new Client({ name: 'oauth-qualification', version: '1' });
@@ -561,8 +645,11 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       });
     assert.equal((await revoke(issued.access_token, 'other-client')).status, 200);
     assert.equal(
-      (await agent.fetch(resource, { headers: { Authorization: `Bearer ${issued.access_token}` } }))
-        .status,
+      (
+        await agent.fetch(resource, {
+          headers: { Authorization: `Bearer ${issued.access_token}` },
+        })
+      ).status,
       406,
     );
     await env.DB.prepare(
@@ -581,8 +668,11 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     assert.equal((await revoke(issued.access_token)).status, 200);
     assert.equal((await revoke(issued.access_token)).status, 200);
     assert.equal(
-      (await agent.fetch(resource, { headers: { Authorization: `Bearer ${issued.access_token}` } }))
-        .status,
+      (
+        await agent.fetch(resource, {
+          headers: { Authorization: `Bearer ${issued.access_token}` },
+        })
+      ).status,
       401,
     );
     assert.equal(
@@ -862,6 +952,108 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     assert.ok(!(await sdkClient.callTool({ name: 'mikaki_list', arguments: {} })).isError);
     assert.deepEqual(errors, []);
 
+    if (agentBenchmarkEnabled) {
+      benchmarkStartedAt = Date.now();
+      const warmups = 2;
+      const samples = 20;
+      const deadlineMs = 90_000;
+      const validateSemanticSuccess = (operation: 'mikaki_list' | 'mikaki_read', result: any) => {
+        assert.notEqual(result.isError, true, 'MCP tool result must not be a semantic error');
+        const value = result.structuredContent as
+          | {
+              result_version?: unknown;
+              untrusted_content?: unknown;
+              documents?: unknown;
+              id?: unknown;
+              text?: unknown;
+              source_info?: { kind?: unknown; source?: { record_id?: unknown } };
+              access?: { mode?: unknown; source_check?: unknown };
+            }
+          | undefined;
+        assert.ok(value && value.result_version === 1 && value.untrusted_content === true);
+        if (operation === 'mikaki_list') {
+          assert.ok(Array.isArray(value.documents));
+          assert.ok(value.documents.some((document: { id?: unknown }) => document.id === 'name'));
+        } else {
+          assert.equal(value.id, 'name');
+          assert.ok(typeof value.text === 'string' && value.text.length > 0);
+          assert.equal(value.source_info?.kind, 'vault-record');
+          assert.equal(value.source_info?.source?.record_id, 'name');
+          assert.equal(value.access?.mode, 'remote-snapshot');
+          assert.equal(value.access?.source_check, 'record-matched');
+        }
+      };
+      try {
+        for (let index = 0; index < warmups + samples; index++) {
+          if (Date.now() - benchmarkStartedAt > deadlineMs)
+            throw new Error('Agent benchmark deadline exceeded');
+          const kind = index < warmups ? 'warmup' : 'sample';
+          const operation = index % 2 === 0 ? 'mikaki_list' : 'mikaki_read';
+          benchmarkKind = kind;
+          benchmarkOperation = operation;
+          benchmarkPhase = 'authorized_read';
+          const before = performance.now();
+          const requestStart = benchmarkRequests.length;
+          try {
+            const result = await sdkClient.callTool(
+              operation === 'mikaki_list'
+                ? { name: operation, arguments: {} }
+                : { name: operation, arguments: { id: 'name' } },
+              undefined,
+              { timeout: 10_000, maxTotalTimeout: 10_000 },
+            );
+            validateSemanticSuccess(operation, result);
+            const callRequests = benchmarkRequests.slice(requestStart);
+            assert.equal(callRequests.length, 1, 'Each SDK read must map to one MCP HTTP request');
+            assert.equal(callRequests[0]?.status, 200);
+            benchmarkRows.push({
+              kind,
+              operation,
+              outcome: 'success',
+              sdk_call_duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+              endpoint_request_count: callRequests.length,
+            });
+          } catch (error) {
+            const callRequests = benchmarkRequests.slice(requestStart);
+            benchmarkRows.push({
+              kind,
+              operation,
+              outcome: 'failure',
+              error_type: error instanceof Error ? error.name : 'UnknownError',
+              sdk_call_duration_ms: Math.round((performance.now() - before) * 1000) / 1000,
+              endpoint_request_count: callRequests.length,
+            });
+            throw error;
+          }
+        }
+        const sampleRows = benchmarkRows.filter((row) => row.kind === 'sample');
+        assert.equal(sampleRows.length, samples);
+        assert.equal(sampleRows.filter((row) => row.outcome === 'success').length, samples);
+        assert.equal(
+          benchmarkRequests.filter((request) => request.kind === 'sample').length,
+          samples,
+        );
+        assert.equal(
+          sampleRows.filter((row) => row.operation === 'mikaki_list').length,
+          samples / 2,
+        );
+        assert.equal(
+          sampleRows.filter((row) => row.operation === 'mikaki_read').length,
+          samples / 2,
+        );
+        assert.equal(
+          benchmarkRows.filter((row) => row.kind === 'warmup' && row.outcome === 'success').length,
+          warmups,
+        );
+      } catch (error) {
+        benchmarkFailure = error instanceof Error ? error.name : 'UnknownError';
+        throw error;
+      } finally {
+        benchmarkPhase = null;
+        benchmarkKind = 'negative';
+      }
+    }
+
     const expiredRequest = await begin();
     await env.DB.prepare(
       'UPDATE agent_oauth_request SET created_at=unixepoch()-601,expires_at=unixepoch()-1 WHERE request_id=?',
@@ -958,6 +1150,39 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       revokedCode = await approved(revokedRequest);
     assert.equal((await ownerCall('revoke', { grant_id: grant.grant_id })).status, 200);
     assert.equal((await exchange(revokedRequest, revokedCode)).status, 400);
+    if (agentBenchmarkEnabled) {
+      benchmarkOperation = 'mikaki_list';
+      benchmarkPhase = 'post_grant_revoke';
+      benchmarkKind = 'negative';
+      const requestStart = benchmarkRequests.length;
+      const negativeStart = performance.now();
+      let sdkRejected = false;
+      try {
+        const result = await sdkClient.callTool({ name: 'mikaki_list', arguments: {} }, undefined, {
+          timeout: 10_000,
+          maxTotalTimeout: 10_000,
+        });
+        sdkRejected = result.isError === true;
+      } catch {
+        sdkRejected = true;
+      } finally {
+        benchmarkPhase = null;
+      }
+      const denialRequests = benchmarkRequests.slice(requestStart);
+      const denied =
+        denialRequests.length === 1 && denialRequests[0]?.status === 401 && sdkRejected;
+      benchmarkRows.push({
+        kind: 'negative',
+        phase: 'post_grant_revoke',
+        operation: 'mikaki_list',
+        outcome: denied ? 'expected_http_and_sdk_rejection' : 'failure',
+        sdk_call_duration_ms: Math.round((performance.now() - negativeStart) * 1000) / 1000,
+        endpoint_request_count: denialRequests.length,
+      });
+      assert.equal(denialRequests.length, 1);
+      assert.equal(denialRequests[0]?.status, 401);
+      assert.equal(sdkRejected, true, 'The same SDK call must reject the revoked grant');
+    }
     assert.equal(
       (
         await agent.fetch(resource, {
@@ -970,9 +1195,102 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
       (await agent.fetch(resource, { headers: { Authorization: `Bearer ${grant.token}` } })).status,
       401,
     );
+  } catch (error) {
+    benchmarkTestFailed = true;
+    if (agentBenchmarkEnabled)
+      benchmarkFailure ??= error instanceof Error ? error.name : 'UnknownError';
+    throw error;
   } finally {
-    for (const client of clients) await client.close().catch(() => {});
-    await browser?.close();
-    await harness.close();
+    const cleanupErrors: string[] = [];
+    for (const client of clients) {
+      try {
+        await client.close();
+      } catch {
+        if (agentBenchmarkEnabled) cleanupErrors.push('ClientCleanupError');
+      }
+    }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        if (!agentBenchmarkEnabled) throw new Error('Browser cleanup failed');
+        cleanupErrors.push('BrowserCleanupError');
+      }
+    }
+    try {
+      await harness.close();
+    } catch {
+      if (!agentBenchmarkEnabled) throw new Error('Worker harness cleanup failed');
+      cleanupErrors.push('HarnessCleanupError');
+    }
+    if (cleanupErrors.length > 0 && agentBenchmarkEnabled) benchmarkFailure ??= 'CleanupError';
+    if (agentBenchmarkEnabled) {
+      const report = {
+        schema: 'mikaki.local-agent-read-benchmark.v1',
+        scope: 'local-only Worker/workerd harness; no CPU, remote D1, or production-capacity claim',
+        measured_source_head: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+        }).trim(),
+        tracked_source_clean:
+          execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+            encoding: 'utf8',
+          }).trim() === '',
+        warmups: 2,
+        samples: 20,
+        concurrency: 1,
+        measured_operations: ['mikaki_list', 'mikaki_read'],
+        negative_outcome:
+          'same authorized SDK token after owner grant revocation; not counted as throughput',
+        excluded: [
+          'OAuth metadata/challenge',
+          'owner consent/setup',
+          'profile UserInfo',
+          'BCL delivery',
+          'SDK background GET /mcp requests (separately reported; excluded from read throughput)',
+        ],
+        requests: benchmarkRequests,
+        background_requests: benchmarkBackgroundRequests,
+        outcomes: benchmarkRows,
+        operation_summary: Object.fromEntries(
+          (['mikaki_list', 'mikaki_read'] as const).map((operation) => {
+            const rows = benchmarkRows.filter(
+              (row) => row.kind === 'sample' && row.operation === operation,
+            );
+            const times = rows
+              .map((row) => row.sdk_call_duration_ms)
+              .filter((value): value is number => typeof value === 'number')
+              .sort((a, b) => a - b);
+            const requestTimes = benchmarkRequests
+              .filter((request) => request.kind === 'sample' && request.operation === operation)
+              .map((request) => request.duration_ms)
+              .sort((a, b) => a - b);
+            return [
+              operation,
+              {
+                count: rows.length,
+                successes: rows.filter((row) => row.outcome === 'success').length,
+                sdk_p50_ms: times[Math.ceil(times.length * 0.5) - 1] ?? null,
+                sdk_p95_ms: times[Math.ceil(times.length * 0.95) - 1] ?? null,
+                endpoint_p50_ms: requestTimes[Math.ceil(requestTimes.length * 0.5) - 1] ?? null,
+                endpoint_p95_ms: requestTimes[Math.ceil(requestTimes.length * 0.95) - 1] ?? null,
+              },
+            ];
+          }),
+        ),
+        failure: benchmarkFailure,
+        final: benchmarkFailure ? 'failed' : 'success',
+        cleanup_errors: cleanupErrors,
+        completed_at: new Date().toISOString(),
+      };
+      const outputPath = resolve(
+        process.env.MIKAKI_AGENT_BENCHMARK_OUTPUT ??
+          'local/generated/local-agent-read-benchmark.json',
+      );
+      await mkdir(dirname(outputPath), { recursive: true });
+      await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+      await chmod(outputPath, 0o600);
+    }
+    if (cleanupErrors.length > 0 && !benchmarkTestFailed)
+      throw new Error('Agent OAuth test cleanup failed');
   }
 });
