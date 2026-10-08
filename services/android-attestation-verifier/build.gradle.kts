@@ -1,5 +1,5 @@
 plugins {
-  kotlin("jvm") version "2.2.0"
+  kotlin("jvm") version "2.4.20"
   application
 }
 
@@ -10,13 +10,14 @@ repositories {
 
 dependencies {
   implementation("com.android.keyattestation:keyattestation:0.1-SNAPSHOT")
-  implementation("com.google.code.gson:gson:2.11.0")
-  implementation("com.google.protobuf:protobuf-javalite:4.28.3")
-  implementation("com.google.guava:guava:33.5.0-jre")
+  implementation("com.google.code.gson:gson:2.14.0")
+  implementation("com.google.protobuf:protobuf-javalite:4.36.2")
+  implementation("com.google.guava:guava:33.7.2-jre")
   implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
   testImplementation(kotlin("test-junit5"))
-  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.0")
-  testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
+  testImplementation(platform("org.junit:junit-bom:6.1.3"))
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+  testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 kotlin { jvmToolchain(21) }
@@ -44,7 +45,7 @@ val formatter by configurations.creating
 val kotlinFiles =
   fileTree("src") { include("**/*.kt") } + files("build.gradle.kts", "settings.gradle.kts")
 
-dependencies { formatter("com.facebook:ktfmt:0.61") }
+dependencies { formatter("com.facebook:ktfmt:0.64") }
 
 tasks.register<JavaExec>("formatKotlin") {
   classpath = formatter

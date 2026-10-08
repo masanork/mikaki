@@ -1,5 +1,6 @@
 //! QR-engaged Android BLE peripheral holder. Ciphertext stays on native transport.
 use super::*;
+use p256::elliptic_curve::Generate;
 #[derive(Serialize)]
 pub struct Started {
     session_id: String,
@@ -182,7 +183,7 @@ pub(super) mod android {
             (credential_hash(&receipt.credential), receipt.expires_at)
         };
         let mut uuid = [0; 16];
-        OsRng.fill_bytes(&mut uuid);
+        UnwrapErr(SysRng).fill_bytes(&mut uuid);
         uuid[6] = (uuid[6] & 15) | 64;
         uuid[8] = (uuid[8] & 63) | 128;
         let hex = uuid.iter().map(|v| format!("{v:02x}")).collect::<String>();
@@ -195,9 +196,9 @@ pub(super) mod android {
             &hex[20..]
         );
         let mut sid = [0; 16];
-        OsRng.fill_bytes(&mut sid);
+        UnwrapErr(SysRng).fill_bytes(&mut sid);
         let id = sid.iter().map(|b| format!("{b:02x}")).collect::<String>();
-        let ephemeral = p256::SecretKey::random(&mut OsRng);
+        let ephemeral = p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng));
         let session = if nfc_data && negotiated {
             HolderSession::new_nfc_negotiated_data(ephemeral)
         } else if nfc_data {

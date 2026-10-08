@@ -20,6 +20,7 @@ updates:
         patterns:
           - '*'
         update-types:
+          - major
           - minor
           - patch
   - package-ecosystem: npm
@@ -28,6 +29,7 @@ updates:
       - /apps/mikaki-client
       - /design/probes
       - /design/probes/vault-search
+      - /tools/svelte-check
     schedule:
       interval: weekly
       day: monday
@@ -37,13 +39,9 @@ updates:
         patterns:
           - '*'
         update-types:
+          - major
           - minor
           - patch
-    ignore:
-      # svelte-check's peer range currently excludes TypeScript 7.
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:

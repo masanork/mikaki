@@ -1,5 +1,5 @@
 /** Compile exact product Agent SQL into an OP-owned capability catalog. */
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import { format } from 'prettier';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';

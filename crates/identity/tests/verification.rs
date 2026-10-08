@@ -11,14 +11,16 @@ use std::sync::OnceLock;
 const NOW: u64 = 1_790_812_800;
 fn key() -> &'static RsaPrivateKey {
     static KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
-    KEY.get_or_init(|| RsaPrivateKey::new(&mut rand_core::OsRng, 2048).unwrap())
+    KEY.get_or_init(|| {
+        RsaPrivateKey::new(&mut rand_core::UnwrapErr(getrandom::SysRng), 2048).unwrap()
+    })
 }
 fn trust(kind: DocumentType) -> TrustedKey {
     TrustedKey {
         id: "fixture-only".into(),
         document_type: kind,
-        n: B64.encode(key().n().to_bytes_be()),
-        e: B64.encode(key().e().to_bytes_be()),
+        n: B64.encode(key().n().to_be_bytes_trimmed_vartime()),
+        e: B64.encode(key().e().to_be_bytes_trimmed_vartime()),
         subject_key_identifier: Some(B64.encode([42; 32])),
         not_before: NOW - 100,
         not_after: NOW + 10000,

@@ -12,16 +12,19 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jsonwebtoken = { version = "=11.1.0", default-features = false }
 base64 = "=0.23.1"
-p256 = { version = "=0.13.2", default-features = false, features = ["ecdsa"] }
-rsa = { version = "=0.9.10", default-features = false, features = ["sha2"] }
-sha2 = { version = "=0.10.9", features = ["oid"] }
+p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["sha2", "encoding"] }
+sha2 = { version = "=0.11.0", features = ["oid"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-signature = "=2.2.0"
+signature = "=3.0.0"
+# jsonwebtoken 11's provider interface still uses signature 2; bridge only that boundary.
+signature-legacy = { package = "signature", version = "=2.2.0" }
 wasm-bindgen = "=0.2.129"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "=0.2.17", features = ["js"] }
+# Only enables the JS backend of jsonwebtoken 11's transitive entropy dependency.
+getrandom-legacy = { package = "getrandom", version = "=0.2.17", features = ["js"] }
 
 [lints.rust]
 unsafe_code = "forbid"

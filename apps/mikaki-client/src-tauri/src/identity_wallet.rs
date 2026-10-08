@@ -10,6 +10,8 @@ use mikaki_identity::{
 use p256::ecdsa::Signature;
 #[cfg(not(target_os = "android"))]
 use p256::ecdsa::SigningKey;
+#[cfg(not(target_os = "android"))]
+use p256::elliptic_curve::Generate;
 use serde_json::{json, Value};
 #[cfg(target_os = "android")]
 use std::sync::{
@@ -61,9 +63,10 @@ impl HolderKey {
     > {
         #[cfg(target_os = "android")]
         {
-            use rand_core::{OsRng, RngCore};
+            use getrandom::SysRng;
+            use rand_core::{Rng, UnwrapErr};
             let mut bytes = [0; 16];
-            OsRng.fill_bytes(&mut bytes);
+            UnwrapErr(SysRng).fill_bytes(&mut bytes);
             let id = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
             let result = app
                 .native_dpop()
@@ -108,9 +111,10 @@ impl HolderKey {
     pub fn create(app: &AppHandle) -> Result<Self, String> {
         #[cfg(target_os = "android")]
         {
-            use rand_core::{OsRng, RngCore};
+            use getrandom::SysRng;
+            use rand_core::{Rng, UnwrapErr};
             let mut bytes = [0; 16];
-            OsRng.fill_bytes(&mut bytes);
+            UnwrapErr(SysRng).fill_bytes(&mut bytes);
             let id = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
             app.native_dpop().create_holder(&id)?;
             Ok(Self::Os(Arc::new(OsHolder {
@@ -122,7 +126,9 @@ impl HolderKey {
         #[cfg(not(target_os = "android"))]
         {
             let _ = app;
-            Ok(Self::Memory(SigningKey::random(&mut rand_core::OsRng)))
+            Ok(Self::Memory(SigningKey::generate_from_rng(
+                &mut rand_core::UnwrapErr(getrandom::SysRng),
+            )))
         }
     }
     pub fn public(&self) -> Result<PublicJwk, String> {

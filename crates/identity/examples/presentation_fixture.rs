@@ -6,6 +6,7 @@ use mikaki_identity::{
     presentation::{self, VerifierRegistration},
 };
 use p256::ecdsa::SigningKey;
+use p256::elliptic_curve::Generate;
 use serde_json::json;
 fn main() {
     let now = std::time::SystemTime::now()
@@ -117,14 +118,15 @@ fn main() {
     let mut encrypted_claims = request_claims.clone();
     encrypted_claims["response_mode"] = json!("direct_post.jwt");
     let encrypt = |token: &str, checked: &presentation::ApprovedRequest| {
-        use rand_core::{OsRng, RngCore};
+        use getrandom::SysRng;
+        use rand_core::{Rng, UnwrapErr};
         let mut iv = [0; 12];
-        OsRng.fill_bytes(&mut iv);
+        UnwrapErr(SysRng).fill_bytes(&mut iv);
         presentation::encryption::encrypt_response(
             token,
             checked,
             now,
-            p256::SecretKey::random(&mut OsRng),
+            p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
             iv,
         )
         .unwrap()
@@ -175,7 +177,10 @@ fn main() {
     let legacy_claims = json!({"iss":registry.client_id,"aud":"https://self-issued.me/v2","client_id":registry.client_id,"client_id_scheme":"pre-registered","response_type":"vp_token","response_mode":"direct_post.jwt","response_uri":registry.response_uri,"nonce":"N".repeat(43),"state":"S".repeat(43),"iat":now,"exp":now+120,"require_signed_request_object":true,"presentation_definition":{"id":"legacy-definition","input_descriptors":[{"id":mikaki_identity::mdoc::DOCTYPE,"format":{"mso_mdoc":{"alg":["ES256"]}},"constraints":{"limit_disclosure":"required","fields":[{"path":[format!("$['{}']['name']",mikaki_identity::mdoc::NAMESPACE)],"intent_to_retain":true}]}}]}});
     let legacy_request = signed_request(legacy_claims);
     let mut legacy_nonce = [0; 32];
-    rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut legacy_nonce);
+    rand_core::Rng::fill_bytes(
+        &mut rand_core::UnwrapErr(getrandom::SysRng),
+        &mut legacy_nonce,
+    );
     let legacy = presentation::verify_request_with_wallet_nonce(
         &legacy_request,
         std::slice::from_ref(&legacy_registry),

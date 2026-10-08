@@ -1,6 +1,7 @@
 //! Bounded host interoperability bridge, using the production wallet protocol core.
 //! The fixture attester is external to this process; private wallet keys never leave it.
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+use getrandom::SysRng;
 use mikaki_identity::{
     client_attestation::AttesterTrust,
     credential_receipt::CredentialTrust,
@@ -12,7 +13,8 @@ use mikaki_identity::{
     wallet_authorization::{Authorization, Signer},
 };
 use p256::ecdsa::{Signature, SigningKey, signature::Signer as _};
-use rand_core::{OsRng, RngCore};
+use p256::elliptic_curve::Generate;
+use rand_core::{Rng, UnwrapErr};
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, Write},
@@ -30,7 +32,7 @@ impl Signer for Key {
 }
 fn entropy() -> [u8; 32] {
     let mut b = [0; 32];
-    OsRng.fill_bytes(&mut b);
+    UnwrapErr(SysRng).fill_bytes(&mut b);
     b
 }
 fn now() -> u64 {
@@ -75,9 +77,9 @@ fn field<'a>(v: &'a Value, name: &str) -> Result<&'a str, Box<dyn std::error::Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = io::stdin().lock();
     let first: Value = serde_json::from_str(&line(&mut input)?)?;
-    let instance = Key(SigningKey::random(&mut OsRng));
-    let dpop = Key(SigningKey::random(&mut OsRng));
-    let holder = Key(SigningKey::random(&mut OsRng));
+    let instance = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
+    let dpop = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
+    let holder = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
     let mut auth = Authorization::new_pending_holder(
         field(&first, "issuer")?,
         field(&first, "client")?,
@@ -195,7 +197,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     at,
                 )?;
                 let mut iv = [0; 12];
-                OsRng.fill_bytes(&mut iv);
+                UnwrapErr(SysRng).fill_bytes(&mut iv);
                 let body = encryption.prepare_request(payload, entropy(), iv)?;
                 emit(
                     json!({"headers":{"Authorization":&*auth.authorization_header(at)?,"DPoP":auth.dpop("credential",v["nonce"].as_str(),&dpop,&B64.encode(entropy()),at)?},"body":body}),
@@ -271,10 +273,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let uri = error.response_uri().to_owned();
                                     let code = error.code();
                                     let mut iv = [0; 12];
-                                    OsRng.fill_bytes(&mut iv);
+                                    UnwrapErr(SysRng).fill_bytes(&mut iv);
                                     let response = error.encrypt(
                                         at,
-                                        p256::SecretKey::random(&mut OsRng),
+                                        p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
                                         iv,
                                     )?;
                                     return Ok(
@@ -339,12 +341,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )?
                     };
                     let mut iv = [0; 12];
-                    OsRng.fill_bytes(&mut iv);
+                    UnwrapErr(SysRng).fill_bytes(&mut iv);
                     let response = presentation::encryption::encrypt_response(
                         &vp,
                         &request,
                         at,
-                        p256::SecretKey::random(&mut OsRng),
+                        p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
                         iv,
                     )?;
                     Ok(json!({"state":"presented","response":response}))
