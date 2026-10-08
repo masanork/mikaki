@@ -125,6 +125,8 @@ test('Codex startup classification exposes only the expected fixed categories', 
   assert.equal(classifyCodexDiagnostic('ENOENT: no such file or directory'), 'filesystem');
   assert.equal(classifyCodexDiagnostic('MCP server failed to initialize'), null);
   assert.equal(classifyCodexDiagnostic('MCP startup error'), null);
+  assert.equal(classifyCodexDiagnostic('MCP initialize failed'), null);
+  assert.equal(classifyCodexDiagnostic('MCP connect failed'), null);
   assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), null);
 });
 

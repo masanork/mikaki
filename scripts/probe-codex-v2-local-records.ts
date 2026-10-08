@@ -103,12 +103,7 @@ export type CodexEventSummary = Readonly<{
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 export function classifyCodexDiagnostic(output: string): CodexDiagnosticCategory | null {
-  if (
-    /Mikaki MCP startup failed|MCP.{0,100}(?:initiali[sz]e|connect).{0,100}(?:closed|failed|error)|(?:initiali[sz]e|connect).{0,100}MCP.{0,100}(?:closed|failed|error)/i.test(
-      output,
-    )
-  )
-    return 'mcp_startup';
+  if (/Mikaki MCP startup failed/i.test(output)) return 'mcp_startup';
   if (
     /invalid (?:toml|configuration|config)|configuration error|(?:config|configuration).{0,80}(?:invalid|error)|mcp_servers.{0,40}(?:invalid|unknown|missing)/i.test(
       output,
