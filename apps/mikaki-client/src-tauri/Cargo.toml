@@ -21,7 +21,7 @@ tauri-plugin-deep-link = "=2.6.1"
 url = "=2.5.8"
 zeroize = "1.9"
 base64 = "=0.23.1"
-p256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.14", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
 qrcode = { version = "0.14", default-features = false }
