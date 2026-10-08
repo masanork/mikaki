@@ -12,9 +12,11 @@ import {
   mintObservation,
   mintCleanup,
   mintRefusal,
+  gitPlan,
+  gitResult,
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
-import type { MintPlan, MintRecord } from '../work-effect-worker/protocol';
+import type { MintPlan, MintRecord, GitPlan, GitResult } from '../work-effect-worker/protocol';
 
 export type Checkpoint = { authority: string; epoch: string; sequence: number; tip: string };
 export type Permit = { operation: string; previous: Checkpoint; next: Checkpoint };
@@ -237,6 +239,115 @@ export class WorkCheckpoint extends DurableObject<Env> {
     const r = this.#mint(attempt);
     await this.ctx.storage.sync();
     return r;
+  }
+  async claimGit(input: unknown) {
+    gitPlan(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      const s = this.current(1),
+        r = this.#mint(input.attempt_id);
+      if (
+        s.pending ||
+        !equal(s.checkpoint, input.checkpoint) ||
+        !r ||
+        r.state !== 'custodied' ||
+        r.cleanup_requested ||
+        !r.observation ||
+        input.observation.expires_at <= Math.floor(Date.now() / 1000) + 5 ||
+        input.deadline <= Math.floor(Date.now() / 1000) + 5
+      )
+        throw new Error('git_blocked');
+      const { checkpoint: _a, ...a } = r.plan;
+      const {
+        checkpoint: _b,
+        preparation_digest: _p,
+        disclosure_digest: _d,
+        commit: _c,
+        tree: _t,
+        branch: _r,
+        observation: _o,
+        ...b
+      } = input;
+      if (
+        !sameJson(a, { ...b, effect: 'token.mint' }) ||
+        !sameJson(r.observation, input.observation)
+      )
+        throw new Error('git_conflict');
+      if (r.git) {
+        if (!sameJson(r.git.plan, input)) throw new Error('git_conflict');
+        return { started: false, record: r };
+      }
+      if (input.purpose === 'readback') {
+        const rows = this.ctx.storage.sql
+          .exec<{ body: string }>(
+            'SELECT body FROM mint_ledger WHERE slot=?',
+            JSON.stringify([input.namespace, input.name, 'upload']),
+          )
+          .toArray();
+        const upload = rows.length ? (JSON.parse(rows[0]!.body) as MintRecord) : null;
+        if (
+          !upload ||
+          upload.state !== 'closed' ||
+          !upload.refusal ||
+          upload.git?.state !== 'completed' ||
+          !upload.git.result ||
+          upload.plan.repo_id !== input.repo_id ||
+          upload.git.plan.preparation_digest !== input.preparation_digest ||
+          upload.git.plan.disclosure_digest !== input.disclosure_digest ||
+          upload.git.plan.commit !== input.commit ||
+          upload.git.plan.tree !== input.tree ||
+          upload.git.plan.branch !== input.branch
+        )
+          throw new Error('git_upload_not_closed');
+      }
+      r.git = { plan: input, state: 'admitted', result: null };
+      this.#saveMint(r);
+      return { started: true, record: r };
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async takeGit(input: unknown, transport = false) {
+    gitPlan(input);
+    this.ctx.storage.transactionSync(() => {
+      const s = this.current(1),
+        r = this.#mint(input.attempt_id);
+      if (
+        s.pending ||
+        !equal(s.checkpoint, input.checkpoint) ||
+        !r ||
+        r.state !== 'custodied' ||
+        r.cleanup_requested ||
+        !r.git ||
+        !sameJson(r.git.plan, input) ||
+        r.git.state !== (transport ? 'dispatching' : 'admitted') ||
+        input.observation.expires_at <= Math.floor(Date.now() / 1000) + 5
+      )
+        throw new Error('git_blocked');
+      r.git.state = transport ? 'outcome_unknown' : 'dispatching';
+      this.#saveMint(r);
+    });
+    await this.ctx.storage.sync();
+    return { taken: true };
+  }
+  async finishGit(attempt: unknown, input: unknown) {
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (!r || !r.git || r.state === 'closed') throw new Error('git_conflict');
+      if (input !== null) {
+        gitResult(input, r.git.plan);
+        if (r.git.state !== 'outcome_unknown' && r.git.state !== 'completed')
+          throw new Error('git_conflict');
+        if (r.git.result && !sameJson(r.git.result, input)) throw new Error('git_conflict');
+        r.git.result = input;
+        r.git.state = 'completed';
+      }
+      r.cleanup_requested = true;
+      r.state = 'outcome_unknown';
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
   }
   async claimMint(input: unknown, release: unknown) {
     mintPlan(input);
@@ -558,6 +669,75 @@ export class WorkCheckpoint extends DurableObject<Env> {
 function object(env: Env) {
   if (!id(env.WORK_AUTHORITY_ID)) throw new Error('checkpoint_invalid');
   return env.CHECKPOINTS.getByName(env.WORK_AUTHORITY_ID);
+}
+function sameJson(a: unknown, b: unknown): boolean {
+  const normalize = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(normalize)
+      : v && typeof v === 'object'
+        ? Object.fromEntries(
+            Object.entries(v)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, x]) => [k, normalize(x)]),
+          )
+        : v;
+  return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+}
+/** Opaque Git orchestration: no mint, OP framing, credentials or physical repo. */
+export class WorkGitCheckpoint extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+  claim(plan: GitPlan) {
+    return object(this.env).claimGit(plan);
+  }
+  finish(attempt: unknown, result: GitResult | null) {
+    return object(this.env).finishGit(attempt, result);
+  }
+}
+/** Native can consume one admission; it cannot create or finish one. */
+export class WorkGitExecutionCheckpoint extends WorkerEntrypoint<Env> {
+  async fetch(request: Request) {
+    try {
+      if (request.method !== 'POST' || new URL(request.url).pathname !== '/git-permit')
+        return new Response(null, { status: 404 });
+      const bytes = await boundedGitBody(request);
+      return Response.json(await object(this.env).takeGit(JSON.parse(bytes)));
+    } catch {
+      return new Response(null, { status: 409 });
+    }
+  }
+}
+/** Physical transport consumes once, independently of Native response loss. */
+export class WorkGitDispatch extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  take(plan: GitPlan) {
+    return object(this.env).takeGit(plan, true);
+  }
+}
+async function boundedGitBody(request: Request) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error('git_invalid');
+  let size = 0;
+  const parts: Uint8Array[] = [];
+  for (;;) {
+    const r = await reader.read();
+    if (r.done) break;
+    size += r.value.byteLength;
+    if (size > 8192) {
+      await reader.cancel();
+      throw new Error('git_invalid');
+    }
+    parts.push(r.value);
+  }
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+    Uint8Array.from(parts.flatMap((p) => Array.from(p))),
+  );
 }
 // Rust service-binding bridge. Fixed purpose/path and bounded closed messages.
 // This named entrypoint is never the public default handler.

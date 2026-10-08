@@ -26,7 +26,10 @@ export type Remote = {
     tokens: { id: string; scope: string; state: string; expiresAt: string }[];
   }[];
 };
-export async function effectFixture(overrides: Record<string, string> = {}) {
+export async function effectFixture(
+  overrides: Record<string, string> = {},
+  gitExecutor?: (request: Request) => Promise<Response>,
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-effect-'));
   const bindings = {
     WORK_CREDENTIAL_KEY_FLOOR: '1',
@@ -34,13 +37,35 @@ export async function effectFixture(overrides: Record<string, string> = {}) {
     WORK_EFFECT_STORE_ENABLED: 'true',
     ...overrides,
   };
-  let op = await preparationFixture(directory, bindings, true, true),
+  let op = await preparationFixture(directory, bindings, true, true, undefined, gitExecutor),
     stopped = false;
   try {
-    const code = await gitFixture(directory, 'code', { 'README.md': 'Synthetic code\n' });
+    const code = await gitFixture(
+      directory,
+      'code',
+      { 'README.md': 'Synthetic code\n' },
+      gitExecutor ? 'Historical code\n' : undefined,
+    );
+    const personal = gitExecutor
+      ? await gitFixture(
+          directory,
+          'personal',
+          { 'selected.md': 'Selected context\n', 'unselected.md': 'Must not be copied\n' },
+          'Historical personal context\n',
+        )
+      : undefined;
     const selected = await prepareGitDisclosure(
       { repository: 'code', gitDir: code.dir, commit: code.commit },
-      [],
+      personal
+        ? [
+            {
+              repository: 'personal',
+              gitDir: personal.dir,
+              commit: personal.commit,
+              paths: ['selected.md'],
+            },
+          ]
+        : [],
       directory,
       'snapshot',
     );
@@ -68,11 +93,19 @@ export async function effectFixture(overrides: Record<string, string> = {}) {
     }
     async function restart(extra: Record<string, string> = {}) {
       await stop();
-      op = await preparationFixture(directory, { ...bindings, ...extra }, true, true);
+      op = await preparationFixture(
+        directory,
+        { ...bindings, ...extra },
+        true,
+        true,
+        undefined,
+        gitExecutor,
+      );
       stopped = false;
     }
     return {
       p,
+      gitSources: { code, selected, personal },
       call: (input: Record<string, unknown>) => op.call(input),
       task,
       snapshot,
@@ -126,6 +159,7 @@ export async function effectFixture(overrides: Record<string, string> = {}) {
       },
       checkpoint: (values: Record<string, unknown>) =>
         op.fixtureFetch('/checkpoint-fixture', values),
+      authority: (values: Record<string, unknown>) => op.fixtureFetch('/authority-fixture', values),
       async close() {
         await stop();
         await rm(directory, { recursive: true, force: true });

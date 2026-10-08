@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { Request as MiniflareRequest, Response as MiniflareResponse } from 'miniflare';
 import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import type { V4WorkerOptions } from 'miniflare';
 import type { Artifacts } from '@cloudflare/workers-types';
@@ -25,6 +26,7 @@ export async function preparationFixture(
     bindings: Pick<V4WorkerOptions, 'artifacts'>;
     loseCreate?: boolean;
   },
+  gitExecutor?: (request: Request) => Promise<Response>,
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -44,6 +46,7 @@ export async function preparationFixture(
     bindings: {
       MIKAKI_ISSUER: 'https://work.test',
       ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
+      ...(effectEnabled && !remote ? { WORK_GIT_EXECUTION_ENABLED: 'true' } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -67,6 +70,25 @@ export async function preparationFixture(
                   ...(!remote
                     ? {
                         MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+                        GIT_GATE: { name: 'work-git', entrypoint: 'WorkGitGate' },
+                        GIT_PUBLIC: 'work-git',
+                        GIT_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitCheckpoint',
+                        },
+                        WORK_GIT_EXECUTION_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitExecutionCheckpoint',
+                        },
+                        GIT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkGitCheckpoint' },
+                        GIT_EXECUTION_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitExecutionCheckpoint',
+                        },
+                        WORK_GIT_TRANSPORT: {
+                          name: 'work-git-transport',
+                          entrypoint: 'WorkGitTransport',
+                        },
                         MINT_PUBLIC: 'work-mint',
                         MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
                         MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
@@ -189,6 +211,62 @@ export async function preparationFixture(
               },
               ...(!remote
                 ? [
+                    {
+                      name: 'work-git',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: { WORK_GIT_GATE_ENABLED: bindings.WORK_GIT_GATE_ENABLED ?? 'true' },
+                      serviceBindings: {
+                        OP_EFFECT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        GIT_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitLedger',
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-git-transport',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_GIT_TRANSPORT_ENABLED: bindings.WORK_GIT_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        GIT_DISPATCH: { name: 'work-checkpoint', entrypoint: 'WorkGitDispatch' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                        GIT_EXECUTOR: async (request: MiniflareRequest) => {
+                          if (!gitExecutor) return new MiniflareResponse(null, { status: 409 });
+                          const response = await gitExecutor(
+                            new Request(request.url, {
+                              method: request.method,
+                              headers: [...request.headers],
+                              body: request.body
+                                ? new Uint8Array(await request.arrayBuffer())
+                                : undefined,
+                            }),
+                          );
+                          return new MiniflareResponse(
+                            new Uint8Array(await response.arrayBuffer()),
+                            {
+                              status: response.status,
+                              headers: [...response.headers],
+                            },
+                          );
+                        },
+                      },
+                    },
                     {
                       name: 'work-mint',
                       modules: true,

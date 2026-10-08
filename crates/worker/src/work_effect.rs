@@ -10,11 +10,19 @@ use serde::Deserialize;
 use wasm_bindgen::JsValue;
 use worker::{Env, Request, Response};
 use zeroize::Zeroizing;
+mod git;
 mod refusal;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 enum Input {
+    GitPlan {
+        attempt_id: String,
+    },
+    GitExecute {
+        attempt_id: String,
+        plan: serde_json::Value,
+    },
     InitialPlan {
         attempt_id: String,
     },
@@ -109,10 +117,16 @@ async fn execute(
     mikaki_webauthn::strict_json(&body, 8192, 8).map_err(|_| "invalid_effect_input")?;
     let input: Input = serde_json::from_str(&body)?;
     let store = WorkStore::from_env(env)?;
-    // These fixed result-recording actions confer no dispatch or release.
-    // Native batches still require checkpoint framing; frozen/unavailable OP
-    // remains unchanged while the independent mint ledger records cleanup.
+    // Each fixed branch enforces its own authority/permit checks. Safety result
+    // recording grants no productive dispatch. All Native batches still require
+    // checkpoint framing, including cleanup after productive Git execution.
     let input = match input {
+        Input::GitPlan { attempt_id } => {
+            return Ok(store.git_effect_plan(env, &attempt_id).await?);
+        }
+        Input::GitExecute { attempt_id, plan } => {
+            return git::execute(&store, env, &attempt_id, plan).await;
+        }
         Input::MintRefusal {
             attempt_id,
             digest,
@@ -261,6 +275,8 @@ async fn execute(
             )?)
         }
         Input::CaptureMint { .. }
+        | Input::GitPlan { .. }
+        | Input::GitExecute { .. }
         | Input::MintCleanup { .. }
         | Input::MintRefusal { .. }
         | Input::MintClose { .. } => unreachable!(),

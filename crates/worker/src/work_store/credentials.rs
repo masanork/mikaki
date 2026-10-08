@@ -226,6 +226,100 @@ impl WorkStore {
         let a = self.credential_attempt(&row).await?;
         Ok(row.status(&a))
     }
+    /// Fixed private Git plan, derived from a current registered disclosure.
+    /// No caller-selected ref, destination, plaintext or transport request.
+    pub async fn git_effect_plan(&self, env: &worker::Env, id: &str) -> Result<serde_json::Value> {
+        let checkpoint = self.current_authority_checkpoint().await?;
+        let row = self.credential_row(id).await?;
+        let a = self.credential_attempt(&row).await?;
+        let p = self.preparation(a.preparation_id()).await?;
+        if a.purpose() == CredentialPurpose::Initial
+            || row.state != "captured"
+            || row.envelope.is_none()
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let version = row.key_version.ok_or(Denied::BindingMismatch)?;
+        let key = credential_key(env, version)?;
+        self.check_key(&key, true).await?;
+        let o = CredentialObservation::restore_authority_record(
+            row.observation.as_deref().ok_or(Denied::BindingMismatch)?,
+            &a,
+        )?;
+        if o.scope() != a.purpose().scope()
+            || o.expires_at()
+                .is_none_or(|expiry| expiry <= js_sys::Date::now() as u64 / 1000 + 5)
+        {
+            return Err(Denied::Expired.into());
+        }
+        if self
+            .statement(
+                include_str!("../../sql/work/credential-capture-current.sql"),
+                &[text(p.id())],
+            )?
+            .first::<String>(Some("operation_id"))
+            .await?
+            .is_none()
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let initial_id = self.statement(
+            "SELECT attempt_id FROM work_credential_attempt WHERE preparation_id=?1 AND role=?2 AND purpose='initial' AND state='closed' AND confirmation='refused' AND json_extract(observation,'$.data.repo_id')=?3",
+            &[text(p.id()),text(a.role().name()),text(o.repo_id())],
+        )?.first::<String>(Some("attempt_id")).await?.ok_or(Denied::BindingMismatch)?;
+        let d = self.disclosure(p.disclosure_digest()).await?;
+        let data = serde_json::to_value(d.review()).map_err(|_| Denied::InvalidInput)?;
+        let role = if a.role().name() == "task" {
+            "code"
+        } else {
+            "snapshot"
+        };
+        let commit = data[role]["commit"]
+            .as_str()
+            .ok_or(Denied::BindingMismatch)?;
+        let tree = data[role]["tree"].as_str().ok_or(Denied::BindingMismatch)?;
+        if commit.len() != 40 || tree.len() != 40 {
+            return Err(Denied::InvalidInput.into());
+        }
+        let (namespace, name) = p.credential_destination(a.role());
+        if checkpoint != self.current_authority_checkpoint().await? {
+            return Err(Denied::StaleAuthority.into());
+        }
+        Ok(
+            serde_json::json!({"format_version":1,"effect":if a.purpose()==CredentialPurpose::Upload {"git.upload"} else {"git.readback"},
+          "attempt_id":a.id(),"digest":a.digest().to_hex(),"namespace":namespace,"name":name,"role":a.role().name(),
+          "purpose":a.purpose().name(),"scope":if a.purpose()==CredentialPurpose::Upload {"write"} else {"read"},
+          "repo_id":o.repo_id(),"initial_attempt_id":initial_id,"deadline":a.deadline(),"key_version":version,
+          "key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint,"preparation_digest":p.digest().to_hex(),
+          "disclosure_digest":p.disclosure_digest().to_hex(),"commit":commit,"tree":tree,
+          "branch":if a.role().name()=="task" {"work"} else {"snapshot"},
+          "observation":{"repo_id":o.repo_id(),"token_id":o.token_id(),"scope":o.scope(),"expires_at":o.expires_at()}}),
+        )
+    }
+    /// Productive decryption is private to the one-shot Git executor. It repeats
+    /// live owner/source/policy/key and captured-row checks around decryption.
+    pub async fn credential_for_git(
+        &self,
+        env: &worker::Env,
+        id: &str,
+        plan: &serde_json::Value,
+    ) -> Result<CredentialSecret> {
+        if self.git_effect_plan(env, id).await? != *plan {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let row = self.credential_row(id).await?;
+        let a = self.credential_attempt(&row).await?;
+        let key = credential_key(env, row.key_version.ok_or(Denied::BindingMismatch)?)?;
+        let secret = self.decrypt_row(&row, &a, &key).await?;
+        if self.git_effect_plan(env, id).await? != *plan {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let current = self.credential_row(id).await?;
+        if current.revision != row.revision || current.envelope != row.envelope {
+            return Err(Denied::StaleAuthority.into());
+        }
+        Ok(secret)
+    }
     /// Metadata-only acknowledgement, not decryption or productive release.
     pub async fn mint_custody_status(
         &self,

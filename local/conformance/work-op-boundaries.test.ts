@@ -93,6 +93,19 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       ).status,
       409,
     );
+    for (const input of [
+      { action: 'git-plan', attempt_id: 'a'.repeat(43) },
+      { action: 'git-execute', attempt_id: 'a'.repeat(43), plan: {} },
+    ])
+      assert.equal(
+        (
+          await caller.WORK_EFFECT_STORE.fetch('https://private.invalid/effect', {
+            method: 'POST',
+            body: JSON.stringify(input),
+          })
+        ).status,
+        409,
+      );
     const { DB } = await op.getEnv();
     assert.equal(await DB.prepare('SELECT count(*) AS n FROM account_security').first('n'), 0);
     assert.equal(

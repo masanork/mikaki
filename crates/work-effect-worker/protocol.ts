@@ -35,6 +35,32 @@ export type MintRecord = {
   cleanup_requested?: boolean;
   cleanup?: MintCleanup & { observed_at: number };
   refusal?: MintRefusal & { observed_at: number };
+  git?: GitRecord;
+};
+export type GitPlan = Omit<MintPlan, 'effect'> & {
+  effect: 'git.upload' | 'git.readback';
+  preparation_digest: string;
+  disclosure_digest: string;
+  commit: string;
+  tree: string;
+  branch: 'work' | 'snapshot';
+  observation: MintObservation;
+};
+export type GitResult = {
+  method: 'git_push_accepted' | 'git_readback_verified';
+  commit: string;
+  tree: string;
+  branch: 'work' | 'snapshot';
+  commits: number;
+  objects: number;
+  object_bytes: number;
+  inventory_sha256: string;
+  receipt: string;
+};
+export type GitRecord = {
+  plan: GitPlan;
+  state: 'admitted' | 'dispatching' | 'outcome_unknown' | 'completed';
+  result: GitResult | null;
 };
 /** Specific control-plane evidence, not bearer refusal or copy verification. */
 export type MintCleanup = MintObservation & {
@@ -177,6 +203,90 @@ export function mintObservation(v: unknown): asserts v is MintObservation {
     v.expires_at < 1
   )
     throw new Error('effect_invalid');
+}
+export function gitPlan(v: unknown): asserts v is GitPlan {
+  if (
+    !closed(v, [
+      'format_version',
+      'effect',
+      'attempt_id',
+      'digest',
+      'namespace',
+      'name',
+      'role',
+      'deadline',
+      'checkpoint',
+      'purpose',
+      'scope',
+      'repo_id',
+      'initial_attempt_id',
+      'key_version',
+      'key_fingerprint',
+      'preparation_digest',
+      'disclosure_digest',
+      'commit',
+      'tree',
+      'branch',
+      'observation',
+    ]) ||
+    v.effect !== (v.purpose === 'upload' ? 'git.upload' : 'git.readback') ||
+    !hex(v.preparation_digest) ||
+    !hex(v.disclosure_digest) ||
+    typeof v.commit !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(v.commit) ||
+    typeof v.tree !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(v.tree) ||
+    v.branch !== (v.role === 'task' ? 'work' : 'snapshot')
+  )
+    throw new Error('git_invalid');
+  const {
+    preparation_digest: _p,
+    disclosure_digest: _d,
+    commit: _c,
+    tree: _t,
+    branch: _b,
+    observation: _o,
+    ...base
+  } = v;
+  mintPlan({ ...base, effect: 'token.mint' });
+  mintObservation(v.observation);
+  if (
+    v.observation.repo_id !== v.repo_id ||
+    v.observation.scope !== v.scope ||
+    v.observation.expires_at > Number(v.deadline)
+  )
+    throw new Error('git_invalid');
+}
+export function gitResult(v: unknown, p: GitPlan): asserts v is GitResult {
+  if (
+    !closed(v, [
+      'method',
+      'commit',
+      'tree',
+      'branch',
+      'commits',
+      'objects',
+      'object_bytes',
+      'inventory_sha256',
+      'receipt',
+    ]) ||
+    v.method !== (p.purpose === 'upload' ? 'git_push_accepted' : 'git_readback_verified') ||
+    v.commit !== p.commit ||
+    v.tree !== p.tree ||
+    v.branch !== p.branch ||
+    !integer(v.commits) ||
+    v.commits < 1 ||
+    v.commits > 4096 ||
+    (p.role === 'snapshot' && v.commits !== 1) ||
+    !integer(v.objects) ||
+    v.objects < v.commits ||
+    v.objects > 65536 ||
+    !integer(v.object_bytes) ||
+    v.object_bytes > 67108864 ||
+    !hex(v.inventory_sha256) ||
+    !hex(v.receipt)
+  )
+    throw new Error('git_invalid');
 }
 export function mintCleanup(v: unknown): asserts v is MintCleanup {
   if (

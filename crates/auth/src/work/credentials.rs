@@ -225,6 +225,9 @@ impl CredentialObservation {
     pub fn scope(&self) -> CredentialScope {
         self.0.scope
     }
+    pub fn expires_at(&self) -> Option<u64> {
+        self.0.expires_at
+    }
 }
 
 /// No Debug/Serialize/Clone; the trusted service must keep this off wire/logs.

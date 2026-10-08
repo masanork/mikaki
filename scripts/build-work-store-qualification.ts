@@ -114,6 +114,12 @@ export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore};
 export class FixtureEffectBridge extends WorkerEntrypoint {
   async fetch(request) {
     const refusalInput=await request.clone().json();
+    if(refusalInput.action==='git-execute' && this.env.LOCAL_GIT_EXECUTE_PAUSE) {
+      const pause=this.env.LOCAL_GIT_EXECUTE_PAUSE;
+      if(pause==='freeze')await this.env.CHECKPOINT_ADMIN.freeze();
+      if(pause==='source')await this.env.DB.prepare('UPDATE work_source_access SET active=0,access_revision=access_revision+1').run();
+      if(pause==='owner')await this.env.OP_AUTHORITY_ADMIN.fetch('https://private.invalid/authority',{method:'POST',body:JSON.stringify({action:'revoke-account',account:'synthetic-delivery-owner',expected_epoch:0,actor:'fixture',reason:'after Git admission'})});
+    }
     if(this.env.LOCAL_MINT_CLOSE_FREEZE==='true' && refusalInput.action==='mint-close') await this.env.CHECKPOINT_ADMIN.freeze();
     if(this.env.LOCAL_MINT_CLEANUP_LOST==='true' && (await request.clone().json()).action==='mint-cleanup') return Response.json({error:'synthetic_cleanup_unavailable'},{status:409});
     if (this.env.LOCAL_MINT_CAPTURE_PAUSE) {
@@ -135,6 +141,7 @@ export class FixtureEffectBridge extends WorkerEntrypoint {
       if(i.action==='capture-mint') await this.env.MINT_MAINTENANCE.begin(i.attempt_id,i.digest);
     }
     const response = await this.env.OP_EFFECT_STORE.fetch(request);
+    if(this.env.LOCAL_GIT_EXECUTE_LOST==='true' && refusalInput.action==='git-execute' && response.status===200) return new Response(null,{status:409});
     if(this.env.LOCAL_MINT_CLOSE_LOST==='true' && refusalInput.action==='mint-close' && response.status===200) return Response.json({error:'synthetic_close_lost'},{status:409});
     if (response.status === 200 && this.env.LOCAL_EFFECT_CAPTURE_LOST === 'true') {
       const value = await response.clone().json();
@@ -175,12 +182,25 @@ export class FixtureMintRefusalLedger extends WorkerEntrypoint {
   lookup(attempt){return this.env.MINT_REFUSAL_CHECKPOINT.lookup(attempt);}
   async refused(attempt,digest,proof){const r=await this.env.MINT_REFUSAL_CHECKPOINT.refused(attempt,digest,proof);if(this.env.LOCAL_MINT_REFUSAL_LOST==='true') throw new Error('synthetic_refusal_lost');return r;}
 }
+export class FixtureGitLedger extends WorkerEntrypoint {
+  lookup(attempt){return this.env.GIT_LEDGER.lookup(attempt);}
+  async claim(plan){const r=await this.env.GIT_LEDGER.claim(plan);if(this.env.LOCAL_GIT_LEDGER_LOST==='claim')throw new Error('synthetic_git_claim_lost');return r;}
+  async finish(attempt,result){const r=await this.env.GIT_LEDGER.finish(attempt,result);if(this.env.LOCAL_GIT_LEDGER_LOST==='finish')throw new Error('synthetic_git_finish_lost');return r;}
+}
+export class FixtureGitExecutionCheckpoint extends WorkerEntrypoint {
+  async fetch(request){const r=await this.env.GIT_EXECUTION_CHECKPOINT.fetch(request);if(this.env.LOCAL_GIT_LEDGER_LOST==='take' && r.status===200)return new Response(null,{status:409});return r;}
+}
 export default class extends Public { async fetch(request) {
   const env=this.env, ctx=this.ctx;
   if (env.LOCAL_WORK_QUALIFICATION === 'true' && new URL(request.url).pathname === '/effect-fixture') {
     const i=await request.json();
     try {
       if(i.action==='mint-close') return env.MINT_CLOSER.fetch('https://private.invalid/close-mint',{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='git') return env.GIT_GATE.fetch('https://private.invalid/git',{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='git-public') return env.GIT_PUBLIC.fetch('https://private.invalid/git',{method:'POST',body:'{}'});
+      if(i.action==='git-claim') return Response.json(await env.GIT_CHECKPOINT.claim(i.plan));
+      if(i.action==='git-call') return Response.json(await env.GIT_CHECKPOINT[i.method](...(i.args??[])));
+      if(i.action==='git-transport') return env.WORK_GIT_TRANSPORT.fetch(new Request(i.url??'https://private.invalid/git-execute',{method:i.method??'POST',headers:i.headers,body:JSON.stringify(i.plan)}));
       if(i.action==='mint-close-public') return env.MINT_CLOSURE_PUBLIC.fetch('https://private.invalid/close-mint',{method:'POST',body:'{}'});
       if(i.action==='mint-refusal-public') return env.MINT_REFUSAL_TRANSPORT_PUBLIC.fetch('https://private.invalid/');
       if(i.action==='mint-refusal-call') return Response.json(await env.MINT_REFUSAL_CHECKPOINT[i.method](...(i.args??[])));
@@ -284,6 +304,8 @@ for (const [source, name] of [
   ['local/conformance/support/work-source-reader.ts', 'source-reader.mjs'],
   ['crates/work-effect-worker/worker.ts', 'effect.mjs'],
   ['crates/work-effect-worker/mint.ts', 'mint.mjs'],
+  ['crates/work-effect-worker/git.ts', 'git.mjs'],
+  ['crates/work-effect-worker/git-transport.ts', 'git-transport.mjs'],
   ['crates/work-effect-worker/mint-maintenance.ts', 'mint-maintenance.mjs'],
   ['crates/work-effect-worker/mint-reconcile.ts', 'mint-reconcile.mjs'],
   ['crates/work-effect-worker/mint-closure.ts', 'mint-closure.mjs'],
