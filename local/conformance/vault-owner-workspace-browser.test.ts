@@ -409,6 +409,62 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       'Saved and verified. Vault stays open.',
     );
     assert.equal(ceremonies, 3);
+    await page.locator('#owner-local-export summary').click();
+    await page.locator('#owner-local-export-source').selectOption('name');
+    await page.locator('#owner-local-export-delegate').fill('reviewer_1');
+    await page.locator('#owner-local-export-service').fill('Local review');
+    await page.locator('#owner-local-export-lifetime').selectOption('3600');
+    await page.locator('#owner-local-export-prepare').click();
+    await expect(page.locator('#owner-local-export-preview')).toHaveText('Recreated');
+    await expect(page.locator('#owner-local-export-review-heading')).toBeVisible();
+    await expect(page.locator('#owner-local-export')).toContainText('Exact source revision:');
+    await expect(page.locator('#owner-local-export')).toContainText('reviewer_1');
+    await expect(page.locator('#owner-local-export')).toContainText('Local review');
+    await expect(page.locator('#owner-local-export')).toContainText('source_check=not-checked');
+    await expect(page.locator('#owner-local-export')).toContainText(
+      'Permissions: list, search, and read',
+    );
+    await expect(page.locator('#owner-local-export')).toContainText('revoked to true');
+    await expect(page.locator('#owner-local-export-download-bundle')).toBeDisabled();
+    await page.locator('#owner-local-export-consent').check();
+    const [bundleDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#owner-local-export-download-bundle').click(),
+    ]);
+    assert.match(bundleDownload.suggestedFilename(), /^mikaki-v2-bundle-[A-Za-z0-9_-]+\.json$/);
+    const bundlePath = await bundleDownload.path();
+    assert.ok(bundlePath);
+    const exportedBundle = JSON.parse(await readFile(bundlePath, 'utf8'));
+    assert.equal(exportedBundle.version, 2);
+    assert.equal(exportedBundle.documents.length, 1);
+    assert.equal(exportedBundle.documents[0].id, 'name');
+    assert.equal(exportedBundle.documents[0].text, 'Recreated');
+    const [grantDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#owner-local-export-download-grant').click(),
+    ]);
+    assert.match(grantDownload.suggestedFilename(), /^mikaki-v2-grant-[A-Za-z0-9_-]+\.json$/);
+    const grantPath = await grantDownload.path();
+    assert.ok(grantPath);
+    const exportedGrant = JSON.parse(await readFile(grantPath, 'utf8'));
+    assert.equal(exportedGrant.version, 2);
+    assert.equal(exportedGrant.delegate, 'reviewer_1');
+    assert.deepEqual(exportedGrant.document_ids, ['name']);
+    assert.equal(
+      exportedGrant.sources[0].source.revision,
+      exportedBundle.documents[0].source_info.source.revision,
+    );
+    assert.ok(exportedGrant.expires_at > Math.floor(Date.now() / 1000));
+    assert.equal(exportedGrant.revoked, false);
+    await page.locator('#owner-local-export-clear').click();
+    await page.locator('#owner-local-export-source').selectOption('owner_note');
+    await page.locator('#owner-local-export-delegate').fill('note_reader');
+    await page.locator('#owner-local-export-service').fill('Local note review');
+    await page.locator('#owner-local-export-prepare').click();
+    await expect(page.locator('#owner-local-export-preview')).toContainText(
+      'Same record in both presentations.',
+    );
+    await expect(page.locator('#owner-local-export')).toContainText('Exact source revision:');
     assert.deepEqual(errors, []);
     await page.locator('#owner-passkeys summary').click();
     await expect(page.locator('#owner-passkeys')).toContainText(
@@ -450,6 +506,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await expect(page.locator('#name')).toBeDisabled();
     await page.locator('#owner-passkeys-retry').click();
     await expect(page.getByRole('heading', { name: 'Vault is locked', exact: true })).toBeVisible();
+    await expect(page.locator('#owner-local-export-preview')).toHaveCount(0);
     assert.deepEqual(
       wrapperRequests[0],
       wrapperRequests[1],
