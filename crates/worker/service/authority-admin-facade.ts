@@ -6,6 +6,7 @@ type RustOp = new (
 ) => WorkerEntrypoint<Env> & {
   fetch(request: Request): Promise<Response>;
   administer_op_authority(request: Request, env: Env): Promise<Response>;
+  administer_work_effect(request: Request, env: Env): Promise<Response>;
 };
 function denied() {
   return Promise.resolve(Response.json({ error: 'not_found' }, { status: 404 }));
@@ -22,6 +23,17 @@ export function authorityFacades(Op: RustOp) {
       return denied();
     }
   }
+  class Effect extends Op {
+    fetch(request: Request): Promise<Response> {
+      return super.administer_work_effect(request, this.env);
+    }
+    administer_work_effect(): Promise<Response> {
+      return denied();
+    }
+    administer_op_authority(): Promise<Response> {
+      return denied();
+    }
+  }
   class Public extends Op {
     administer_op_authority(): Promise<Response> {
       return denied();
@@ -30,5 +42,5 @@ export function authorityFacades(Op: RustOp) {
       return denied();
     }
   }
-  return { Admin, Public };
+  return { Admin, Effect, Public };
 }

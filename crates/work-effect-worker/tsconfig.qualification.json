@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "*.ts",
+    "../../local/conformance/support/work-artifacts-fixture.ts",
+    "../../local/conformance/support/work-effect-loss.ts",
+    "../../node_modules/@cloudflare/workers-types/index.d.ts"
+  ]
+}

@@ -102,7 +102,17 @@ test('product ingress budgets are atomic across isolates and expired state conve
       .run();
     await insert(now + 300).run();
     for (let cycle = 0; cycle < 2; cycle++) {
-      await DB.batch(Array.from({ length: 1200 }, () => insert(now - 86401, opaque())));
+      // Keep the 1200-row GC backlog without one oversized harness/D1 RPC.
+      // Each seed call is bounded independently of the product collector.
+      for (let seed = 0; seed < 6; seed++) {
+        await DB.batch(Array.from({ length: 200 }, () => insert(now - 86401, opaque())));
+      }
+      assert.equal(
+        await DB.prepare('SELECT count(*) AS n FROM login_transaction WHERE expires_at<?')
+          .bind(now - 86400)
+          .first('n'),
+        1200,
+      );
       for (let batch = 0; batch < 2; batch++) await worker.scheduled({ cron: '* * * * *' });
       assert.equal(
         await DB.prepare('SELECT count(*) AS n FROM login_transaction WHERE expires_at<?')

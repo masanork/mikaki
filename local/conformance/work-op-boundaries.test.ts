@@ -36,6 +36,11 @@ test('production Rust shim and named OP facade refuse public/raw administration 
               service: 'work-op-boundary',
               entrypoint: 'OpAuthorityAdmin',
             },
+            {
+              binding: 'WORK_EFFECT_STORE',
+              service: 'work-op-boundary',
+              entrypoint: 'WorkEffectStore',
+            },
           ],
         },
       },
@@ -46,8 +51,9 @@ test('production Rust shim and named OP facade refuse public/raw administration 
     const op = harness.getWorker('work-op-boundary');
     await op.applyD1Migrations('DB');
     const caller = await harness.getWorker('work-boundary-caller').getEnv();
-    for (const binding of [caller.OP_PUBLIC, caller.OP_AUTHORITY_ADMIN]) {
+    for (const binding of [caller.OP_PUBLIC, caller.OP_AUTHORITY_ADMIN, caller.WORK_EFFECT_STORE]) {
       assert.equal((await binding.administer_op_authority()).status, 404);
+      assert.equal((await binding.administer_work_effect()).status, 404);
     }
     assert.equal(
       (await caller.OP_PUBLIC.fetch('https://work.test/authority', { method: 'POST', body: '{}' }))
@@ -65,6 +71,20 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       }),
     });
     assert.equal(response.status, 409);
+    assert.equal(
+      (await caller.OP_PUBLIC.fetch('https://work.test/effect', { method: 'POST', body: '{}' }))
+        .status,
+      404,
+    );
+    assert.equal(
+      (
+        await caller.WORK_EFFECT_STORE.fetch('https://private.invalid/effect', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'initial-plan', attempt_id: 'a'.repeat(43) }),
+        })
+      ).status,
+      409,
+    );
     const { DB } = await op.getEnv();
     assert.equal(await DB.prepare('SELECT count(*) AS n FROM account_security').first('n'), 0);
     assert.equal(

@@ -53,6 +53,9 @@ jobs:
           npm run check:agent-worker
           npm run check:product-sources
           npm run check:service-authority
+          npm run check:work-sources
+          npm run check:work-checkpoint
+          npm run check:work-effects
           npm run check:i18n
           npm run check:docs
           npm run build:docs
@@ -115,6 +118,7 @@ jobs:
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
+          npm run test:work-delegation
       - name: Native client UI lifecycle
         run: npm run test:mobile-ui
       - name: Identity presentation, attester, consent and device-preflight regressions

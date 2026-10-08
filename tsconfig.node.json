@@ -23,6 +23,8 @@
     "design/probes/node_modules",
     "design/probes/pqc/pkg",
     "design/probes/pqc/pkg-web",
-    "local/conformance/support/work-source-reader.ts"
+    "local/conformance/support/work-source-reader.ts",
+    "local/conformance/support/work-artifacts-fixture.ts",
+    "local/conformance/support/work-effect-loss.ts"
   ]
 }
