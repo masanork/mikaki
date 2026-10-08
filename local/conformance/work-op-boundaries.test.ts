@@ -54,6 +54,10 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       '/work/source-review',
       '/work/source-review.js',
       '/work/source-review.css',
+      '/work/preparations',
+      '/work/preparation-review',
+      '/work/preparation-review.js',
+      '/work/preparation-review.css',
     ]) {
       assert.equal((await op.fetch(`https://work.test${path}`)).status, 404);
     }

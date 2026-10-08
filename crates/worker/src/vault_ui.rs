@@ -52,9 +52,18 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     let source_review = ["WORK_OWNER_API_ENABLED", "WORK_SOURCE_API_ENABLED"]
         .iter()
         .all(|key| context.env.var(key).is_ok_and(|v| v.to_string() == "true"));
+    let preparation_review = source_review
+        && context
+            .env
+            .var("WORK_PREPARATION_REVIEW_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true");
     let replacements = [
         ("{{locale}}", strings.locale),
         ("{{title}}", strings.message("vaultTitle")),
+        (
+            "{{work_preparation_review}}",
+            if preparation_review { "true" } else { "false" },
+        ),
         (
             "{{work_source_review}}",
             if source_review { "true" } else { "false" },

@@ -11,8 +11,14 @@
   let {
     locale,
     sourceReview = false,
+    preparationReview = false,
     children,
-  }: { locale: Locale; sourceReview?: boolean; children: Snippet } = $props();
+  }: {
+    locale: Locale;
+    sourceReview?: boolean;
+    preparationReview?: boolean;
+    children: Snippet;
+  } = $props();
   let reason: LockReason | null = $state(null);
   let checking = $state(false);
   let suspended = $state(false);
@@ -23,7 +29,7 @@
       undefined,
       undefined,
       undefined,
-      sourceReview ? '/work/session' : '/vault/session',
+      sourceReview || preparationReview ? '/work/session' : '/vault/session',
     );
   let scope = freshScope();
   const drafts = new SvelteSet<() => boolean>();
@@ -158,37 +164,58 @@
             /></svg
           >
         </div>
-        <span class="product-eyebrow">{sourceReview ? 'SOURCE REVIEW' : 'PERSONAL VAULT'}</span>
+        <span class="product-eyebrow"
+          >{preparationReview
+            ? 'WORK PREPARATION'
+            : sourceReview
+              ? 'SOURCE REVIEW'
+              : 'PERSONAL VAULT'}</span
+        >
         <h1 id="vault-lock-title" tabindex="-1">
-          {sourceReview
+          {preparationReview
             ? checking || suspended
               ? m.source_loading()
-              : m.source_locked()
-            : checking || suspended
-              ? m.vaultSessionChecking()
-              : m.vaultSessionLocked()}
+              : m.preparation_locked()
+            : sourceReview
+              ? checking || suspended
+                ? m.source_loading()
+                : m.source_locked()
+              : checking || suspended
+                ? m.vaultSessionChecking()
+                : m.vaultSessionLocked()}
         </h1>
         <p role="status">
-          {sourceReview
+          {preparationReview
             ? checking || suspended
               ? m.source_loading()
               : reason === 'session'
                 ? m.source_session()
                 : reason === 'unconfirmed'
-                  ? m.source_unavailable()
+                  ? m.preparation_unavailable()
                   : m.source_lock_body()
-            : checking || suspended
-              ? m.vaultSessionCheckingBody()
-              : reason === 'session'
-                ? m.vaultSessionChanged()
-                : reason === 'unconfirmed'
-                  ? m.vaultSessionUnconfirmed()
-                  : m.vaultSessionLockedBody()}
+            : sourceReview
+              ? checking || suspended
+                ? m.source_loading()
+                : reason === 'session'
+                  ? m.source_session()
+                  : reason === 'unconfirmed'
+                    ? m.source_unavailable()
+                    : m.source_lock_body()
+              : checking || suspended
+                ? m.vaultSessionCheckingBody()
+                : reason === 'session'
+                  ? m.vaultSessionChanged()
+                  : reason === 'unconfirmed'
+                    ? m.vaultSessionUnconfirmed()
+                    : m.vaultSessionLockedBody()}
         </p>
         {#if reason && !checking}<button
             class="product-button product-primary"
             type="button"
-            onclick={reopen}>{sourceReview ? m.source_reopen() : m.vaultSessionReopen()}</button
+            onclick={reopen}
+            >{sourceReview || preparationReview
+              ? m.source_reopen()
+              : m.vaultSessionReopen()}</button
           >{/if}
       </section>
     </main>

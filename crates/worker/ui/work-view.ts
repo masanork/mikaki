@@ -31,45 +31,8 @@ const context = z
     files: z.array(file),
   })
   .strict();
-const destination = z
-  .object({
-    namespace: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/),
-    name: z.string().regex(/^wk-[a-f0-9]{32}-(?:code|snapshot)$/),
-    repository_id: id.nullable(),
-  })
-  .strict();
-export const workPreparationSchema = z
-  .object({
-    id,
-    digest,
-    disclosure_digest: digest,
-    destination_digest: digest.nullable(),
-    task_repository: id,
-    snapshot_repository: id,
-    state: z.enum(['reserved', 'dispatched', 'verified', 'cleanup_pending', 'cleaned']),
-    revision: z.number().int().min(1).max(5),
-    expires_at: time,
-    current_authority: z.boolean(),
-    materialized: z.boolean(),
-    task: destination,
-    snapshot: destination,
-  })
-  .strict()
-  .superRefine((p, ctx) => {
-    const known = p.task.repository_id !== null && p.snapshot.repository_id !== null;
-    if (
-      (p.task.repository_id === null) !== (p.snapshot.repository_id === null) ||
-      (p.destination_digest !== null) !== known ||
-      (known && p.task.repository_id === p.snapshot.repository_id) ||
-      (known && ['reserved', 'dispatched'].includes(p.state)) ||
-      (p.state === 'verified' && !known) ||
-      (p.materialized && !known) ||
-      (p.current_authority && (p.state !== 'verified' || !p.materialized || !known))
-    ) {
-      ctx.addIssue({ code: 'custom', message: 'Invalid preparation projection' });
-    }
-  });
-export type WorkPreparation = z.infer<typeof workPreparationSchema>;
+import { workPreparationSchema, type WorkPreparation } from './work-preparation-view.ts';
+export { workPreparationSchema, type WorkPreparation };
 export const workViewSchema = z
   .object({
     preview: z.literal(true),

@@ -8,9 +8,12 @@ import { gitFixture } from '../../../scripts/work-git-fixture.ts';
 import { localGit, prepareGitDisclosure } from '../../../scripts/work-git-disclosure.ts';
 import { activateWorkerPolicy } from '../../../scripts/worker-policy-store.ts';
 
-export async function createSourceFixture(options?: {
-  artifacts: { accountId: string; namespace: string };
-}) {
+export async function createSourceFixture(
+  options?: {
+    artifacts: { accountId: string; namespace: string };
+  },
+  preparationReview = false,
+) {
   const root = new URL('../../..', import.meta.url).pathname;
   const parent = await mkdtemp(join(tmpdir(), 'mikaki-source-review-'));
   const contents = {
@@ -30,7 +33,7 @@ export async function createSourceFixture(options?: {
     },
     'SYNTHETIC_CODE_HISTORY\n',
   );
-  const verified = (
+  const disclosure = (
     await prepareGitDisclosure(
       { repository: 'code', gitDir: codeGit.dir, commit: codeGit.commit },
       [
@@ -44,7 +47,8 @@ export async function createSourceFixture(options?: {
       parent,
       'unused-snapshot',
     )
-  ).input.code;
+  ).input;
+  const verified = disclosure.code;
   const code = {
     commits: verified.commits.length,
     history_digest: createHash('sha256')
@@ -77,6 +81,7 @@ export async function createSourceFixture(options?: {
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
       WORK_SOURCE_API_ENABLED: 'true',
+      ...(preparationReview ? { WORK_PREPARATION_REVIEW_ENABLED: 'true' } : {}),
     },
     services: [
       {
@@ -265,6 +270,7 @@ export async function createSourceFixture(options?: {
       files,
       contents,
       codeSource: { repo_name: 'code-repo', commit: verified.commit, tree: verified.tree, code },
+      disclosure,
       close,
     };
   } catch (error) {
