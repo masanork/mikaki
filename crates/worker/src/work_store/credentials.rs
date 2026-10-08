@@ -141,6 +141,59 @@ impl WorkStore {
         self.credential_attempt(&self.credential_row(id).await?)
             .await
     }
+    /// Fixed mint plan. Only a closed initial credential can establish the
+    /// destination; the independent ledger separately checks its own closure.
+    pub async fn mint_effect_plan(&self, env: &worker::Env, id: &str) -> Result<serde_json::Value> {
+        self.current_authority_checkpoint().await?;
+        let a = self.credential_plan(id).await?;
+        if a.purpose() == CredentialPurpose::Initial || a.expected_repo_id().is_none() {
+            return Err(Denied::BindingMismatch.into());
+        }
+        let initial_id = self.statement(
+            "SELECT attempt_id FROM work_credential_attempt WHERE preparation_id=?1 AND role=?2 AND purpose='initial' AND state='closed' AND confirmation='refused' AND json_extract(observation,'$.data.repo_id')=?3",
+            &[text(a.preparation_id()), text(a.role().name()), text(a.expected_repo_id().unwrap_or_default())],
+        )?.first::<String>(Some("attempt_id")).await?.ok_or(Denied::BindingMismatch)?;
+        let version = self
+            .statement(
+                "SELECT version FROM work_credential_key WHERE state='active'",
+                &[],
+            )?
+            .first::<u64>(Some("version"))
+            .await?
+            .ok_or(Denied::StaleAuthority)?;
+        let key = credential_key(env, version)?;
+        self.check_key(&key, true).await?;
+        self.dispatch_credential(id, &key).await?;
+        let row = self.credential_row(id).await?;
+        if row.state != "dispatched" || row.dispatched != 1 {
+            return Err(Denied::InvalidTransition.into());
+        }
+        let checkpoint = self.current_authority_checkpoint().await?;
+        self.check_key(&key, true).await?;
+        let p = self.preparation(a.preparation_id()).await?;
+        if self
+            .statement(
+                include_str!("../../sql/work/credential-capture-current.sql"),
+                &[text(p.id())],
+            )?
+            .first::<String>(Some("operation_id"))
+            .await?
+            .is_none()
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let (namespace, name) = p.credential_destination(a.role());
+        if checkpoint != self.current_authority_checkpoint().await? {
+            return Err(Denied::StaleAuthority.into());
+        }
+        Ok(
+            serde_json::json!({"format_version":1,"effect":"token.mint","attempt_id":a.id(),
+            "digest":a.digest().to_hex(),"namespace":namespace,"name":name,"role":a.role().name(),
+            "purpose":a.purpose().name(),"scope":if a.purpose()==CredentialPurpose::Readback {"read"} else {"write"},
+            "repo_id":a.expected_repo_id(),"initial_attempt_id":initial_id,"deadline":a.deadline(),
+            "key_version":version,"key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint}),
+        )
+    }
     async fn credential_row(&self, id: &str) -> Result<CredentialRow> {
         if !owner_id_shape(id) {
             return Err(Denied::InvalidInput.into());
@@ -171,6 +224,24 @@ impl WorkStore {
     pub async fn credential_status(&self, id: &str) -> Result<CredentialStatus> {
         let row = self.credential_row(id).await?;
         let a = self.credential_attempt(&row).await?;
+        Ok(row.status(&a))
+    }
+    /// Metadata-only acknowledgement, not decryption or productive release.
+    pub async fn mint_custody_status(
+        &self,
+        id: &str,
+        observation: &CredentialObservation,
+        key_version: u64,
+    ) -> Result<CredentialStatus> {
+        let row = self.credential_row(id).await?;
+        let a = self.credential_attempt(&row).await?;
+        if a.purpose() == CredentialPurpose::Initial
+            || row.observation.as_deref() != Some(&observation.authority_record()?)
+            || row.key_version != Some(key_version)
+            || (row.state == "captured" && row.envelope.is_none())
+        {
+            return Err(Denied::BindingMismatch.into());
+        }
         Ok(row.status(&a))
     }
     /// Bounded restart discovery, including lost reservation replies. No key or

@@ -113,14 +113,28 @@ const {Admin, Effect, Public} = authorityFacades(FixtureRustOp);
 export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore};
 export class FixtureEffectBridge extends WorkerEntrypoint {
   async fetch(request) {
+    if (this.env.LOCAL_MINT_CAPTURE_PAUSE) {
+      const i=await request.clone().json();
+      if(i.action==='capture-mint') {
+        if(this.env.LOCAL_MINT_CAPTURE_PAUSE==='revoke') {
+          const r=await this.env.OP_AUTHORITY_ADMIN.fetch('https://private.invalid/authority',{method:'POST',body:JSON.stringify({action:'revoke-account',account:'synthetic-delivery-owner',expected_epoch:0,actor:'fixture',reason:'after mint admission'})});
+          if(r.status!==200) throw new Error('fixture_revoke_failed');
+        }
+        if(this.env.LOCAL_MINT_CAPTURE_PAUSE==='source') await this.env.DB.prepare('UPDATE work_source_access SET active=0,access_revision=access_revision+1').run();
+        if(this.env.LOCAL_MINT_CAPTURE_PAUSE==='rotate') {
+          const r=await this.env.OP_PUBLIC.fetch('https://work.test/fixture',{method:'POST',body:JSON.stringify({action:'activate-credential-key',key_version:2})});
+          if(r.status!==200) throw new Error('fixture_rotate_failed');
+        }
+      }
+    }
     const response = await this.env.OP_EFFECT_STORE.fetch(request);
     if (response.status === 200 && this.env.LOCAL_EFFECT_CAPTURE_LOST === 'true') {
       const value = await response.clone().json();
-      if (value.state === 'closed') return Response.json({error:'synthetic_lost_ack'},{status:409});
+      if (value.state === 'closed' || value.state === 'captured') return Response.json({error:'synthetic_lost_ack'},{status:409});
     }
     if (response.status === 200 && this.env.LOCAL_EFFECT_PAUSE) {
       const p = await response.clone().json();
-      if (p.effect === 'repo.create') {
+      if (p.effect === 'repo.create' || p.effect === 'token.mint') {
         if (this.env.LOCAL_EFFECT_PAUSE === 'pending') {
           const result = await this.env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint', {method:'POST',body:JSON.stringify({action:'begin',release:1,expected:p.checkpoint,operation:'fixture-before-effect'})});
           if (result.status !== 200) throw new Error('fixture_pending_failed');
@@ -141,11 +155,23 @@ export class FixtureEffectLedger extends WorkerEntrypoint {
   observe(attempt,digest,repo){return this.env.EFFECT_LEDGER.observe(attempt,digest,repo);}
   close(attempt,digest,value){return this.env.EFFECT_LEDGER.close(attempt,digest,value);}
 }
+export class FixtureMintLedger extends WorkerEntrypoint {
+  lookup(attempt){return this.env.MINT_LEDGER.lookup(attempt);}
+  async claim(plan){const r=await this.env.MINT_LEDGER.claim(plan);if(this.env.LOCAL_MINT_LEDGER_LOST==='claim') throw new Error('synthetic_claim_lost');return r;}
+  observe(attempt,digest,value){return this.env.MINT_LEDGER.observe(attempt,digest,value);}
+  async custody(attempt,digest){const r=await this.env.MINT_LEDGER.custody(attempt,digest);if(this.env.LOCAL_MINT_LEDGER_LOST==='custody') throw new Error('synthetic_custody_lost');return r;}
+  revoked(attempt,digest){return this.env.MINT_LEDGER.revoked(attempt,digest);}
+}
 export default class extends Public { async fetch(request) {
   const env=this.env, ctx=this.ctx;
   if (env.LOCAL_WORK_QUALIFICATION === 'true' && new URL(request.url).pathname === '/effect-fixture') {
     const i=await request.json();
     try {
+      if(i.action==='mint') return env.MINT_GATE.fetch('https://private.invalid/mint',{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='mint-public') return env.MINT_PUBLIC.fetch('https://private.invalid/mint',{method:'POST',body:'{}'});
+      if(i.action==='mint-lookup') return Response.json(await env.MINT_LEDGER.lookup(i.attempt_id));
+      if(i.action==='mint-claim') return Response.json(await env.MINT_LEDGER.claim(i.plan));
+      if(i.action==='mint-ledger-call') return Response.json(await env.MINT_LEDGER[i.method](i.input));
       if(i.action==='execute') return env.EFFECT_GATE.fetch('https://private.invalid/initial',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='reconcile') return env.EFFECT_RECONCILER.fetch('https://private.invalid/reconcile',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='reconcile-public') return env.RECONCILE_PUBLIC.fetch('https://private.invalid/reconcile',{method:'POST',body:'{}'});
@@ -221,6 +247,7 @@ await build({
 for (const [source, name] of [
   ['local/conformance/support/work-source-reader.ts', 'source-reader.mjs'],
   ['crates/work-effect-worker/worker.ts', 'effect.mjs'],
+  ['crates/work-effect-worker/mint.ts', 'mint.mjs'],
   ['crates/work-effect-worker/reconcile.ts', 'reconcile.mjs'],
   ['crates/work-effect-worker/maintenance.ts', 'maintenance.mjs'],
   ['local/conformance/support/work-effect-loss.ts', 'effect-loss.mjs'],

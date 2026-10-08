@@ -8,8 +8,11 @@ import {
   resource,
   revocationInventory,
   tokenObservation,
+  mintPlan,
+  mintObservation,
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
+import type { MintPlan, MintRecord } from '../work-effect-worker/protocol';
 
 export type Checkpoint = { authority: string; epoch: string; sequence: number; tip: string };
 export type Permit = { operation: string; previous: Checkpoint; next: Checkpoint };
@@ -76,6 +79,9 @@ export class WorkCheckpoint extends DurableObject<Env> {
     );
     this.ctx.storage.sql.exec(
       'CREATE TABLE IF NOT EXISTS effect_ledger(attempt_id TEXT PRIMARY KEY, body TEXT NOT NULL)',
+    );
+    this.ctx.storage.sql.exec(
+      'CREATE TABLE IF NOT EXISTS mint_ledger(attempt_id TEXT PRIMARY KEY, slot TEXT UNIQUE NOT NULL, body TEXT NOT NULL)',
     );
   }
   private state(): State {
@@ -210,6 +216,126 @@ export class WorkCheckpoint extends DurableObject<Env> {
     await this.ctx.storage.sync();
     return record;
   }
+  #mint(attempt: unknown): MintRecord | null {
+    if (!opaque(attempt)) throw new Error('effect_invalid');
+    const rows = this.ctx.storage.sql
+      .exec<{ body: string }>('SELECT body FROM mint_ledger WHERE attempt_id=?', attempt)
+      .toArray();
+    return rows.length ? (JSON.parse(rows[0]!.body) as MintRecord) : null;
+  }
+  #saveMint(r: MintRecord) {
+    this.ctx.storage.sql.exec(
+      'INSERT OR REPLACE INTO mint_ledger VALUES(?,?,?)',
+      r.plan.attempt_id,
+      JSON.stringify([r.plan.namespace, r.plan.name, r.plan.purpose]),
+      JSON.stringify(r),
+    );
+  }
+  async lookupMint(attempt: unknown) {
+    const r = this.#mint(attempt);
+    await this.ctx.storage.sync();
+    return r;
+  }
+  async claimMint(input: unknown, release: unknown) {
+    mintPlan(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      const s = this.current(release);
+      if (
+        s.pending ||
+        !equal(s.checkpoint, input.checkpoint) ||
+        input.checkpoint.authority !== this.env.WORK_AUTHORITY_ID ||
+        input.deadline <= Math.floor(Date.now() / 1000) + 65
+      )
+        throw new Error('effect_blocked');
+      const initial = this.effect(input.initial_attempt_id);
+      if (
+        !initial ||
+        initial.state !== 'closed' ||
+        initial.closure?.repo_id !== input.repo_id ||
+        initial.plan.namespace !== input.namespace ||
+        initial.plan.name !== input.name ||
+        initial.plan.role !== input.role ||
+        initial.plan.deadline !== input.deadline
+      )
+        throw new Error('effect_initial_not_closed');
+      const previous = this.#mint(input.attempt_id);
+      if (previous) {
+        // Checkpoint may advance between retries; immutable intent and custody
+        // key cannot change. A retry receives no second external permit.
+        const { checkpoint: _a, ...a } = previous.plan,
+          { checkpoint: _b, ...b } = input;
+        if (JSON.stringify(Object.entries(a).sort()) !== JSON.stringify(Object.entries(b).sort()))
+          throw new Error('effect_conflict');
+        return { started: false, record: previous };
+      }
+      const n = this.ctx.storage.sql
+        .exec<{ n: number }>(
+          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger) AS n',
+        )
+        .one().n;
+      if (n >= 256) throw new Error('effect_capacity');
+      const r: MintRecord = {
+        plan: input,
+        state: 'outcome_unknown',
+        observation: null,
+        revoke_acknowledged: false,
+      };
+      // The unique permanent slot prevents new attempt IDs after primary restore.
+      this.ctx.storage.sql.exec(
+        'INSERT INTO mint_ledger VALUES(?,?,?)',
+        input.attempt_id,
+        JSON.stringify([input.namespace, input.name, input.purpose]),
+        JSON.stringify(r),
+      );
+      return { started: true, record: r };
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async observeMint(attempt: unknown, digest: unknown, input: unknown) {
+    mintObservation(input);
+    this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        r.plan.repo_id !== input.repo_id ||
+        r.plan.scope !== input.scope ||
+        input.expires_at > r.plan.deadline ||
+        (r.observation &&
+          (r.observation.token_id !== input.token_id ||
+            r.observation.scope !== input.scope ||
+            r.observation.expires_at !== input.expires_at))
+      )
+        throw new Error('effect_conflict');
+      r.observation = input;
+      this.#saveMint(r);
+    });
+    await this.ctx.storage.sync();
+  }
+  async custodyMint(attempt: unknown, digest: unknown) {
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (!r || r.plan.digest !== digest || !r.observation || r.revoke_acknowledged)
+        throw new Error('effect_conflict');
+      // Custody is a result observation, never copy verification or release.
+      r.state = 'custodied';
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async revokeMint(attempt: unknown, digest: unknown) {
+    this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (!r || r.plan.digest !== digest || !r.observation) throw new Error('effect_conflict');
+      r.revoke_acknowledged = true;
+      r.state = 'outcome_unknown';
+      this.#saveMint(r);
+    });
+    await this.ctx.storage.sync();
+  }
   async claimEffect(input: unknown, release: unknown) {
     initialPlan(input);
     const result = this.ctx.storage.transactionSync(() => {
@@ -235,7 +361,9 @@ export class WorkCheckpoint extends DurableObject<Env> {
       }
       // Retained tombstones never expire or get reclaimed. Capacity fails closed.
       const n = this.ctx.storage.sql
-        .exec<{ n: number }>('SELECT count(*) AS n FROM effect_ledger')
+        .exec<{ n: number }>(
+          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger) AS n',
+        )
         .one().n;
       if (n >= 256) throw new Error('effect_capacity');
       const record: EffectRecord = {
@@ -426,6 +554,27 @@ export class WorkEffectLookup extends WorkerEntrypoint<Env> {
   }
   lookup(attempt: unknown) {
     return object(this.env).lookupEffect(attempt);
+  }
+}
+/** Mint gate cannot admit creates, mutate OP frames or reset retained slots. */
+export class WorkMintCheckpoint extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+  claim(plan: MintPlan) {
+    return object(this.env).claimMint(plan, 1);
+  }
+  observe(attempt: unknown, digest: unknown, value: unknown) {
+    return object(this.env).observeMint(attempt, digest, value);
+  }
+  custody(attempt: unknown, digest: unknown) {
+    return object(this.env).custodyMint(attempt, digest);
+  }
+  revoked(attempt: unknown, digest: unknown) {
+    return object(this.env).revokeMint(attempt, digest);
   }
 }
 /** Safety-only capability: no claim, close, frame, floor, bootstrap or reset. */

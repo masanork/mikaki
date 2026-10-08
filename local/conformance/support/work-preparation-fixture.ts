@@ -63,6 +63,13 @@ export async function preparationFixture(
                   OP_EFFECT_STORE: { name: 'preparation-owner', entrypoint: 'WorkEffectStore' },
                   EFFECT_GATE: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
                   EFFECT_PUBLIC: 'work-effect',
+                  ...(!remote
+                    ? {
+                        MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+                        MINT_PUBLIC: 'work-mint',
+                        MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
+                      }
+                    : {}),
                   EFFECT_RECONCILER: { name: 'work-reconcile', entrypoint: 'WorkEffectReconciler' },
                   RECONCILE_PUBLIC: 'work-reconcile',
                   ARTIFACTS_MAINTENANCE: {
@@ -153,6 +160,35 @@ export async function preparationFixture(
                       : {}),
                 },
               },
+              ...(!remote
+                ? [
+                    {
+                      name: 'work-mint',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint.mjs'),
+                      compatibilityDate: '2026-09-30',
+                      bindings: {
+                        WORK_MINT_GATE_ENABLED: bindings.WORK_MINT_GATE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        OP_EFFECT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        MINT_CHECKPOINT: Boolean(bindings.LOCAL_MINT_LEDGER_LOST)
+                          ? { name: 'preparation-owner', entrypoint: 'FixtureMintLedger' }
+                          : { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                  ]
+                : []),
               {
                 name: 'work-reconcile',
                 modules: true,

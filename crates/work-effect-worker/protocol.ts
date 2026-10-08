@@ -11,6 +11,28 @@ export type InitialPlan = {
   deadline: number;
   checkpoint: Checkpoint;
 };
+export type MintPlan = Omit<InitialPlan, 'effect'> & {
+  effect: 'token.mint';
+  purpose: 'upload' | 'readback';
+  scope: 'read' | 'write';
+  repo_id: string;
+  initial_attempt_id: string;
+  key_version: number;
+  key_fingerprint: string;
+};
+/** No plaintext, ciphertext or credential release capability in this ledger. */
+export type MintObservation = {
+  repo_id: string;
+  token_id: string;
+  scope: 'read' | 'write';
+  expires_at: number;
+};
+export type MintRecord = {
+  plan: MintPlan;
+  state: 'outcome_unknown' | 'custodied';
+  observation: MintObservation | null;
+  revoke_acknowledged: boolean;
+};
 export type Closure = {
   repo_id: string;
   token_id: string;
@@ -89,6 +111,53 @@ export function closure(v: unknown): asserts v is Closure {
     !resource(v.token_id) ||
     !(v.expires_at === null || integer(v.expires_at)) ||
     !hex(v.receipt)
+  )
+    throw new Error('effect_invalid');
+}
+export function mintPlan(v: unknown): asserts v is MintPlan {
+  const extra = [
+    'purpose',
+    'scope',
+    'repo_id',
+    'initial_attempt_id',
+    'key_version',
+    'key_fingerprint',
+  ];
+  if (
+    !closed(v, [
+      'format_version',
+      'effect',
+      'attempt_id',
+      'digest',
+      'namespace',
+      'name',
+      'role',
+      'deadline',
+      'checkpoint',
+      ...extra,
+    ]) ||
+    v.effect !== 'token.mint' ||
+    !['upload', 'readback'].includes(String(v.purpose)) ||
+    v.scope !== (v.purpose === 'upload' ? 'write' : 'read') ||
+    !resource(v.repo_id) ||
+    !opaque(v.initial_attempt_id) ||
+    v.initial_attempt_id === v.attempt_id ||
+    !integer(v.key_version) ||
+    v.key_version < 1 ||
+    !hex(v.key_fingerprint)
+  )
+    throw new Error('effect_invalid');
+  const base = Object.fromEntries(Object.entries(v).filter(([k]) => !extra.includes(k)));
+  initialPlan({ ...base, effect: 'repo.create' });
+}
+export function mintObservation(v: unknown): asserts v is MintObservation {
+  if (
+    !closed(v, ['repo_id', 'token_id', 'scope', 'expires_at']) ||
+    !resource(v.repo_id) ||
+    !resource(v.token_id) ||
+    !['read', 'write'].includes(String(v.scope)) ||
+    !integer(v.expires_at) ||
+    v.expires_at < 1
   )
     throw new Error('effect_invalid');
 }

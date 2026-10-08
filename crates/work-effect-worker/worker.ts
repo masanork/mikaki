@@ -47,7 +47,7 @@ export async function jsonBody(response: Request | Response): Promise<unknown> {
     new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes),
   ) as unknown;
 }
-async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unknown>) {
+export async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unknown>) {
   const response = await env.OP_EFFECT_STORE.fetch('https://private.invalid/effect', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -57,7 +57,7 @@ async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unkno
 }
 export function scope(
   env: Pick<Env, 'WORK_ARTIFACTS_ACCOUNT' | 'WORK_ARTIFACTS_NAMESPACE' | 'WORK_AUTHORITY_ID'>,
-  p: InitialPlan,
+  p: Pick<InitialPlan, 'namespace' | 'name' | 'checkpoint'>,
 ) {
   if (
     !/^[a-f0-9]{32}$/.test(env.WORK_ARTIFACTS_ACCOUNT) ||
