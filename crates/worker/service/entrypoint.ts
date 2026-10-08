@@ -168,6 +168,6 @@ export class ClaimStore extends WorkerEntrypoint<Env> {
     }
   }
 }
-const { Admin, Effect, Public } = authorityFacades(op);
-export { Admin as OpAuthorityAdmin, Effect as WorkEffectStore };
+const { Admin, Effect, Mint, Public } = authorityFacades(op);
+export { Admin as OpAuthorityAdmin, Effect as WorkEffectStore, Mint as WorkMintStore };
 export default Public;

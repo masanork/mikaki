@@ -17,6 +17,7 @@ export type MintPlan = Omit<InitialPlan, 'effect'> & {
   scope: 'read' | 'write';
   repo_id: string;
   initial_attempt_id: string;
+  expires_at: number;
   key_version: number;
   key_fingerprint: string;
 };
@@ -29,9 +30,11 @@ export type MintObservation = {
 };
 export type MintRecord = {
   plan: MintPlan;
-  state: 'outcome_unknown' | 'custodied';
+  state: 'outcome_unknown' | 'custodied' | 'closed';
   observation: MintObservation | null;
+  cleanup_requested: boolean;
   revoke_acknowledged: boolean;
+  receipt: string | null;
 };
 export type Closure = {
   repo_id: string;
@@ -120,6 +123,7 @@ export function mintPlan(v: unknown): asserts v is MintPlan {
     'scope',
     'repo_id',
     'initial_attempt_id',
+    'expires_at',
     'key_version',
     'key_fingerprint',
   ];
@@ -142,6 +146,9 @@ export function mintPlan(v: unknown): asserts v is MintPlan {
     !resource(v.repo_id) ||
     !opaque(v.initial_attempt_id) ||
     v.initial_attempt_id === v.attempt_id ||
+    !integer(v.deadline) ||
+    !integer(v.expires_at) ||
+    v.expires_at > v.deadline ||
     !integer(v.key_version) ||
     v.key_version < 1 ||
     !hex(v.key_fingerprint)

@@ -14,7 +14,7 @@ The [Native adapter](../crates/worker/src/work_effect.rs) accepts an opaque atte
 ID for a plan; callers cannot select a repository, scope, URL, TTL or wrapping
 key. [Native plan derivation](../crates/worker/src/work_store/credentials.rs) binds
 that journal's preparation digest, role, destination, immutable repository ID,
-absolute deadline, purpose, current checkpoint and active key fingerprint/version.
+absolute deadline, fixed short mint expiry, purpose, current checkpoint and active key fingerprint/version.
 The initial token must already have a Native refusal closure for the same role
 and repository. All owner, source, policy, key-floor and preparation guards still
 apply. A primary dispatch is not an external dispatch permit.
@@ -28,7 +28,11 @@ fields and receive no new permit. Initial and mint tombstones share the existing
 256-record bound; neither expiry nor token absence reclaims capacity.
 
 The [mint gate](../crates/work-effect-worker/mint.ts) owns the physical Artifacts
-binding, the named Native adapter and this mint-only ledger. Its implementation
+binding, the separate `WorkMintStore` Native adapter and this mint-only ledger.
+Native mint actions require `/mint-effect` and `WORK_MINT_STORE_ENABLED=true`;
+initial actions retain `/effect` and their own flag. Each named facade rejects
+the other path, and Native rejects actions crossing those paths. Public, admin,
+initial-effect and mint facades all refuse raw administration RPC. Its implementation
 uses only `get` followed by the fixed repository operations; the TypeScript
 `Pick` annotation itself is not runtime capability attenuation. It returns no
 repository or raw binding capability.
@@ -43,15 +47,19 @@ The gate verifies repository ID, name, branch and fixed remote before minting. I
 requires a complete bounded inventory without active tokens. Therefore upload and
 readback credentials for one repository must be used and closed sequentially;
 an unresolved active token blocks the next purpose. It requests only the Native
-scope (`write` for upload, `read` for readback), with a TTL at most 300 seconds and
-below the absolute preparation deadline. The installed Workers binding and
+scope (`write` for upload, `read` for readback), with a TTL below the independently retained Native expiry
+(`min(preparation deadline, plan time + 300 seconds)`). A repeated plan cannot
+replace that retained expiry or issue another permit. The installed Workers binding and
 [official API](https://developers.cloudflare.com/artifacts/api/workers-binding/)
 use `createToken(scope, ttl)` and disposable repository capabilities.
 
 A matching fresh inventory must identify exactly the returned active token and
 preserve the previous inventory. Returned scope, immutable identity and expiry
 must match the plan. Fractional ISO expiry rounds conservatively. The independent
-ledger retains metadata before the returned plaintext enters the Native adapter.
+ledger retains returned metadata before later provider validation and before
+the returned plaintext enters the Native adapter. Wrong-scope/overlong results
+are retained only as safety observations; they cannot enter productive custody
+or acquire a refusal closure for this plan.
 Native checks the attempt digest, purpose, repository, scope, expiry, key version,
 fingerprint and operator secret/floor, then seals into the existing AES-GCM
 service custody. Plaintext is not put in D1, the checkpoint, receipts, logs or
@@ -69,9 +77,20 @@ false: the gate cannot reconstruct a missing secret or remint it.
 
 Lost admission, provider, Native capture or ledger acknowledgements retain the
 same attempt. Repeat calls and process restarts perform no further Artifacts I/O.
-A known returned bearer is revoked when validation or custody fails. A positively
-acknowledged revoke can be recorded independently, including after freeze; it is
-not bearer-refusal evidence and does not close the charged Native obligation.
+A known returned bearer is revoked when validation or custody fails. Cleanup intent is retained before revocation and prevents a late custody
+acknowledgement from reopening that attempt. A positively acknowledged revoke
+can be recorded independently, including after freeze; it is not bearer-refusal
+evidence. Closure additionally requires explicit Git 403 for the same plaintext,
+unchanged immutable repository identity, and a complete fresh token inventory
+matching the observed ID/scope/expiry within the fixed plan. A lost revoke reply
+can still be followed by that concrete refusal. Redirects, success, transport
+errors and mismatched/incomplete inventories cannot close an obligation.
+
+The independent closed record retains the domain-separated refusal digest.
+Native repeats the same observation and closes its existing credential journal
+without reconstructing or releasing plaintext. `op_synchronized` is false while
+frozen/pending framing or an old D1 marker prevents that metadata synchronization.
+Retrying a retained closure performs no Artifacts/Git I/O.
 
 Revocation can race a call admitted earlier. Owner or source loss after mint sends
 the returned credential to encrypted revocation-pending custody and cleanup. A
@@ -105,8 +124,14 @@ and RPC boundaries, Native key floors, incomplete/substituted inventories,
 overlong expiry, lost admission/provider/capture/custody replies, pending/freeze/
 owner loss before admission, and owner/source/key loss after admission.
 
-Current local results: **28 mint cases pass**. The initial-effect suite is retained
+Current reconciled local results: **33 mint cases pass**. The initial-effect suite is retained
 through the [shared fixture](../local/conformance/support/work-effect-fixture.ts).
 Combined regression and production build/check results are recorded in the
 [integration plan](work-delegation-implementation.md). These are local synthetic
 provider results, not remote Artifacts qualification or production activation.
+
+The current `token.mint` protocol keeps the independent initial-effect closure
+and Native key fingerprint from `45a0102`, and incorporates the separate mint
+facade, retained short expiry and refusal closure from the parallel
+`feat/work-productive-mint` prototype (`bb73f1d`, `b19913d`). That older branch is
+retained; its separate `token.create` protocol is superseded by this one contract.

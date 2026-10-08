@@ -7,6 +7,8 @@ private capability.
 
 - `worker.ts`: one admitted initial task/snapshot create, immediate token
   revocation, inventory checks and explicit Git bearer refusal before closure.
+- `mint.ts`: one admitted upload/readback token mint through the distinct Native
+  `WorkMintStore`; encrypted custody and known-plaintext refusal closure only.
 - `maintenance.ts`: physical Artifacts owner returning only fixed-repository
   metadata/token inventory and admitted ID revocation capabilities.
 - `reconcile.ts`: safety-only recovery of admitted unknown creates, with no
@@ -19,5 +21,5 @@ authority/checkpoint/effect gate is `npm run test:work-delegation`.
 Existing protected remote journals and unresolved allocations must be
 reconciled against their original immutable IDs before any new remote trial.
 Local qualification does not reset or certify those resources. Upload/readback,
-productive mint/release, authenticated copy consent and operator/recovery
+productive Git credential use/release, authenticated copy consent and operator/recovery
 provenance retain separate gates.

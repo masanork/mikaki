@@ -48,6 +48,15 @@ enum Input {
         scope: CredentialScope,
         expires_at: u64,
     },
+    CaptureMintClosed {
+        attempt_id: String,
+        digest: String,
+        repo_id: String,
+        token_id: String,
+        scope: CredentialScope,
+        expires_at: u64,
+        receipt: String,
+    },
     CaptureClosed {
         attempt_id: String,
         repo_id: String,
@@ -64,10 +73,11 @@ enum Input {
     },
 }
 pub async fn handle(mut request: Request, env: &Env) -> worker::Result<Response> {
-    if request.method() != worker::Method::Post || request.url()?.path() != "/effect" {
+    let mint = request.url()?.path() == "/mint-effect";
+    if request.method() != worker::Method::Post || (!mint && request.url()?.path() != "/effect") {
         return Response::empty().map(|r| r.with_status(404));
     }
-    let result = execute(&mut request, env).await;
+    let result = execute(&mut request, env, mint).await;
     match result {
         Ok(value) => Response::builder()
             .with_header("Cache-Control", "no-store")?
@@ -81,13 +91,30 @@ pub async fn handle(mut request: Request, env: &Env) -> worker::Result<Response>
 async fn execute(
     request: &mut Request,
     env: &Env,
+    mint: bool,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    if env.var("WORK_EFFECT_STORE_ENABLED")?.to_string() != "true" {
+    let enabled = if mint {
+        "WORK_MINT_STORE_ENABLED"
+    } else {
+        "WORK_EFFECT_STORE_ENABLED"
+    };
+    if env.var(enabled)?.to_string() != "true" {
         return Err("effect_disabled".into());
     }
     let body = Zeroizing::new(read_bounded_body(request, 8192).await?);
     mikaki_webauthn::strict_json(&body, 8192, 8).map_err(|_| "invalid_effect_input")?;
     let input: Input = serde_json::from_str(&body)?;
+    let mint_input = matches!(
+        &input,
+        Input::MintPlan { .. }
+            | Input::MintStatus { .. }
+            | Input::CaptureMint { .. }
+            | Input::MintCleanup { .. }
+            | Input::CaptureMintClosed { .. }
+    );
+    if mint != mint_input {
+        return Err("invalid_effect_input".into());
+    }
     let store = WorkStore::from_env(env)?;
     // These fixed result-recording actions confer no dispatch or release.
     // Native batches still require checkpoint framing; frozen/unavailable OP
@@ -110,7 +137,8 @@ async fn execute(
                 || a.digest() != Digest::parse_hex(&digest)?
                 || scope != a.purpose().scope()
                 || expires_at > a.deadline()
-                || expires_at == 0
+                || expires_at <= (js_sys::Date::now() / 1000.0) as u64
+                || expires_at > (js_sys::Date::now() / 1000.0) as u64 + 300
             {
                 return Err("invalid_effect_input".into());
             }
@@ -192,6 +220,38 @@ async fn execute(
             Ok(serde_json::to_value(
                 store
                     .mint_custody_status(&attempt_id, &o, key_version)
+                    .await?,
+            )?)
+        }
+        Input::CaptureMintClosed {
+            attempt_id,
+            digest,
+            repo_id,
+            token_id,
+            scope,
+            expires_at,
+            receipt,
+        } => {
+            let a = store.credential_plan(&attempt_id).await?;
+            if a.purpose() == CredentialPurpose::Initial
+                || a.digest() != Digest::parse_hex(&digest)?
+            {
+                return Err("invalid_effect_input".into());
+            }
+            let observation = CredentialObservation::from_observed(
+                &a,
+                &repo_id,
+                &token_id,
+                scope,
+                Some(expires_at),
+            )?;
+            Ok(serde_json::to_value(
+                store
+                    .capture_mint_effect_closed(
+                        &attempt_id,
+                        &observation,
+                        Digest::parse_hex(&receipt)?,
+                    )
                     .await?,
             )?)
         }

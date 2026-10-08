@@ -109,8 +109,8 @@ class FixtureRustOp extends WorkerEntrypoint {
   administer_op_authority(request, env) { return administer_op_authority(request, env); }
   administer_work_effect(request, env) { return administer_work_effect(request, env); }
 }
-const {Admin, Effect, Public} = authorityFacades(FixtureRustOp);
-export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore};
+const {Admin, Effect, Mint, Public} = authorityFacades(FixtureRustOp);
+export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore, Mint as WorkMintStore};
 export class FixtureEffectBridge extends WorkerEntrypoint {
   async fetch(request) {
     if (this.env.LOCAL_MINT_CAPTURE_PAUSE) {
@@ -127,7 +127,7 @@ export class FixtureEffectBridge extends WorkerEntrypoint {
         }
       }
     }
-    const response = await this.env.OP_EFFECT_STORE.fetch(request);
+    const response = await (new URL(request.url).pathname === '/mint-effect' ? this.env.OP_MINT_STORE : this.env.OP_EFFECT_STORE).fetch(request);
     if (response.status === 200 && this.env.LOCAL_EFFECT_CAPTURE_LOST === 'true') {
       const value = await response.clone().json();
       if (value.state === 'closed' || value.state === 'captured') return Response.json({error:'synthetic_lost_ack'},{status:409});
@@ -160,7 +160,9 @@ export class FixtureMintLedger extends WorkerEntrypoint {
   async claim(plan){const r=await this.env.MINT_LEDGER.claim(plan);if(this.env.LOCAL_MINT_LEDGER_LOST==='claim') throw new Error('synthetic_claim_lost');return r;}
   observe(attempt,digest,value){return this.env.MINT_LEDGER.observe(attempt,digest,value);}
   async custody(attempt,digest){const r=await this.env.MINT_LEDGER.custody(attempt,digest);if(this.env.LOCAL_MINT_LEDGER_LOST==='custody') throw new Error('synthetic_custody_lost');return r;}
+  cleanup(attempt,digest){return this.env.MINT_LEDGER.cleanup(attempt,digest);}
   revoked(attempt,digest){return this.env.MINT_LEDGER.revoked(attempt,digest);}
+  close(attempt,digest,receipt){return this.env.MINT_LEDGER.close(attempt,digest,receipt);}
 }
 export default class extends Public { async fetch(request) {
   const env=this.env, ctx=this.ctx;
@@ -198,7 +200,10 @@ export default class extends Public { async fetch(request) {
       }
       if(i.action==='maintenance-claim') return Response.json(await env.EFFECT_MAINTENANCE.claim(i.plan));
       if(i.action==='maintenance-record') return Response.json(await env.EFFECT_MAINTENANCE.recordRevocation(i.attempt_id,i.digest,i.value));
-      if(i.action==='plan' || i.action==='capture') return env.OP_EFFECT_STORE.fetch('https://private.invalid/effect',{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='plan' || i.action==='capture') { const mint=i.input.action.includes('mint'); return (mint ? env.OP_MINT_STORE : env.OP_EFFECT_STORE).fetch('https://private.invalid/'+(mint?'mint-effect':'effect'),{method:'POST',body:JSON.stringify(i.input)}); }
+      if(i.action==='store-call') return env[i.binding].fetch('https://private.invalid'+i.path,{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='mint-raw') return env.OP_MINT_STORE.administer_work_effect();
+      if(i.action==='mint-admin-raw') return env.OP_MINT_STORE.administer_op_authority();
       if(i.action==='ledger-lookup') return Response.json(await env.EFFECT_LEDGER.lookup(i.attempt_id));
       if(i.action==='ledger-claim') return Response.json(await env.EFFECT_LEDGER.claim(i.plan));
       if(i.action==='public') return env.EFFECT_PUBLIC.fetch('https://private.invalid/initial',{method:'POST',body:'{}'});

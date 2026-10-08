@@ -244,7 +244,8 @@ export class WorkCheckpoint extends DurableObject<Env> {
         s.pending ||
         !equal(s.checkpoint, input.checkpoint) ||
         input.checkpoint.authority !== this.env.WORK_AUTHORITY_ID ||
-        input.deadline <= Math.floor(Date.now() / 1000) + 65
+        input.expires_at <= Math.floor(Date.now() / 1000) + 61 ||
+        input.expires_at > Math.floor(Date.now() / 1000) + 300
       )
         throw new Error('effect_blocked');
       const initial = this.effect(input.initial_attempt_id);
@@ -262,8 +263,8 @@ export class WorkCheckpoint extends DurableObject<Env> {
       if (previous) {
         // Checkpoint may advance between retries; immutable intent and custody
         // key cannot change. A retry receives no second external permit.
-        const { checkpoint: _a, ...a } = previous.plan,
-          { checkpoint: _b, ...b } = input;
+        const { checkpoint: _a, expires_at: _ea, ...a } = previous.plan,
+          { checkpoint: _b, expires_at: _eb, ...b } = input;
         if (JSON.stringify(Object.entries(a).sort()) !== JSON.stringify(Object.entries(b).sort()))
           throw new Error('effect_conflict');
         return { started: false, record: previous };
@@ -278,7 +279,9 @@ export class WorkCheckpoint extends DurableObject<Env> {
         plan: input,
         state: 'outcome_unknown',
         observation: null,
+        cleanup_requested: false,
         revoke_acknowledged: false,
+        receipt: null,
       };
       // The unique permanent slot prevents new attempt IDs after primary restore.
       this.ctx.storage.sql.exec(
@@ -300,8 +303,6 @@ export class WorkCheckpoint extends DurableObject<Env> {
         !r ||
         r.plan.digest !== digest ||
         r.plan.repo_id !== input.repo_id ||
-        r.plan.scope !== input.scope ||
-        input.expires_at > r.plan.deadline ||
         (r.observation &&
           (r.observation.token_id !== input.token_id ||
             r.observation.scope !== input.scope ||
@@ -316,7 +317,17 @@ export class WorkCheckpoint extends DurableObject<Env> {
   async custodyMint(attempt: unknown, digest: unknown) {
     const result = this.ctx.storage.transactionSync(() => {
       const r = this.#mint(attempt);
-      if (!r || r.plan.digest !== digest || !r.observation || r.revoke_acknowledged)
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        !r.observation ||
+        r.cleanup_requested ||
+        r.revoke_acknowledged ||
+        r.state === 'closed' ||
+        r.observation.scope !== r.plan.scope ||
+        r.observation.expires_at > r.plan.expires_at ||
+        r.observation.expires_at <= Math.floor(Date.now() / 1000)
+      )
         throw new Error('effect_conflict');
       // Custody is a result observation, never copy verification or release.
       r.state = 'custodied';
@@ -326,15 +337,39 @@ export class WorkCheckpoint extends DurableObject<Env> {
     await this.ctx.storage.sync();
     return result;
   }
+  async requestMintCleanup(attempt: unknown, digest: unknown) {
+    this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (!r || r.plan.digest !== digest) throw new Error('effect_conflict');
+      r.cleanup_requested = true;
+      if (r.state !== 'closed') r.state = 'outcome_unknown';
+      this.#saveMint(r);
+    });
+    await this.ctx.storage.sync();
+  }
   async revokeMint(attempt: unknown, digest: unknown) {
     this.ctx.storage.transactionSync(() => {
       const r = this.#mint(attempt);
       if (!r || r.plan.digest !== digest || !r.observation) throw new Error('effect_conflict');
       r.revoke_acknowledged = true;
-      r.state = 'outcome_unknown';
+      if (r.state !== 'closed') r.state = 'outcome_unknown';
       this.#saveMint(r);
     });
     await this.ctx.storage.sync();
+  }
+  async closeMint(attempt: unknown, digest: unknown, receipt: unknown) {
+    if (!hex(receipt)) throw new Error('effect_invalid');
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (!r || r.plan.digest !== digest || !r.observation || (r.receipt && r.receipt !== receipt))
+        throw new Error('effect_conflict');
+      r.state = 'closed';
+      r.receipt = receipt;
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
   }
   async claimEffect(input: unknown, release: unknown) {
     initialPlan(input);
@@ -572,6 +607,12 @@ export class WorkMintCheckpoint extends WorkerEntrypoint<Env> {
   }
   custody(attempt: unknown, digest: unknown) {
     return object(this.env).custodyMint(attempt, digest);
+  }
+  cleanup(attempt: unknown, digest: unknown) {
+    return object(this.env).requestMintCleanup(attempt, digest);
+  }
+  close(attempt: unknown, digest: unknown, receipt: unknown) {
+    return object(this.env).closeMint(attempt, digest, receipt);
   }
   revoked(attempt: unknown, digest: unknown) {
     return object(this.env).revokeMint(attempt, digest);

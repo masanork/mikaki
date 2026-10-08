@@ -32,6 +32,7 @@ export async function effectFixture(overrides: Record<string, string> = {}) {
     WORK_CREDENTIAL_KEY_FLOOR: '1',
     WORK_CREDENTIAL_KEY_V1: randomBytes(32).toString('base64url'),
     WORK_EFFECT_STORE_ENABLED: 'true',
+    WORK_MINT_STORE_ENABLED: 'true',
     ...overrides,
   };
   let op = await preparationFixture(directory, bindings, true, true),

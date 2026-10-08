@@ -76,7 +76,7 @@
     "test:identity-contracts": "node --test --test-concurrency=1 local/conformance/identity-presentation.test.ts local/conformance/identity-proximity.test.ts local/conformance/identity-revocation.test.ts local/conformance/identity-attester.test.ts local/conformance/android-verifier-bridge.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts scripts/check-identity-wallet-device.test.ts",
     "check:service-authority": "node scripts/build-service-catalog.ts --check && node_modules/typescript/bin/tsc --project crates/worker/service/tsconfig.json",
     "build:op-authority": "node scripts/build-service-catalog.ts --check && node scripts/build-op-authority.ts",
-    "test:work-delegation": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 scripts/work-git-disclosure.test.ts local/conformance/work-delegation.test.ts local/conformance/work-owner.test.ts local/conformance/work-disclosure.test.ts local/conformance/work-sources.test.ts local/conformance/work-preparation-restart.test.ts local/conformance/work-prepared-authority.test.ts local/conformance/work-credential-custody.test.ts local/conformance/work-candidate-payload.test.ts local/conformance/work-authority-checkpoint.test.ts local/conformance/work-effect-gate.test.ts local/conformance/work-mint-gate.test.ts",
+    "test:work-delegation": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 scripts/work-git-disclosure.test.ts scripts/work-git-copy.test.ts local/conformance/work-delegation.test.ts local/conformance/work-owner.test.ts local/conformance/work-disclosure.test.ts local/conformance/work-sources.test.ts local/conformance/work-preparation-restart.test.ts local/conformance/work-prepared-authority.test.ts local/conformance/work-credential-custody.test.ts local/conformance/work-candidate-payload.test.ts local/conformance/work-authority-checkpoint.test.ts local/conformance/work-effect-gate.test.ts local/conformance/work-mint-gate.test.ts",
     "check:work-sources": "node_modules/typescript/bin/tsc --project crates/work-source-worker/tsconfig.qualification.json",
     "test:work-checkpoint": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 local/conformance/work-authority-checkpoint.test.ts",
     "check:work-checkpoint": "node_modules/typescript/bin/tsc --project crates/work-checkpoint-worker/tsconfig.json",
@@ -84,7 +84,9 @@
     "test:work-effects": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 local/conformance/work-effect-gate.test.ts local/conformance/work-mint-gate.test.ts",
     "check:work-effects": "node_modules/typescript/bin/tsc --project crates/work-effect-worker/tsconfig.qualification.json",
     "generate:work-source-types": "wrangler types --config crates/work-source-worker/wrangler.example.jsonc crates/work-source-worker/worker-configuration.d.ts",
-    "test:work-source-ui": "npm run build:work-store-fixture && node --test --test-concurrency=1 local/conformance/work-source-browser.test.ts local/conformance/vault-lifecycle.test.ts"
+    "test:work-source-ui": "npm run build:work-store-fixture && node --test --test-concurrency=1 local/conformance/work-source-browser.test.ts local/conformance/vault-lifecycle.test.ts",
+    "test:work-copy": "node --test scripts/work-git-copy.test.ts",
+    "test:work-mint": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 local/conformance/work-mint-gate.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

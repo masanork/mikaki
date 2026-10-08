@@ -61,6 +61,7 @@ export async function preparationFixture(
             ...(effectEnabled
               ? {
                   OP_EFFECT_STORE: { name: 'preparation-owner', entrypoint: 'WorkEffectStore' },
+                  OP_MINT_STORE: { name: 'preparation-owner', entrypoint: 'WorkMintStore' },
                   EFFECT_GATE: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
                   EFFECT_PUBLIC: 'work-effect',
                   ...(!remote
@@ -164,6 +165,7 @@ export async function preparationFixture(
                 ? [
                     {
                       name: 'work-mint',
+                      outboundService: 'synthetic-artifacts',
                       modules: true,
                       scriptPath: join(modulesRoot, 'mint.mjs'),
                       compatibilityDate: '2026-09-30',
@@ -174,7 +176,7 @@ export async function preparationFixture(
                         WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
                       },
                       serviceBindings: {
-                        OP_EFFECT_STORE: {
+                        OP_MINT_STORE: {
                           name: 'preparation-owner',
                           entrypoint: 'FixtureEffectBridge',
                         },

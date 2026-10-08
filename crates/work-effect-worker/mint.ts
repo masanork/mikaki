@@ -2,35 +2,66 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { closed, integer, opaque, resource, mintPlan } from './protocol';
 import type { MintPlan, MintObservation, MintRecord } from './protocol';
-import { expiry, jsonBody, op, scope } from './worker';
+import { expiry, jsonBody, scope } from './worker';
 
 interface Ledger {
   lookup(attempt: string): Promise<MintRecord | null>;
   claim(plan: MintPlan): Promise<{ started: boolean; record: MintRecord }>;
   observe(attempt: string, digest: string, value: MintObservation): Promise<void>;
   custody(attempt: string, digest: string): Promise<MintRecord>;
+  cleanup(attempt: string, digest: string): Promise<void>;
   revoked(attempt: string, digest: string): Promise<void>;
+  close(attempt: string, digest: string, receipt: string): Promise<MintRecord>;
 }
 interface Env {
   WORK_MINT_GATE_ENABLED: string;
   WORK_AUTHORITY_ID: string;
   WORK_ARTIFACTS_ACCOUNT: string;
   WORK_ARTIFACTS_NAMESPACE: string;
-  OP_EFFECT_STORE: Fetcher;
+  OP_MINT_STORE: Fetcher;
   MINT_CHECKPOINT: Ledger;
   ARTIFACTS: Pick<Artifacts, 'get'>;
+}
+async function op(env: Pick<Env, 'OP_MINT_STORE'>, input: Record<string, unknown>) {
+  const response = await env.OP_MINT_STORE.fetch('https://private.invalid/mint-effect', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (response.status !== 200) throw new Error('effect_store_unavailable');
+  return jsonBody(response);
 }
 function output(r: MintRecord) {
   return {
     attempt_id: r.plan.attempt_id,
     state: r.state,
     repo_id: r.plan.repo_id,
-    cleanup: r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed',
+    cleanup:
+      r.state === 'closed'
+        ? 'refused'
+        : r.revoke_acknowledged
+          ? 'revoke_acknowledged'
+          : 'unconfirmed',
   };
 }
-async function synchronized(env: Pick<Env, 'OP_EFFECT_STORE'>, r: MintRecord) {
+async function synchronized(env: Pick<Env, 'OP_MINT_STORE'>, r: MintRecord) {
   let synced = false;
-  if (r.state === 'custodied' && r.observation) {
+  if (r.state === 'closed' && r.observation && r.receipt) {
+    try {
+      const v = await op(env, {
+        action: 'capture-mint-closed',
+        attempt_id: r.plan.attempt_id,
+        digest: r.plan.digest,
+        ...r.observation,
+        receipt: r.receipt,
+      });
+      synced =
+        closed(v, ['id', 'state', 'revision']) &&
+        v.id === r.plan.attempt_id &&
+        v.state === 'closed';
+    } catch {
+      /* Frozen/pending Native batches remain fenced; retained metadata is retryable. */
+    }
+  } else if (r.state === 'custodied' && r.observation) {
     try {
       const v = await op(env, {
         action: 'mint-status',
@@ -121,10 +152,26 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
       identity(await repo.info(), p, remote);
       const before = inventory(await repo.listTokens());
       if (before.some((t) => t.state === 'active')) throw new Error('effect_inventory');
-      const ttl = Math.min(300, p.deadline - Math.ceil(Date.now() / 1000) - 5);
+      const ttl = Math.min(299, p.expires_at - Math.ceil(Date.now() / 1000) - 1);
       if (ttl < 60) throw new Error('effect_deadline');
       returned = await repo.createToken(p.scope, ttl);
+      // Retain valid returned metadata even when scope/expiry or later inventory
+      // checks fail. This is safety evidence, never productive authorization.
       if (
+        resource(returned?.id) &&
+        !before.some((t) => t.id === returned!.id) &&
+        ['read', 'write'].includes(returned.scope)
+      ) {
+        observed = {
+          repo_id: p.repo_id,
+          token_id: returned.id,
+          scope: returned.scope,
+          expires_at: expiry(returned.expiresAt),
+        };
+        await env.MINT_CHECKPOINT.observe(attempt, p.digest, observed);
+      }
+      if (
+        !closed(returned, ['id', 'plaintext', 'scope', 'expiresAt']) ||
         !resource(returned.id) ||
         returned.scope !== p.scope ||
         typeof returned.plaintext !== 'string' ||
@@ -132,7 +179,7 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
       )
         throw new Error('effect_result');
       const expires = expiry(returned.expiresAt);
-      if (expires <= Math.floor(Date.now() / 1000) || expires > p.deadline)
+      if (!observed || expires <= Math.floor(Date.now() / 1000) || expires > p.expires_at)
         throw new Error('effect_deadline');
       identity(await repo.info(), p, remote);
       const after = inventory(await repo.listTokens());
@@ -156,8 +203,6 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
         after.some((a) => a.id !== t.id && !before.some((b) => b.id === a.id))
       )
         throw new Error('effect_inventory');
-      observed = { repo_id: p.repo_id, token_id: t.id, scope: p.scope, expires_at: expires };
-      await env.MINT_CHECKPOINT.observe(attempt, p.digest, observed);
       const captured = await op(env, {
         action: 'capture-mint',
         attempt_id: attempt,
@@ -178,6 +223,11 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
         throw new Error('effect_custody');
       return synchronized(env, await env.MINT_CHECKPOINT.custody(attempt, p.digest));
     } catch {
+      try {
+        await env.MINT_CHECKPOINT.cleanup(attempt, p.digest);
+      } catch {
+        /* A retained admission still prevents another mint. */
+      }
       // A returned bearer is still revocable if result validation/custody fails.
       // Never print provider errors or put plaintext in the independent ledger.
       if (
@@ -190,7 +240,7 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
         try {
           acknowledged = (await repo.revokeToken(returned.plaintext)) === true;
         } catch {
-          /* retained uncertainty */
+          /* A lost revoke reply can still be followed by an explicit refusal. */
         }
         if (observed) {
           if (acknowledged) {
@@ -199,6 +249,36 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
             } catch {
               /* retained uncertainty */
             }
+          }
+          try {
+            const refused = await fetch(`${remote}/info/refs?service=git-upload-pack`, {
+              headers: { Authorization: `Bearer ${returned.plaintext}` },
+              redirect: 'manual',
+              signal: AbortSignal.timeout(5000),
+            });
+            await refused.body?.cancel();
+            if (refused.status !== 403) throw new Error('effect_refusal_unknown');
+            identity(await repo.info(), p, remote);
+            const tokens = inventory(await repo.listTokens());
+            const token = tokens.find((t) => t.id === observed!.token_id);
+            if (
+              !token ||
+              token.scope !== observed.scope ||
+              expiry(token.expiresAt) !== observed.expires_at ||
+              observed.scope !== p.scope ||
+              observed.expires_at > p.expires_at
+            )
+              throw new Error('effect_refusal_binding_unknown');
+            const bytes = new TextEncoder().encode(
+              JSON.stringify(['mikaki-mint-refusal-v1', p.digest, observed, 403]),
+            );
+            const receipt = Array.from(
+              new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
+              (b) => b.toString(16).padStart(2, '0'),
+            ).join('');
+            return synchronized(env, await env.MINT_CHECKPOINT.close(attempt, p.digest, receipt));
+          } catch {
+            /* Refusal/closure loss retains liability, including a lost close acknowledgement. */
           }
           try {
             await op(env, {
@@ -212,12 +292,7 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
           }
         }
       }
-      return {
-        attempt_id: attempt,
-        state: 'outcome_unknown',
-        repo_id: p.repo_id,
-        cleanup: 'unconfirmed',
-      };
+      return synchronized(env, (await env.MINT_CHECKPOINT.lookup(attempt)) ?? admitted.record);
     } finally {
       if (returned) returned.plaintext = '';
       repo?.[Symbol.dispose]();

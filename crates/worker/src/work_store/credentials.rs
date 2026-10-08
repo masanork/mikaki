@@ -191,8 +191,31 @@ impl WorkStore {
             "digest":a.digest().to_hex(),"namespace":namespace,"name":name,"role":a.role().name(),
             "purpose":a.purpose().name(),"scope":if a.purpose()==CredentialPurpose::Readback {"read"} else {"write"},
             "repo_id":a.expected_repo_id(),"initial_attempt_id":initial_id,"deadline":a.deadline(),
+            "expires_at":a.deadline().min((js_sys::Date::now() / 1000.0) as u64 + 300),
             "key_version":version,"key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint}),
         )
+    }
+    pub async fn capture_mint_effect_closed(
+        &self,
+        id: &str,
+        observation: &CredentialObservation,
+        receipt: Digest,
+    ) -> Result<CredentialStatus> {
+        let row = self.credential_row(id).await?;
+        let a = self.credential_attempt(&row).await?;
+        if a.purpose() == CredentialPurpose::Initial {
+            return Err(Denied::BindingMismatch.into());
+        }
+        if row.state == "closed" {
+            if row.observation.as_deref() != Some(&observation.authority_record()?) {
+                return Err(Denied::BindingMismatch.into());
+            }
+        } else {
+            // Preserve the same known metadata if an earlier encrypted capture succeeded.
+            self.capture_credential(id, observation, None, None).await?;
+            self.require_credential_revocation(id).await?;
+        }
+        self.confirm_credential_closed(id, "refused", receipt).await
     }
     async fn credential_row(&self, id: &str) -> Result<CredentialRow> {
         if !owner_id_shape(id) {

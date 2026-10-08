@@ -25,6 +25,19 @@ export function authorityFacades(Op: RustOp) {
   }
   class Effect extends Op {
     fetch(request: Request): Promise<Response> {
+      if (new URL(request.url).pathname !== '/effect') return denied();
+      return super.administer_work_effect(request, this.env);
+    }
+    administer_work_effect(): Promise<Response> {
+      return denied();
+    }
+    administer_op_authority(): Promise<Response> {
+      return denied();
+    }
+  }
+  class Mint extends Op {
+    fetch(request: Request): Promise<Response> {
+      if (new URL(request.url).pathname !== '/mint-effect') return denied();
       return super.administer_work_effect(request, this.env);
     }
     administer_work_effect(): Promise<Response> {
@@ -42,5 +55,5 @@ export function authorityFacades(Op: RustOp) {
       return denied();
     }
   }
-  return { Admin, Effect, Public };
+  return { Admin, Effect, Mint, Public };
 }

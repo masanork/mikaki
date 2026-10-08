@@ -59,9 +59,10 @@ for (const mode of [
     const f = await fixture();
     try {
       await f.mode(mode);
-      assert.equal((await f.mint()).state, 'outcome_unknown');
+      const expected = 'outcome_unknown';
+      assert.equal((await f.mint()).state, expected);
       const l = (await f.mintLedger())!;
-      assert.equal(l.state, 'outcome_unknown');
+      assert.equal(l.state, expected);
       const before = await f.remote();
       assert.equal(
         before.counts.mint,
@@ -73,7 +74,7 @@ for (const mode of [
       assert.equal((await f.mintRow())!.envelope, null);
       await f.restart();
       await f.mode('normal');
-      assert.equal((await f.mint()).state, 'outcome_unknown');
+      assert.equal((await f.mint()).state, expected);
       assert.deepEqual((await f.remote()).counts, before.counts);
       assert.doesNotMatch(
         JSON.stringify([l, await f.mintRow()]),
@@ -111,15 +112,18 @@ for (const loss of ['claim', 'custody', 'native']) {
       const before = await f.remote();
       assert.equal(before.counts.mint, loss === 'claim' ? 0 : 1);
       const l = (await f.mintLedger())!;
-      assert.equal(l.state, 'outcome_unknown');
+      assert.equal(l.state, loss === 'claim' ? 'outcome_unknown' : 'closed');
       if (loss !== 'claim') {
         assert.equal(l.revoke_acknowledged, true);
-        assert.equal((await f.mintRow())!.state, 'revocation_pending');
+        assert.equal((await f.mintRow())!.state, 'closed');
         assert.equal(before.repos[0]!.tokens[0]!.state, 'revoked');
       }
       await f.restore();
       assert.equal((await f.mintRow())!.state, 'reserved');
-      assert.equal((await f.mint()).state, 'outcome_unknown');
+      const recovered = await f.mint();
+      assert.equal(recovered.state, loss === 'claim' ? 'outcome_unknown' : 'closed');
+      if (loss !== 'claim') assert.equal(recovered.op_synchronized, false);
+      assert.equal((await f.mintRow())!.state, 'reserved');
       assert.deepEqual((await f.remote()).counts, before.counts);
     } finally {
       await f.close();
@@ -130,7 +134,7 @@ test('freeze during provider mint retains independent cleanup evidence while Nat
   const f = await fixture();
   try {
     await f.mode('freeze-during-mint');
-    assert.equal((await f.mint()).state, 'outcome_unknown');
+    assert.equal((await f.mint()).state, 'closed');
     const r = (await f.mintRow())!,
       l = (await f.mintLedger())!;
     assert.equal(r.state, 'dispatched');
@@ -140,7 +144,9 @@ test('freeze during provider mint retains independent cleanup evidence while Nat
     assert.equal((await f.remote()).repos[0]!.tokens[0]!.state, 'revoked');
     const counts = (await f.remote()).counts;
     await f.restart();
-    assert.equal((await f.mint()).state, 'outcome_unknown');
+    const repeated = await f.mint();
+    assert.equal(repeated.state, 'closed');
+    assert.equal(repeated.op_synchronized, false);
     assert.deepEqual((await f.remote()).counts, counts);
   } finally {
     await f.close();
@@ -154,13 +160,13 @@ for (const pause of ['revoke', 'source', 'rotate']) {
         LOCAL_MINT_CAPTURE_PAUSE: pause,
         WORK_CREDENTIAL_KEY_V2: randomBytes(32).toString('base64url'),
       });
-      assert.equal((await f.mint()).state, 'outcome_unknown');
+      assert.equal((await f.mint()).state, 'closed');
       const l = (await f.mintLedger())!,
         r = (await f.mintRow())!;
-      assert.equal(l.state, 'outcome_unknown');
+      assert.equal(l.state, 'closed');
       assert.equal(l.revoke_acknowledged, true);
-      assert.equal(r.state, 'revocation_pending');
-      assert.equal(Boolean(r.envelope), pause !== 'rotate');
+      assert.equal(r.state, 'closed');
+      assert.equal(r.envelope, null);
       if (pause === 'source')
         assert.equal(
           await f.DB.prepare('SELECT count(*) AS n FROM work_source_access WHERE active=1').first(
@@ -172,7 +178,7 @@ for (const pause of ['revoke', 'source', 'rotate']) {
       assert.equal((await f.remote()).repos[0]!.tokens[0]!.state, 'revoked');
       const before = (await f.remote()).counts;
       await f.restart();
-      assert.equal((await f.mint()).state, 'outcome_unknown');
+      assert.equal((await f.mint()).state, 'closed');
       assert.deepEqual((await f.remote()).counts, before);
     } finally {
       await f.close();
@@ -251,7 +257,6 @@ test('private mint transport rejects widening, cold flags, stale keys and capabi
       'bootstrap',
       'freeze',
       'reset',
-      'close',
       'claimEffect',
       'observeEffect',
       'env',
@@ -391,3 +396,89 @@ for (const role of ['task', 'snapshot'] as const)
       }
     });
   }
+
+for (const mode of ['git-active', 'git-unavailable', 'git-redirect']) {
+  test(`mint cleanup ${mode} cannot close a token from revoke acknowledgement alone`, async () => {
+    const f = await fixture();
+    try {
+      await f.restart({ LOCAL_EFFECT_CAPTURE_LOST: 'true' });
+      await f.mode(mode);
+      const result = await f.mint();
+      assert.equal(result.state, 'outcome_unknown');
+      const l = (await f.mintLedger())!;
+      assert.equal(l.receipt, null);
+      assert.equal(l.revoke_acknowledged, true);
+      assert.equal((await f.mintRow())!.state, 'revocation_pending');
+      const counts = (await f.remote()).counts;
+      await f.restart();
+      await f.mint();
+      assert.deepEqual((await f.remote()).counts, counts);
+    } finally {
+      await f.close();
+    }
+  });
+}
+test('a lost revoke reply still closes only after explicit Git refusal and fixed identity', async () => {
+  const f = await fixture();
+  try {
+    await f.restart({ LOCAL_EFFECT_CAPTURE_LOST: 'true' });
+    await f.mode('revoke-lost');
+    const result = await f.mint();
+    assert.equal(result.state, 'closed');
+    assert.equal(result.cleanup, 'refused');
+    const l = (await f.mintLedger())!;
+    assert.equal(l.revoke_acknowledged, false);
+    assert.match(l.receipt!, /^[a-f0-9]{64}$/);
+    assert.equal((await f.mintRow())!.state, 'closed');
+  } finally {
+    await f.close();
+  }
+});
+test('mint and initial Native capabilities refuse each other, raw RPC and a cold mint store', async () => {
+  const f = await fixture();
+  try {
+    for (const action of ['mint-raw', 'mint-admin-raw']) await f.effect({ action }, 404);
+    await f.effect(
+      {
+        action: 'store-call',
+        binding: 'OP_EFFECT_STORE',
+        path: '/mint-effect',
+        input: { action: 'mint-plan', attempt_id: f.id },
+      },
+      404,
+    );
+    await f.effect(
+      {
+        action: 'store-call',
+        binding: 'OP_MINT_STORE',
+        path: '/effect',
+        input: { action: 'initial-plan', attempt_id: f.task.id },
+      },
+      404,
+    );
+    await f.effect(
+      {
+        action: 'store-call',
+        binding: 'OP_EFFECT_STORE',
+        path: '/effect',
+        input: { action: 'mint-plan', attempt_id: f.id },
+      },
+      409,
+    );
+    await f.effect(
+      {
+        action: 'store-call',
+        binding: 'OP_MINT_STORE',
+        path: '/mint-effect',
+        input: { action: 'initial-plan', attempt_id: f.task.id },
+      },
+      409,
+    );
+    await f.restart({ WORK_MINT_STORE_ENABLED: 'false' });
+    await f.mint(409);
+    assert.equal((await f.remote()).counts.mint, 0);
+    assert.equal(await f.mintLedger(), null);
+  } finally {
+    await f.close();
+  }
+});
