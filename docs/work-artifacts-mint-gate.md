@@ -64,6 +64,9 @@ verification or workload release. A metadata-only `op_synchronized` check verifi
 that the matching encrypted Native row still exists in captured state. Following
 D1 restore, the historical custody observation remains but synchronization is
 false: the gate cannot reconstruct a missing secret or remint it.
+If an exact matching Native status instead reports revocation-pending or closed,
+the gate marks that retained record for cleanup without provider replay. An
+unavailable status read alone does not change historical custody.
 
 ## Failure and authority loss
 
@@ -72,6 +75,9 @@ same attempt. Repeat calls and process restarts perform no further Artifacts I/O
 A known returned bearer is revoked when validation or custody fails. A positively
 acknowledged revoke can be recorded independently, including after freeze; it is
 not bearer-refusal evidence and does not close the charged Native obligation.
+The gate durably requests cleanup before attempting failure revocation. This
+also prevents a lost custody acknowledgement followed by a failed revoke from
+leaving a productive-looking ledger record.
 
 Revocation can race a call admitted earlier. Owner or source loss after mint sends
 the returned credential to encrypted revocation-pending custody and cleanup. A
@@ -82,12 +88,14 @@ unchanged while the independent ledger retains the observed token and qualified
 revocation acknowledgement. No general checkpoint bypass is added for cleanup.
 
 A provider mint reply lost before the token is observed may leave an active token
-without plaintext. The tombstone retains the destination and charge, but this
-increment adds no fresh inventory-based mint recovery broker. Even an empty
-inventory or elapsed deadline cannot certify revocation/non-issuance. This must
-be resolved before productive Git execution or a remote mint trial. Malformed
-provider results likewise remain uncertain even if the known returned bearer was
-revoked.
+without plaintext. The tombstone retains the destination and charge. Subsequent
+[M6b known-ID recovery](work-artifacts-mint-recovery.md) can revoke only the token
+ID already observed for that operation. It cannot attribute an unobserved ID from
+inventory, even with exactly one matching active token. Empty inventory, an
+expired state or an elapsed deadline cannot certify revocation/non-issuance.
+Unobserved outcomes and strong Native refusal closure remain qualification gates
+before productive Git execution or a remote mint trial. Malformed provider
+results likewise remain uncertain even if the known returned bearer was revoked.
 
 SQLite admission uses `transactionSync` and waits for `storage.sync()` before
 returning a dispatch permit, following the [Durable Object storage contract](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).

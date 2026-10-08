@@ -68,6 +68,21 @@ export async function preparationFixture(
                         MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
                         MINT_PUBLIC: 'work-mint',
                         MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        MINT_MAINTENANCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintMaintenance',
+                        },
+                        MINT_RECONCILER: {
+                          name: 'mint-reconcile',
+                          entrypoint: 'WorkMintReconciler',
+                        },
+                        MINT_RECONCILE_PUBLIC: 'mint-reconcile',
+                        MINT_ARTIFACTS_MAINTENANCE: {
+                          name: 'mint-maintenance',
+                          entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        MINT_MAINTENANCE_PUBLIC: 'mint-maintenance',
                       }
                     : {}),
                   EFFECT_RECONCILER: { name: 'work-reconcile', entrypoint: 'WorkEffectReconciler' },
@@ -184,6 +199,59 @@ export async function preparationFixture(
                         ARTIFACTS: {
                           name: 'synthetic-artifacts',
                           entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                  ]
+                : []),
+              ...(!remote
+                ? [
+                    {
+                      name: 'mint-maintenance',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-maintenance.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_MAINTENANCE_ENABLED:
+                          bindings.WORK_MINT_MAINTENANCE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE:
+                          bindings.WORK_MINT_MAINTENANCE_NAMESPACE ??
+                          bindings.WORK_ARTIFACTS_NAMESPACE ??
+                          'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-reconcile',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-reconcile.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_RECONCILE_ENABLED: bindings.WORK_MINT_RECONCILE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_MAINTENANCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintMaintenance',
+                        },
+                        MINT_ARTIFACTS_MAINTENANCE: {
+                          name: 'mint-maintenance',
+                          entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        OP_EFFECT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
                         },
                       },
                     },

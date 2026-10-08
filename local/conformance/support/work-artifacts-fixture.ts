@@ -17,7 +17,7 @@ type RemoteRepo = {
     id: string;
     plaintext: string;
     scope: 'read' | 'write';
-    state: 'active' | 'revoked';
+    state: 'active' | 'revoked' | 'expired';
     expiresAt: string;
     createdAt: string;
   }[];
@@ -128,6 +128,8 @@ export class SyntheticRemote extends DurableObject<Env> {
     this.#save(s);
     await this.ctx.storage.sync();
     if (s.mode === 'list-lost') throw new Error('synthetic_lost_reply');
+    if (s.mode === 'mint-list-after-revoke-lost' && r.minted?.some((t) => t.state === 'revoked'))
+      throw new Error('synthetic_lost_reply');
     const token = {
       id: s.mode === 'replaced-token' ? 'replacement' : `token-${r.id}`,
       scope: 'write' as const,
@@ -149,6 +151,15 @@ export class SyntheticRemote extends DurableObject<Env> {
       };
     const minted = (r.minted ?? []).map(({ plaintext, ...t }) => t);
     if (s.mode === 'mint-missing-token' && minted.length) minted.pop();
+    if (s.mode === 'mint-remove-revoked' || s.mode === 'mint-revoke-lost-remove') {
+      for (let i = minted.length - 1; i >= 0; i--)
+        if (minted[i]!.state === 'revoked') minted.splice(i, 1);
+    }
+    if (s.mode === 'mint-expired' && minted.length) minted[0]!.state = 'expired';
+    if (s.mode === 'mint-substitute-scope' && minted.length)
+      minted[0]!.scope = minted[0]!.scope === 'read' ? 'write' : 'read';
+    if (s.mode === 'mint-substitute-expiry' && minted.length)
+      minted[0]!.expiresAt = '2030-01-01T00:00:00.125Z';
     if (s.mode === 'mint-wrong-token' && minted.length) minted[0]!.id = 'substituted';
     return {
       tokens: [token, ...minted],
@@ -185,11 +196,21 @@ export class SyntheticRemote extends DurableObject<Env> {
     const r = this.#repo(s, name);
     const minted = (r.minted ?? []).find((t) => t.plaintext === token || t.id === token);
     const accepted = Boolean(minted) || r.token === token || `token-${r.id}` === token;
+    if (minted && s.mode === 'mint-revoke-failed') {
+      this.#save(s);
+      await this.ctx.storage.sync();
+      return false;
+    }
     if (minted) minted.state = 'revoked';
     if (accepted && !minted) r.state = 'revoked';
     this.#save(s);
     await this.ctx.storage.sync();
-    if (s.mode === 'revoke-lost' || s.mode === 'revoke-lost-remove')
+    if (
+      s.mode === 'revoke-lost' ||
+      s.mode === 'revoke-lost-remove' ||
+      s.mode === 'mint-revoke-lost' ||
+      s.mode === 'mint-revoke-lost-remove'
+    )
       throw new Error('synthetic_lost_reply');
     return accepted;
   }

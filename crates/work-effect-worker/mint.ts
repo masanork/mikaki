@@ -9,6 +9,7 @@ interface Ledger {
   claim(plan: MintPlan): Promise<{ started: boolean; record: MintRecord }>;
   observe(attempt: string, digest: string, value: MintObservation): Promise<void>;
   custody(attempt: string, digest: string): Promise<MintRecord>;
+  abandon(attempt: string, digest: string): Promise<MintRecord>;
   revoked(attempt: string, digest: string): Promise<void>;
 }
 interface Env {
@@ -28,7 +29,7 @@ function output(r: MintRecord) {
     cleanup: r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed',
   };
 }
-async function synchronized(env: Pick<Env, 'OP_EFFECT_STORE'>, r: MintRecord) {
+async function synchronized(env: Pick<Env, 'OP_EFFECT_STORE' | 'MINT_CHECKPOINT'>, r: MintRecord) {
   let synced = false;
   if (r.state === 'custodied' && r.observation) {
     try {
@@ -46,6 +47,15 @@ async function synchronized(env: Pick<Env, 'OP_EFFECT_STORE'>, r: MintRecord) {
         integer(v.revision) &&
         v.revision >= 3 &&
         v.revision <= 5;
+      // Upgrade retained custody records only from an exact Native cleanup
+      // state, never from a failed/unavailable status read. No provider replay.
+      if (
+        closed(v, ['id', 'state', 'revision']) &&
+        v.id === r.plan.attempt_id &&
+        integer(v.revision) &&
+        ['revocation_pending', 'closed'].includes(String(v.state))
+      )
+        r = await env.MINT_CHECKPOINT.abandon(r.plan.attempt_id, r.plan.digest);
     } catch {
       /* Independent historical observation cannot recreate a lost secret. */
     }
@@ -180,6 +190,11 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
     } catch {
       // A returned bearer is still revocable if result validation/custody fails.
       // Never print provider errors or put plaintext in the independent ledger.
+      try {
+        await env.MINT_CHECKPOINT.abandon(attempt, p.digest);
+      } catch {
+        /* Retained uncertainty; never assume cancellation succeeded. */
+      }
       if (
         repo &&
         returned &&
