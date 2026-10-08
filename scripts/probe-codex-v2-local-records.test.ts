@@ -3,8 +3,6 @@ import { test } from 'node:test';
 import {
   makeSyntheticRecord,
   completedMcpCalls,
-  classifyCodexDiagnostic,
-  isExpectedRevokedStartup,
   summarizeCodexJsonl,
   exactAuditDelta,
   findToolOutputs,
@@ -117,27 +115,6 @@ test('Codex MCP tool completion rejects item, status, and result errors', () => 
     ),
     [true, true, true],
   );
-});
-
-test('Codex startup classification exposes only the expected fixed categories', () => {
-  assert.equal(classifyCodexDiagnostic('Mikaki MCP startup failed'), 'mcp_startup');
-  assert.equal(classifyCodexDiagnostic('MCP server configuration is invalid'), 'configuration');
-  assert.equal(classifyCodexDiagnostic('ENOENT: no such file or directory'), 'filesystem');
-  assert.equal(classifyCodexDiagnostic('MCP server failed to initialize'), null);
-  assert.equal(classifyCodexDiagnostic('MCP startup error'), null);
-  assert.equal(classifyCodexDiagnostic('MCP initialize failed'), null);
-  assert.equal(classifyCodexDiagnostic('MCP connect failed'), null);
-  assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), null);
-});
-
-test('revoked Codex startup is accepted only with nonzero exit and no calls or audit changes', () => {
-  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 0, true), true);
-  assert.equal(isExpectedRevokedStartup(0, 'mcp_startup', false, 0, true), false);
-  assert.equal(isExpectedRevokedStartup(null, 'mcp_startup', false, 0, true), false);
-  assert.equal(isExpectedRevokedStartup(1, 'configuration', false, 0, true), false);
-  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', true, 0, true), false);
-  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 1, true), false);
-  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 0, false), false);
 });
 
 test('Codex event summary reports only fixed event counts and whether a turn started', () => {

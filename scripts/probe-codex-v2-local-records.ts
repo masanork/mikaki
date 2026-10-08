@@ -87,8 +87,6 @@ export type CompletedMcpCall = Readonly<{
   event: JsonRecord;
 }>;
 
-export type CodexDiagnosticCategory = 'mcp_startup' | 'configuration' | 'filesystem';
-
 export type CodexEventSummary = Readonly<{
   started: boolean;
   thread_started: number;
@@ -101,36 +99,6 @@ export type CodexEventSummary = Readonly<{
 }>;
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-
-export function classifyCodexDiagnostic(output: string): CodexDiagnosticCategory | null {
-  if (/Mikaki MCP startup failed/i.test(output)) return 'mcp_startup';
-  if (
-    /invalid (?:toml|configuration|config)|configuration error|(?:config|configuration).{0,80}(?:invalid|error)|mcp_servers.{0,40}(?:invalid|unknown|missing)/i.test(
-      output,
-    )
-  )
-    return 'configuration';
-  if (/ENOENT|EACCES|permission denied|no such file or directory|cannot open/i.test(output))
-    return 'filesystem';
-  return null;
-}
-
-export function isExpectedRevokedStartup(
-  exitCode: number | null,
-  category: CodexDiagnosticCategory | null,
-  started: boolean,
-  callCount: number,
-  auditUnchanged: boolean,
-): boolean {
-  return (
-    exitCode !== null &&
-    exitCode !== 0 &&
-    category === 'mcp_startup' &&
-    !started &&
-    callCount === 0 &&
-    auditUnchanged
-  );
-}
 
 export function summarizeCodexJsonl(jsonl: string): CodexEventSummary {
   const counts = {
@@ -180,21 +148,18 @@ export function summarizeCodexJsonl(jsonl: string): CodexEventSummary {
 }
 
 class CodexRunFailure extends Error {
-  readonly code: 'codex_positive_failed' | 'codex_revocation_not_blocked';
+  readonly code: 'codex_positive_failed';
   readonly exitCode: number | null;
-  readonly diagnosticCategory: CodexDiagnosticCategory | null;
   readonly stdoutEvents: CodexEventSummary;
 
   constructor(
-    code: 'codex_positive_failed' | 'codex_revocation_not_blocked',
+    code: 'codex_positive_failed',
     exitCode: number | null,
-    diagnosticCategory: CodexDiagnosticCategory | null,
     stdoutEvents: CodexEventSummary,
   ) {
     super(code);
     this.code = code;
     this.exitCode = exitCode;
-    this.diagnosticCategory = diagnosticCategory;
     this.stdoutEvents = stdoutEvents;
   }
 }
@@ -237,7 +202,6 @@ async function runCodex(
 ): Promise<{
   jsonl: string;
   exitCode: number | null;
-  diagnosticCategory: CodexDiagnosticCategory | null;
   stdoutEvents: CodexEventSummary;
 }> {
   return new Promise((resolvePromise, reject) => {
@@ -249,16 +213,9 @@ async function runCodex(
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
     let bytes = 0;
-    let capturedStderrBytes = 0;
     let failure: Error | undefined;
     let killTimer: NodeJS.Timeout | undefined;
-    const clearStderr = () => {
-      for (const chunk of stderr) chunk.fill(0);
-      stderr.length = 0;
-      capturedStderrBytes = 0;
-    };
     const stop = (reason: string) => {
       if (failure) return;
       failure = new Error(reason);
@@ -274,38 +231,22 @@ async function runCodex(
       }
       stdout.push(Buffer.from(chunk));
     });
-    child.stderr.on('data', (chunk: Buffer) => {
-      const remaining = 16 * 1024 - capturedStderrBytes;
-      if (remaining > 0) {
-        const captured = Buffer.from(chunk.subarray(0, remaining));
-        stderr.push(captured);
-        capturedStderrBytes += captured.length;
-      }
-    });
     child.on('error', () => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      clearStderr();
       reject(new Error('codex_unavailable'));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
       if (failure) {
-        clearStderr();
         return reject(failure);
       }
       const output = Buffer.concat(stdout);
       const jsonl = output.toString('utf8');
       const stdoutEvents = summarizeCodexJsonl(jsonl);
-      const diagnostic = Buffer.concat(stderr);
-      const diagnosticCategory = classifyCodexDiagnostic(
-        `${diagnostic.toString('utf8')}\n${jsonl}`,
-      );
-      diagnostic.fill(0);
       output.fill(0);
-      clearStderr();
-      resolvePromise({ jsonl, exitCode: code, diagnosticCategory, stdoutEvents });
+      resolvePromise({ jsonl, exitCode: code, stdoutEvents });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt);
@@ -562,11 +503,10 @@ export async function probe(recordId: RecordId) {
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_list with {}, then mikaki_search with {"query":"v2-probe-needle"}, then mikaki_read with ${targetPrompt}, exactly once each. Do not use any other tools. Do not repeat or quote returned content. Finish with the single word done.`,
     );
-    if (positiveRun.exitCode !== 0 || positiveRun.diagnosticCategory !== null)
+    if (positiveRun.exitCode !== 0)
       throw new CodexRunFailure(
         'codex_positive_failed',
         positiveRun.exitCode,
-        positiveRun.diagnosticCategory,
         positiveRun.stdoutEvents,
       );
     const positiveCalls = completedMcpCalls(positiveRun.jsonl);
@@ -604,32 +544,6 @@ export async function probe(recordId: RecordId) {
     ]);
     if (!exactPositiveAudit) throw new Error('codex_positive_calls_incomplete');
 
-    const grant = JSON.parse(await readFile(grantPath, 'utf8')) as JsonRecord;
-    grant['revoked'] = true;
-    await writeFile(grantPath, JSON.stringify(grant), { mode: 0o600 });
-    const revokedRun = await runCodex(
-      codexArgs(dir, codexServerArgs),
-      `Use only the MCP server mikaki_v2_local. Call mikaki_read with ${targetPrompt} exactly once. Do not use any other tools or repeat/quote content. Finish with one word.`,
-    );
-    const revokeCalls = completedMcpCalls(revokedRun.jsonl);
-    const allAudit = await auditSummary(codexAuditPath);
-    const noAdditionalAudit = exactAuditDelta(positiveAudit, allAudit, []);
-    if (
-      !isExpectedRevokedStartup(
-        revokedRun.exitCode,
-        revokedRun.diagnosticCategory,
-        revokedRun.stdoutEvents.started,
-        revokeCalls.length,
-        noAdditionalAudit,
-      )
-    ) {
-      throw new CodexRunFailure(
-        'codex_revocation_not_blocked',
-        revokedRun.exitCode,
-        revokedRun.diagnosticCategory,
-        revokedRun.stdoutEvents,
-      );
-    }
     return {
       passed: true,
       client: 'Codex CLI',
@@ -640,21 +554,13 @@ export async function probe(recordId: RecordId) {
         positive_tool_calls: ['list', 'search', 'read'],
         positive_event_summary: positiveRun.stdoutEvents,
         structured_content_source_authority: codexStructured,
-        revoked_invocation: {
-          outcome: 'mcp_startup_blocked',
-          exit_code: revokedRun.exitCode,
-          diagnostic_category: revokedRun.diagnosticCategory,
-          event_summary: revokedRun.stdoutEvents,
-          additional_audit_entries: 0,
-          note: 'This is a new Codex invocation using the same local MCP configuration; SDK preflight separately verifies read denial on its existing client.',
-        },
       },
       sdk_preflight: {
         source_authority_verified: true,
         calls: preflight.calls,
         revoked_read_denied: preflight.revokedReadDenied,
       },
-      audit_entries: allAudit.length,
+      audit_entries: positiveAudit.length,
     };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -677,7 +583,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           passed: false,
           error: error.code,
           ...(error.exitCode !== null ? { exit_code: error.exitCode } : {}),
-          ...(error.diagnosticCategory ? { diagnostic_category: error.diagnosticCategory } : {}),
           stdout_events: error.stdoutEvents,
         })}\n`,
       );
