@@ -152,6 +152,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     const errors: string[] = [];
     let loseWrapper = false,
       rejectWrapper = false;
+    let holdLocalExportRead = false;
+    let localExportReadStarted!: () => void;
+    let releaseLocalExportRead!: () => void;
+    const localExportReadStartedGate = new Promise<void>(
+      (resolve) => (localExportReadStarted = resolve),
+    );
+    const localExportReadReleaseGate = new Promise<void>(
+      (resolve) => (releaseLocalExportRead = resolve),
+    );
     let bootstrapWrites = 0;
     const wrapperRequests: { body: string; operation: string | null; revision: string | null }[] =
       [];
@@ -206,6 +215,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
       }
       const body = Buffer.from(await response.arrayBuffer());
+      if (
+        holdLocalExportRead &&
+        path === '/vault/records/personal/name' &&
+        request.method() === 'GET'
+      ) {
+        holdLocalExportRead = false;
+        localExportReadStarted();
+        await localExportReadReleaseGate;
+      }
       if (
         loseWrapper &&
         path === '/vault/owner-key/wrappers' &&
@@ -414,6 +432,18 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await page.locator('#owner-local-export-delegate').fill('reviewer_1');
     await page.locator('#owner-local-export-service').fill('Local review');
     await page.locator('#owner-local-export-lifetime').selectOption('3600');
+    holdLocalExportRead = true;
+    await page.locator('#owner-local-export-prepare').click();
+    await localExportReadStartedGate;
+    await page.locator('#owner-local-export summary').click();
+    await expect(page.locator('#owner-local-export')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#owner-local-export')).toHaveAttribute('aria-busy', 'false');
+    releaseLocalExportRead();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#owner-local-export')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#owner-local-export-preview')).toHaveCount(0);
+    await page.locator('#owner-local-export summary').click();
+    await expect(page.locator('#owner-local-export-preview')).toHaveCount(0);
     await page.locator('#owner-local-export-prepare').click();
     await expect(page.locator('#owner-local-export-preview')).toHaveText('Recreated');
     await expect(page.locator('#owner-local-export-review-heading')).toBeVisible();
@@ -431,7 +461,8 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       page.waitForEvent('download'),
       page.locator('#owner-local-export-download-bundle').click(),
     ]);
-    assert.match(bundleDownload.suggestedFilename(), /^mikaki-v2-bundle-[A-Za-z0-9_-]+\.json$/);
+    const bundleFilename = bundleDownload.suggestedFilename();
+    assert.match(bundleFilename, /^mikaki-v2-bundle-[A-Za-z0-9_-]+\.json$/);
     const bundlePath = await bundleDownload.path();
     assert.ok(bundlePath);
     const exportedBundle = JSON.parse(await readFile(bundlePath, 'utf8'));
@@ -443,16 +474,28 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       page.waitForEvent('download'),
       page.locator('#owner-local-export-download-grant').click(),
     ]);
-    assert.match(grantDownload.suggestedFilename(), /^mikaki-v2-grant-[A-Za-z0-9_-]+\.json$/);
+    const grantFilename = grantDownload.suggestedFilename();
+    assert.match(grantFilename, /^mikaki-v2-grant-[A-Za-z0-9_-]+\.json$/);
     const grantPath = await grantDownload.path();
     assert.ok(grantPath);
     const exportedGrant = JSON.parse(await readFile(grantPath, 'utf8'));
     assert.equal(exportedGrant.version, 2);
+    const bundleId = /^mikaki-v2-bundle-([A-Za-z0-9_-]+)\.json$/.exec(bundleFilename)?.[1];
+    const grantId = /^mikaki-v2-grant-([A-Za-z0-9_-]+)\.json$/.exec(grantFilename)?.[1];
+    assert.ok(bundleId);
+    assert.equal(grantId, bundleId, 'Both downloads belong to the same prepared export');
     assert.equal(exportedGrant.delegate, 'reviewer_1');
     assert.deepEqual(exportedGrant.document_ids, ['name']);
+    assert.deepEqual(exportedGrant.sources[0], {
+      source: exportedBundle.documents[0].source_info.source,
+      authority: exportedBundle.documents[0].source_info.authority,
+    });
     assert.equal(
-      exportedGrant.sources[0].source.revision,
-      exportedBundle.documents[0].source_info.source.revision,
+      exportedGrant.export_sha256,
+      createHash('sha256')
+        .update(await readFile(bundlePath))
+        .digest('hex'),
+      'Grant digest commits to the exact downloaded bundle bytes',
     );
     assert.ok(exportedGrant.expires_at > Math.floor(Date.now() / 1000));
     assert.equal(exportedGrant.revoked, false);

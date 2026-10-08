@@ -38,6 +38,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/ThreadSearch.svelte");
     println!("cargo:rerun-if-changed=../../package-lock.json");
     println!("cargo:rerun-if-changed=ui/OwnerRecordEditor.svelte");
+    println!("cargo:rerun-if-changed=ui/OwnerLocalExport.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-controller.ts");
     println!("cargo:rerun-if-changed=ui/vault-record-source.ts");
     println!("cargo:rerun-if-changed=ui/agent-record-crypto.ts");

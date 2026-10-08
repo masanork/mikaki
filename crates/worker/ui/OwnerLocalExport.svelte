@@ -35,6 +35,7 @@
   let consent = $state(false);
   let prepared = $state.raw<PreparedLocalRecordExport | null>(null);
   let status = $state('');
+  let prepareGeneration = 0;
   let observedNameRevision = untrack(() => nameRevision);
   let observedNoteRevision = untrack(() => noteRevision);
 
@@ -48,6 +49,9 @@
       return;
     observedNameRevision = currentName;
     observedNoteRevision = currentNote;
+    prepareGeneration++;
+    loading = false;
+    onbusy(false);
     prepared = null;
     consent = false;
     status = m.ownerLocalExportSourceChanged();
@@ -56,6 +60,16 @@
   const delegateValid = $derived(/^[A-Za-z0-9_-]{1,80}$/.test(delegate));
   const serviceValid = $derived(!!service.trim() && service.length <= 160);
   const canPrepare = $derived(!disabled && !loading && !prepared && delegateValid && serviceValid);
+
+  function isCurrentPrepare(generation: number): boolean {
+    const details = document.getElementById('owner-local-export');
+    return (
+      generation === prepareGeneration &&
+      details instanceof HTMLDetailsElement &&
+      details.open &&
+      !owner.scope.signal.aborted
+    );
+  }
 
   function messageFor(error: unknown): string {
     if (error instanceof Error && error.message === 'owner_unsaved_changes')
@@ -71,29 +85,40 @@
       return;
     }
     const focus = document.activeElement;
+    const generation = ++prepareGeneration;
+    const selectedRecord = selection;
+    const selectedDelegate = delegate;
+    const selectedService = service.trim();
+    const selectedLifetime = lifetime;
     loading = true;
     onbusy(true);
     try {
       const token = owner.checkpoint();
       await owner.verifyAuthority();
+      if (!isCurrentPrepare(generation)) return;
       owner.assertCurrent(token);
-      const result = await disclosure.prepareLocalExport([selection], {
-        delegate,
-        service: service.trim(),
-        ttl: lifetime,
+      const result = await disclosure.prepareLocalExport([selectedRecord], {
+        delegate: selectedDelegate,
+        service: selectedService,
+        ttl: selectedLifetime,
       });
+      if (!isCurrentPrepare(generation)) return;
       owner.assertCurrent(token);
       if (hasDrafts()) throw new Error('owner_unsaved_changes');
       prepared = result;
       consent = false;
       status = m.ownerLocalExportPrepared();
     } catch (error) {
-      prepared = null;
-      status = messageFor(error);
+      if (generation === prepareGeneration) {
+        prepared = null;
+        status = messageFor(error);
+      }
     } finally {
-      loading = false;
-      onbusy(false);
-      if (!owner.scope.signal.aborted)
+      if (generation === prepareGeneration) {
+        loading = false;
+        onbusy(false);
+      }
+      if (isCurrentPrepare(generation))
         await restoreActionFocus(focus, () =>
           document.getElementById(
             prepared ? 'owner-local-export-download-bundle' : 'owner-local-export-prepare',
@@ -119,6 +144,9 @@
   }
 
   function clear() {
+    prepareGeneration++;
+    loading = false;
+    onbusy(false);
     prepared = null;
     consent = false;
     status = '';
@@ -127,6 +155,16 @@
   function toggle(event: Event) {
     expanded = (event.currentTarget as HTMLDetailsElement).open;
     if (!expanded) clear();
+  }
+
+  function beforeToggle(event: ToggleEvent) {
+    if (event.newState === 'closed') clear();
+  }
+
+  function onSummaryClick() {
+    // The native details toggle event is queued; invalidate sensitive work in
+    // the activation handler so a late prepare cannot win that event race.
+    clear();
   }
 
   onMount(() => {
@@ -146,8 +184,13 @@
   });
 </script>
 
-<details id="owner-local-export" aria-busy={loading} ontoggle={toggle}>
-  <summary>{m.ownerLocalExportHeading()}</summary>
+<details
+  id="owner-local-export"
+  aria-busy={loading}
+  onbeforetoggle={beforeToggle}
+  ontoggle={toggle}
+>
+  <summary onclick={onSummaryClick}>{m.ownerLocalExportHeading()}</summary>
   <p>{m.ownerLocalExportIntro()}</p>
   <p>{m.ownerLocalExportBoundary()}</p>
   <label for="owner-local-export-source">{m.ownerLocalExportSource()}</label>
