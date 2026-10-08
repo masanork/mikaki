@@ -1,6 +1,7 @@
 //! Native inventory review snapshots and atomic encrypted confirmation.
 use super::*;
 use mikaki_identity::presentation::inventory::{InventoryRequest, VerifiedCredential};
+use p256::elliptic_curve::Generate;
 #[derive(Serialize)]
 pub(super) struct CredentialReview {
     query_id: String,
@@ -191,9 +192,14 @@ pub(super) fn response(
             .push(sign(native[selection.inventory_index()], selection.request(), at)?.to_string());
     }
     let mut iv = [0; 12];
-    OsRng.fill_bytes(&mut iv);
+    UnwrapErr(SysRng).fill_bytes(&mut iv);
     prepared
-        .encrypt_response(&proofs, at, p256::SecretKey::random(&mut OsRng), iv)
+        .encrypt_response(
+            &proofs,
+            at,
+            p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
+            iv,
+        )
         .map(Zeroizing::new)
 }
 fn validate_bindings(

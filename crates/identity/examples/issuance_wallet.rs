@@ -1,7 +1,8 @@
 //! Test bridge for the same encryption core called by the Tauri receive command.
 //! Two bounded JSON lines on stdin: metadata/payload, then actual encrypted response.
+use getrandom::SysRng;
 use mikaki_identity::issuance_encryption::WalletEncryption;
-use rand_core::{OsRng, RngCore};
+use rand_core::{Rng, UnwrapErr};
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
 use zeroize::Zeroizing;
@@ -34,13 +35,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = io::stdin().lock();
     let first: Value = serde_json::from_str(&line(&mut input)?)?;
     let mut secret = Zeroizing::new([0u8; 32]);
-    OsRng.fill_bytes(&mut *secret);
+    UnwrapErr(SysRng).fill_bytes(&mut *secret);
     let context =
         WalletEncryption::from_metadata(&first["metadata"], *secret, "rust-wallet-session")?
             .ok_or("encryption required for fixture")?;
-    OsRng.fill_bytes(&mut *secret);
+    UnwrapErr(SysRng).fill_bytes(&mut *secret);
     let mut iv = [0u8; 12];
-    OsRng.fill_bytes(&mut iv);
+    UnwrapErr(SysRng).fill_bytes(&mut iv);
     let request = context.prepare_request(first["payload"].clone(), *secret, iv)?;
     println!("{}", json!({"request":request}));
     io::stdout().flush()?;

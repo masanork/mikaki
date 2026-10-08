@@ -20,7 +20,7 @@ pub struct PublicJwk {
 }
 impl PublicJwk {
     pub fn from_key(key: &VerifyingKey) -> Self {
-        let point = key.to_encoded_point(false);
+        let point = key.to_sec1_point(false);
         Self {
             kty: "EC".into(),
             crv: "P-256".into(),

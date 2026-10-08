@@ -4,6 +4,7 @@ use mikaki_identity::presentation::{
     retrieval::{Method, RequestRetrieval},
     Profile, VerifierRegistration,
 };
+use p256::elliptic_curve::Generate;
 use serde::Deserialize;
 use tauri::Emitter;
 
@@ -181,7 +182,7 @@ pub async fn review_identity_invocation(
         .find(|v| v.client_id == invocation.client_id)
         .ok_or("untrusted_verifier")?;
     let mut entropy = [0; 32];
-    OsRng.fill_bytes(&mut entropy);
+    UnwrapErr(SysRng).fill_bytes(&mut entropy);
     let mut retrieval = if verifier.profile == Profile::Oid4vpFinalX509Hash {
         Some(
             RequestRetrieval::new(verifier, invocation.method, now()?, entropy)
@@ -221,10 +222,14 @@ pub async fn review_identity_invocation(
                     claim_error(&mut s, guard.generation, &hash, deadline, now()?)?;
                 }
                 let mut iv = [0; 12];
-                OsRng.fill_bytes(&mut iv);
+                UnwrapErr(SysRng).fill_bytes(&mut iv);
                 let token = Zeroizing::new(
                     error
-                        .encrypt(now()?, p256::SecretKey::random(&mut OsRng), iv)
+                        .encrypt(
+                            now()?,
+                            p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
+                            iv,
+                        )
                         .map_err(str::to_string)?,
                 );
                 {
