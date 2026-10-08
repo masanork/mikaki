@@ -40,6 +40,7 @@ jobs:
           node scripts/check_design.ts
           npm run test:sql
           npm run test:release
+          node --test scripts/static-sql.test.ts
           npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
