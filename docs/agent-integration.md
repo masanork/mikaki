@@ -101,9 +101,9 @@ The separate [`crates/agent-worker`](../crates/agent-worker/README.md) resource 
 
 Run `npm run test:agents` for stdio and `npm run test:agent-integration` after building the OP Worker. The latter exercises real local workerd/D1/R2 and a Chromium owner flow with mocked PRF output and real encryption. It covers saved/unsaved values, consent, origin and owner isolation, export binding, read-only scope, expiry, audit-write rollback, denied access, exact approval, concurrent execution/retries, source/credential/account invalidation, multi-grant emergency stop, and irreversible recipient stop. The local-note browser test also passes downloaded files through the actual stdio server and official SDK client, including note-only access without name unlock, separate note/login credentials, title bounds, live-head changes during preparation, unsupported schemas, safe rendering and subsequent grant revocation. It does not replace intended-device passkey tests or a production bot connection.
 
-## Historical saved-note local read flow, 2026-09-29
+## Saved-note local read flow, 2026-09-29
 
-This section records the pre-reset UI and credential model. Its controls and unlock behavior are not instructions for the current Owner workspace; use [the v2 local Codex flow](#connect-a-selected-v2-record-to-local-codex) above.
+This historical section records the pre-reset UI and credential model. Its controls and unlock behavior are not instructions for the current Owner workspace; use [the v2 local Codex flow](#connect-a-selected-v2-record-to-local-codex) above.
 
 In Vault's **Share with an AI agent** section, select **Share my saved owner note through local MCP**; name selection is optional. Select the connection/provider label and one, four or 24 hours, approve disclosure, then prepare the export. This requires an active owner session and a saved note, but not unlocking or saving the name. The note's own envelope chooses the required PRF credential, even when it differs from the session's login credential. Review the displayed saved title/text, revision, self-asserted provenance, recipient and deadline before downloading both files. The existing local adapter connection instructions above apply unchanged.
 
