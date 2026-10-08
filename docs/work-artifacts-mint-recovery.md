@@ -74,6 +74,11 @@ unobserved-token/operator recovery, fixed Git upload, independent readback,
 workload release and owner copy/delegation controls remain separate gates.
 Independent-ledger restore/reset remains an operator provenance problem.
 
+[M6c Native refusal](work-artifacts-mint-closure.md) subsequently adds strong
+closure when the matching encrypted bearer remains in Native custody. This
+safety recovery endpoint still retains control-plane evidence only; it does not
+itself close a credential. Missing/unobserved secrets remain unresolved.
+
 The protected remote journals, six empty development repositories, production
 flags/bindings and baseline migrations are untouched. New recovery workers are
 bound only in the synthetic local qualification profile; the existing remote

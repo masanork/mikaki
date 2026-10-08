@@ -113,6 +113,8 @@ const {Admin, Effect, Public} = authorityFacades(FixtureRustOp);
 export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore};
 export class FixtureEffectBridge extends WorkerEntrypoint {
   async fetch(request) {
+    const refusalInput=await request.clone().json();
+    if(this.env.LOCAL_MINT_CLOSE_FREEZE==='true' && refusalInput.action==='mint-close') await this.env.CHECKPOINT_ADMIN.freeze();
     if(this.env.LOCAL_MINT_CLEANUP_LOST==='true' && (await request.clone().json()).action==='mint-cleanup') return Response.json({error:'synthetic_cleanup_unavailable'},{status:409});
     if (this.env.LOCAL_MINT_CAPTURE_PAUSE) {
       const i=await request.clone().json();
@@ -133,6 +135,7 @@ export class FixtureEffectBridge extends WorkerEntrypoint {
       if(i.action==='capture-mint') await this.env.MINT_MAINTENANCE.begin(i.attempt_id,i.digest);
     }
     const response = await this.env.OP_EFFECT_STORE.fetch(request);
+    if(this.env.LOCAL_MINT_CLOSE_LOST==='true' && refusalInput.action==='mint-close' && response.status===200) return Response.json({error:'synthetic_close_lost'},{status:409});
     if (response.status === 200 && this.env.LOCAL_EFFECT_CAPTURE_LOST === 'true') {
       const value = await response.clone().json();
       if (value.state === 'closed' || value.state === 'captured') return Response.json({error:'synthetic_lost_ack'},{status:409});
@@ -168,11 +171,20 @@ export class FixtureMintLedger extends WorkerEntrypoint {
   abandon(attempt,digest){if(this.env.LOCAL_MINT_LEDGER_LOST==='observe-and-abandon') throw new Error('synthetic_abandon_unavailable');return this.env.MINT_LEDGER.abandon(attempt,digest);}
   revoked(attempt,digest){return this.env.MINT_LEDGER.revoked(attempt,digest);}
 }
+export class FixtureMintRefusalLedger extends WorkerEntrypoint {
+  lookup(attempt){return this.env.MINT_REFUSAL_CHECKPOINT.lookup(attempt);}
+  async refused(attempt,digest,proof){const r=await this.env.MINT_REFUSAL_CHECKPOINT.refused(attempt,digest,proof);if(this.env.LOCAL_MINT_REFUSAL_LOST==='true') throw new Error('synthetic_refusal_lost');return r;}
+}
 export default class extends Public { async fetch(request) {
   const env=this.env, ctx=this.ctx;
   if (env.LOCAL_WORK_QUALIFICATION === 'true' && new URL(request.url).pathname === '/effect-fixture') {
     const i=await request.json();
     try {
+      if(i.action==='mint-close') return env.MINT_CLOSER.fetch('https://private.invalid/close-mint',{method:'POST',body:JSON.stringify(i.input)});
+      if(i.action==='mint-close-public') return env.MINT_CLOSURE_PUBLIC.fetch('https://private.invalid/close-mint',{method:'POST',body:'{}'});
+      if(i.action==='mint-refusal-public') return env.MINT_REFUSAL_TRANSPORT_PUBLIC.fetch('https://private.invalid/');
+      if(i.action==='mint-refusal-call') return Response.json(await env.MINT_REFUSAL_CHECKPOINT[i.method](...(i.args??[])));
+      if(i.action==='mint-refusal-transport') return env.WORK_MINT_REFUSAL_TRANSPORT.fetch(new Request(i.url,{method:i.method??'GET',headers:i.headers,body:i.body}));
       if(i.action==='mint-reconcile') return env.MINT_RECONCILER.fetch('https://private.invalid/reconcile-mint',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='mint-reconcile-public') return env.MINT_RECONCILE_PUBLIC.fetch('https://private.invalid/reconcile-mint',{method:'POST',body:'{}'});
       if(i.action==='mint-broker-public') return env.MINT_MAINTENANCE_PUBLIC.fetch('https://private.invalid/',{method:'POST',body:'{}'});
@@ -195,7 +207,7 @@ export default class extends Public { async fetch(request) {
       if(i.action==='mint-public') return env.MINT_PUBLIC.fetch('https://private.invalid/mint',{method:'POST',body:'{}'});
       if(i.action==='mint-lookup') return Response.json(await env.MINT_LEDGER.lookup(i.attempt_id));
       if(i.action==='mint-claim') return Response.json(await env.MINT_LEDGER.claim(i.plan));
-      if(i.action==='mint-ledger-call') return Response.json(await env.MINT_LEDGER[i.method](i.input));
+      if(i.action==='mint-ledger-call') return Response.json(await env.MINT_LEDGER[i.method](...(i.args??[i.input])));
       if(i.action==='execute') return env.EFFECT_GATE.fetch('https://private.invalid/initial',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='reconcile') return env.EFFECT_RECONCILER.fetch('https://private.invalid/reconcile',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='reconcile-public') return env.RECONCILE_PUBLIC.fetch('https://private.invalid/reconcile',{method:'POST',body:'{}'});
@@ -274,6 +286,8 @@ for (const [source, name] of [
   ['crates/work-effect-worker/mint.ts', 'mint.mjs'],
   ['crates/work-effect-worker/mint-maintenance.ts', 'mint-maintenance.mjs'],
   ['crates/work-effect-worker/mint-reconcile.ts', 'mint-reconcile.mjs'],
+  ['crates/work-effect-worker/mint-closure.ts', 'mint-closure.mjs'],
+  ['crates/work-effect-worker/mint-refusal-transport.ts', 'mint-refusal-transport.mjs'],
   ['crates/work-effect-worker/reconcile.ts', 'reconcile.mjs'],
   ['crates/work-effect-worker/maintenance.ts', 'maintenance.mjs'],
   ['local/conformance/support/work-effect-loss.ts', 'effect-loss.mjs'],

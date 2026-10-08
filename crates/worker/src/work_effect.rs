@@ -10,6 +10,7 @@ use serde::Deserialize;
 use wasm_bindgen::JsValue;
 use worker::{Env, Request, Response};
 use zeroize::Zeroizing;
+mod refusal;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
@@ -47,6 +48,25 @@ enum Input {
         token_id: String,
         scope: CredentialScope,
         expires_at: u64,
+    },
+    MintRefusal {
+        attempt_id: String,
+        digest: String,
+        repo_id: String,
+        token_id: String,
+        scope: CredentialScope,
+        expires_at: u64,
+        key_version: u64,
+    },
+    MintClose {
+        attempt_id: String,
+        digest: String,
+        repo_id: String,
+        token_id: String,
+        scope: CredentialScope,
+        expires_at: u64,
+        key_version: u64,
+        receipt: String,
     },
     CaptureClosed {
         attempt_id: String,
@@ -93,6 +113,51 @@ async fn execute(
     // Native batches still require checkpoint framing; frozen/unavailable OP
     // remains unchanged while the independent mint ledger records cleanup.
     let input = match input {
+        Input::MintRefusal {
+            attempt_id,
+            digest,
+            repo_id,
+            token_id,
+            scope,
+            expires_at,
+            key_version,
+        } => {
+            return refusal::probe(
+                &store,
+                env,
+                &attempt_id,
+                &digest,
+                &repo_id,
+                &token_id,
+                scope,
+                expires_at,
+                key_version,
+            )
+            .await;
+        }
+        Input::MintClose {
+            attempt_id,
+            digest,
+            repo_id,
+            token_id,
+            scope,
+            expires_at,
+            key_version,
+            receipt,
+        } => {
+            return refusal::close(
+                &store,
+                &attempt_id,
+                &digest,
+                &repo_id,
+                &token_id,
+                scope,
+                expires_at,
+                key_version,
+                &receipt,
+            )
+            .await;
+        }
         Input::CaptureMint {
             attempt_id,
             digest,
@@ -195,7 +260,10 @@ async fn execute(
                     .await?,
             )?)
         }
-        Input::CaptureMint { .. } | Input::MintCleanup { .. } => unreachable!(),
+        Input::CaptureMint { .. }
+        | Input::MintCleanup { .. }
+        | Input::MintRefusal { .. }
+        | Input::MintClose { .. } => unreachable!(),
         Input::CaptureClosed {
             attempt_id,
             repo_id,

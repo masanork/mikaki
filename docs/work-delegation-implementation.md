@@ -127,3 +127,20 @@ baseline migrations, protected journals and real Artifacts repositories/tokens
 are untouched. Strong bearer-refusal closure, unobserved-token operator recovery,
 productive fixed Git upload/readback and owner copy/delegation composition remain
 the next gates.
+
+## M6c: Native bearer refusal and independent closure
+
+The [closure note](work-artifacts-mint-closure.md) connects retained encrypted
+revocation-pending custody to a fixed, private refusal-only HTTP transport. Native
+decrypts the exact bearer under the existing key floor; the transport checks the
+independent cleanup record and immutable Artifacts identity before and after a
+concrete Git upload-pack refusal. The separately bound closer retains exact
+Native proof outside D1 before asking Native to close that obligation.
+
+Focused local cases qualify both roles/purposes, loss/restore/freeze, missing or
+substituted wrapping authority, guarded ciphertext writes, failed/redirected Git,
+identity/inventory substitution, audit rollback, cancellation and private-capability
+limits. Native closure erases its encrypted credential and releases that charge;
+the independent permanent slot remains. This supplies no copy verification or
+workload authority. Combined validation and main integration follow this source
+increment. Production and protected remote evidence remain untouched.

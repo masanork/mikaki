@@ -11,6 +11,7 @@ import {
   mintPlan,
   mintObservation,
   mintCleanup,
+  mintRefusal,
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
 import type { MintPlan, MintRecord } from '../work-effect-worker/protocol';
@@ -320,6 +321,7 @@ export class WorkCheckpoint extends DurableObject<Env> {
       if (
         !r ||
         r.plan.digest !== digest ||
+        r.state === 'closed' ||
         !r.observation ||
         r.revoke_acknowledged ||
         r.cleanup_requested
@@ -339,6 +341,7 @@ export class WorkCheckpoint extends DurableObject<Env> {
       if (
         !r ||
         r.plan.digest !== digest ||
+        r.state === 'closed' ||
         !r.observation ||
         (safety && (!r.cleanup_requested || r.state !== 'outcome_unknown'))
       )
@@ -353,7 +356,12 @@ export class WorkCheckpoint extends DurableObject<Env> {
   async beginMintCleanup(attempt: unknown, digest: unknown, productive = false) {
     const result = this.ctx.storage.transactionSync(() => {
       const r = this.#mint(attempt);
-      if (!r || r.plan.digest !== digest || (!productive && r.state !== 'outcome_unknown'))
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        r.state === 'closed' ||
+        (!productive && r.state !== 'outcome_unknown')
+      )
         throw new Error('effect_conflict');
       r.cleanup_requested = true;
       r.state = 'outcome_unknown';
@@ -383,6 +391,34 @@ export class WorkCheckpoint extends DurableObject<Env> {
       )
         throw new Error('effect_conflict');
       if (!r.cleanup) r.cleanup = { ...input, observed_at: Math.floor(Date.now() / 1000) };
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async closeMintRefused(attempt: unknown, digest: unknown, input: unknown) {
+    mintRefusal(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt),
+        o = r?.observation;
+      if (
+        !r ||
+        !o ||
+        !r.cleanup ||
+        !r.cleanup_requested ||
+        r.plan.digest !== digest ||
+        r.state === 'custodied' ||
+        input.key_version !== r.plan.key_version ||
+        input.repo_id !== o.repo_id ||
+        input.token_id !== o.token_id ||
+        input.scope !== o.scope ||
+        input.expires_at !== o.expires_at ||
+        (r.refusal && r.refusal.receipt !== input.receipt)
+      )
+        throw new Error('effect_conflict');
+      if (!r.refusal) r.refusal = { ...input, observed_at: Math.floor(Date.now() / 1000) };
+      r.state = 'closed';
       this.#saveMint(r);
       return r;
     });
@@ -640,6 +676,18 @@ export class WorkMintLookup extends WorkerEntrypoint<Env> {
   }
   lookup(attempt: unknown) {
     return object(this.env).lookupMint(attempt);
+  }
+}
+/** Retain verified refusal only; no mint, plaintext, cleanup intent or OP framing. */
+export class WorkMintRefusalCheckpoint extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+  refused(attempt: unknown, digest: unknown, value: unknown) {
+    return object(this.env).closeMintRefused(attempt, digest, value);
   }
 }
 /** Safety only: cannot claim, observe unknown IDs, custody, close or reset. */

@@ -43,6 +43,7 @@ export async function preparationFixture(
     compatibilityDate: '2026-09-30',
     bindings: {
       MIKAKI_ISSUER: 'https://work.test',
+      ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -83,6 +84,17 @@ export async function preparationFixture(
                           entrypoint: 'WorkMintArtifactsMaintenance',
                         },
                         MINT_MAINTENANCE_PUBLIC: 'mint-maintenance',
+                        MINT_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
+                        MINT_CLOSURE_PUBLIC: 'mint-closure',
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintRefusalCheckpoint',
+                        },
+                        WORK_MINT_REFUSAL_TRANSPORT: {
+                          name: 'mint-refusal-transport',
+                          entrypoint: 'WorkMintRefusalTransport',
+                        },
+                        MINT_REFUSAL_TRANSPORT_PUBLIC: 'mint-refusal-transport',
                       }
                     : {}),
                   EFFECT_RECONCILER: { name: 'work-reconcile', entrypoint: 'WorkEffectReconciler' },
@@ -248,6 +260,49 @@ export async function preparationFixture(
                         MINT_ARTIFACTS_MAINTENANCE: {
                           name: 'mint-maintenance',
                           entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        OP_EFFECT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-refusal-transport',
+                      outboundService: 'synthetic-artifacts',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-refusal-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_REFUSAL_TRANSPORT_ENABLED:
+                          bindings.WORK_MINT_REFUSAL_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-closure',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-closure.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_CLOSURE_ENABLED: bindings.WORK_MINT_CLOSURE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureMintRefusalLedger',
                         },
                         OP_EFFECT_STORE: {
                           name: 'preparation-owner',

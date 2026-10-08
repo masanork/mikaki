@@ -26,7 +26,9 @@ function output(r: MintRecord) {
     attempt_id: r.plan.attempt_id,
     state: r.state,
     repo_id: r.plan.repo_id,
-    cleanup: r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed',
+    cleanup: r.refusal
+      ? 'git_bearer_refused'
+      : (r.cleanup?.method ?? (r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed')),
   };
 }
 async function synchronized(env: Pick<Env, 'OP_EFFECT_STORE' | 'MINT_CHECKPOINT'>, r: MintRecord) {
