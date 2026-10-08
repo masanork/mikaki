@@ -87,6 +87,57 @@ export type CompletedMcpCall = Readonly<{
   event: JsonRecord;
 }>;
 
+export type CodexDiagnosticCategory =
+  | 'rate_limit'
+  | 'authentication'
+  | 'model_unavailable'
+  | 'network'
+  | 'cli_arguments'
+  | 'unclassified';
+
+export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory {
+  if (/rate[\s_-]?limit|too many requests|\b429\b|quota exceeded/i.test(stderr))
+    return 'rate_limit';
+  if (
+    /unauthori[sz]ed|authentication|not logged in|login required|invalid api key|\b401\b/i.test(
+      stderr,
+    )
+  )
+    return 'authentication';
+  if (/model.{0,80}(?:not found|unavailable|not available|unsupported)|unknown model/i.test(stderr))
+    return 'model_unavailable';
+  if (
+    /ECONN[A-Z]+|ENOTFOUND|ETIMEDOUT|fetch failed|network error|socket hang up|connection refused|TLS handshake/i.test(
+      stderr,
+    )
+  )
+    return 'network';
+  if (
+    /unknown (?:option|argument)|unrecognized option|invalid (?:option|argument)|usage:|unexpected argument/i.test(
+      stderr,
+    )
+  )
+    return 'cli_arguments';
+  return 'unclassified';
+}
+
+class CodexCliError extends Error {
+  readonly code: 'codex_unavailable' | 'codex_timeout' | 'codex_output_limit' | 'codex_failed';
+  readonly exitCode: number | null | undefined;
+  readonly diagnosticCategory: CodexDiagnosticCategory | undefined;
+
+  constructor(
+    code: 'codex_unavailable' | 'codex_timeout' | 'codex_output_limit' | 'codex_failed',
+    exitCode?: number | null,
+    diagnosticCategory?: CodexDiagnosticCategory,
+  ) {
+    super(code);
+    this.code = code;
+    this.exitCode = exitCode;
+    this.diagnosticCategory = diagnosticCategory;
+  }
+}
+
 /** Parse completed Codex MCP calls and retain result envelopes only for local validation. */
 export function completedMcpCalls(jsonl: string): CompletedMcpCall[] {
   const calls: CompletedMcpCall[] = [];
@@ -126,15 +177,22 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
     const child = spawn(process.env['CODEX_BIN'] ?? 'codex', [...args, '-'], {
       cwd: process.cwd(),
       env: process.env,
-      stdio: ['pipe', 'pipe', 'ignore'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
     const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
     let bytes = 0;
+    let capturedStderrBytes = 0;
     let failure: Error | undefined;
     let killTimer: NodeJS.Timeout | undefined;
+    const clearStderr = () => {
+      for (const chunk of stderr) chunk.fill(0);
+      stderr.length = 0;
+      capturedStderrBytes = 0;
+    };
     const stop = (reason: string) => {
       if (failure) return;
-      failure = new Error(reason);
+      failure = new CodexCliError(reason as CodexCliError['code']);
       child.kill('SIGTERM');
       killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
     };
@@ -147,16 +205,35 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
       }
       stdout.push(Buffer.from(chunk));
     });
+    child.stderr.on('data', (chunk: Buffer) => {
+      const remaining = 16 * 1024 - capturedStderrBytes;
+      if (remaining > 0) {
+        const captured = Buffer.from(chunk.subarray(0, remaining));
+        stderr.push(captured);
+        capturedStderrBytes += captured.length;
+      }
+    });
     child.on('error', () => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      reject(new Error('codex_unavailable'));
+      clearStderr();
+      reject(new CodexCliError('codex_unavailable'));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      if (failure) return reject(failure);
-      if (code !== 0) return reject(new Error('codex_failed'));
+      if (failure) {
+        clearStderr();
+        return reject(failure);
+      }
+      if (code !== 0) {
+        const diagnostic = Buffer.concat(stderr);
+        const diagnosticCategory = classifyCodexDiagnostic(diagnostic.toString('utf8'));
+        diagnostic.fill(0);
+        clearStderr();
+        return reject(new CodexCliError('codex_failed', code, diagnosticCategory));
+      }
+      clearStderr();
       resolvePromise(Buffer.concat(stdout).toString('utf8'));
     });
     child.stdin.on('error', () => {});
@@ -499,8 +576,20 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const result = await probe((record as RecordId | undefined) ?? 'owner_note');
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
-    const code = error instanceof Error ? error.message : 'probe_failed';
-    process.stderr.write(`${JSON.stringify({ passed: false, error: code })}\n`);
+    if (error instanceof CodexCliError) {
+      process.stderr.write(
+        `${JSON.stringify({
+          passed: false,
+          error: error.code,
+          ...(error.exitCode !== undefined ? { exit_code: error.exitCode } : {}),
+          ...(error.diagnosticCategory ? { diagnostic_category: error.diagnosticCategory } : {}),
+        })}\n`,
+      );
+    } else {
+      const code =
+        error instanceof Error && /^[a-z_]+$/.test(error.message) ? error.message : 'probe_failed';
+      process.stderr.write(`${JSON.stringify({ passed: false, error: code })}\n`);
+    }
     process.exitCode = 1;
   }
 }

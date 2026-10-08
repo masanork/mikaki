@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   makeSyntheticRecord,
   completedMcpCalls,
+  classifyCodexDiagnostic,
   exactAuditDelta,
   findToolOutputs,
   verifyStructuredOutput,
@@ -114,6 +115,15 @@ test('Codex MCP tool completion rejects item, status, and result errors', () => 
     ),
     [true, true, true],
   );
+});
+
+test('Codex stderr classification exposes only a known diagnostic category', () => {
+  assert.equal(classifyCodexDiagnostic('HTTP 429: rate limit exceeded'), 'rate_limit');
+  assert.equal(classifyCodexDiagnostic('401 Unauthorized: login required'), 'authentication');
+  assert.equal(classifyCodexDiagnostic('The requested model is unavailable'), 'model_unavailable');
+  assert.equal(classifyCodexDiagnostic('fetch failed: ECONNRESET'), 'network');
+  assert.equal(classifyCodexDiagnostic('error: unknown option --bad'), 'cli_arguments');
+  assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), 'unclassified');
 });
 
 test('Codex audit delta must match exact allowed and denied calls', () => {
