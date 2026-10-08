@@ -16,7 +16,7 @@ rsa = { version = "=0.9.10", default-features = false, features = ["std", "u64_d
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
 base64 = "=0.23.1"
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }
-hkdf = "0.12.4"
+hkdf = "0.13.0"
 miniz_oxide = "=0.9.1"
 url = "=2.5.8"
 ciborium.workspace = true
