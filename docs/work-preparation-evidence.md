@@ -70,6 +70,15 @@ verified projection; the product must use the separately checked current
 availability before making any productive decision. Cleanup/cancellation retains
 the evidence rather than returning it to a productive state.
 
+The composition acknowledgement is a private preparation/destination projection,
+not the complete browser DTO. UI integration must reread the session-bound
+[owner projection](../crates/worker/src/work_store/owner.rs), which supplies
+`revision`, `materialized` and `current_authority` for the existing
+[presentation schema](../crates/worker/ui/work-view.ts). Its `current_authority`
+is true only for a materialized, current prepared task. A newly verified copy
+therefore remains unmaterialized with that flag false; it must not enable
+delegation merely by changing its preparation status label.
+
 ## Integration and qualification
 
 `WorkPreparationGate` accepts only `{preparation_id}` on its named private
@@ -101,3 +110,15 @@ protected remote reconciliation and real Artifacts trials remain separate gates.
 This local result does not activate production or qualify the canonical Artifacts
 baseline. The protected development repositories, journals and preserved stash
 remain untouched.
+
+Implementation source is `b4e3b010212240ef4c7692df0149e5605d110c11`.
+Current local qualification passes **289/289 combined work cases** (274 previous
+plus 15 composition cases), and **29/29 production OP/service boundary,
+baseline/Owner-schema, worker-roster and release-inventory cases** against the
+Worker rebuilt with that exact source revision. Native default-production Wasm
+Clippy with warnings denied, Rustfmt, Node/service/effect/checkpoint types,
+Prettier, product-source and documentation checks pass. Named OP packaging
+preserves the 64-statement static Agent SQL catalog. Served UI and both Wasm size
+checks pass; OP Wasm measures **6,225,033 raw bytes / 2,186,597 gzip estimate**,
+within the existing 8 MiB / 3 MiB ceilings. No new browser, remote CI, real
+Artifacts or production-activation qualification is claimed.

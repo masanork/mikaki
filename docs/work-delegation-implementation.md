@@ -230,6 +230,17 @@ workload credential. Copy/delegation UI and Cloudflare Git-host/source-registry
 deployment remain the next integration gates. Production flags, bindings and
 baseline migrations, protected remote journals and real Artifacts are unchanged.
 
+M6e implementation source is `b4e3b010212240ef4c7692df0149e5605d110c11`.
+The combined local work lane passes **289/289 cases**, including **15 composition
+cases**, and the production OP/service boundary, baseline/Owner-schema,
+worker-roster and release-inventory subset passes **29/29** against the Worker
+rebuilt with that exact revision. Native default-production Wasm Clippy with
+warnings denied, Rustfmt, Node/service/effect/checkpoint types, Prettier, product
+sources and documentation checks pass. Named OP packaging retains 64 static
+Agent SQL statements. Served UI and both Wasm budgets pass; OP Wasm is
+**6,225,033 raw bytes / 2,186,597 gzip estimate**, below 8 MiB / 3 MiB.
+Product UI source is unchanged; no new browser or remote CI result is claimed.
+
 ## Unified mint, Git and preparation evidence
 
 The canonical registered-source Git host and both-role Native evidence composer
