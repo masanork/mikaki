@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["worker-entry"]
 worker-entry = []
+work-qualification = []
 
 [dependencies]
 serde.workspace = true
@@ -39,3 +40,9 @@ worker = { version = "=0.8.7", features = ["d1", "queue"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "work-store-qualification"
+path = "examples/work_store_qualification.rs"
+crate-type = ["cdylib"]
+required-features = ["work-qualification"]

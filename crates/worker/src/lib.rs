@@ -13,6 +13,12 @@ mod dpop;
 #[cfg(target_arch = "wasm32")]
 mod token;
 #[cfg(target_arch = "wasm32")]
+pub mod work_owner;
+#[cfg(target_arch = "wasm32")]
+mod work_sources;
+#[cfg(target_arch = "wasm32")]
+pub mod work_store;
+#[cfg(target_arch = "wasm32")]
 use token::*;
 #[cfg(target_arch = "wasm32")]
 mod enrollment;

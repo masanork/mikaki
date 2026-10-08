@@ -25,6 +25,17 @@ pub(super) async fn admit(request: &worker::Request, env: &worker::Env) -> worke
     ) {
         return Ok(true);
     }
+    admit_budget(request, env).await
+}
+
+pub(super) async fn admit_work(
+    request: &worker::Request,
+    env: &worker::Env,
+) -> worker::Result<bool> {
+    admit_budget(request, env).await
+}
+
+async fn admit_budget(request: &worker::Request, env: &worker::Env) -> worker::Result<bool> {
     let db = env.d1("DB")?;
     let policy = db
         .prepare(

@@ -22,6 +22,7 @@
     "local/ui",
     "design/probes/node_modules",
     "design/probes/pqc/pkg",
-    "design/probes/pqc/pkg-web"
+    "design/probes/pqc/pkg-web",
+    "local/conformance/support/work-source-reader.ts"
   ]
 }
