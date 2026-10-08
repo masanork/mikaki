@@ -49,7 +49,7 @@ Final validation also passes the existing Owner Vault browser flow, production O
 
 ## Current preparation review
 
-M5b adds `/work/preparation-review` and a separate authenticated JS/CSS entry. OwnerWorkspace shows its link only when `WORK_OWNER_API_ENABLED`, `WORK_SOURCE_API_ENABLED` and `WORK_PREPARATION_REVIEW_ENABLED` are all explicitly true. No deployment configuration enables the new screen.
+M5b adds `/work/preparation-review` and a separate authenticated JS/CSS entry. OwnerWorkspace shows its link only when `WORK_OWNER_API_ENABLED`, `WORK_SOURCE_API_ENABLED` and `WORK_PREPARATION_REVIEW_ENABLED` are all explicitly true. The actual Native work Router is composed into the local qualification entry. The public production Router still omits the work surface; flags alone do not activate it. Wiring that surface into a selected development/release entry and qualifying its real bindings remains a deployment gate. No deployment configuration enables the new screen.
 
 `GET /work/preparations` returns at most 20 restored public preparations, using a fixed ID keyset and no caller-supplied owner or limit. It lists history rather than delegable repositories. Native listing, preparation detail and disclosure reads require the current independent checkpoint, then select owned records with a live SSO join. The page/assets authenticate both before and after checkpoint I/O. Frozen, stale or unavailable checkpoint authority denies the review.
 

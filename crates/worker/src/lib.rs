@@ -18,6 +18,7 @@ mod token;
 pub mod work_effect;
 #[cfg(target_arch = "wasm32")]
 pub mod work_owner;
+#[cfg(target_arch = "wasm32")]
 mod work_preparations;
 #[cfg(target_arch = "wasm32")]
 mod work_sources;
