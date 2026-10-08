@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a source inspection and M6a/M6b mint/custody and known-ID recovery locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, the source review screen, one-shot upload/readback credential minting and safety-only recovery are integrated. Copy/delegation composition, productive upload/readback and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a source inspection and M6a–M6c mint/custody, known-ID recovery and Native bearer refusal locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, the source review screen, one-shot upload/readback credential minting, safety-only recovery and strong credential closure are integrated. Copy/delegation composition, productive upload/readback and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -25,7 +25,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a source review complete locally; copy/delegation composition and activity/result controls remain pending. |
-| M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | M6a one-shot mint/Native custody and M6b known-ID recovery locally implemented; unobserved outcomes, strong refusal closure, productive Git upload/readback and release remain pending. |
+| M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | M6a–M6c mint/custody, known-ID recovery and Native bearer refusal locally implemented; missing/unobserved custody, productive Git upload/readback and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -137,10 +137,32 @@ independent cleanup record and immutable Artifacts identity before and after a
 concrete Git upload-pack refusal. The separately bound closer retains exact
 Native proof outside D1 before asking Native to close that obligation.
 
-Focused local cases qualify both roles/purposes, loss/restore/freeze, missing or
+The **23 closure cases** qualify both roles/purposes, loss/restore/freeze, missing or
 substituted wrapping authority, guarded ciphertext writes, failed/redirected Git,
 identity/inventory substitution, audit rollback, cancellation and private-capability
 limits. Native closure erases its encrypted credential and releases that charge;
 the independent permanent slot remains. This supplies no copy verification or
-workload authority. Combined validation and main integration follow this source
-increment. Production and protected remote evidence remain untouched.
+workload authority. Production and protected remote evidence remain untouched.
+
+Implementation `bf2a170` is followed by main integration `811f503`, bringing in
+main `9022fb2` and retaining the work-port history. Main's Babel-based static SQL
+extractor and pinned dependencies replace the retired application compiler
+adapter; the exact 64-statement product catalog remains unchanged. SQL extraction
+and reset-plan regressions pass **12/12 cases** on the installed merged lockfile.
+The additional native-client, JOSE and Android/JVM CI lanes are retained; no new
+result from those lanes or remote CI is claimed here.
+
+The combined actual Rust/Wasm/workerd/D1/R2/RPC regression passes **247/247 cases**
+(224 previous plus 23 closure cases), with synthetic Artifacts/Git. Production
+OP/service boundaries and baseline/Owner-schema/release-inventory regressions
+pass **13/13**. Default production Wasm Clippy with warnings denied, Worker build,
+named OP packaging, Node/service/effect/checkpoint types, full Rust/TypeScript
+formatting, product-source checks and documentation links pass. OP Wasm is
+5,985,079 raw bytes / 2,113,840 gzip estimate, within the existing 8 MiB / 3 MiB
+budgets. Product UI source/budgets are unchanged; no new browser claim is made.
+
+The next productive increment is fixed Git upload and independent readback,
+followed by owner copy/delegation composition. Missing/unobserved custody and
+independent-ledger/operator recovery still require qualification before remote
+activation. No real mint, refusal/revocation trial or production deployment is
+performed.

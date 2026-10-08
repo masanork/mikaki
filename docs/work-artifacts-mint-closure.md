@@ -88,5 +88,6 @@ confirmed Native closure, no preparation/grant promotion, missing custody/key,
 substituted key and guarded SQL, failed/redirected HTTP, repository/token metadata
 substitution, immutable proof, lost acknowledgements, audit rollback, freeze,
 restart, whole primary restore, cancellation and cold/public/RPC/egress limits.
-Focused cases are qualified; the combined main-integrated regression is recorded
-in the [integration plan](work-delegation-implementation.md).
+All **23 closure cases** pass in the combined **247-case** main-integrated local
+regression. Production boundary/schema regressions, build and byte budgets are
+recorded in the [integration plan](work-delegation-implementation.md).
