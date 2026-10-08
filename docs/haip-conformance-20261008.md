@@ -1,14 +1,14 @@
 # HAIP current-source checkpoint — 2026-10-08
 
-This reruns existing selected official cases after the dependency and crypto changes in PR #162. **Issuer: 84/84 FINISHED/PASSED. Wallet: 22 official passes plus 4 host-only silent rejections with real Wallet error-screen evidence pending.** It adds no protocol implementation or case coverage and is not full HAIP conformance or certification. Earlier checkpoints remain historical results in [the implementation record](identity-card-issuance.md).
+This reruns existing selected official cases after the dependency and crypto changes in PRs #162 and #165. **Latest Issuer attempt: 83 FINISHED/PASSED and 1 INTERRUPTED/FAILED transport timeout out of 84. Wallet: 22 official passes plus 4 host-only silent rejections with real Wallet error-screen evidence pending.** It adds no protocol implementation or case coverage and is not full HAIP conformance or certification. Earlier checkpoints remain historical results in [the implementation record](identity-card-issuance.md).
 
 ## Source and execution
 
-- Tested clean source: `407f50e7a5593efe67d04584aa4e5aebc2231907`; tree: `c2763876135f1ad509244e798b5742237493c20f`.
-- Deployed runtime source at qualification: `d7e92eb269f3072c71aacb536e9c4c5d1f1aef54`; the tested source differs only in `metrics/code-size.svg`, `metrics/dependency-inventory.md` and `metrics/history.json`. No public profile activation, sharing policy, trust key or real-data change was made.
+- Tested clean source: `a5ff72f2264b72352d81c891ea9f8698030c7509`; tree: `3df3f2729fe26974f916327e5cd35a6efdcbfd9b`.
+- Integration base: `9022fb2ec1658882ca3839530667d0a25b714742` (#165 dependency/build-tool update and #167 Gradle action update included). The tested source layers only these two evidence documents on that base; runtime code and dependency inputs match the integration base. No public profile activation, sharing policy, trust key or real-data change was made.
 - OIDF suite: `release-v5.3.1`, source `440eec8bac7b12b7389d7ca9cbc459b53507a443`, Issuer plan `oid4vci-1_0-issuer-haip-test-plan`, Wallet plan `oid4vp-1final-wallet-haip-test-plan`.
 - Server image: `registry.gitlab.com/openid/conformance-suite@sha256:69495f453a920c262f66e5e72abd12501c33e05ce88051cddf300c00621a4d70`. The unchanged [Compose file](../local/conformance/haip-suite.compose.yml) pins server, nginx and Mongo images; the three container image digests matched those pins.
-- Fresh project compilation used a copied Cargo cache. Worker, browser Wasm and native HAIP Wallet example were rebuilt from the tested source; the Wallet fixture also runs its existing locked/offline example build.
+- Builds used a copied Cargo cache. Worker was recompiled with the exact tested Git SHA embedded; browser Wasm and the native HAIP Wallet example were built with current inputs and valid cache reuse; the Wallet fixture also runs its existing locked/offline example build.
 
 | Suite container       | Configured image                                                                                                             | Observed image ID                                                         |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -22,16 +22,31 @@ Preparation:
 npm ci
 npm run build:policy
 npm run build:wasm
-worker-build --release crates/worker
+env GITHUB_SHA=a5ff72f2264b72352d81c891ea9f8698030c7509 worker-build --release crates/worker
 cargo build -p mikaki-identity --example haip_wallet --locked --offline
 docker compose -p mikaki-haip -f local/conformance/haip-suite.compose.yml up -d
 node local/conformance/haip-issuer.ts --positive
 npm run test:identity-wallet-suite
 ```
 
-Both commands exited zero. The Wallet command also passed the actual workerd issuance/presentation integration test. Its first invocation stopped at sandbox loopback permission failure before any official Wallet module ran; the authorized rerun succeeded. The original repository and unrelated suite on port 8443 were left untouched.
+The latest Issuer command exited nonzero due to the transport failure recorded below; its full 84-case qualification is incomplete. The Wallet command exited zero and also passed the actual workerd issuance/presentation integration test. An earlier qualification on source `407f50e7a5593efe67d04584aa4e5aebc2231907` stopped its first Wallet invocation at sandbox loopback permission before official modules; its authorized rerun also passed. That older result is retained separately and is not the source used for this table. The original repository and unrelated suite on port 8443 were left untouched.
 
 The fixture uses local workerd/D1, synthetic card evidence and live seeded SSO, disposable attestation/credential PKI, host Rust Wallet and a local TLS relay. Real owner passkey login, physical cards/devices, native Wallet UI, public Cloudflare TLS and production credential trust/revocation are outside this checkpoint. In-flight expiry modules used real lifetimes; neither database expiry nor suite clocks were changed.
+
+## Earlier attempts on the same source
+
+Two earlier complete Issuer attempts on this exact source ended with local Docker-to-host metadata connection timeouts. The official failed states remain failures in those attempts; they are not relabeled as passes or counted as additional unique coverage. The failed modules did not reach their intended protocol assertions. No product code, runner selection, deadlines, or suite assertions changed. After preserving both attempts, only the disposable suite server and nginx were restarted; Mongo and the unrelated suite were left untouched. The latest complete attempt below still ended 83 PASSED and 1 FAILED: the mdoc invalid-JWT-proof module timed out in `CallPAREndpoint`, before its intended proof assertion. Restarting did not resolve the instability. The underlying transport cause is unconfirmed; further blind retries were stopped.
+
+| Attempt | Attempted | Official passes | INTERRUPTED/FAILED | Private summary SHA-256                                            |
+| ------- | --------- | --------------- | ------------------ | ------------------------------------------------------------------ |
+| 1       | 84        | 83              | 1                  | `642915d5aee1e715c46f0cb74f2c9e7bb448f8311cd6f5caf17f68ef3dcf733b` |
+| 2       | 84        | 82              | 2                  | `97fd49351b364a7dac22b7323978e517c78592e2cbcbdf885423e537dede20b8` |
+
+| Attempt | Format    | Failed module                                                   | Failure condition                       | Classification                                              |
+| ------- | --------- | --------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------- |
+| 1       | sd_jwt_vc | `fapi2-security-profile-final-ensure-mismatched-dpop-jkt-fails` | `VCIGetDynamicCredentialIssuerMetadata` | Local metadata relay connect timeout; assertion not reached |
+| 2       | sd_jwt_vc | `oid4vci-1_0-issuer-fail-unknown-credential-configuration`      | `VCIGetDynamicCredentialIssuerMetadata` | Local metadata relay connect timeout; assertion not reached |
+| 2       | mdoc      | `oid4vci-1_0-issuer-fail-invalid-client-attestation-signature`  | `VCIFetchOAuthorizationServerMetadata`  | Local metadata relay connect timeout; assertion not reached |
 
 ## Build and evidence fingerprints
 
@@ -41,19 +56,19 @@ Raw configurations and logs stay in ignored private directories (0700), with JSO
 | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | `crates/browser-wasm/pkg/mikaki_browser_wasm_bg.wasm` | `cbae3f1ab4af7c9bc658a52240f396324fcccce5baa68f46564b686cbb82df73` |
 | `crates/worker/build/index.js`                        | `cfb86bb697b6ee10550097b4808311662376fd1a124f62aba012345f6fa9a057` |
-| `crates/worker/build/index_bg.wasm`                   | `ca7dc70e9c05fa066a44a7bc56791d32017becea340dd4cf4b69d276bc337c2c` |
+| `crates/worker/build/index_bg.wasm`                   | `b7e935e404d0c0f8758b1794b6e491ba30ffd34bed2b69caf99d88f8ba64ba17` |
 | `crates/worker/build/worker/shim.mjs`                 | `ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728` |
 | `target/debug/examples/haip_wallet`                   | `2d138f134e69a201d79d4d10741041aee2769b6e6deff898f60fc25c64841b0c` |
 | `local/generated/worker-policy.json`                  | `d10e91025e987df030297a7d7a692494712a3a8ca17c97c6447efc79d2f9b013` |
-| `package-lock.json`                                   | `11bcee9f071da0a3e6a24d328b2661485da247832a479d89cc8a4176d23b3ed4` |
+| `package-lock.json`                                   | `f3a608deff754d704069d9fe9fdedec9b35cd914bea649122c2e9616315adf47` |
 | `Cargo.lock`                                          | `c59e0e9045cd766c2b7707aeb319aae8552c0e53afce87741fd66af0822dedcb` |
 
 | Role / format      | Plan definition SHA-256                                            | Private config SHA-256                                             | Private summary SHA-256                                            |
 | ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| Issuer / sd_jwt_vc | `8b89d3397df209579c80c0573f85051fe97e005fecbfa2e0d3de9af5d07c185d` | `5d5588d01366de623c55e7b8da36f9c345dd8f6580db15e72ecda24f4285ac47` | `26d4b5bd3b5098342371b8b4a305e48146d5b46ddedd4662d8ec05a006635832` |
-| Issuer / mdoc      | `8b89d3397df209579c80c0573f85051fe97e005fecbfa2e0d3de9af5d07c185d` | `b72f2997e7303caf200d498a4c62172879b73c6304a47274ebce3a2e3c66d5a2` | `26d4b5bd3b5098342371b8b4a305e48146d5b46ddedd4662d8ec05a006635832` |
-| Wallet / dc+sd-jwt | `2587156947a361adfb670c5f924404b0b69390f580727fe531deb12d7bcec361` | `25442656807af564b8cafecc54c709f6538d2ad4eb25770387cf5695f8d47fcf` | `0f3daad2f2eb96ef56af8d2ea0e76099f4274a8643cafe01958d180f341769cf` |
-| Wallet / mso_mdoc  | `2587156947a361adfb670c5f924404b0b69390f580727fe531deb12d7bcec361` | `114682c130ec2f41e9e48f53bd3a8a7caa7585fdfbdcb1597e62d388fe907e79` | `6431469f175d273bb1db915f5a802a868a2ce2cf82982667aeb70efe2fd20993` |
+| Issuer / sd_jwt_vc | `50e90a3e44439508410ace663b86092fa8b41abdbb1605dc2a0fd5aa939ead5b` | `97ac6120b6d1046a44d2b0a26ea6ea58e46671646fc2f2db974d7e3429b280ee` | `5ef6b2359efc9a4f902c7dbddcefa89691d7728b9c608e41ffc78ca89e3631fd` |
+| Issuer / mdoc      | `50e90a3e44439508410ace663b86092fa8b41abdbb1605dc2a0fd5aa939ead5b` | `26c8bd51efa5f5cf687d3981e73b96890836551dda52050b355773c662a5a6ed` | `5ef6b2359efc9a4f902c7dbddcefa89691d7728b9c608e41ffc78ca89e3631fd` |
+| Wallet / dc+sd-jwt | `6d44b2d69a6b31da2cefbbd28a07042a76231f9f3bb628cd0f70de7aa9b9d2f9` | `a4070306c756bf2d08dc5b83bb5ffd8e529a718543297a41818b849faa1e75dc` | `9014a8fe0c244a88b98fdaa5a077c2a5885bcc880d831273b9708e7b0ba97a32` |
+| Wallet / mso_mdoc  | `6d44b2d69a6b31da2cefbbd28a07042a76231f9f3bb628cd0f70de7aa9b9d2f9` | `23d7319ac7612847c34c340c027185dce7699a72849bce47be36e091bd558b6c` | `d2269ae5faa8e9ad8b48f1f09a10bcc17e090755fdee484b14cd19d213b234dd` |
 
 ## Actual module variants
 
@@ -178,92 +193,92 @@ These are the official `info.variant` snapshots, including the plan-specific fix
 
 All counts are FAILURE / ERROR / WARNING from the retained official module log. A metadata or negative-module pass is not automatically evidence of successful credential receipt.
 
-| Format    | Official module                                                                            | Variant | Status   | Result | F / E / W |
-| --------- | ------------------------------------------------------------------------------------------ | ------- | -------- | ------ | --------- |
-| sd_jwt_vc | `oid4vci-1_0-issuer-metadata-test`                                                         | V1      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow`                                                            | V2      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow-additional-requests`                                        | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow-multiple-clients`                                           | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-nonce`                                                    | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-jwt-proof-signature`                                      | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-key-attestation-signature`                                | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-client-attestation-signature`                             | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-client-attestation-pop-signature`                         | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-exp-in-past`                                   | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-no-sub`                                        | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-pop-wrong-aud`                                 | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-mismatched-client-attestation-pop-key`                            | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-missing-proof`                                                    | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unknown-credential-configuration`                                 | V2      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unknown-credential-identifier`                                    | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-on-access-token-in-query`                                         | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm`                                 | V2      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-discovery-end-point-verification`                            | V4      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-request-without-state-success`          | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-access-token-type-header-case-sensitivity`                   | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-check-dpop-proof-nbf-exp`                                    | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-before-succeeds`         | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-after-succeeds`          | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-mismatched-dpop-jkt-fails`                            | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-proof-jkt`  | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-jkt`        | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-at-par-endpoint-binding-success`            | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpop-auth-code-binding-success`                       | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-request-with-long-state`                | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-code-is-bound-to-client`                | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-attempt-reuse-authorization-code-after-one-second`           | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-dpop-negative-tests`                                         | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-reuse-request_uri`                               | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-to-use-expired-request_uri`                      | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-authorization-request-containing-request_uri-form-param` | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-invalid-http-method`                             | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-ensure-pkce-required`                                    | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-ensure-pkce-code-verifier-required`                          | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-incorrect-pkce-code-verifier-rejected`                       | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-plain-pkce-rejected`                                     | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| sd_jwt_vc | `fapi2-security-profile-final-par-without-duplicate-parameters`                            | V3      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-metadata-test`                                                         | V5      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-happy-flow`                                                            | V6      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-happy-flow-additional-requests`                                        | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-happy-flow-multiple-clients`                                           | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-invalid-nonce`                                                    | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-invalid-jwt-proof-signature`                                      | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-invalid-key-attestation-signature`                                | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-invalid-client-attestation-signature`                             | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-invalid-client-attestation-pop-signature`                         | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-exp-in-past`                                   | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-no-sub`                                        | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-pop-wrong-aud`                                 | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-mismatched-client-attestation-pop-key`                            | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-missing-proof`                                                    | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-unknown-credential-configuration`                                 | V6      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-unknown-credential-identifier`                                    | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-on-access-token-in-query`                                         | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm`                                 | V6      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-discovery-end-point-verification`                            | V8      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-authorization-request-without-state-success`          | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-access-token-type-header-case-sensitivity`                   | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-check-dpop-proof-nbf-exp`                                    | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-before-succeeds`         | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-after-succeeds`          | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-mismatched-dpop-jkt-fails`                            | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-proof-jkt`  | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-jkt`        | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-at-par-endpoint-binding-success`            | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-dpop-auth-code-binding-success`                       | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-authorization-request-with-long-state`                | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-authorization-code-is-bound-to-client`                | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-attempt-reuse-authorization-code-after-one-second`           | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-dpop-negative-tests`                                         | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-attempt-reuse-request_uri`                               | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-attempt-to-use-expired-request_uri`                      | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-authorization-request-containing-request_uri-form-param` | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-attempt-invalid-http-method`                             | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-ensure-pkce-required`                                    | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-ensure-pkce-code-verifier-required`                          | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-incorrect-pkce-code-verifier-rejected`                       | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-plain-pkce-rejected`                                     | V7      | FINISHED | PASSED | 0 / 0 / 0 |
-| mdoc      | `fapi2-security-profile-final-par-without-duplicate-parameters`                            | V7      | FINISHED | PASSED | 0 / 0 / 0 |
+| Format    | Official module                                                                            | Variant | Status      | Result | F / E / W |
+| --------- | ------------------------------------------------------------------------------------------ | ------- | ----------- | ------ | --------- |
+| sd_jwt_vc | `oid4vci-1_0-issuer-metadata-test`                                                         | V1      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow`                                                            | V2      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow-additional-requests`                                        | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-happy-flow-multiple-clients`                                           | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-nonce`                                                    | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-jwt-proof-signature`                                      | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-key-attestation-signature`                                | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-client-attestation-signature`                             | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-invalid-client-attestation-pop-signature`                         | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-exp-in-past`                                   | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-no-sub`                                        | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-client-attestation-pop-wrong-aud`                                 | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-mismatched-client-attestation-pop-key`                            | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-missing-proof`                                                    | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unknown-credential-configuration`                                 | V2      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unknown-credential-identifier`                                    | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-on-access-token-in-query`                                         | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm`                                 | V2      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-discovery-end-point-verification`                            | V4      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-request-without-state-success`          | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-access-token-type-header-case-sensitivity`                   | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-check-dpop-proof-nbf-exp`                                    | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-before-succeeds`         | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-after-succeeds`          | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-mismatched-dpop-jkt-fails`                            | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-proof-jkt`  | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-jkt`        | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpopproof-at-par-endpoint-binding-success`            | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-dpop-auth-code-binding-success`                       | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-request-with-long-state`                | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-authorization-code-is-bound-to-client`                | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-attempt-reuse-authorization-code-after-one-second`           | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-dpop-negative-tests`                                         | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-reuse-request_uri`                               | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-to-use-expired-request_uri`                      | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-authorization-request-containing-request_uri-form-param` | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-attempt-invalid-http-method`                             | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-ensure-pkce-required`                                    | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-ensure-pkce-code-verifier-required`                          | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-incorrect-pkce-code-verifier-rejected`                       | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-plain-pkce-rejected`                                     | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| sd_jwt_vc | `fapi2-security-profile-final-par-without-duplicate-parameters`                            | V3      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-metadata-test`                                                         | V5      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-happy-flow`                                                            | V6      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-happy-flow-additional-requests`                                        | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-happy-flow-multiple-clients`                                           | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-invalid-nonce`                                                    | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-invalid-jwt-proof-signature`                                      | V7      | INTERRUPTED | FAILED | 1 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-invalid-key-attestation-signature`                                | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-invalid-client-attestation-signature`                             | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-invalid-client-attestation-pop-signature`                         | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-exp-in-past`                                   | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-no-sub`                                        | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-client-attestation-pop-wrong-aud`                                 | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-mismatched-client-attestation-pop-key`                            | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-missing-proof`                                                    | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-unknown-credential-configuration`                                 | V6      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-unknown-credential-identifier`                                    | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-on-access-token-in-query`                                         | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm`                                 | V6      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-discovery-end-point-verification`                            | V8      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-authorization-request-without-state-success`          | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-access-token-type-header-case-sensitivity`                   | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-check-dpop-proof-nbf-exp`                                    | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-before-succeeds`         | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-with-iat-10seconds-after-succeeds`          | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-mismatched-dpop-jkt-fails`                            | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-proof-jkt`  | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-token-endpoint-fails-with-mismatched-dpop-jkt`        | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-dpopproof-at-par-endpoint-binding-success`            | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-dpop-auth-code-binding-success`                       | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-authorization-request-with-long-state`                | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-authorization-code-is-bound-to-client`                | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-attempt-reuse-authorization-code-after-one-second`           | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-dpop-negative-tests`                                         | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-attempt-reuse-request_uri`                               | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-attempt-to-use-expired-request_uri`                      | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-authorization-request-containing-request_uri-form-param` | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-attempt-invalid-http-method`                             | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-ensure-pkce-required`                                    | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-ensure-pkce-code-verifier-required`                          | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-incorrect-pkce-code-verifier-rejected`                       | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-plain-pkce-rejected`                                     | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
+| mdoc      | `fapi2-security-profile-final-par-without-duplicate-parameters`                            | V7      | FINISHED    | PASSED | 0 / 0 / 0 |
 
 ## Wallet module results
 
@@ -329,4 +344,4 @@ The Wallet plan has 17 entries, of which 13 were attempted per format. These fou
 - `oid4vp-1final-wallet-negative-test-invalid-client-id-prefix` — NOT RUN.
 - `oid4vp-1final-wallet-multisigned-one-invalid-signature` — NOT RUN.
 
-First examine and run the pinned unchanged notification-tolerance module for both Issuer formats, then the cross-client PAR `request_uri` case using the existing two disposable clients. Record conditional SKIP only if the suite actually produces it, with its applicability reason. Browser telemetry, Wallet error screens, other unexecuted cases and formal submission remain separate work. [Issue #119](https://github.com/masanork/mikaki/issues/119) remains OPEN; this checkpoint does not complete its full-scope or HAIP 1.1 requirements.
+First diagnose the disposable suite-to-host transport instability and obtain a complete current-source Issuer run; then examine and run the pinned unchanged notification-tolerance module for both Issuer formats, then the cross-client PAR `request_uri` case using the existing two disposable clients. Record conditional SKIP only if the suite actually produces it, with its applicability reason. Browser telemetry, Wallet error screens, other unexecuted cases and formal submission remain separate work. [Issue #119](https://github.com/masanork/mikaki/issues/119) remains OPEN; this checkpoint does not complete its full-scope or HAIP 1.1 requirements.
