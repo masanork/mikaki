@@ -28,7 +28,7 @@ import {
   equalVaultSource,
 } from '../../crates/worker/ui/vault-record-source.ts';
 import { AgentAccess } from '../agent-access.ts';
-import { toolResult } from '../../crates/agent-worker/tool-results.ts';
+import { toolOutputs, toolResult } from '../../crates/agent-worker/tool-results.ts';
 
 const encoder = new TextEncoder();
 function fixture() {
@@ -251,6 +251,27 @@ test('local v2 export round-trips through actual stdio MCP; explicit source bind
   });
   try {
     await client.connect(transport);
+    const list = await client.callTool({ name: 'mikaki_list', arguments: {} });
+    const listed = toolOutputs.list.parse(list.structuredContent);
+    assert.equal(list.isError, undefined);
+    assert.deepEqual(
+      listed.documents.map((doc) => doc.id),
+      ['owner_note'],
+    );
+    const listedInfo = listed.documents[0]!.source_info;
+    if (listedInfo.kind !== 'vault-record') throw new Error('Expected v2 list metadata');
+    assert.deepEqual(listedInfo.source, JSON.parse(prepared.grant).sources[0].source);
+    assert.deepEqual(listedInfo.authority, JSON.parse(prepared.grant).sources[0].authority);
+    const search = await client.callTool({
+      name: 'mikaki_search',
+      arguments: { query: 'Never include unless selected' },
+    });
+    const searched = toolOutputs.search.parse(search.structuredContent);
+    assert.equal(search.isError, undefined);
+    assert.deepEqual(
+      searched.documents.map((doc) => doc.id),
+      ['owner_note'],
+    );
     const result = await client.callTool({ name: 'mikaki_read', arguments: { id: 'owner_note' } });
     assert.equal(result.isError, undefined);
     const value = result.structuredContent as Record<string, unknown>;
@@ -258,6 +279,14 @@ test('local v2 export round-trips through actual stdio MCP; explicit source bind
     assert.match(String(value.text), /Never include/);
     assert.equal((value.source_info as { kind: string }).kind, 'vault-record');
     assert.equal((value.access as { source_check: string }).source_check, 'not-checked');
+    assert.deepEqual(
+      (value.source_info as { source: unknown }).source,
+      JSON.parse(prepared.grant).sources[0].source,
+    );
+    assert.deepEqual(
+      (value.source_info as { authority: unknown }).authority,
+      JSON.parse(prepared.grant).sources[0].authority,
+    );
     const missing = await client.callTool({ name: 'mikaki_read', arguments: { id: 'name' } });
     assert.equal(missing.isError, true);
     assert.equal(missing.structuredContent, undefined);
@@ -282,12 +311,15 @@ test('local v2 export round-trips through actual stdio MCP; explicit source bind
       },
     ]) {
       await writeFile(grantPath, JSON.stringify({ ...original, ...change }));
-      const denied = await client.callTool({
-        name: 'mikaki_read',
-        arguments: { id: 'owner_note' },
-      });
-      assert.equal(denied.isError, true);
-      assert.equal(denied.structuredContent, undefined);
+      for (const [tool, args] of [
+        ['mikaki_list', {}],
+        ['mikaki_search', { query: 'v2-probe-needle' }],
+        ['mikaki_read', { id: 'owner_note' }],
+      ] as const) {
+        const denied = await client.callTool({ name: tool, arguments: args });
+        assert.equal(denied.isError, true);
+        assert.equal(denied.structuredContent, undefined);
+      }
     }
     await writeFile(grantPath, prepared.grant);
     const brokenAudit = await AgentAccess.create({

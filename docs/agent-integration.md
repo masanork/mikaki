@@ -6,6 +6,32 @@ Current source status (2026-10-05, follow-up branch `feat/issue-121-agent-v1-ret
 
 The subsequent [Vault protocol review](vault-protocol-review.md) places MCP at the AI adapter boundary. Storage/revisions, credential presentation, FileNode synchronization, and OAuth delegation have separate contracts. The current generic `mikaki_execute` creates a private draft outside Vault; it is not a generic encrypted Vault write API. Future adapters must reuse authoritative domain operations rather than establish transport-specific grant or revision state machines. Local owner-selected `owner_note` exports are implemented alongside saved-name exports; remote v2 snapshot grants can select one `name` or `owner_note` record.
 
+## Connect a selected v2 record to local Codex
+
+In the Owner workspace, open **Local v2 export** after saving a name or owner note. Select one saved record, enter `codex-local` as the delegate label and `OpenAI` as the service label, and choose one hour or one day. Prepare the export, review the exact plaintext, source revision and expiry, then confirm the selected copy before downloading the bundle and grant separately. Closing the panel, locking the workspace or observing a source revision change discards its prepared download state.
+
+Keep both files in an owner-controlled directory. Use the paths from your downloads in this command, and keep the final delegate argument equal to the grant's label:
+
+```sh
+codex mcp add mikaki -- node /ABS/mikaki/local/agent-mcp.ts \
+  /ABS/owner-files/mikaki-v2-grant-ID.json \
+  /ABS/owner-files/mikaki-v2-bundle-ID.json \
+  /ABS/owner-files/audit.jsonl codex-local
+```
+
+Restart Codex after adding the server. Ask it to list the selected records, search a known phrase, or read `name` or `owner_note`, matching the exported record. These are local plaintext copies: `source_check=not-checked` means the adapter does not contact the live Vault. A later Vault edit does not update a downloaded copy. Set `revoked` to `true` in the grant JSON to deny subsequent tool calls, including in a running adapter. Previously delivered text and independent access to the files remain outside this control. Revoking a remote grant in the dashboard does not change these local files. Local export creates no remote grant or proposal capability. A Codex read can transmit the selected text to its AI provider. The service/delegate labels identify the owner's intended recipient; they do not authenticate the local client.
+
+The optional synthetic qualification uses temporary configuration and no production record or grant:
+
+```sh
+npm run probe:codex-v2-local-records -- name
+npm run probe:codex-v2-local-records -- owner_note
+```
+
+The probe checks exactly one successful Codex `list`, `search` and `read` call. Separately, its MCP SDK preflight verifies the v2 source/authority and denies a read on the same running SDK client after grant revocation. Codex source/authority validation is reported only when its completed tool results expose that metadata. This probe does not qualify revocation on a persistent Codex connection. Its output contains only qualification results, operation names and counts; it does not save Codex JSONL or record text. Intended-device Passkey/PRF checks, owner-selected real data disclosure and hosted Agent activation remain separate work.
+
+Fresh qualification on 2026-10-08 with Codex CLI 0.161.0 passed for synthetic v2 `name` and `owner_note`: one successful list/search/read call each, exact three allowed audit entries, and source/authority verified in all completed Codex results. The separate SDK preflight also denied read after revocation on its existing client. This does not establish an owner-device ceremony or a persistent Codex connection revocation check.
+
 ## Priorities and acceptance gates
 
 | Priority                   | Concrete outcome                                                       | Remaining acceptance evidence                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -35,20 +61,12 @@ Run from the repository root with the project's Node version and `npm ci`. This 
 ```sh
 node --input-type=module <<'JS'
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { makeSyntheticRecord } from './scripts/probe-codex-v2-local-records.ts';
 mkdirSync('local/generated/agent-example', { recursive: true, mode: 0o700 });
-const bundle = JSON.stringify({
-  version: 1, owner: 'demo-owner', collection: 'demo',
-  documents: [{ id: 'note-1', title: 'Example note', source: 'owner-demo', text: 'A synthetic note for an MCP connection test.' }]
-});
 const now = Math.floor(Date.now() / 1000);
-const grant = {
-  version: 1, id: 'demo-grant', owner: 'demo-owner', collection: 'demo',
-  delegate: 'codex-local', service: 'OpenAI',
-  export_sha256: createHash('sha256').update(bundle).digest('hex'),
-  document_ids: ['note-1'], operations: ['list', 'search', 'read'],
-  not_before: now, expires_at: now + 3600, revoked: false
-};
+const fixture = makeSyntheticRecord('owner_note', now);
+const bundle = fixture.bundleBytes;
+const grant = { ...fixture.grant, delegate: 'codex-local', service: 'OpenAI' };
 writeFileSync('local/generated/agent-example/export.json', bundle, { mode: 0o600 });
 writeFileSync('local/generated/agent-example/grant.json', JSON.stringify(grant), { mode: 0o600 });
 JS
@@ -84,6 +102,8 @@ The separate [`crates/agent-worker`](../crates/agent-worker/README.md) resource 
 Run `npm run test:agents` for stdio and `npm run test:agent-integration` after building the OP Worker. The latter exercises real local workerd/D1/R2 and a Chromium owner flow with mocked PRF output and real encryption. It covers saved/unsaved values, consent, origin and owner isolation, export binding, read-only scope, expiry, audit-write rollback, denied access, exact approval, concurrent execution/retries, source/credential/account invalidation, multi-grant emergency stop, and irreversible recipient stop. The local-note browser test also passes downloaded files through the actual stdio server and official SDK client, including note-only access without name unlock, separate note/login credentials, title bounds, live-head changes during preparation, unsupported schemas, safe rendering and subsequent grant revocation. It does not replace intended-device passkey tests or a production bot connection.
 
 ## Saved-note local read flow, 2026-09-29
+
+This historical section records the pre-reset UI and credential model. Its controls and unlock behavior are not instructions for the current Owner workspace; use [the v2 local Codex flow](#connect-a-selected-v2-record-to-local-codex) above.
 
 In Vault's **Share with an AI agent** section, select **Share my saved owner note through local MCP**; name selection is optional. Select the connection/provider label and one, four or 24 hours, approve disclosure, then prepare the export. This requires an active owner session and a saved note, but not unlocking or saving the name. The note's own envelope chooses the required PRF credential, even when it differs from the session's login credential. Review the displayed saved title/text, revision, self-asserted provenance, recipient and deadline before downloading both files. The existing local adapter connection instructions above apply unchanged.
 
@@ -142,4 +162,4 @@ New browser-prepared local documents include optional `source_info`, bound into 
 
 Remote source metadata comes from the active grant's authoritative `source_revision` and the final live account/credential/head/token checks, independently of the encrypted snapshot's untrusted display label. Local expiry/revocation/digest/selection and remote scope/audit/revision checks remain required before either text or structured disclosure. Errors return `isError: true` with the existing generic message and no successful structured document/receipt. No hidden document metadata is returned on denial or in unmatched search results.
 
-Local qualification covers declared schemas and successful structured SDK calls over both stdio and streamable HTTP, text/structure equality, bounded pagination, metadata digest/target binding, unspecified legacy provenance, unknown trust states, separate saved-note credentials, audit failure, scope/revocation/expiry and proposal/execute receipt replay. Browser downloads round-trip through the actual stdio adapter. The current Codex/Grok product qualification records predate this output extension; these SDK results do not claim a new real-client or production deployment test. Issuer trust, holder keys, OID4VP and OID4VCI remain VG-07 work.
+Local qualification covers declared schemas and successful structured SDK calls over both stdio and streamable HTTP, text/structure equality, bounded pagination, metadata digest/target binding, unspecified legacy provenance, unknown trust states, separate saved-note credentials, audit failure, scope/revocation/expiry and proposal/execute receipt replay. Browser downloads round-trip through the actual stdio adapter. The earlier Codex/Grok product qualification records predate this output extension; the [2026-10-08 local Codex qualification](#connect-a-selected-v2-record-to-local-codex) above separately verifies v2 source/authority in actual Codex results. These SDK results alone do not establish a real-client or production deployment test. Issuer trust, holder keys, OID4VP and OID4VCI remain VG-07 work.
