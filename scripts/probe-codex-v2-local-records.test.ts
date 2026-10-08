@@ -4,7 +4,7 @@ import {
   makeSyntheticRecord,
   completedMcpCalls,
   classifyCodexDiagnostic,
-  codexJsonlDiagnostic,
+  isExpectedRevokedStartup,
   summarizeCodexJsonl,
   exactAuditDelta,
   findToolOutputs,
@@ -119,16 +119,23 @@ test('Codex MCP tool completion rejects item, status, and result errors', () => 
   );
 });
 
-test('Codex stderr classification exposes only a known diagnostic category', () => {
-  assert.equal(classifyCodexDiagnostic('HTTP 429: rate limit exceeded'), 'rate_limit');
-  assert.equal(classifyCodexDiagnostic('401 Unauthorized: login required'), 'authentication');
-  assert.equal(classifyCodexDiagnostic('The requested model is unavailable'), 'model_unavailable');
-  assert.equal(classifyCodexDiagnostic('fetch failed: ECONNRESET'), 'network');
-  assert.equal(classifyCodexDiagnostic('error: unknown option --bad'), 'cli_arguments');
-  assert.equal(classifyCodexDiagnostic('Failed to initialize MCP server'), 'mcp_startup');
+test('Codex startup classification exposes only the expected fixed categories', () => {
+  assert.equal(classifyCodexDiagnostic('Mikaki MCP startup failed'), 'mcp_startup');
   assert.equal(classifyCodexDiagnostic('MCP server configuration is invalid'), 'configuration');
   assert.equal(classifyCodexDiagnostic('ENOENT: no such file or directory'), 'filesystem');
-  assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), 'unclassified');
+  assert.equal(classifyCodexDiagnostic('MCP server failed to initialize'), null);
+  assert.equal(classifyCodexDiagnostic('MCP startup error'), null);
+  assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), null);
+});
+
+test('revoked Codex startup is accepted only with nonzero exit and no calls or audit changes', () => {
+  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 0, true), true);
+  assert.equal(isExpectedRevokedStartup(0, 'mcp_startup', false, 0, true), false);
+  assert.equal(isExpectedRevokedStartup(null, 'mcp_startup', false, 0, true), false);
+  assert.equal(isExpectedRevokedStartup(1, 'configuration', false, 0, true), false);
+  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', true, 0, true), false);
+  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 1, true), false);
+  assert.equal(isExpectedRevokedStartup(1, 'mcp_startup', false, 0, false), false);
 });
 
 test('Codex event summary reports only fixed event counts and whether a turn started', () => {
@@ -164,34 +171,6 @@ test('Codex event summary reports only fixed event counts and whether a turn sta
     turn_failed: 0,
     other: 0,
   });
-});
-
-test('Codex JSONL backend errors expose only safe event kind, category, and numeric HTTP status', () => {
-  const event = {
-    type: 'error',
-    message: 'Sensitive response body: HTTP 503 model unavailable',
-    code: 'secret-internal-code',
-    status: 503,
-  };
-  const diagnostic = codexJsonlDiagnostic(JSON.stringify(event));
-  assert.deepEqual(diagnostic, {
-    eventKind: 'error',
-    category: 'model_unavailable',
-    httpStatus: 503,
-  });
-  assert.equal(JSON.stringify(diagnostic).includes('Sensitive'), false);
-  assert.equal(JSON.stringify(diagnostic).includes('secret-internal-code'), false);
-  assert.equal(
-    codexJsonlDiagnostic(
-      JSON.stringify({
-        type: 'item.completed',
-        item: { type: 'mcp_tool_call', error: { message: 'denied', status: 403 } },
-      }),
-      false,
-    ),
-    null,
-    'Expected tool-call errors are inspected by the invocation contract instead',
-  );
 });
 
 test('Codex audit delta must match exact allowed and denied calls', () => {

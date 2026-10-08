@@ -87,23 +87,7 @@ export type CompletedMcpCall = Readonly<{
   event: JsonRecord;
 }>;
 
-export type CodexDiagnosticCategory =
-  | 'rate_limit'
-  | 'authentication'
-  | 'model_unavailable'
-  | 'network'
-  | 'cli_arguments'
-  | 'mcp_startup'
-  | 'configuration'
-  | 'filesystem'
-  | 'unclassified';
-export type CodexErrorEventKind = 'error' | 'turn_failed' | 'item_error' | 'other_error';
-
-export type CodexJsonlDiagnostic = Readonly<{
-  eventKind: CodexErrorEventKind;
-  category: CodexDiagnosticCategory;
-  httpStatus?: number;
-}>;
+export type CodexDiagnosticCategory = 'mcp_startup' | 'configuration' | 'filesystem';
 
 export type CodexEventSummary = Readonly<{
   started: boolean;
@@ -118,44 +102,39 @@ export type CodexEventSummary = Readonly<{
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory {
-  if (/rate[\s_-]?limit|too many requests|\b429\b|quota exceeded/i.test(stderr))
-    return 'rate_limit';
+export function classifyCodexDiagnostic(output: string): CodexDiagnosticCategory | null {
   if (
-    /unauthori[sz]ed|authentication|not logged in|login required|invalid api key|\b401\b/i.test(
-      stderr,
-    )
-  )
-    return 'authentication';
-  if (/model.{0,80}(?:not found|unavailable|not available|unsupported)|unknown model/i.test(stderr))
-    return 'model_unavailable';
-  if (
-    /ECONN[A-Z]+|ENOTFOUND|ETIMEDOUT|fetch failed|network error|socket hang up|connection refused|TLS handshake/i.test(
-      stderr,
-    )
-  )
-    return 'network';
-  if (
-    /unknown (?:option|argument)|unrecognized option|invalid (?:option|argument)|usage:|unexpected argument/i.test(
-      stderr,
-    )
-  )
-    return 'cli_arguments';
-  if (
-    /mcp.{0,60}(?:start|spawn|initiali[sz]e|handshake|connect)|(?:start|spawn|initiali[sz]e).{0,60}mcp/i.test(
-      stderr,
+    /Mikaki MCP startup failed|MCP.{0,100}(?:initiali[sz]e|connect).{0,100}(?:closed|failed|error)|(?:initiali[sz]e|connect).{0,100}MCP.{0,100}(?:closed|failed|error)/i.test(
+      output,
     )
   )
     return 'mcp_startup';
   if (
     /invalid (?:toml|configuration|config)|configuration error|(?:config|configuration).{0,80}(?:invalid|error)|mcp_servers.{0,40}(?:invalid|unknown|missing)/i.test(
-      stderr,
+      output,
     )
   )
     return 'configuration';
-  if (/ENOENT|EACCES|permission denied|no such file or directory|cannot open/i.test(stderr))
+  if (/ENOENT|EACCES|permission denied|no such file or directory|cannot open/i.test(output))
     return 'filesystem';
-  return 'unclassified';
+  return null;
+}
+
+export function isExpectedRevokedStartup(
+  exitCode: number | null,
+  category: CodexDiagnosticCategory | null,
+  started: boolean,
+  callCount: number,
+  auditUnchanged: boolean,
+): boolean {
+  return (
+    exitCode !== null &&
+    exitCode !== 0 &&
+    category === 'mcp_startup' &&
+    !started &&
+    callCount === 0 &&
+    auditUnchanged
+  );
 }
 
 export function summarizeCodexJsonl(jsonl: string): CodexEventSummary {
@@ -198,102 +177,29 @@ export function summarizeCodexJsonl(jsonl: string): CodexEventSummary {
       // Non-JSON progress text is ignored and never reported.
     }
   }
-  return { started: counts.thread_started + counts.turn_started > 0, ...counts };
+  return {
+    started:
+      counts.thread_started + counts.turn_started + counts.item_started + counts.item_completed > 0,
+    ...counts,
+  };
 }
 
-export function codexJsonlDiagnostic(
-  jsonl: string,
-  includeToolErrors = true,
-): CodexJsonlDiagnostic | null {
-  for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
-    let event: unknown;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!isRecord(event)) continue;
-    const type = event['type'];
-    const item = isRecord(event['item']) ? event['item'] : undefined;
-    const topError = event['error'];
-    const itemError = item?.['error'];
-    const hasError =
-      type === 'error' ||
-      type === 'turn.failed' ||
-      item?.['type'] === 'error' ||
-      (includeToolErrors && item?.['type'] === 'mcp_tool_call' && itemError != null) ||
-      (topError !== undefined && topError !== null) ||
-      (includeToolErrors && itemError !== undefined && itemError !== null);
-    if (!hasError) continue;
-
-    const error = isRecord(itemError) ? itemError : isRecord(topError) ? topError : undefined;
-    const messages = [
-      event['message'],
-      typeof topError === 'string' ? topError : undefined,
-      error?.['message'],
-      typeof itemError === 'string' ? itemError : undefined,
-    ].filter((value): value is string => typeof value === 'string');
-    const codes = [
-      event['code'],
-      event['status'],
-      event['status_code'],
-      error?.['code'],
-      error?.['status'],
-    ];
-    const httpStatus = codes.find(
-      (value): value is number =>
-        typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599,
-    );
-    return {
-      eventKind:
-        type === 'error'
-          ? 'error'
-          : type === 'turn.failed'
-            ? 'turn_failed'
-            : item?.['type'] === 'error' || (includeToolErrors && itemError != null)
-              ? 'item_error'
-              : 'other_error',
-      category: classifyCodexDiagnostic(
-        [...messages, ...(httpStatus ? [String(httpStatus)] : [])].join('\n'),
-      ),
-      ...(httpStatus !== undefined ? { httpStatus } : {}),
-    };
-  }
-  return null;
-}
-
-class CodexCliError extends Error {
-  readonly code:
-    | 'codex_unavailable'
-    | 'codex_timeout'
-    | 'codex_output_limit'
-    | 'codex_failed'
-    | 'codex_backend_error';
-  readonly exitCode: number | null | undefined;
-  readonly diagnosticCategory: CodexDiagnosticCategory | undefined;
-  readonly errorEventKind: CodexErrorEventKind | undefined;
-  readonly httpStatus: number | undefined;
-  readonly stdoutEvents: CodexEventSummary | undefined;
+class CodexRunFailure extends Error {
+  readonly code: 'codex_positive_failed' | 'codex_revocation_not_blocked';
+  readonly exitCode: number | null;
+  readonly diagnosticCategory: CodexDiagnosticCategory | null;
+  readonly stdoutEvents: CodexEventSummary;
 
   constructor(
-    code:
-      | 'codex_unavailable'
-      | 'codex_timeout'
-      | 'codex_output_limit'
-      | 'codex_failed'
-      | 'codex_backend_error',
-    exitCode?: number | null,
-    diagnosticCategory?: CodexDiagnosticCategory,
-    errorEventKind?: CodexErrorEventKind,
-    httpStatus?: number,
-    stdoutEvents?: CodexEventSummary,
+    code: 'codex_positive_failed' | 'codex_revocation_not_blocked',
+    exitCode: number | null,
+    diagnosticCategory: CodexDiagnosticCategory | null,
+    stdoutEvents: CodexEventSummary,
   ) {
     super(code);
     this.code = code;
     this.exitCode = exitCode;
     this.diagnosticCategory = diagnosticCategory;
-    this.errorEventKind = errorEventKind;
-    this.httpStatus = httpStatus;
     this.stdoutEvents = stdoutEvents;
   }
 }
@@ -333,7 +239,12 @@ export function completedMcpCalls(jsonl: string): CompletedMcpCall[] {
 async function runCodex(
   args: string[],
   prompt: string,
-): Promise<{ jsonl: string; stdoutEvents: CodexEventSummary }> {
+): Promise<{
+  jsonl: string;
+  exitCode: number | null;
+  diagnosticCategory: CodexDiagnosticCategory | null;
+  stdoutEvents: CodexEventSummary;
+}> {
   return new Promise((resolvePromise, reject) => {
     // The Codex CLI documents `-` as the prompt-from-stdin sentinel, keeping
     // synthetic prompt text out of process listings.
@@ -355,7 +266,7 @@ async function runCodex(
     };
     const stop = (reason: string) => {
       if (failure) return;
-      failure = new CodexCliError(reason as CodexCliError['code']);
+      failure = new Error(reason);
       child.kill('SIGTERM');
       killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
     };
@@ -380,7 +291,7 @@ async function runCodex(
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
       clearStderr();
-      reject(new CodexCliError('codex_unavailable'));
+      reject(new Error('codex_unavailable'));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -392,40 +303,14 @@ async function runCodex(
       const output = Buffer.concat(stdout);
       const jsonl = output.toString('utf8');
       const stdoutEvents = summarizeCodexJsonl(jsonl);
-      const jsonlDiagnostic = codexJsonlDiagnostic(jsonl, code !== 0);
-      if (jsonlDiagnostic) {
-        output.fill(0);
-        clearStderr();
-        return reject(
-          new CodexCliError(
-            'codex_backend_error',
-            code,
-            jsonlDiagnostic.category,
-            jsonlDiagnostic.eventKind,
-            jsonlDiagnostic.httpStatus,
-            stdoutEvents,
-          ),
-        );
-      }
+      const diagnostic = Buffer.concat(stderr);
+      const diagnosticCategory = classifyCodexDiagnostic(
+        `${diagnostic.toString('utf8')}\n${jsonl}`,
+      );
+      diagnostic.fill(0);
       output.fill(0);
-      if (code !== 0) {
-        const diagnostic = Buffer.concat(stderr);
-        const diagnosticCategory = classifyCodexDiagnostic(diagnostic.toString('utf8'));
-        diagnostic.fill(0);
-        clearStderr();
-        return reject(
-          new CodexCliError(
-            'codex_failed',
-            code,
-            diagnosticCategory,
-            undefined,
-            undefined,
-            stdoutEvents,
-          ),
-        );
-      }
       clearStderr();
-      resolvePromise({ jsonl, stdoutEvents });
+      resolvePromise({ jsonl, exitCode: code, diagnosticCategory, stdoutEvents });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt);
@@ -682,6 +567,13 @@ export async function probe(recordId: RecordId) {
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_list with {}, then mikaki_search with {"query":"v2-probe-needle"}, then mikaki_read with ${targetPrompt}, exactly once each. Do not use any other tools. Do not repeat or quote returned content. Finish with the single word done.`,
     );
+    if (positiveRun.exitCode !== 0 || positiveRun.diagnosticCategory !== null)
+      throw new CodexRunFailure(
+        'codex_positive_failed',
+        positiveRun.exitCode,
+        positiveRun.diagnosticCategory,
+        positiveRun.stdoutEvents,
+      );
     const positiveCalls = completedMcpCalls(positiveRun.jsonl);
     if (positiveCalls.some((call) => call.server !== 'mikaki_v2_local'))
       throw new Error('codex_unexpected_mcp_server');
@@ -725,14 +617,24 @@ export async function probe(recordId: RecordId) {
       `Use only the MCP server mikaki_v2_local. Call mikaki_read with ${targetPrompt} exactly once. Do not use any other tools or repeat/quote content. Finish with one word.`,
     );
     const revokeCalls = completedMcpCalls(revokedRun.jsonl);
-    if (revokeCalls.some((call) => call.server !== 'mikaki_v2_local'))
-      throw new Error('codex_unexpected_mcp_server');
-    assertCalls(revokeCalls, ['mikaki_read'], true);
     const allAudit = await auditSummary(codexAuditPath);
-    const exactDeniedAudit = exactAuditDelta(positiveAudit, allAudit, [
-      { operation: 'read', outcome: 'denied' },
-    ]);
-    if (!exactDeniedAudit) throw new Error('codex_revoke_not_observed');
+    const noAdditionalAudit = exactAuditDelta(positiveAudit, allAudit, []);
+    if (
+      !isExpectedRevokedStartup(
+        revokedRun.exitCode,
+        revokedRun.diagnosticCategory,
+        revokedRun.stdoutEvents.started,
+        revokeCalls.length,
+        noAdditionalAudit,
+      )
+    ) {
+      throw new CodexRunFailure(
+        'codex_revocation_not_blocked',
+        revokedRun.exitCode,
+        revokedRun.diagnosticCategory,
+        revokedRun.stdoutEvents,
+      );
+    }
     return {
       passed: true,
       client: 'Codex CLI',
@@ -743,10 +645,14 @@ export async function probe(recordId: RecordId) {
         positive_tool_calls: ['list', 'search', 'read'],
         positive_event_summary: positiveRun.stdoutEvents,
         structured_content_source_authority: codexStructured,
-        revoked_invocation_tool_calls: ['read'],
-        revoked_event_summary: revokedRun.stdoutEvents,
-        revoked_read_denied: true,
-        note: 'The revocation check uses a new Codex invocation with the same local MCP configuration.',
+        revoked_invocation: {
+          outcome: 'mcp_startup_blocked',
+          exit_code: revokedRun.exitCode,
+          diagnostic_category: revokedRun.diagnosticCategory,
+          event_summary: revokedRun.stdoutEvents,
+          additional_audit_entries: 0,
+          note: 'This is a new Codex invocation using the same local MCP configuration; SDK preflight separately verifies read denial on its existing client.',
+        },
       },
       sdk_preflight: {
         source_authority_verified: true,
@@ -770,16 +676,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const result = await probe((record as RecordId | undefined) ?? 'owner_note');
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
-    if (error instanceof CodexCliError) {
+    if (error instanceof CodexRunFailure) {
       process.stderr.write(
         `${JSON.stringify({
           passed: false,
           error: error.code,
-          ...(error.exitCode !== undefined ? { exit_code: error.exitCode } : {}),
+          ...(error.exitCode !== null ? { exit_code: error.exitCode } : {}),
           ...(error.diagnosticCategory ? { diagnostic_category: error.diagnosticCategory } : {}),
-          ...(error.errorEventKind ? { error_event_kind: error.errorEventKind } : {}),
-          ...(error.httpStatus !== undefined ? { http_status: error.httpStatus } : {}),
-          ...(error.stdoutEvents ? { stdout_events: error.stdoutEvents } : {}),
+          stdout_events: error.stdoutEvents,
         })}\n`,
       );
     } else {
