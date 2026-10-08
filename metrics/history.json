@@ -1698,10 +1698,10 @@
   },
   {
     "date": "2026-10-08",
-    "commit": "83159cd",
+    "commit": "d4a00fc",
     "code": {
-      "implementationLines": 44190,
-      "testLines": 10248,
+      "implementationLines": 44199,
+      "testLines": 10250,
       "implementationFiles": 185,
       "testFiles": 29,
       "byLanguage": {
@@ -1710,8 +1710,8 @@
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 25620,
-          "testLines": 7510
+          "implementationLines": 25629,
+          "testLines": 7512
         },
         "svelte": {
           "implementationLines": 4352,
@@ -1727,16 +1727,16 @@
       "rust": {
         "runtime": 32,
         "build": 0,
-        "dev": 10
+        "dev": 11
       },
       "sourceLines": {
         "npmRuntime": 373303,
-        "rustRuntime": 1383505,
-        "total": 1756808
+        "rustRuntime": 1285848,
+        "total": 1659151
       },
       "sourcePackages": {
         "npmRuntime": 117,
-        "rustRuntime": 212
+        "rustRuntime": 169
       },
       "names": {
         "npmRuntime": [
@@ -1760,11 +1760,11 @@
           "@sveltejs/vite-plugin-svelte",
           "@types/node",
           "@typescript/native",
+          "@typescript/typescript6",
           "esbuild",
           "prettier",
           "prettier-plugin-svelte",
           "smol-toml",
-          "svelte-check",
           "tsx",
           "typescript",
           "vite",
@@ -1808,6 +1808,7 @@
         "rustDev": [
           "base64",
           "ciborium",
+          "getrandom",
           "p256",
           "rand_core",
           "rusqlite",
@@ -1821,14 +1822,14 @@
     },
     "coverage": {
       "lines": {
-        "covered": 8805,
-        "count": 10042,
-        "percent": 87.68173670583549
+        "covered": 8808,
+        "count": 10046,
+        "percent": 87.67668723870197
       },
       "regions": {
-        "covered": 14705,
-        "count": 17556,
-        "percent": 83.76053770790612
+        "covered": 14709,
+        "count": 17561,
+        "percent": 83.75946700074027
       },
       "functions": {
         "covered": 782,
