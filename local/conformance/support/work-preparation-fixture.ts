@@ -36,6 +36,7 @@ export async function preparationFixture(
     modulesRoot,
     modules: [
       { type: 'ESModule' as const, path: join(modulesRoot, 'worker.mjs') },
+      { type: 'ESModule' as const, path: join(modulesRoot, 'authority-admin-facade.mjs') },
       ...scripts.map((name) => ({ type: 'ESModule' as const, path: join(modulesRoot, name) })),
       { type: 'CompiledWasm' as const, path: join(modulesRoot, 'qualification_bg.wasm') },
     ],
@@ -56,6 +57,7 @@ export async function preparationFixture(
           ...ownerWorker,
           serviceBindings: {
             OP_PUBLIC: 'preparation-owner',
+            OP_AUTHORITY_ADMIN: { name: 'preparation-owner', entrypoint: 'OpAuthorityAdmin' },
             ...(effectEnabled
               ? {
                   OP_EFFECT_STORE: { name: 'preparation-owner', entrypoint: 'WorkEffectStore' },
@@ -270,7 +272,7 @@ export async function preparationFixture(
       const statements = splitSqlQuery(await readFile(new URL(name, migrations), 'utf8'));
       await DB.batch(statements.map((s) => DB.prepare(s)));
     }
-    await applyWorkMigrations(DB, throughMigration ? Number(throughMigration) : 8);
+    await applyWorkMigrations(DB, throughMigration ? Number(throughMigration) : 10);
     await activateWorkerPolicy(
       DB,
       JSON.parse(

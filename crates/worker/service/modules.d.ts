@@ -1,4 +1,8 @@
 declare module '*.mjs' {
-  const handler: ExportedHandler;
-  export default handler;
+  import { WorkerEntrypoint } from 'cloudflare:workers';
+  class RustOp extends WorkerEntrypoint<Env> {
+    fetch(request: Request): Promise<Response>;
+    administer_op_authority(request: Request, env: Env): Promise<Response>;
+  }
+  export default RustOp;
 }

@@ -527,14 +527,17 @@ async fn execute(store: WorkStore, i: Input, env: &Env) -> std::result::Result<V
     }
 }
 #[event(fetch)]
-async fn main(mut req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+async fn main(mut req: Request, env: Env, ctx: Context) -> worker::Result<Response> {
     if env.var("LOCAL_WORK_QUALIFICATION")?.to_string() != "true" {
         return Response::error("local fixture disabled", 404);
     }
-    if req.url()?.path().starts_with("/work/") {
-        return mikaki_worker::work_owner::routes(Router::with_data(()))
-            .run(req, env)
-            .await;
+    if req.url()?.path().starts_with("/work/") || req.url()?.path() == "/logout" {
+        return mikaki_worker::op_authority::qualification_routes(
+            mikaki_worker::work_owner::routes(Router::with_data(())),
+            ctx,
+        )
+        .run(req, env)
+        .await;
     }
     let input: Input = match serde_json::from_str(&req.text().await?) {
         Ok(input) => input,

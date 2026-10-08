@@ -177,7 +177,7 @@ pub async fn finish(
     let Some(row) = row else { return reject(400) };
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let rp_id = enrollment::rp_id(&issuer)?;
-    let context = mikaki_webauthn::Context {
+    let verification_context = mikaki_webauthn::Context {
         challenge: row.challenge,
         origin: issuer,
         rp_id,
@@ -199,7 +199,7 @@ pub async fn finish(
         counter: admin.counter,
         backup_eligible: admin.backup_eligible == 1,
     };
-    let proof = mikaki_webauthn::authenticate(&context, &stored, input.response);
+    let proof = mikaki_webauthn::authenticate(&verification_context, &stored, input.response);
     let proof = match proof {
         Ok(proof) if proof.user_verified() => proof,
         _ => {
@@ -215,7 +215,7 @@ pub async fn finish(
     let invitation = passkey_login::random_secret(&mut random)?;
     let invite_hash = passkey_login::hash(&invitation);
     let guard = format!("{}-admin", input.operation_id);
-    db.batch(vec![
+    crate::op_authority::batch(&context.env, vec![
         db.prepare("UPDATE admin_invitation_transaction SET consumed=1 WHERE operation_id=?1 AND account_id=?2 AND credential_id=?3 AND browser_hash=?4 AND consumed=0 AND failures<5 AND expires_at>?5")
             .bind(&[JsValue::from_str(&input.operation_id),JsValue::from_str(&admin.account_id),JsValue::from_str(&admin.credential_id),JsValue::from_str(&browser_hash),JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")

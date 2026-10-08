@@ -63,7 +63,6 @@ impl WorkStore {
         Ok(())
     }
     pub(crate) async fn checkpoint_enrolled(&self) -> Result<bool> {
-        #[cfg(feature = "work-qualification")]
         if self.statement("SELECT name FROM sqlite_master WHERE type='table' AND name='work_authority_checkpoint'", &[])?.first::<String>(Some("name")).await?.is_none() {
             return Ok(false);
         }

@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+export type AuthorityAdministrator = {
+  fetch: (request: Request) => Promise<{ status: number; json: () => Promise<unknown> }>;
+};
 
 const REVISION = /^[0-9a-f]{64}$/;
 const NUMERIC_FIELDS = [
@@ -86,7 +89,13 @@ export async function activateWorkerPolicy(
     expectedRevision = null,
     actor,
     reason,
-  }: { expectedRevision?: string | null; actor: string; reason: string },
+    administrator,
+  }: {
+    expectedRevision?: string | null;
+    actor: string;
+    reason: string;
+    administrator?: AuthorityAdministrator;
+  },
 ) {
   const json = validateWorkerPolicyProjection(policy);
   if (
@@ -107,6 +116,39 @@ export async function activateWorkerPolicy(
     throw new Error('active worker policy revision changed');
   }
   const generation = (current?.generation ?? 0) + 1;
+  const checkpointSchema = await db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='work_authority_checkpoint'",
+    )
+    .first();
+  const enrolled =
+    checkpointSchema &&
+    (await db.prepare('SELECT authority FROM work_authority_checkpoint WHERE id=1').first());
+  if (enrolled) {
+    if (!administrator) throw new Error('enrolled authority requires OP_AUTHORITY_ADMIN binding');
+    const response = await administrator.fetch(
+      new Request('https://private.invalid/authority', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'activate-policy',
+          policy,
+          expected_revision: expectedRevision,
+          expected_generation: current?.generation ?? 0,
+          actor,
+          reason,
+        }),
+      }),
+    );
+    if (response.status !== 200)
+      throw new Error('authority policy activation unavailable or denied');
+    const result = (await response.json()) as { generation: number; projectionRevision: string };
+    if (
+      result.generation !== generation ||
+      result.projectionRevision !== policy.projection_revision
+    )
+      throw new Error('invalid authority activation acknowledgement');
+    return result;
+  }
   const now = Math.floor(Date.now() / 1000);
   const operationId = randomUUID();
   const activation = current

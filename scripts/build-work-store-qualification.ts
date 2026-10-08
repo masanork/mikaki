@@ -87,13 +87,53 @@ execFileSync(
 await writeFile(
   join(out, 'worker.mjs'),
   `import { WorkerEntrypoint } from 'cloudflare:workers';
-import { initSync, fetch } from './qualification.js';
+import { initSync, fetch, administer_op_authority } from './qualification.js';
+import { authorityFacades } from './authority-admin-facade.mjs';
 import module from './qualification_bg.wasm';
 initSync({ module });
-export default class extends WorkerEntrypoint { fetch(request) { return fetch(request, this.env, this.ctx); } }
+export class FixtureCheckpointSourceReader extends WorkerEntrypoint {
+  async readRegisteredSource() {
+    await this.env.DB.prepare('UPDATE fixture_source_reads SET n=n+1 WHERE id=1').run();
+    if (this.env.LOCAL_CHECKPOINT_SOURCE_PAUSE === 'true') {
+      const expected = await this.env.DB.prepare('SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1').first();
+      const response = await this.env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint', {
+        method:'POST',body:JSON.stringify({action:'begin',release:1,expected,operation:'fixture-during-source-read'}),
+      });
+      if (response.status !== 200) throw new Error('fixture_checkpoint_pending');
+    }
+    return this.env.LOCAL_CHECKPOINT_SOURCE_REPLY;
+  }
+}
+class FixtureRustOp extends WorkerEntrypoint {
+  fetch(request) { return fetch(request, this.env, this.ctx); }
+  administer_op_authority(request, env) { return administer_op_authority(request, env); }
+}
+const {Admin, Public} = authorityFacades(FixtureRustOp);
+export {Admin as OpAuthorityAdmin};
+export default class extends Public { async fetch(request) {
+  const env=this.env, ctx=this.ctx;
+  if (env.LOCAL_WORK_QUALIFICATION === 'true' && new URL(request.url).pathname === '/authority-fixture') {
+    return env.OP_AUTHORITY_ADMIN.fetch(new Request('https://private.invalid/authority', request));
+  }
+  if (env.LOCAL_WORK_QUALIFICATION === 'true' && new URL(request.url).pathname === '/checkpoint-fixture') {
+    const i = await request.json();
+    try {
+      if (i.action === 'bootstrap') return Response.json(await env.CHECKPOINT_ADMIN.bootstrap(i.checkpoint, i.floor));
+      if (i.action === 'raise-floor') { await env.CHECKPOINT_ADMIN.raiseFloor(i.floor); return Response.json({}); }
+      if (i.action === 'freeze') { await env.CHECKPOINT_ADMIN.freeze(); return Response.json({}); }
+      if (i.action === 'public') return env.CHECKPOINT_PUBLIC.fetch('https://private.invalid/checkpoint', {method:'POST',body:'{}'});
+      if (i.action === 'public-admin-rpc') return env.OP_PUBLIC.administer_op_authority();
+      if (i.action === 'named-admin-raw-rpc') return env.OP_AUTHORITY_ADMIN.administer_op_authority();
+      return env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint', {method:'POST',body:JSON.stringify(i)});
+    } catch { return Response.json({error:'checkpoint_unavailable'}, {status:409}); }
+  }
+  return fetch(request, env, ctx);
+} };
 `,
 );
 for (const [source, name] of [
+  ['crates/worker/service/authority-admin-facade.ts', 'authority-admin-facade.mjs'],
+  ['crates/work-checkpoint-worker/worker.ts', 'checkpoint.mjs'],
   ['local/conformance/support/work-source-reader.ts', 'source-reader.mjs'],
 ]) {
   await build({
@@ -105,4 +145,4 @@ for (const [source, name] of [
     outfile: join(out, name),
   });
 }
-console.log('Built current-main WorkStore qualification fixture; never deploy.');
+console.log('Built current-main work authority/checkpoint qualification fixture; never deploy.');

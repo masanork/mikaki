@@ -11,6 +11,8 @@ mod branding;
 #[cfg(target_arch = "wasm32")]
 mod dpop;
 #[cfg(target_arch = "wasm32")]
+pub mod op_authority;
+#[cfg(target_arch = "wasm32")]
 mod token;
 #[cfg(target_arch = "wasm32")]
 pub mod work_owner;

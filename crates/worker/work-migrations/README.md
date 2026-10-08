@@ -10,6 +10,9 @@ The eight initial migrations preserve the earlier managed-work schema while
 using the fresh Owner Vault baseline. They create no owner sources, disclosures,
 grants, issuer identities, credentials or external resources automatically.
 
+Migrations 0009 and 0010 add checkpoint and covered OP transaction frames without
+automatic enrollment. Applying the schema alone enables no managed-work effects.
+
 Run `npm run test:work-delegation` from the repository root to build the actual
 Rust/Wasm fixture and exercise the additive schema with workerd/D1/R2. The
 fixture uses synthetic verifier facts; its successful cases do not qualify a

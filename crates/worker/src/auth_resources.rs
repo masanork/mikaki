@@ -88,7 +88,7 @@ pub(super) async fn collect(env: &worker::Env) -> worker::Result<()> {
         .filter(|sql| !sql.trim().is_empty())
         .map(|sql| db.prepare(sql))
         .collect();
-    let results = db.batch(statements).await?;
+    let results = crate::op_authority::batch(env, statements).await?;
     let reclaimed: f64 = results
         .iter()
         .filter_map(|r| r.meta().ok().flatten())

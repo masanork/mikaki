@@ -1,0 +1,4 @@
+{
+  "extends": "../work-source-worker/tsconfig.json",
+  "include": ["worker.ts", "../../node_modules/@cloudflare/workers-types/index.d.ts"]
+}

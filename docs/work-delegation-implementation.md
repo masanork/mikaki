@@ -22,7 +22,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | --- | --- | --- |
 | M1: Portable rules/decisions | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass. | Complete locally: 35 unit cases plus one compile-fail case. |
 | M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 94 current-main qualification cases. |
-| M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Pending; required before new productive effects. |
+| M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Pending on main. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Pending on main. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | Next new effect increment after M2–M4. |
@@ -67,3 +67,7 @@ Owner-enrolled clients, managed execution identity, Token Exchange, SPIFFE and A
 | CI-04 | Trusted provenance, recovery fencing, compatible rollback and one authoritative write direction before canonical migration. |
 
 CI-01 can proceed separately once its exact source/resources are selected. Deployment credentials stay in the publisher boundary; a Workflow event, identity token or successful test does not grant production promotion.
+
+M3 qualification passes **16 checkpoint cases** and **13 current OP regression cases** (production service/RPC boundary, bootstrap enrollment, ingress/retention and Queue logout). Production Worker build and OP authority packaging, Node/service/checkpoint-Worker type checks and production Wasm Clippy with warnings denied pass. Six pre-existing Worker Wasm style warnings exposed by the current dependency/toolchain were fixed in a separate commit. The [checkpoint note](work-authority-checkpoint.md) records the covered paths and remaining recovery/operator/release gates. The local fixture uses main's Queue-aware logout handler, with its actual event context.
+
+The current production Chromium enrollment regression also passes: real virtual Passkey enrollment, additional credential/invitation flow, login retries and Owner Vault PRF behavior remain compatible without the opt-in work schema.

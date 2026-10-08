@@ -2,7 +2,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import type { D1Database } from '@cloudflare/workers-types';
-export async function applyWorkMigrations(db: D1Database, through = 8) {
+export async function applyWorkMigrations(db: D1Database, through = 10) {
   const directory = new URL('../../../crates/worker/work-migrations/', import.meta.url);
   for (const name of (await readdir(directory)).filter((n) => n.endsWith('.sql')).sort()) {
     if (Number(name.slice(0, 4)) > through) continue;

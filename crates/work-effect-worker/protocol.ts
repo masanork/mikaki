@@ -1,0 +1,125 @@
+/** Closed metadata shared by the gate and its independent one-shot ledger. */
+export type Checkpoint = { authority: string; epoch: string; sequence: number; tip: string };
+export type InitialPlan = {
+  format_version: 1;
+  effect: 'repo.create';
+  attempt_id: string;
+  digest: string;
+  namespace: string;
+  name: string;
+  role: 'task' | 'snapshot';
+  deadline: number;
+  checkpoint: Checkpoint;
+};
+export type Closure = {
+  repo_id: string;
+  token_id: string;
+  expires_at: number | null;
+  receipt: string;
+};
+export type EffectRecord = {
+  plan: InitialPlan;
+  state: 'outcome_unknown' | 'closed';
+  repo_id: string | null;
+  closure: Closure | null;
+  cleanup?: RevocationInventory & { observed_at: number };
+  token_observation?: TokenObservation & { observed_at: number };
+};
+/** Control-plane revocation evidence; never claims a Git bearer refusal. */
+export type RevocationInventory = {
+  format_version: 1;
+  repo_id: string;
+  token_id: string;
+  scope: 'write';
+  expires_at: number;
+  receipt: string;
+  method: 'revoked_inventory' | 'revoke_acknowledged';
+};
+export type TokenObservation = Pick<
+  RevocationInventory,
+  'repo_id' | 'token_id' | 'scope' | 'expires_at'
+>;
+export const closed = (v: unknown, keys: string[]): v is Record<string, unknown> =>
+  typeof v === 'object' &&
+  v !== null &&
+  !Array.isArray(v) &&
+  Object.keys(v).sort().join(',') === [...keys].sort().join(',');
+export const hex = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+export const opaque = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Za-z0-9_-]{43}$/.test(v);
+export const resource = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(v);
+export const integer = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
+export function initialPlan(v: unknown): asserts v is InitialPlan {
+  if (
+    !closed(v, [
+      'format_version',
+      'effect',
+      'attempt_id',
+      'digest',
+      'namespace',
+      'name',
+      'role',
+      'deadline',
+      'checkpoint',
+    ]) ||
+    v.format_version !== 1 ||
+    v.effect !== 'repo.create' ||
+    !opaque(v.attempt_id) ||
+    !hex(v.digest) ||
+    typeof v.namespace !== 'string' ||
+    !/^[a-z0-9-]{1,63}$/.test(v.namespace) ||
+    typeof v.name !== 'string' ||
+    !/^wk-[a-f0-9]{32}-(code|snapshot)$/.test(v.name) ||
+    !['task', 'snapshot'].includes(String(v.role)) ||
+    !v.name.endsWith(v.role === 'task' ? '-code' : '-snapshot') ||
+    !integer(v.deadline) ||
+    !closed(v.checkpoint, ['authority', 'epoch', 'sequence', 'tip']) ||
+    !resource(v.checkpoint.authority) ||
+    !hex(v.checkpoint.epoch) ||
+    !hex(v.checkpoint.tip) ||
+    !integer(v.checkpoint.sequence)
+  )
+    throw new Error('effect_invalid');
+}
+export function closure(v: unknown): asserts v is Closure {
+  if (
+    !closed(v, ['repo_id', 'token_id', 'expires_at', 'receipt']) ||
+    !resource(v.repo_id) ||
+    !resource(v.token_id) ||
+    !(v.expires_at === null || integer(v.expires_at)) ||
+    !hex(v.receipt)
+  )
+    throw new Error('effect_invalid');
+}
+export function revocationInventory(v: unknown): asserts v is RevocationInventory {
+  if (
+    !closed(v, [
+      'format_version',
+      'repo_id',
+      'token_id',
+      'scope',
+      'expires_at',
+      'receipt',
+      'method',
+    ]) ||
+    v.format_version !== 1 ||
+    !resource(v.repo_id) ||
+    !resource(v.token_id) ||
+    v.scope !== 'write' ||
+    !integer(v.expires_at) ||
+    !hex(v.receipt) ||
+    !['revoked_inventory', 'revoke_acknowledged'].includes(String(v.method))
+  )
+    throw new Error('effect_invalid');
+}
+export function tokenObservation(v: unknown): asserts v is TokenObservation {
+  if (
+    !closed(v, ['repo_id', 'token_id', 'scope', 'expires_at']) ||
+    !resource(v.repo_id) ||
+    !resource(v.token_id) ||
+    v.scope !== 'write' ||
+    !integer(v.expires_at)
+  )
+    throw new Error('effect_invalid');
+}
