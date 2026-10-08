@@ -52,6 +52,15 @@ pub struct CredentialStatus {
     pub state: String,
     pub revision: u64,
 }
+/// Closed Native facts for the private preparation verifier. No envelope/key
+/// material is exposed, and historical evidence needs no decryption capability.
+pub(crate) struct ClosedCredential {
+    pub attempt: CredentialAttempt,
+    pub observation: CredentialObservation,
+    pub receipt: Digest,
+    pub key_version: Option<u64>,
+    pub key_fingerprint: Option<Digest>,
+}
 impl CredentialRow {
     fn status(&self, a: &CredentialAttempt) -> CredentialStatus {
         CredentialStatus {
@@ -62,6 +71,49 @@ impl CredentialRow {
     }
 }
 impl WorkStore {
+    pub(crate) async fn closed_preparation_credentials(
+        &self,
+        preparation_id: &str,
+    ) -> Result<Vec<ClosedCredential>> {
+        let p = self.preparation(preparation_id).await?;
+        let rows = self.statement(&format!("SELECT {FIELDS} FROM work_credential_attempt WHERE preparation_id=?1 ORDER BY role,purpose LIMIT 7"), &[text(preparation_id)])?.all().await?.results::<CredentialRow>()?;
+        if rows.len() != 6 {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let mut facts = Vec::with_capacity(6);
+        for row in rows {
+            if row.state != "closed"
+                || row.confirmation.as_deref() != Some("refused")
+                || row.envelope.is_some()
+                || row.dispatched != 1
+            {
+                return Err(Denied::StaleAuthority.into());
+            }
+            let a = CredentialAttempt::restore_authority_record(&row.body, &p)?;
+            let observation = CredentialObservation::restore_authority_record(
+                row.observation.as_deref().ok_or(Denied::BindingMismatch)?,
+                &a,
+            )?;
+            let key_fingerprint = if a.purpose() == CredentialPurpose::Initial {
+                None
+            } else {
+                let version = row.key_version.ok_or(Denied::BindingMismatch)?;
+                let key: KeyRow = self.first(
+                    "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
+                    &[number(version)?],
+                ).await?;
+                Some(Digest::parse_hex(&key.fingerprint)?)
+            };
+            facts.push(ClosedCredential {
+                attempt: a,
+                observation,
+                receipt: Digest::parse_hex(row.receipt.as_deref().ok_or(Denied::BindingMismatch)?)?,
+                key_version: row.key_version,
+                key_fingerprint,
+            });
+        }
+        Ok(facts)
+    }
     /// Safety-only capture/closure. Even idempotent acknowledgements bind all
     /// observed metadata; no productive secret is accepted or decrypted.
     pub async fn capture_initial_effect_closed(

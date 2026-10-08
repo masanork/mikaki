@@ -4,16 +4,16 @@ use futures_util::StreamExt;
 
 #[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct GitResult {
-    method: String,
-    commit: String,
-    tree: String,
-    branch: String,
-    commits: u64,
-    objects: u64,
-    object_bytes: u64,
-    inventory_sha256: String,
-    receipt: String,
+pub(super) struct GitResult {
+    pub method: String,
+    pub commit: String,
+    pub tree: String,
+    pub branch: String,
+    pub commits: u64,
+    pub objects: u64,
+    pub object_bytes: u64,
+    pub inventory_sha256: String,
+    pub receipt: String,
 }
 async fn bounded(response: &mut Response) -> worker::Result<Vec<u8>> {
     let mut stream = response.stream()?;

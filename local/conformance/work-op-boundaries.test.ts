@@ -95,6 +95,7 @@ test('production Rust shim and named OP facade refuse public/raw administration 
     );
     for (const input of [
       { action: 'git-plan', attempt_id: 'a'.repeat(43) },
+      { action: 'preparation-verify', preparation_id: 'a'.repeat(43) },
       { action: 'git-execute', attempt_id: 'a'.repeat(43), plan: {} },
     ])
       assert.equal(

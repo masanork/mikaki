@@ -47,6 +47,7 @@ export async function preparationFixture(
       MIKAKI_ISSUER: 'https://work.test',
       ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
       ...(effectEnabled && !remote ? { WORK_GIT_EXECUTION_ENABLED: 'true' } : {}),
+      ...(effectEnabled && !remote ? { WORK_PREPARATION_VERIFY_ENABLED: 'true' } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -72,6 +73,19 @@ export async function preparationFixture(
                         MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
                         GIT_GATE: { name: 'work-git', entrypoint: 'WorkGitGate' },
                         GIT_PUBLIC: 'work-git',
+                        PREPARATION_GATE: {
+                          name: 'work-preparation',
+                          entrypoint: 'WorkPreparationGate',
+                        },
+                        PREPARATION_PUBLIC: 'work-preparation',
+                        WORK_PREPARATION_EVIDENCE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixturePreparationEvidence',
+                        },
+                        PREPARATION_EVIDENCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkPreparationEvidence',
+                        },
                         GIT_CHECKPOINT: {
                           name: 'work-checkpoint',
                           entrypoint: 'WorkGitCheckpoint',
@@ -225,6 +239,24 @@ export async function preparationFixture(
                         GIT_CHECKPOINT: {
                           name: 'preparation-owner',
                           entrypoint: 'FixtureGitLedger',
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-preparation',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'preparation.mjs'),
+                      // Installed Miniflare rejects 2026-10-09 as future; this
+                      // disposable fixture uses its latest supported date.
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_PREPARATION_GATE_ENABLED:
+                          bindings.WORK_PREPARATION_GATE_ENABLED ?? 'true',
+                      },
+                      serviceBindings: {
+                        OP_EFFECT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
                         },
                       },
                     },

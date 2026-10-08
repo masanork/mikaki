@@ -112,8 +112,9 @@ A Cloudflare-hosted execution environment, authenticated provisioning of the
 source registry and resource isolation/quotas still need a deployment increment.
 The Workers bridge alone does not make Node child processes available in Workers.
 Protected existing remote allocations must be reconciled before a real trial.
-Preparation evidence composition, owner copy/delegation consent, workload token
-release and unobserved/missing-custody recovery remain separate gates.
+M6e now [composes both-role evidence and six Native closures](work-preparation-evidence.md)
+into verified preparation. Owner copy/delegation consent, workload token release
+and unobserved/missing-custody recovery remain separate gates.
 
 ## Qualification
 

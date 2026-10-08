@@ -11,11 +11,15 @@ use wasm_bindgen::JsValue;
 use worker::{Env, Request, Response};
 use zeroize::Zeroizing;
 mod git;
+mod preparation;
 mod refusal;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 enum Input {
+    PreparationVerify {
+        preparation_id: String,
+    },
     GitPlan {
         attempt_id: String,
     },
@@ -121,6 +125,9 @@ async fn execute(
     // recording grants no productive dispatch. All Native batches still require
     // checkpoint framing, including cleanup after productive Git execution.
     let input = match input {
+        Input::PreparationVerify { preparation_id } => {
+            return preparation::verify(&store, env, &preparation_id).await;
+        }
         Input::GitPlan { attempt_id } => {
             return Ok(store.git_effect_plan(env, &attempt_id).await?);
         }
@@ -275,6 +282,7 @@ async fn execute(
             )?)
         }
         Input::CaptureMint { .. }
+        | Input::PreparationVerify { .. }
         | Input::GitPlan { .. }
         | Input::GitExecute { .. }
         | Input::MintCleanup { .. }

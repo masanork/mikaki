@@ -141,6 +141,7 @@ export class FixtureEffectBridge extends WorkerEntrypoint {
       if(i.action==='capture-mint') await this.env.MINT_MAINTENANCE.begin(i.attempt_id,i.digest);
     }
     const response = await this.env.OP_EFFECT_STORE.fetch(request);
+    if(this.env.LOCAL_PREPARATION_VERIFY_LOST==='true' && refusalInput.action==='preparation-verify' && response.status===200) return new Response(null,{status:409});
     if(this.env.LOCAL_GIT_EXECUTE_LOST==='true' && refusalInput.action==='git-execute' && response.status===200) return new Response(null,{status:409});
     if(this.env.LOCAL_MINT_CLOSE_LOST==='true' && refusalInput.action==='mint-close' && response.status===200) return Response.json({error:'synthetic_close_lost'},{status:409});
     if (response.status === 200 && this.env.LOCAL_EFFECT_CAPTURE_LOST === 'true') {
@@ -187,6 +188,42 @@ export class FixtureGitLedger extends WorkerEntrypoint {
   async claim(plan){const r=await this.env.GIT_LEDGER.claim(plan);if(this.env.LOCAL_GIT_LEDGER_LOST==='claim')throw new Error('synthetic_git_claim_lost');return r;}
   async finish(attempt,result){const r=await this.env.GIT_LEDGER.finish(attempt,result);if(this.env.LOCAL_GIT_LEDGER_LOST==='finish')throw new Error('synthetic_git_finish_lost');return r;}
 }
+export class FixturePreparationEvidence extends WorkerEntrypoint {
+  async fetch(request) {
+    const response=await this.env.PREPARATION_EVIDENCE.fetch(request);
+    if(response.status!==200)return response;
+    const pause=this.env.LOCAL_PREPARATION_EVIDENCE_PAUSE;
+    if(pause==='freeze')await this.env.CHECKPOINT_ADMIN.freeze();
+    if(pause==='pending') {
+      const expected=await this.env.DB.prepare('SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1').first();
+      await this.env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint',{method:'POST',body:JSON.stringify({action:'begin',release:1,expected,operation:'fixture-before-verify'})});
+    }
+    if(pause==='floor')await this.env.CHECKPOINT_ADMIN.raiseFloor(2);
+    if(pause==='source')await this.env.DB.prepare('UPDATE work_source_access SET active=0,access_revision=access_revision+1').run();
+    if(pause==='owner')await this.env.OP_AUTHORITY_ADMIN.fetch('https://private.invalid/authority',{method:'POST',body:JSON.stringify({action:'revoke-account',account:'synthetic-delivery-owner',expected_epoch:0,actor:'fixture',reason:'during evidence read'})});
+    if(pause==='policy')await this.env.DB.prepare('DELETE FROM work_preparation_policy').run();
+    const mode=this.env.LOCAL_PREPARATION_EVIDENCE_FAULT;
+    if(mode==='unavailable')return new Response(null,{status:409});
+    if(mode==='oversized')return new Response('x'.repeat(32769));
+    if(mode==='duplicate-key')return new Response('{"format_version":1,"format_version":1,"initial":[],"mint":[]}');
+    const e=await response.json();
+    if(mode==='missing')e.mint.pop();
+    if(mode==='duplicate')e.mint[1]=e.mint[0];
+    if(mode==='repo')e.mint[0].observation.repo_id='replacement';
+    if(mode==='closure')e.mint[0].refusal.receipt='f'.repeat(64);
+    if(mode==='inventory')e.mint.find(m=>m.plan.purpose==='readback').git.result.inventory_sha256='f'.repeat(64);
+    if(mode==='receipt')e.mint[0].git.result.receipt='f'.repeat(64);
+    if(mode==='inventory-both')for(const m of e.mint)if(m.plan.role==='task')m.git.result.inventory_sha256='f'.repeat(64);
+    if(mode==='key')e.mint[0].refusal.key_version=2;
+    if(mode==='initial')e.initial[0].closure.receipt='f'.repeat(64);
+    if(mode==='checkpoint')e.mint[0].git.plan.checkpoint.epoch='f'.repeat(64);
+    if(mode==='commit')e.mint[0].git.result.commit='f'.repeat(40);
+    if(mode==='plan')e.mint[0].git.plan.url='https://attacker.invalid/';
+    if(mode==='extra')e.token='synthetic-extra';
+    if(mode==='reverse'){e.initial.reverse();e.mint.reverse();}
+    return Response.json(e);
+  }
+}
 export class FixtureGitExecutionCheckpoint extends WorkerEntrypoint {
   async fetch(request){const r=await this.env.GIT_EXECUTION_CHECKPOINT.fetch(request);if(this.env.LOCAL_GIT_LEDGER_LOST==='take' && r.status===200)return new Response(null,{status:409});return r;}
 }
@@ -198,6 +235,10 @@ export default class extends Public { async fetch(request) {
       if(i.action==='mint-close') return env.MINT_CLOSER.fetch('https://private.invalid/close-mint',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='git') return env.GIT_GATE.fetch('https://private.invalid/git',{method:'POST',body:JSON.stringify(i.input)});
       if(i.action==='git-public') return env.GIT_PUBLIC.fetch('https://private.invalid/git',{method:'POST',body:'{}'});
+      if(i.action==='preparation')return env.PREPARATION_GATE.fetch('https://private.invalid/verify-preparation',{method:i.method??'POST',body:JSON.stringify(i.input)});
+      if(i.action==='preparation-public')return env.PREPARATION_PUBLIC.fetch('https://private.invalid/verify-preparation',{method:'POST',body:'{}'});
+      if(i.action==='preparation-evidence')return env.PREPARATION_EVIDENCE.fetch(new Request(i.url??'https://private.invalid/preparation-evidence',{method:i.method??'POST',...(i.method==='GET'?{}:{body:JSON.stringify(i.input)})}));
+      if(i.action==='preparation-evidence-call')return Response.json(await env.PREPARATION_EVIDENCE[i.method](...(i.args??[])));
       if(i.action==='git-claim') return Response.json(await env.GIT_CHECKPOINT.claim(i.plan));
       if(i.action==='git-call') return Response.json(await env.GIT_CHECKPOINT[i.method](...(i.args??[])));
       if(i.action==='git-transport') return env.WORK_GIT_TRANSPORT.fetch(new Request(i.url??'https://private.invalid/git-execute',{method:i.method??'POST',headers:i.headers,body:JSON.stringify(i.plan)}));
@@ -305,6 +346,7 @@ for (const [source, name] of [
   ['crates/work-effect-worker/worker.ts', 'effect.mjs'],
   ['crates/work-effect-worker/mint.ts', 'mint.mjs'],
   ['crates/work-effect-worker/git.ts', 'git.mjs'],
+  ['crates/work-effect-worker/preparation.ts', 'preparation.mjs'],
   ['crates/work-effect-worker/git-transport.ts', 'git-transport.mjs'],
   ['crates/work-effect-worker/mint-maintenance.ts', 'mint-maintenance.mjs'],
   ['crates/work-effect-worker/mint-reconcile.ts', 'mint-reconcile.mjs'],

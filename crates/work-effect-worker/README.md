@@ -14,6 +14,9 @@ private capability.
 - `git.ts` / `git-transport.ts`: independently admitted fixed Git exchanges using
   encrypted Native custody and a separately provisioned private Git host. See
   the [Git contract and deployment limits](../../docs/work-artifacts-git-gate.md).
+- `preparation.ts`: opaque composition trigger; Native validates the read-only
+  independent evidence and six closed custody records before recording verified
+  preparation. See the [composition contract](../../docs/work-preparation-evidence.md).
 
 Run `npm run check:work-effects` and `npm run test:work-effects`. The latter uses
 actual Rust/Wasm/workerd/RPC/DO with synthetic Artifacts/Git. The full local
@@ -21,6 +24,6 @@ authority/checkpoint/effect gate is `npm run test:work-delegation`.
 
 Existing protected remote journals and unresolved allocations must be
 reconciled against their original immutable IDs before any new remote trial.
-Local qualification does not reset or certify those resources. Preparation evidence
-composition, Git-host deployment, workload release, authenticated copy consent
+Local qualification does not reset or certify those resources. Git-host deployment,
+workload release, authenticated copy consent
 and operator/recovery provenance retain separate gates.

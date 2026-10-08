@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a source inspection and M6a–M6d mint/custody, recovery, Native bearer refusal and fixed Git upload/readback locally implemented on main through `9022fb2`, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, source review and actual bounded Git exchange are integrated. Preparation evidence composition, copy/delegation UI, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a source inspection and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition locally implemented on main through `9022fb2`, 2026-10-09 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, source review and actual bounded Git exchange are integrated. Copy/delegation UI, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -25,7 +25,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a source review complete locally; copy/delegation composition and activity/result controls remain pending. |
-| M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6d mint/custody, recovery, bearer refusal and fixed Git exchange locally implemented; evidence composition, missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
+| M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -210,3 +210,22 @@ the existing 8 MiB / 3 MiB ceilings. Rustfmt, default production Wasm Clippy wit
 warnings denied, Node/service/effect/checkpoint types, Prettier, product sources
 and documentation checks pass. No new product browser or remote CI evidence is
 claimed, and no push, deployment or real Artifacts I/O is performed.
+
+## M6e: Both-role preparation evidence
+
+[Preparation evidence composition](work-preparation-evidence.md) connects the
+task and snapshot uploads/independent readbacks and all six Native credential
+closures to the existing framed `dispatched → verified` transition. The private
+trigger accepts only a preparation ID. A separately bound read-only independent
+ledger returns fixed retained metadata; Rust validates every Native binding,
+closure, Git commitment and matching complete inventory before constructing the
+payload/custody commitments. No credential is decrypted for this step.
+
+The local cases cover exact retry/concurrency/restart, missing or substituted
+metadata, closed credentials without copy proof, unknown upload outcomes, lost
+verify acknowledgement, stale D1 restoration, checkpoint/owner/source/policy loss
+during evidence retrieval and capability isolation. Verified remains historical
+preparation evidence; this increment creates no task, grant or run and releases no
+workload credential. Copy/delegation UI and Cloudflare Git-host/source-registry
+deployment remain the next integration gates. Production flags, bindings and
+baseline migrations, protected remote journals and real Artifacts are unchanged.

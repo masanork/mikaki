@@ -19,6 +19,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use worker::{D1Database, D1PreparedStatement};
 
 pub use checkpoint::AuthorityCheckpoint;
+pub(crate) use credentials::ClosedCredential;
 pub use credentials::{CredentialDispatch, CredentialStatus, credential_key};
 pub use operations::{DispatchResult, Outcome};
 pub(crate) use owner::owner_id_shape;

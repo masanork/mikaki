@@ -240,6 +240,64 @@ export class WorkCheckpoint extends DurableObject<Env> {
     await this.ctx.storage.sync();
     return r;
   }
+  /** Read-only, bounded projection. Closed records are retained and immutable;
+   * no permit, framing, maintenance, secret or physical repository is returned. */
+  async preparationEvidence(input: unknown) {
+    if (
+      !closed(input, ['attempts']) ||
+      !Array.isArray(input.attempts) ||
+      input.attempts.length !== 6
+    )
+      throw new Error('preparation_invalid');
+    const seen = new Set<string>();
+    const initial: { plan: InitialPlan; closure: Closure }[] = [];
+    const mint: {
+      plan: MintPlan;
+      observation: NonNullable<MintRecord['observation']>;
+      refusal: Omit<NonNullable<MintRecord['refusal']>, 'observed_at'>;
+      git: { plan: GitPlan; result: GitResult };
+    }[] = [];
+    // All reads run synchronously in this turn before the durability wait.
+    for (const a of input.attempts) {
+      if (!closed(a, ['attempt_id', 'purpose']) || !opaque(a.attempt_id) || seen.has(a.attempt_id))
+        throw new Error('preparation_invalid');
+      seen.add(a.attempt_id);
+      if (a.purpose === 'initial') {
+        const r = this.effect(a.attempt_id);
+        if (!r || r.state !== 'closed' || !r.closure) throw new Error('preparation_incomplete');
+        initialPlan(r.plan);
+        closure(r.closure);
+        initial.push({ plan: r.plan, closure: r.closure });
+      } else {
+        const r = this.#mint(a.attempt_id);
+        if (
+          !r ||
+          r.plan.purpose !== a.purpose ||
+          r.state !== 'closed' ||
+          !r.refusal ||
+          !r.observation ||
+          r.git?.state !== 'completed' ||
+          !r.git.result
+        )
+          throw new Error('preparation_incomplete');
+        mintPlan(r.plan);
+        mintObservation(r.observation);
+        const { observed_at: _at, ...refusal } = r.refusal;
+        mintRefusal(refusal);
+        gitPlan(r.git.plan);
+        gitResult(r.git.result, r.git.plan);
+        mint.push({
+          plan: r.plan,
+          observation: r.observation,
+          refusal,
+          git: { plan: r.git.plan, result: r.git.result },
+        });
+      }
+    }
+    if (initial.length !== 2 || mint.length !== 4) throw new Error('preparation_incomplete');
+    await this.ctx.storage.sync();
+    return { format_version: 1, initial, mint };
+  }
   async claimGit(input: unknown) {
     gitPlan(input);
     const result = this.ctx.storage.transactionSync(() => {
@@ -682,6 +740,24 @@ function sameJson(a: unknown, b: unknown): boolean {
           )
         : v;
   return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+}
+/** Independently owned read-only evidence capability for Native composition. */
+export class WorkPreparationEvidence extends WorkerEntrypoint<Env> {
+  async fetch(request: Request) {
+    if (request.method !== 'POST' || new URL(request.url).pathname !== '/preparation-evidence')
+      return new Response(null, { status: 404 });
+    try {
+      return Response.json(
+        await object(this.env).preparationEvidence(JSON.parse(await boundedGitBody(request))),
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
+    } catch {
+      return Response.json(
+        { error: 'preparation_evidence_unavailable' },
+        { status: 409, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+  }
 }
 /** Opaque Git orchestration: no mint, OP framing, credentials or physical repo. */
 export class WorkGitCheckpoint extends WorkerEntrypoint<Env> {
