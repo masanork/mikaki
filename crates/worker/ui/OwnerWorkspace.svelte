@@ -13,6 +13,7 @@
   import OwnerNameSharing from './OwnerNameSharing.svelte';
   import OwnerNoteProposals from './OwnerNoteProposals.svelte';
   import OwnerAgentGrants from './OwnerAgentGrants.svelte';
+  import OwnerLocalExport from './OwnerLocalExport.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -469,6 +470,24 @@
               }}
               onunconfirmed={(value) => (agentGrantUnconfirmed = value)}
               onchanged={agentGrantChanged}
+            />
+          {/if}
+          {#if owner}
+            <OwnerLocalExport
+              {owner}
+              nameRevision={profileRevision}
+              {noteRevision}
+              disabled={busy ||
+                agentOAuthBusy ||
+                wrapperUnconfirmed ||
+                sharingUnconfirmed ||
+                noteProposalUnconfirmed ||
+                agentGrantUnconfirmed}
+              hasDrafts={() => dirty || (context.hasDrafts?.() ?? false)}
+              onbusy={(value) => {
+                passkeysBusy = value;
+                busy = value;
+              }}
             />
           {/if}
           {#if owner}<OwnerPasskeys

@@ -223,7 +223,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     assert.ok(firstSso);
     await page.goto(`${issuer}/vault?storage=legacy-v1`);
     await page.getByRole('button', { name: 'Passkeyで開く' }).click();
-    await page.getByLabel('表示名').fill('Vault browser test');
+    await page.getByLabel('表示名', { exact: true }).fill('Vault browser test');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await page.getByRole('status').getByText('保存しました').waitFor();
     await page.reload();
@@ -233,8 +233,11 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
         (document.querySelector('#name') as HTMLInputElement | null)?.value ===
         'Vault browser test',
     );
-    assert.equal(await page.getByLabel('表示名').inputValue(), 'Vault browser test');
-    await page.getByLabel('表示名').fill('Updated vault name');
+    assert.equal(
+      await page.getByLabel('表示名', { exact: true }).inputValue(),
+      'Vault browser test',
+    );
+    await page.getByLabel('表示名', { exact: true }).fill('Updated vault name');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await page.getByRole('status').getByText('保存しました').waitFor();
     await page.reload();

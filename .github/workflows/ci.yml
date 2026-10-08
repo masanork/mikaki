@@ -112,6 +112,7 @@ jobs:
       - name: Product Worker contracts
         run: |
           cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
       - name: Native client UI lifecycle
@@ -205,6 +206,7 @@ jobs:
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
       - name: Verify Worker Svelte screens in Chromium
         run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm ci --prefix design/probes/vault-search
           npm run test:vault-thread-search
@@ -284,7 +286,7 @@ jobs:
 
   website:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -296,6 +298,7 @@ jobs:
       - run: npm ci
       - run: npm run build:website
       - run: npm run check:website
+      - run: if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
       - run: npx playwright install --with-deps chromium
       - run: npm run test:website
 
