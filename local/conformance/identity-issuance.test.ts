@@ -1726,6 +1726,14 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               const token = await call('token', tokenChallenge.headers.get('dpop-nonce')!);
               assert.equal(token.status, 200, await token.clone().text());
               await command({ command: 'token_received', response: await token.json() });
+              // Holder attestations last 60 seconds and credential expiry rounds down
+              // to a minute. Mint early enough for the positive presentation cases,
+              // using the real clock and retaining all production expiry checks.
+              let minuteOffset = Date.now() % 60000;
+              while (minuteOffset >= 30000) {
+                await new Promise((resolve) => setTimeout(resolve, 60000 - minuteOffset));
+                minuteOffset = Date.now() % 60000;
+              }
               const credentialNonce = (
                 (await (await haip.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
               ).c_nonce;
@@ -1887,7 +1895,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               assert.equal(
                 batchResponse.state,
                 'presented',
-                'all required same-credential queries must be presented atomically',
+                `all required same-credential queries must be presented atomically (${format}, ${credentialExpiresAt - Math.floor(Date.now() / 1000)}s before expiry)`,
               );
               assert.equal(
                 (await peer.accept(batchResponse.response, batch.claims, keys.holder)).name,
