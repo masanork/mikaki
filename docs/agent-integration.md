@@ -28,7 +28,7 @@ npm run probe:codex-v2-local-records -- name
 npm run probe:codex-v2-local-records -- owner_note
 ```
 
-The probe checks exactly one Codex `list`, `search` and `read` call and then one denied read in a new Codex invocation with the same MCP configuration. It distinguishes source/authority validation in the MCP SDK preflight from metadata actually exposed in Codex's completed tool results. Its output contains only qualification results, operation names and counts; it does not save Codex JSONL or record text. Intended-device Passkey/PRF checks, owner-selected real data disclosure and hosted Agent activation remain separate work.
+The probe checks exactly one successful Codex `list`, `search` and `read` call. Separately, its MCP SDK preflight verifies the v2 source/authority and denies a read on the same running SDK client after grant revocation. Codex source/authority validation is reported only when its completed tool results expose that metadata. This probe does not qualify revocation on a persistent Codex connection. Its output contains only qualification results, operation names and counts; it does not save Codex JSONL or record text. Intended-device Passkey/PRF checks, owner-selected real data disclosure and hosted Agent activation remain separate work.
 
 ## Priorities and acceptance gates
 
