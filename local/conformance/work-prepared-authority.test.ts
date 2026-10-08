@@ -560,8 +560,8 @@ test('pre-existing weak rows cannot be silently promoted; missing prepared assoc
   }
 });
 
-test('0006 preserves legacy OP/work rows without backfill and rejects remote identity reuse', async () => {
-  const f = await fixture('0005');
+test('0008 preserves legacy OP/work rows without backfill and rejects remote identity reuse', async () => {
+  const f = await fixture('0007');
   try {
     await f.call({ action: 'resolved-request', request: f.request });
     const tables = (
@@ -576,7 +576,7 @@ test('0006 preserves legacy OP/work rows without backfill and rejects remote ide
     const before = await Promise.all(tables.map(rows));
     const migration = await readFile(
       new URL(
-        '../../crates/worker/work-migrations/0006_work_prepared_authority.sql',
+        '../../crates/worker/work-migrations/0008_work_prepared_authority.sql',
         import.meta.url,
       ),
       'utf8',

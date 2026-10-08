@@ -455,8 +455,8 @@ test('source plaintext release checks independent checkpoint before RPC and agai
   }
 });
 
-test('0009 preserves all previous data and supplies no automatic authority enrollment', async () => {
-  const f = await fixture(false, '0008');
+test('0011 preserves all previous data and supplies no automatic authority enrollment', async () => {
+  const f = await fixture(false, '0010');
   try {
     const names = (
       await f.DB.prepare(
@@ -466,7 +466,7 @@ test('0009 preserves all previous data and supplies no automatic authority enrol
     const before = await f.DB.batch(names.map((name) => f.DB.prepare(`SELECT * FROM ${name}`)));
     const migration = await readFile(
       new URL(
-        '../../crates/worker/work-migrations/0009_work_authority_checkpoint.sql',
+        '../../crates/worker/work-migrations/0011_work_authority_checkpoint.sql',
         import.meta.url,
       ),
       'utf8',
@@ -782,8 +782,8 @@ test('authority audit abort rolls back the protected change and closes the SQL f
   }
 });
 
-test('0010 preserves unenrolled 0009 history and does not retroactively certify authority', async () => {
-  const f = await fixture(false, '0009');
+test('0012 preserves unenrolled 0011 history and does not retroactively certify authority', async () => {
+  const f = await fixture(false, '0011');
   try {
     const tables = (
       await f.DB.prepare(
@@ -792,7 +792,7 @@ test('0010 preserves unenrolled 0009 history and does not retroactively certify 
     ).results.map((r) => r.name);
     const before = await f.DB.batch(tables.map((t) => f.DB.prepare(`SELECT * FROM ${t}`)));
     const migration = await readFile(
-      new URL('../../crates/worker/work-migrations/0010_op_authority_frames.sql', import.meta.url),
+      new URL('../../crates/worker/work-migrations/0012_op_authority_frames.sql', import.meta.url),
       'utf8',
     );
     await f.DB.batch(splitSqlQuery(migration).map((s) => f.DB.prepare(s)));

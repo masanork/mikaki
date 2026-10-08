@@ -1,6 +1,6 @@
 # ADR 0016: Personal context across repositories with bounded workload delegation
 
-**Status:** Accepted product and responsibility direction, 2026-10-06. The [portable Rust domain contract](../workload-profile-v1.md) has been carried onto current main. Earlier D1, Worker, UI and Artifacts qualification is retained in a pre-main snapshot; it does not qualify integration with main's fresh schema. See the [main integration plan](../work-delegation-implementation.md). The full workload wire profile, product ingress, external integration and rollout below remain proposals.
+**Status:** Accepted product and responsibility direction, 2026-10-06. The [portable Rust domain contract](../workload-profile-v1.md) and [fresh-schema D1/custody foundation](../work-store-main-integration.md) are locally qualified on current main. [Independent checkpoint/OP framing](../work-authority-checkpoint.md), owner/source transport and [initial-effect maintenance](../work-artifacts-effect-gate.md) are also locally qualified under the [main plan](../work-delegation-implementation.md). Product screens, remote journal reconciliation and activation remain gated. The full workload wire profile, product ingress, external integration and rollout below remain proposals.
 
 **Research reviewed:** 2026-10-06. This is an architecture decision report and design note, not implementation, interoperability or deployment evidence.
 

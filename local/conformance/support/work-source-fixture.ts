@@ -71,7 +71,7 @@ export async function createSourceFixture(options?: {
   );
   const config = {
     name: 'source-owner',
-    main: `${root}/local/generated/work-store/worker.mjs`,
+    main: `${root}/local/generated/work-store-main/worker.mjs`,
     compatibility_date: '2026-10-06',
     vars: {
       LOCAL_WORK_QUALIFICATION: 'true',

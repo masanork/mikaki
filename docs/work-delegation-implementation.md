@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** Main integration checkpoint, 2026-10-08 JST. The reviewed ADR and portable core are restored on a topic branch based on current main. Earlier D1, Worker, UI and Artifacts work is preserved for integration with main's fresh schema. No production activation is included.
+**Status:** M1–M4 locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing and initial-effect maintenance are integrated. Product review screens, productive upload/readback and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -21,7 +21,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | Increment | Outcome and qualification gate | State |
 | --- | --- | --- |
 | M1: Portable rules/decisions | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass. | Complete locally: 35 unit cases plus one compile-fail case. |
-| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 94 current-main qualification cases. |
+| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Pending on main. |
@@ -77,3 +77,9 @@ M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 1
 Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
 
 Next: M5 integrates owner source/copy review with current product screens. M6 then qualifies productive upload/readback and fresh one-time mint/release; existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+
+Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
+
+The reconciled current suite passes **162/162 cases** (M2 96 + M3 16 + M4 50). It preserves both parallel M2 ingress/enrollment boundary cases and checks the entire additive chain against existing schema definitions and Owner Vault rows. Node/Worker types, full formatting and documentation checks pass after reconciliation; the production-baseline/Owner-schema/release-inventory subset passes **11/11**. The fixture output is consistently `local/generated/work-store-main/`; pre-main `work-store/` output and protected remote journals are not rewritten.
+
+A final main-ref read found `f03d656583f934ffe290bd45c81f73fa927a06a4`: one automatic metrics-only commit after `1f0dd3c`. Its three metrics files are included; it changes no application source, dependency or migration.

@@ -383,8 +383,8 @@ test('private archive quotas fence reservation before R2 I/O; capture and cleanu
   }
 });
 
-test('0008 preserves all prior data without certifying candidate payload, and captured SQL cannot bypass cleanup guard', async () => {
-  const f = await fixture('0007');
+test('0010 preserves all prior data without certifying candidate payload, and captured SQL cannot bypass cleanup guard', async () => {
+  const f = await fixture('0009');
   try {
     const tables = (
       await f.DB.prepare(
@@ -394,7 +394,7 @@ test('0008 preserves all prior data without certifying candidate payload, and ca
     const before = await f.DB.batch(tables.map((t) => f.DB.prepare(`SELECT * FROM ${t}`)));
     const sql = await readFile(
       new URL(
-        '../../crates/worker/work-migrations/0008_work_candidate_payload.sql',
+        '../../crates/worker/work-migrations/0010_work_candidate_payload.sql',
         import.meta.url,
       ),
       'utf8',

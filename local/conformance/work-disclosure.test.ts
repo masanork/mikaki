@@ -113,7 +113,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
   const parent = await mkdtemp(join(tmpdir(), 'mikaki-disclosure-d1-'));
   const config = {
     name: 'disclosure-a',
-    main: `${root}/local/generated/work-store/worker.mjs`,
+    main: `${root}/local/generated/work-store-main/worker.mjs`,
     compatibility_date: '2026-10-03',
     vars: { LOCAL_WORK_QUALIFICATION: 'true', WORK_OWNER_API_ENABLED: 'true' },
     d1_databases: [
@@ -925,7 +925,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
     );
 
     await t.test(
-      '0005 preserves all earlier records, adds no allocation and retains referenced disclosures',
+      '0007 preserves all earlier records, adds no allocation and retains referenced disclosures',
       async () => {
         const o = await owner('preparation-migration');
         const md = await disclosure(o, 'preparation-migration');
@@ -940,7 +940,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
           sql.exec('PRAGMA foreign_keys=ON');
           await applySqliteBaseline(sql);
           for (const name of (await readdir(directory))
-            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 5)
+            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 7)
             .sort())
             sql.exec(await readFile(new URL(name, directory), 'utf8'));
           for (const table of [
@@ -995,7 +995,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
               .all() as { name: string }[]
           ).map((r) => r.name);
           const before = tables.map((name) => sql.prepare(`SELECT * FROM ${name}`).all());
-          sql.exec(await readFile(new URL('0005_work_preparation_intents.sql', directory), 'utf8'));
+          sql.exec(await readFile(new URL('0007_work_preparation_intents.sql', directory), 'utf8'));
           assert.deepEqual(
             tables.map((name) => sql.prepare(`SELECT * FROM ${name}`).all()),
             before,
@@ -1499,7 +1499,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
     );
 
     await t.test(
-      '0004 preserves existing v1/v2 metadata and associations without certifying legacy selection authority',
+      '0006 preserves existing v1/v2 metadata and associations without certifying legacy selection authority',
       async () => {
         const sql = new DatabaseSync(':memory:');
         const directory = new URL('../../crates/worker/work-migrations/', import.meta.url);
@@ -1507,7 +1507,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
           sql.exec('PRAGMA foreign_keys=ON');
           await applySqliteBaseline(sql);
           for (const name of (await readdir(directory))
-            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 4)
+            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 6)
             .sort())
             sql.exec(await readFile(new URL(name, directory), 'utf8'));
           async function copy(table: string, where = '', parameters: unknown[] = []) {
@@ -1587,7 +1587,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
           ).map((r) => r.name);
           const before = tables.map((name) => sql.prepare(`SELECT * FROM ${name}`).all());
           sql.exec(
-            await readFile(new URL('0004_work_registered_disclosures.sql', directory), 'utf8'),
+            await readFile(new URL('0006_work_registered_disclosures.sql', directory), 'utf8'),
           );
           assert.deepEqual(
             tables.map((name) => sql.prepare(`SELECT * FROM ${name}`).all()),
@@ -1860,7 +1860,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
     );
 
     await t.test(
-      '0002 preserves previous OP and work records without certifying legacy disclosure facts',
+      '0004 preserves previous OP and work records without certifying legacy disclosure facts',
       async () => {
         const sql = new DatabaseSync(':memory:'),
           directory = new URL('../../crates/worker/work-migrations/', import.meta.url);
@@ -1868,7 +1868,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
           sql.exec('PRAGMA foreign_keys=ON');
           await applySqliteBaseline(sql);
           for (const name of (await readdir(directory))
-            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 2)
+            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 4)
             .sort())
             sql.exec(await readFile(new URL(name, directory), 'utf8'));
           const tables = [
@@ -1899,7 +1899,7 @@ test('Git disclosure and bounded authority lifecycle on actual Rust/workerd/D1',
             )
             .all();
           sql.exec('BEGIN IMMEDIATE');
-          sql.exec(await readFile(new URL('0002_work_disclosure_budget.sql', directory), 'utf8'));
+          sql.exec(await readFile(new URL('0004_work_disclosure_budget.sql', directory), 'utf8'));
           sql.exec('COMMIT');
           tables.forEach((table, i) =>
             assert.deepEqual(sql.prepare(`SELECT * FROM ${table}`).all(), rows[i]),

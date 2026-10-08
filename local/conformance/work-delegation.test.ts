@@ -12,7 +12,7 @@ test('Rust managed-work authority on real workerd/D1', async (t) => {
   const root = new URL('../..', import.meta.url).pathname;
   const config = {
     name: 'work-a',
-    main: `${root}/local/generated/work-store/worker.mjs`,
+    main: `${root}/local/generated/work-store-main/worker.mjs`,
     compatibility_date: '2026-10-03',
     vars: { LOCAL_WORK_QUALIFICATION: 'true' },
     d1_databases: [
@@ -26,7 +26,13 @@ test('Rust managed-work authority on real workerd/D1', async (t) => {
   };
   const harness = createTestHarness({
     root,
-    workers: [{ config }, { config: { ...config, name: 'work-b' } }],
+    workers: [
+      { config },
+      { config: { ...config, name: 'work-b' } },
+      {
+        config: { ...config, name: 'work-disabled', vars: { LOCAL_WORK_QUALIFICATION: 'false' } },
+      },
+    ],
   });
   try {
     await harness.listen();
@@ -60,6 +66,20 @@ test('Rust managed-work authority on real workerd/D1', async (t) => {
     }
     const session = await owner('owner-a');
     const foreign = await owner('owner-b');
+    await t.test(
+      'qualification ingress requires its flag and a fixed POST fixture route',
+      async () => {
+        for (const [target, path, method] of [
+          [harness.getWorker('work-disabled'), '/fixture', 'POST'],
+          [a, '/fixture', 'GET'],
+          [a, '/unknown', 'POST'],
+          [a, '/work/requests', 'POST'],
+        ] as const) {
+          assert.equal((await target.fetch(`https://work.test${path}`, { method })).status, 404);
+        }
+      },
+    );
+
     async function call(input: Record<string, unknown>, target = a, status = 200): Promise<any> {
       const response = await target.fetch('https://work.test/fixture', {
         method: 'POST',
@@ -524,20 +544,70 @@ test('Rust managed-work authority on real workerd/D1', async (t) => {
         );
       },
     );
+    await t.test(
+      'enrolled authority refuses new writes when its independent binding is absent',
+      async () => {
+        const activeSession = await owner('owner-enrolled');
+        const request = {
+          profile: 'mikaki-managed-work-v1',
+          request_id: 'enrolled-request',
+          revision: 1,
+          goal: 'Check the authority floor',
+          acceptance: 'No unfenced write',
+          code_repository: 'source:enrolled',
+          base_commit: 'a'.repeat(40),
+          disclosure_digest: 'c'.repeat(64),
+          recipient: 'launcher-client',
+          workload: 'managed-agent',
+          task_repository: 'task:enrolled',
+          adoption_repository: 'field:enrolled',
+          adoption_ref: 'refs/heads/trial',
+          expected_head: 'a'.repeat(40),
+          operations: ['repo.proposal.submit'],
+          deadline: clock() + 600,
+        };
+        await call({ action: 'request', session: activeSession, request });
+        const before = await DB.prepare('SELECT * FROM work_request_head WHERE request_id=?')
+          .bind(request.request_id)
+          .first();
+        const auditBefore = await count('work_audit');
+        await DB.prepare('INSERT INTO work_authority_checkpoint VALUES(1,?,?,0,?)')
+          .bind('work-qualification-authority', 'a'.repeat(64), 'b'.repeat(64))
+          .run();
+        assert.equal(
+          (
+            await denied({
+              action: 'request',
+              session: activeSession,
+              request: { ...request, revision: 2 },
+            })
+          ).error,
+          'work_denied:StaleAuthority',
+        );
+        assert.deepEqual(
+          await DB.prepare('SELECT * FROM work_request_head WHERE request_id=?')
+            .bind(request.request_id)
+            .first(),
+          before,
+        );
+        assert.equal(await count('work_audit'), auditBefore);
+        // The enrolled marker is retained; never reset the authority to regain the local exemption.
+        assert.equal(await count('work_authority_checkpoint'), 1);
+      },
+    );
   } finally {
     await harness.close();
   }
 });
 
-test('0001 upgrades the fresh Owner Vault baseline without changing existing OP/Vault authority', async () => {
+test('complete opt-in work chain preserves the fresh Owner Vault baseline and every existing schema definition', async () => {
   const directory = new URL('../../crates/worker/migrations/', import.meta.url);
   const names = (await readdir(directory)).filter((x) => x.endsWith('.sql')).sort();
   assert.equal(new Set(names.map((x) => x.slice(0, 4))).size, names.length);
   const db = new DatabaseSync(':memory:');
   try {
     db.exec('PRAGMA foreign_keys=ON');
-    for (const name of names.filter((x) => Number(x.slice(0, 4)) < 47))
-      db.exec(await readFile(new URL(name, directory), 'utf8'));
+    for (const name of names) db.exec(await readFile(new URL(name, directory), 'utf8'));
     const now = Math.floor(Date.now() / 1000);
     db.exec(
       "INSERT INTO account_security VALUES('owner',0,1); INSERT INTO credential VALUES('passkey','owner',1)",
@@ -575,12 +645,9 @@ test('0001 upgrades the fresh Owner Vault baseline without changing existing OP/
       .prepare("SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name")
       .all();
     db.exec('BEGIN IMMEDIATE');
-    db.exec(
-      await readFile(
-        new URL('../../crates/worker/work-migrations/0001_work_delegation.sql', import.meta.url),
-        'utf8',
-      ),
-    );
+    const workDirectory = new URL('../../crates/worker/work-migrations/', import.meta.url);
+    for (const name of (await readdir(workDirectory)).filter((x) => x.endsWith('.sql')).sort())
+      db.exec(await readFile(new URL(name, workDirectory), 'utf8'));
     db.exec('COMMIT');
     tables.forEach((table, index) =>
       assert.deepEqual(db.prepare(`SELECT * FROM ${table}`).all(), rows[index]),

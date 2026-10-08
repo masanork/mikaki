@@ -11,7 +11,7 @@ test('OP owner work transport uses live SSO, bounded projections and guarded rev
   const root = new URL('../..', import.meta.url).pathname;
   const config = {
     name: 'work-owner-a',
-    main: `${root}/local/generated/work-store/worker.mjs`,
+    main: `${root}/local/generated/work-store-main/worker.mjs`,
     compatibility_date: '2026-10-03',
     vars: { LOCAL_WORK_QUALIFICATION: 'true', WORK_OWNER_API_ENABLED: 'true' },
     d1_databases: [

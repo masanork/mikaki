@@ -456,8 +456,8 @@ test('all six known credentials must close before independently receipted prepar
   }
 });
 
-test('0007 retains all prior OP rows without credential backfill and rolls key rotation back on audit failure', async () => {
-  const f = await fixture('0006');
+test('0009 retains all prior OP rows without credential backfill and rolls key rotation back on audit failure', async () => {
+  const f = await fixture('0008');
   try {
     const tables = (
       await f.DB.prepare(
@@ -469,7 +469,7 @@ test('0007 retains all prior OP rows without credential backfill and rolls key r
     );
     const sql = await readFile(
       new URL(
-        '../../crates/worker/work-migrations/0007_work_credential_custody.sql',
+        '../../crates/worker/work-migrations/0009_work_credential_custody.sql',
         import.meta.url,
       ),
       'utf8',

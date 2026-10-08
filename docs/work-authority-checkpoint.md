@@ -6,9 +6,9 @@ is ported from the preserved pre-main work; qualification below uses the current
 Owner Vault baseline and dependency versions. No production checkpoint, binding
 or migration is activated.
 
-[Work migration 0009](../crates/worker/work-migrations/0009_work_authority_checkpoint.sql)
+[Work migration 0011](../crates/worker/work-migrations/0011_work_authority_checkpoint.sql)
 adds a single authority/epoch/sequence/tip marker without enrolling existing
-data. [Migration 0010](../crates/worker/work-migrations/0010_op_authority_frames.sql)
+data. [Migration 0012](../crates/worker/work-migrations/0012_op_authority_frames.sql)
 requires a transaction-scoped frame for enrolled account, credential, Passkey,
 SSO, account-role and runtime-policy changes. A deferred foreign key requires
 the frame to close within the same transaction. Ordinary OP operations keep

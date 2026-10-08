@@ -27,7 +27,7 @@ export async function preparationFixture(
   },
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
-  const modulesRoot = join(root, 'local/generated/work-store');
+  const modulesRoot = join(root, 'local/generated/work-store-main');
   const scripts = (await readdir(modulesRoot, { recursive: true })).filter((name) =>
     name.endsWith('.js'),
   );
@@ -272,7 +272,7 @@ export async function preparationFixture(
       const statements = splitSqlQuery(await readFile(new URL(name, migrations), 'utf8'));
       await DB.batch(statements.map((s) => DB.prepare(s)));
     }
-    await applyWorkMigrations(DB, throughMigration ? Number(throughMigration) : 10);
+    await applyWorkMigrations(DB, throughMigration ? Number(throughMigration) : 12);
     await activateWorkerPolicy(
       DB,
       JSON.parse(

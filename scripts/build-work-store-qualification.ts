@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { build } from 'esbuild';
 
 const root = new URL('../', import.meta.url).pathname;
-const out = join(root, 'local/generated/work-store');
+const out = join(root, 'local/generated/work-store-main');
 const lock = await readFile(join(root, 'Cargo.lock'), 'utf8');
 const version = lock.match(/name = "wasm-bindgen"\nversion = "([^"]+)"/)?.[1];
 if (!version) throw new Error('Locked wasm-bindgen version is missing');
@@ -67,7 +67,7 @@ await writeFile(join(out, 'cargo.log'), `${compilation.stdout ?? ''}${compilatio
 if (compilation.status !== 0) {
   console.error(String(compilation.stderr ?? compilation.error).slice(-12000));
   throw new Error(
-    'Qualification fixture compilation failed; see local/generated/work-store/cargo.log',
+    'Qualification fixture compilation failed; see local/generated/work-store-main/cargo.log',
   );
 }
 execFileSync(

@@ -6,6 +6,8 @@
   "scripts": {
     "postinstall": "npm ci --prefix tools/svelte-check --ignore-scripts",
     "build:policy": "node scripts/build_policy.ts",
+    "build:work-store-fixture": "npm run build:policy && node scripts/build-work-store-qualification.ts",
+    "test:work-store": "npm run build:work-store-fixture && node --test --test-concurrency=1 local/conformance/work-delegation.test.ts local/conformance/work-disclosure.test.ts local/conformance/work-credential-custody.test.ts local/conformance/work-candidate-payload.test.ts scripts/work-git-disclosure.test.ts",
     "generate:i18n": "paraglide-js compile --project project.inlang --outdir local/ui/src/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale && paraglide-js compile --project project.inlang --outdir crates/worker/ui/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale",
     "build:wasm": "wasm-pack build crates/browser-wasm --target web --release --out-dir pkg -- --locked",
     "build:helpdesk": "wasm-pack build crates/helpdesk-rp --target bundler --release --out-dir pkg -- --locked",

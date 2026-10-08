@@ -6,11 +6,11 @@ separate from the production migration directory and is applied explicitly by
 the local work qualification fixtures. No Wrangler binding, deployment or
 production enrollment is supplied by this integration.
 
-The eight initial migrations preserve the earlier managed-work schema while
+Numbering continues at 0003 after the production baseline. The eight initial migrations preserve the earlier managed-work schema while
 using the fresh Owner Vault baseline. They create no owner sources, disclosures,
 grants, issuer identities, credentials or external resources automatically.
 
-Migrations 0009 and 0010 add checkpoint and covered OP transaction frames without
+Migrations 0011 and 0012 add checkpoint and covered OP transaction frames without
 automatic enrollment. Applying the schema alone enables no managed-work effects.
 
 Run `npm run test:work-delegation` from the repository root to build the actual

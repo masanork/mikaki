@@ -197,7 +197,7 @@ test('owner source access and real Git bytes through native OP/D1/private RPC', 
       },
     );
     await t.test(
-      '0003 preserves previous OP/work schema and rows without inventing source access',
+      '0005 preserves previous OP/work schema and rows without inventing source access',
       async () => {
         const sql = new DatabaseSync(':memory:'),
           directory = new URL('../../crates/worker/work-migrations/', import.meta.url);
@@ -205,7 +205,7 @@ test('owner source access and real Git bytes through native OP/D1/private RPC', 
           sql.exec('PRAGMA foreign_keys=ON');
           await applySqliteBaseline(sql);
           for (const name of (await readdir(directory))
-            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 3)
+            .filter((n) => n.endsWith('.sql') && Number(n.slice(0, 4)) < 5)
             .sort())
             sql.exec(await readFile(new URL(name, directory), 'utf8'));
           const tables = [
@@ -236,7 +236,7 @@ test('owner source access and real Git bytes through native OP/D1/private RPC', 
             )
             .all();
           sql.exec('BEGIN IMMEDIATE');
-          sql.exec(await readFile(new URL('0003_work_sources.sql', directory), 'utf8'));
+          sql.exec(await readFile(new URL('0005_work_sources.sql', directory), 'utf8'));
           sql.exec('COMMIT');
           tables.forEach((table, i) =>
             assert.deepEqual(sql.prepare(`SELECT * FROM ${table}`).all(), before[i]),
