@@ -355,7 +355,7 @@ function assertCalls(
     throw new Error('codex_tool_calls_incomplete');
 }
 
-function verifyStructuredOutput(
+export function verifyStructuredOutput(
   calls: readonly CompletedMcpCall[],
   tool: 'list' | 'search' | 'read',
   recordId: RecordId,

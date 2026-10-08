@@ -5,6 +5,7 @@ import {
   completedMcpCalls,
   exactAuditDelta,
   findToolOutputs,
+  verifyStructuredOutput,
 } from './probe-codex-v2-local-records.ts';
 import { toolOutputs } from '../crates/agent-worker/tool-results.ts';
 
@@ -174,6 +175,7 @@ test('Codex JSONL structured result parsing validates v2 read metadata when expo
 });
 
 test('Codex structuredContent is retained even when malformed so validation can fail closed', () => {
+  const fixture = makeSyntheticRecord('name', 1_800_000_000);
   const events = [
     {
       type: 'item.completed',
@@ -185,6 +187,25 @@ test('Codex structuredContent is retained even when malformed so validation can 
       },
     },
   ];
-  assert.deepEqual(findToolOutputs(events, 'read'), [{ result_version: 99 }]);
-  assert.throws(() => toolOutputs.read.parse(findToolOutputs(events, 'read')[0]));
+  const jsonl = events.map((event) => JSON.stringify(event)).join('\n');
+  const calls = completedMcpCalls(jsonl);
+  assert.deepEqual(findToolOutputs(calls[0]!.event, 'read'), [{ result_version: 99 }]);
+  assert.throws(() =>
+    verifyStructuredOutput(calls, 'read', 'name', fixture.source, fixture.authority),
+  );
+  assert.equal(
+    verifyStructuredOutput(
+      completedMcpCalls(
+        JSON.stringify({
+          type: 'item.completed',
+          item: { type: 'mcp_tool_call', server: 'mikaki_v2_local', tool: 'mikaki_read' },
+        }),
+      ),
+      'read',
+      'name',
+      fixture.source,
+      fixture.authority,
+    ),
+    'not_exposed',
+  );
 });
