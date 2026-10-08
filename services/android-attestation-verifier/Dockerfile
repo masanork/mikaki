@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jdk AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git unzip && rm -rf /var/lib/apt/lists/*
-RUN git clone https://github.com/android/keyattestation /opt/keyattestation && git -C /opt/keyattestation checkout --detach 55c35040a1b5b72e6d63bfb150c5c68a175c1462
+RUN git clone https://github.com/android/keyattestation /opt/keyattestation && git -C /opt/keyattestation checkout --detach 3f550f94a9e3c010dda7cdcad8bca764cd76d4f4
 WORKDIR /opt/service
 COPY . .
 ENV MIKAKI_KEYATTESTATION_CHECKOUT=/opt/keyattestation

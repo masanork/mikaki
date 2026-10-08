@@ -9,7 +9,7 @@ import java.security.MessageDigest
 import java.time.YearMonth
 import java.util.Base64
 
-internal const val REVISION = "55c35040a1b5b72e6d63bfb150c5c68a175c1462"
+internal const val REVISION = "3f550f94a9e3c010dda7cdcad8bca764cd76d4f4"
 
 internal fun checkKeys(o: JsonObject, required: Set<String>, optional: Set<String> = emptySet()) {
   require(o.keySet().containsAll(required) && o.keySet().all { it in required || it in optional })
