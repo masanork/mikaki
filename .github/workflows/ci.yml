@@ -41,6 +41,7 @@ jobs:
           npm run test:sql
           npm run test:release
           node --test scripts/static-sql.test.ts
+          node scripts/check-upstream-pins.ts
           npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
@@ -257,9 +258,10 @@ jobs:
           profile: worker
       - name: Fetch pinned upstream verifier
         run: |
+          revision="$(node scripts/check-upstream-pins.ts --revision)"
           printf 'MIKAKI_KEYATTESTATION_CHECKOUT=%s/android-keyattestation\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           git clone https://github.com/android/keyattestation "$RUNNER_TEMP/android-keyattestation"
-          git -C "$RUNNER_TEMP/android-keyattestation" checkout --detach 55c35040a1b5b72e6d63bfb150c5c68a175c1462
+          git -C "$RUNNER_TEMP/android-keyattestation" checkout --detach "$revision"
       - name: JVM verifier unit tests and distribution
         run: apps/mikaki-client/src-tauri/gen/android/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
       - run: npm ci

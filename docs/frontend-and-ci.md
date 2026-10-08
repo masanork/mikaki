@@ -4,6 +4,8 @@ The local login and Worker-served login, Vault, administration, and registration
 
 ## Frontend boundary
 
+The remaining compatibility boundaries are required by current upstream interfaces: Svelte checker 4.7.6 embeds the TypeScript 6 compiler API; jsonwebtoken 11.1.0 exposes signature 2 and requires getrandom 0.2 on Wasm; openidconnect 4.0.1 brings its own older RustCrypto family into the native client. The Tauri Android dependencies still require the legacy Kotlin/AGP DSL switches. Remove these boundaries when the respective upstream supports the upgraded interfaces, while retaining full diagnostics and the independent interoperability tests. [TypeScript 7.0 does not publish a compiler API](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
+
 Keep initial screens focused on login, first client connection, account selection, credentials, and session/connection management. Use Svelte runes and small modules, native HTML controls, and shared design tokens. Serve static UI on the Worker origin while Rust handles protocol endpoints, final authorization, and cookies. The browser may display a server bound transaction but cannot decide identity or authorization. Locale changes must not recreate state, nonce, PKCE, or consent context.
 
 Keep WebAuthn calls in a thin adapter. PRF output and key material stay out of component display state and persistent stores; ordinary login does not request PRF. Do not render user, client, or translation text as HTML. Test CSP, focus order, screen reader messages, cancellation, and retries in real browsers. Avoid external scripts on authentication/unlock pages.
