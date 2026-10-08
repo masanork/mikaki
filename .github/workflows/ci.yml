@@ -263,7 +263,7 @@ jobs:
           git clone https://github.com/android/keyattestation "$RUNNER_TEMP/android-keyattestation"
           git -C "$RUNNER_TEMP/android-keyattestation" checkout --detach "$revision"
       - name: JVM verifier unit tests and distribution
-        run: apps/mikaki-client/src-tauri/gen/android/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
+        run: services/android-attestation-verifier/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
       - run: npm ci
       - name: Build broker and test the actual bridge/JVM chain
         run: |
