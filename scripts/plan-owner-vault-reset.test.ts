@@ -11,9 +11,24 @@ import {
   createResetPlan,
   readMigrations,
   rehearseSchema,
+  parseWorkerConfig,
 } from './plan-owner-vault-reset.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+
+test('Worker JSONC accepts comments/trailing commas and rejects partial or invalid configuration', () => {
+  assert.deepEqual(parseWorkerConfig('// worker\n{"name":"fixture",}', 'fixture.jsonc'), {
+    name: 'fixture',
+  });
+  for (const source of [
+    '{"name":"fixture", invalid}',
+    '[{"name":"fixture"}]',
+    'null',
+    '{"name":42}',
+    '{}',
+  ])
+    assert.throws(() => parseWorkerConfig(source, 'fixture.jsonc'), /Invalid|Missing/);
+});
 
 test('reset planning rehearses the complete main schema and records source/config/SQL digests', () => {
   const plan = createResetPlan(root);

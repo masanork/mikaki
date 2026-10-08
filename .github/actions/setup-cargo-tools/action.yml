@@ -2,7 +2,7 @@ name: Pinned Cargo tools
 description: Restore and install version-pinned CI tools in a dedicated directory
 inputs:
   profile:
-    description: Tool set (verify, audit, worker, or release)
+    description: Tool set (verify, audit, worker, probe, or release)
     required: true
 runs:
   using: composite

@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import ts from '@typescript/typescript6';
+import { parse, type ParseError } from 'jsonc-parser';
 
 type Migration = { name: string; sha256: string; sql: string };
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string };
@@ -109,14 +109,20 @@ export function assertFreshBaselineTarget(objects: { name: string }[]): void {
   if (remaining.length) throw new Error('Baseline requires a fresh database with no old ledger');
 }
 
-function config(root: string, relative: string): WorkerConfig {
-  const parsed = ts.parseConfigFileTextToJson(relative, readFileSync(join(root, relative), 'utf8'));
-  const result: unknown = parsed.config;
-  if (parsed.error || !result || typeof result !== 'object')
+export function parseWorkerConfig(source: string, relative: string): WorkerConfig {
+  const errors: ParseError[] = [];
+  const result: unknown = parse(source, errors, {
+    allowTrailingComma: true,
+  });
+  if (errors.length || !result || typeof result !== 'object' || Array.isArray(result))
     throw new Error(`Invalid Worker configuration: ${relative}`);
   const value = result as WorkerConfig;
   if (typeof value.name !== 'string' || !value.name) throw new Error('Missing Worker name');
   return value;
+}
+
+function config(root: string, relative: string): WorkerConfig {
+  return parseWorkerConfig(readFileSync(join(root, relative), 'utf8'), relative);
 }
 
 export function createResetPlan(root: string) {
