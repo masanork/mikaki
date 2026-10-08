@@ -55,16 +55,15 @@ pub fn validate_roots(roots: &[String], purpose: Purpose, now: u64) -> Result<()
 }
 const ERR: &str = "invalid_credential_certificate";
 fn ext<'a>(c: &'a Certificate, oid: &str) -> Result<&'a Extension, &'static str> {
-    c.tbs_certificate
-        .extensions
-        .as_ref()
+    c.tbs_certificate()
+        .extensions()
         .and_then(|es| es.iter().find(|e| e.extn_id.to_string() == oid))
         .ok_or(ERR)
 }
 fn public(c: &Certificate) -> Result<VerifyingKey, &'static str> {
     VerifyingKey::from_public_key_der(
-        &c.tbs_certificate
-            .subject_public_key_info
+        &c.tbs_certificate()
+            .subject_public_key_info()
             .to_der()
             .map_err(|_| ERR)?,
     )
@@ -75,23 +74,23 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
         return Err(ERR);
     }
     let c = Certificate::from_der(bytes).map_err(|_| ERR)?;
-    let t = &c.tbs_certificate;
-    let start = t.validity.not_before.to_unix_duration().as_secs();
-    let end = t.validity.not_after.to_unix_duration().as_secs();
-    if t.version != Version::V3
-        || t.serial_number.as_bytes().len() > 20
-        || t.serial_number.as_bytes().iter().all(|b| *b == 0)
+    let t = c.tbs_certificate();
+    let start = t.validity().not_before.to_unix_duration().as_secs();
+    let end = t.validity().not_after.to_unix_duration().as_secs();
+    if t.version() != Version::V3
+        || t.serial_number().as_bytes().len() > 20
+        || t.serial_number().as_bytes().iter().all(|b| *b == 0)
         || now < start
         || now >= end
-        || t.signature != c.signature_algorithm
-        || c.signature_algorithm.oid.to_string() != "1.2.840.10045.4.3.2"
-        || c.signature_algorithm.parameters.is_some()
+        || t.signature() != c.signature_algorithm()
+        || c.signature_algorithm().oid.to_string() != "1.2.840.10045.4.3.2"
+        || c.signature_algorithm().parameters.is_some()
     {
         return Err(ERR);
     }
     public(&c)?;
     let mut ids = HashSet::new();
-    for e in t.extensions.as_ref().ok_or(ERR)? {
+    for e in t.extensions().ok_or(ERR)? {
         if !ids.insert(e.extn_id)
             || (e.critical
                 && !(e.extn_id.to_string() == "2.5.29.15"
@@ -147,8 +146,8 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
         }
         let mut country = false;
         let mut cn = false;
-        for rdn in &t.subject.0 {
-            for at in rdn.0.iter() {
+        for rdn in t.subject().iter_rdn() {
+            for at in rdn.iter() {
                 let oid = at.oid.to_string();
                 if oid == "2.5.4.6" {
                     let b = at.value.value();
@@ -180,7 +179,7 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
         let ski = SubjectKeyIdentifier::from_der(ext(&c, "2.5.29.14")?.extn_value.as_bytes())
             .map_err(|_| ERR)?;
         let bits = t
-            .subject_public_key_info
+            .subject_public_key_info()
             .subject_public_key
             .as_bytes()
             .ok_or(ERR)?;
@@ -220,13 +219,13 @@ pub fn pinned_leaf(
     now: u64,
 ) -> Result<u64, &'static str> {
     let c = parse(bytes, false, purpose, now)?;
-    if c.tbs_certificate.issuer == c.tbs_certificate.subject
+    if c.tbs_certificate().issuer() == c.tbs_certificate().subject()
         || &PublicJwk::from_key(&public(&c)?) != expected
     {
         return Err(ERR);
     }
-    Ok(c.tbs_certificate
-        .validity
+    Ok(c.tbs_certificate()
+        .validity()
         .not_after
         .to_unix_duration()
         .as_secs())
@@ -236,8 +235,8 @@ pub fn pinned_leaf(
 pub fn not_before(bytes: &[u8]) -> Result<u64, &'static str> {
     Ok(Certificate::from_der(bytes)
         .map_err(|_| ERR)?
-        .tbs_certificate
-        .validity
+        .tbs_certificate()
+        .validity()
         .not_before
         .to_unix_duration()
         .as_secs())
@@ -276,8 +275,8 @@ pub fn verify(
         }
         let c = parse(b, i != 0, purpose, now)?;
         deadline = deadline.min(
-            c.tbs_certificate
-                .validity
+            c.tbs_certificate()
+                .validity()
                 .not_after
                 .to_unix_duration()
                 .as_secs(),
@@ -287,20 +286,20 @@ pub fn verify(
     // Extra unrelated intermediates and self-issued CA certificates cannot ride in x5c.
     for b in &chain[1..] {
         let c = parse(b, true, purpose, now)?;
-        if c.tbs_certificate.issuer == c.tbs_certificate.subject {
+        if c.tbs_certificate().issuer() == c.tbs_certificate().subject() {
             return Err(ERR);
         }
     }
     for (index, pair) in chain.windows(2).enumerate() {
         let child = parse(&pair[0], index != 0, purpose, now)?;
         let parent = parse(&pair[1], true, purpose, now)?;
-        if child.tbs_certificate.issuer != parent.tbs_certificate.subject {
+        if child.tbs_certificate().issuer() != parent.tbs_certificate().subject() {
             return Err(ERR);
         }
         public(&parent)?
             .verify(
-                &child.tbs_certificate.to_der().map_err(|_| ERR)?,
-                &Signature::from_der(child.signature.as_bytes().ok_or(ERR)?).map_err(|_| ERR)?,
+                &child.tbs_certificate().to_der().map_err(|_| ERR)?,
+                &Signature::from_der(child.signature().as_bytes().ok_or(ERR)?).map_err(|_| ERR)?,
             )
             .map_err(|_| ERR)?;
     }
@@ -312,29 +311,28 @@ pub fn verify(
             .ok_or(ERR)?;
         for b in &roots {
             let root = parse(b, true, purpose, now)?;
-            let t = &root.tbs_certificate;
-            if t.issuer != t.subject {
+            let t = root.tbs_certificate();
+            if t.issuer() != t.subject() {
                 return Err(ERR);
             }
             public(&root)?
                 .verify(
                     &t.to_der().map_err(|_| ERR)?,
-                    &Signature::from_der(root.signature.as_bytes().ok_or(ERR)?).map_err(|_| ERR)?,
+                    &Signature::from_der(root.signature().as_bytes().ok_or(ERR)?)
+                        .map_err(|_| ERR)?,
                 )
                 .map_err(|_| ERR)?;
             let ski =
                 SubjectKeyIdentifier::from_der(ext(&root, "2.5.29.14")?.extn_value.as_bytes())
                     .map_err(|_| ERR)?;
             let state = |c: &Certificate| {
-                c.tbs_certificate
-                    .subject
-                    .0
+                c.tbs_certificate()
+                    .subject()
                     .iter()
-                    .flat_map(|r| r.0.iter())
                     .find(|a| a.oid.to_string() == "2.5.4.8")
                     .map(|a| a.value.clone())
             };
-            if leaf.tbs_certificate.issuer == t.subject
+            if leaf.tbs_certificate().issuer() == t.subject()
                 && aki == ski.0
                 && state(&root).is_none_or(|s| state(&leaf) == Some(s))
             {

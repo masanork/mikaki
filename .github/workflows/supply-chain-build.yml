@@ -53,7 +53,7 @@ jobs:
           npm run test:worker-browser
       - name: Upload browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: attested-build-browser-failures-${{ github.sha }}
           path: artifacts/browser-failures/
@@ -92,51 +92,51 @@ jobs:
           PROMOTION_DIR: ${{ steps.promotion.outputs.promotion_dir }}
         run: npm run release:verify-upload -- "$PROMOTION_DIR"
       - name: Attest release inventory
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/release-manifest.json
       - name: Attest login asset inventory
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/login-assets.json
       - name: Attest upload inventory
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ steps.promotion.outputs.promotion_dir }}/upload-manifest.json
       - name: Attest build provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
       - name: Attest runtime SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
           sbom-path: artifacts/supply-chain/worker-rust.cdx.json
       - name: Attest UserInfo claim Worker provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
       - name: Attest UserInfo claim Worker SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
           sbom-path: artifacts/supply-chain/userinfo-claim-rust.cdx.json
       - name: Attest CBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
           sbom-path: artifacts/supply-chain/worker-crypto.cdx.json
       - name: Attest UserInfo claim Worker CBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
           sbom-path: artifacts/supply-chain/userinfo-claim-crypto.cdx.json
       - name: Attest Docs RP source and built assets
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-docs-rp.tar.gz
       - name: Upload Worker and inventories
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: attested-worker-${{ github.sha }}
           path: artifacts/

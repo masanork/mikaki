@@ -113,7 +113,7 @@ jobs:
       - name: Audit public website findability
         run: node website/audit-public.ts
       - name: Retain public website audit
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: website-findability-${{ github.run_id }}
           path: artifacts/website-findability.json
@@ -159,7 +159,7 @@ jobs:
           node scripts/check-web-signin-smoke.ts
       - name: Retain version-matched smoke evidence
         if: ${{ inputs.expected_version_id != '' && inputs.expected_source_commit != '' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: production-smoke-${{ github.run_id }}
           path: artifacts/production-smoke.json

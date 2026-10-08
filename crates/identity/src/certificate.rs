@@ -111,14 +111,14 @@ fn check_certificate_for_purpose(
         return Err("invalid_certificate_chain");
     }
     let cert = Certificate::from_der(bytes).map_err(|_| "invalid_certificate_chain")?;
-    let t = &cert.tbs_certificate;
+    let t = cert.tbs_certificate();
     if now.is_some_and(|now| {
-        now < t.validity.not_before.to_unix_duration().as_secs()
-            || now >= t.validity.not_after.to_unix_duration().as_secs()
+        now < t.validity().not_before.to_unix_duration().as_secs()
+            || now >= t.validity().not_after.to_unix_duration().as_secs()
     }) {
         return Err("invalid_certificate_chain");
     }
-    let extensions = t.extensions.as_ref().ok_or("invalid_certificate_chain")?;
+    let extensions = t.extensions().ok_or("invalid_certificate_chain")?;
     let mut seen = HashSet::new();
     for e in extensions {
         if !seen.insert(e.extn_id)
@@ -191,16 +191,16 @@ pub fn verify_reader_chain(
     }
     let leaf = check_certificate(&chain[0], Some(now), false)?;
     let mut deadline = leaf
-        .tbs_certificate
-        .validity
+        .tbs_certificate()
+        .validity()
         .not_after
         .to_unix_duration()
         .as_secs();
     for cert in &chain[1..] {
         deadline = deadline.min(
             check_certificate(cert, Some(now), true)?
-                .tbs_certificate
-                .validity
+                .tbs_certificate()
+                .validity()
                 .not_after
                 .to_unix_duration()
                 .as_secs(),
@@ -208,8 +208,8 @@ pub fn verify_reader_chain(
     }
     let key = VerifyingKey::from_public_key_der(
         &leaf
-            .tbs_certificate
-            .subject_public_key_info
+            .tbs_certificate()
+            .subject_public_key_info()
             .to_der()
             .map_err(|_| "invalid_certificate_chain")?,
     )
@@ -225,17 +225,16 @@ pub fn verify_reader_chain(
     for cert in &roots {
         let root = check_certificate(cert, Some(now), true)?;
         deadline = deadline.min(
-            root.tbs_certificate
-                .validity
+            root.tbs_certificate()
+                .validity()
                 .not_after
                 .to_unix_duration()
                 .as_secs(),
         );
         if policy.revocation.is_some() {
             let ku = root
-                .tbs_certificate
-                .extensions
-                .as_ref()
+                .tbs_certificate()
+                .extensions()
                 .and_then(|es| es.iter().find(|e| e.extn_id.to_string() == "2.5.29.15"))
                 .ok_or("invalid_crl_policy")?;
             if !KeyUsage::from_der(ku.extn_value.as_bytes())
@@ -311,9 +310,8 @@ pub fn verify_reader_chain(
     })?;
     if let Some(name) = &policy.dns_name {
         let san = leaf
-            .tbs_certificate
-            .extensions
-            .as_ref()
+            .tbs_certificate()
+            .extensions()
             .and_then(|es| {
                 es.iter()
                     .find(|e| e.extn_id == ObjectIdentifier::new_unwrap("2.5.29.17"))
@@ -343,9 +341,8 @@ pub fn validate_attester_roots(roots: &[String]) -> Result<(), &'static str> {
         }
         let cert = check_certificate_for_purpose(&bytes, None, true, false)?;
         if cert
-            .tbs_certificate
-            .extensions
-            .as_ref()
+            .tbs_certificate()
+            .extensions()
             .is_some_and(|es| es.iter().any(|e| e.extn_id.to_string() == "2.5.29.37"))
         {
             return Err("unsupported_attester_eku");
@@ -377,29 +374,28 @@ pub fn verify_attester_chain(
         }
         let cert = check_certificate_for_purpose(bytes, Some(now), index != 0, false)?;
         if cert
-            .tbs_certificate
-            .extensions
-            .as_ref()
+            .tbs_certificate()
+            .extensions()
             .is_some_and(|es| es.iter().any(|e| e.extn_id.to_string() == "2.5.29.37"))
         {
             return Err("unsupported_attester_eku");
         }
         deadline = deadline.min(
-            cert.tbs_certificate
-                .validity
+            cert.tbs_certificate()
+                .validity()
                 .not_after
                 .to_unix_duration()
                 .as_secs(),
         );
     }
     let leaf = check_certificate_for_purpose(&chain[0], Some(now), false, false)?;
-    if leaf.tbs_certificate.issuer == leaf.tbs_certificate.subject {
+    if leaf.tbs_certificate().issuer() == leaf.tbs_certificate().subject() {
         return Err("invalid_certificate_chain");
     }
     let key = VerifyingKey::from_public_key_der(
         &leaf
-            .tbs_certificate
-            .subject_public_key_info
+            .tbs_certificate()
+            .subject_public_key_info()
             .to_der()
             .map_err(|_| "invalid_certificate_chain")?,
     )
@@ -452,7 +448,7 @@ pub fn verify_x509_hash_reader_chain(
         return Err("certificate_hash_mismatch");
     }
     let cert = check_certificate(leaf, Some(now), false)?;
-    if cert.tbs_certificate.issuer == cert.tbs_certificate.subject {
+    if cert.tbs_certificate().issuer() == cert.tbs_certificate().subject() {
         return Err("invalid_certificate_chain");
     }
     let roots = policy

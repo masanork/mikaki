@@ -9,7 +9,7 @@ export const profile = {
   vct: 'https://issuer.mikaki.test/membership/v1',
   clientId: 'mikaki-probe-verifier',
   responseUri: 'https://verifier.mikaki.test/response',
-  verifierVersion: '0.12.0',
+  verifierVersion: '0.13.0',
   format: 'dc+sd-jwt',
   responseMode: 'direct_post',
 } as const;

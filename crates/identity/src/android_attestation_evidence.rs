@@ -59,8 +59,8 @@ impl UntrustedAndroidEvidence {
         let leaf = &certificates[0];
         let key = VerifyingKey::from_public_key_der(
             &leaf
-                .tbs_certificate
-                .subject_public_key_info
+                .tbs_certificate()
+                .subject_public_key_info()
                 .to_der()
                 .map_err(|_| ERROR)?,
         )
@@ -70,7 +70,12 @@ impl UntrustedAndroidEvidence {
         }
         let mut description = None;
         for (index, certificate) in certificates.iter().enumerate() {
-            for extension in certificate.tbs_certificate.extensions.iter().flatten() {
+            for extension in certificate
+                .tbs_certificate()
+                .extensions()
+                .into_iter()
+                .flatten()
+            {
                 if extension.extn_id == OID {
                     // Strict leaf-only subset: refuse extension ambiguity or an
                     // attacker-appended child of another attested key. A server
@@ -114,7 +119,7 @@ impl UntrustedAndroidEvidence {
                 return Err(ERROR);
             }
         }
-        reader.finish(()).map_err(|_| ERROR)?;
+        reader.finish().map_err(|_| ERROR)?;
         Ok(Self {
             challenge: B64.encode(challenge),
             public_key,

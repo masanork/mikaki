@@ -1,3 +1,7 @@
+#[path = "support/certificate.rs"]
+mod mutable_certificate;
+use mutable_certificate::Certificate;
+
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use der::{Decode, Encode};
 use mikaki_identity::{
@@ -173,8 +177,7 @@ fn licence_day_end_bounds_both_formats_and_receipt_rejects_overlong_signed_claim
 fn mdoc_shortens_validity_to_document_signer_certificate_end() {
     let (key, public, holder) = keys();
     let doc = document(None);
-    let mut cert =
-        x509_cert::Certificate::from_der(include_bytes!("fixtures/mdoc-ds.der")).unwrap();
+    let mut cert = Certificate::from_der(include_bytes!("fixtures/mdoc-ds.der")).unwrap();
     let end = NOW + 7;
     cert.tbs_certificate.validity.not_after = x509_cert::time::Time::UtcTime(
         der::asn1::UtcTime::from_unix_duration(std::time::Duration::from_secs(end)).unwrap(),
@@ -206,8 +209,7 @@ fn sd_jwt_x5c_receipt_uses_pinned_key_and_caps_expiry_at_signer_certificate_end(
         trust_anchors: vec![STANDARD.encode(include_bytes!("fixtures/credential/sd-ca.der"))],
         revocation: None,
     };
-    let leaf =
-        x509_cert::Certificate::from_der(&decode_certificate(&trust.chain[0]).unwrap()).unwrap();
+    let leaf = Certificate::from_der(&decode_certificate(&trust.chain[0]).unwrap()).unwrap();
     let end = leaf
         .tbs_certificate
         .validity

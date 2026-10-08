@@ -17,10 +17,10 @@ openidconnect = "=4.0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-opener = "=2.7.0"
-tauri-plugin-deep-link = "=2.6.0"
+tauri-plugin-deep-link = "=2.6.1"
 url = "=2.5.8"
 zeroize = "1.9"
-base64 = "0.22"
+base64 = "=0.23.1"
 p256 = { version = "0.13", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
