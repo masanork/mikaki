@@ -2,7 +2,7 @@
 
 This independent JVM service implements the private `android-key-attestation-verification-v1` → `android-key-attestation-verdict-v1` contract of [the Issuer attester broker](../../docs/identity-card-issuance.md#native-attester-enrollment-broker). It verifies Android evidence; the broker issues the OID4VCI client/key attestation JWTs and owns challenge expiry, replay, instance authentication and issuer nonce binding. The verifier has no signing secret, account access or credential storage.
 
-The Android-recommended [official Kotlin verifier](https://github.com/android/keyattestation) is pinned to **3f550f94a9e3c010dda7cdcad8bca764cd76d4f4**. The build checks the checkout revision, tracked changes and untracked source files. Source is built through a Gradle composite; it is not copied or modified in this repository. Runtime Bouncy Castle is explicitly fixed to **1.86**, overriding the upstream runtime dependency on 1.78.1, with a service-local dependency lock. Java 21 is required. The upstream Apache-2.0 licence is included under `licenses/android-keyattestation` in the distribution; no third-party source is vendored here.
+The Android-recommended [official Kotlin verifier](https://github.com/android/keyattestation) is pinned to **3f550f94a9e3c010dda7cdcad8bca764cd76d4f4**. The build checks the checkout revision, tracked changes and untracked source files. Source is built through a Gradle composite; it is not copied or modified in this repository. Runtime Bouncy Castle is explicitly fixed to **1.86**, overriding the upstream runtime dependency on 1.78.1, with a service-local dependency lock. Java 21 is required. The service's checksum-pinned Gradle 9.8.1 wrapper is used locally, in CI and in the container; builds no longer depend on the Android app or the upstream Gradle 8.10 wrapper. Dependabot monitors this service's wrapper and dependencies. The upstream Apache-2.0 licence is included under `licenses/android-keyattestation` in the distribution; no third-party source is vendored here.
 
 ## Verification policy
 
@@ -33,7 +33,7 @@ git clone https://github.com/android/keyattestation /private/tmp/mikaki-android-
 git -C /private/tmp/mikaki-android-keyattestation checkout --detach 3f550f94a9e3c010dda7cdcad8bca764cd76d4f4
 export MIKAKI_KEYATTESTATION_CHECKOUT=/private/tmp/mikaki-android-keyattestation
 export JAVA_HOME=/path/to/jdk21
-"$MIKAKI_KEYATTESTATION_CHECKOUT/gradlew" -p services/android-attestation-verifier test installDist integrationClasspath
+services/android-attestation-verifier/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
 node --test local/conformance/android-verifier-bridge.test.ts
 # Requires the current Rust Worker build (crates/worker/build/index.js + index_bg.wasm).
 node --test local/conformance/identity-attester-jvm.test.ts

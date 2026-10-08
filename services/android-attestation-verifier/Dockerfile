@@ -4,7 +4,7 @@ RUN git clone https://github.com/android/keyattestation /opt/keyattestation && g
 WORKDIR /opt/service
 COPY . .
 ENV MIKAKI_KEYATTESTATION_CHECKOUT=/opt/keyattestation
-RUN /opt/keyattestation/gradlew --no-daemon installDist
+RUN ./gradlew --no-daemon installDist
 FROM eclipse-temurin:21-jre
 WORKDIR /opt/service
 COPY --from=build /opt/service/build/install/mikaki-android-attestation-verifier ./
