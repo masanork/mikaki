@@ -1698,7 +1698,7 @@
   },
   {
     "date": "2026-10-08",
-    "commit": "d7e92eb",
+    "commit": "e60702e",
     "code": {
       "implementationLines": 44503,
       "testLines": 10250,
@@ -1722,7 +1722,7 @@
     "dependencies": {
       "npm": {
         "runtime": 6,
-        "dev": 21
+        "dev": 24
       },
       "rust": {
         "runtime": 32,
@@ -1749,6 +1749,9 @@
         ],
         "npmDev": [
           "@axe-core/playwright",
+          "@babel/parser",
+          "@babel/traverse",
+          "@babel/types",
           "@cloudflare/workers-types",
           "@inlang/paraglide-js",
           "@inlang/plugin-message-format",
@@ -1760,8 +1763,8 @@
           "@sveltejs/vite-plugin-svelte",
           "@types/node",
           "@typescript/native",
-          "@typescript/typescript6",
           "esbuild",
+          "jsonc-parser",
           "prettier",
           "prettier-plugin-svelte",
           "smol-toml",
