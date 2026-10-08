@@ -1,6 +1,6 @@
 # Managed-work authority on the fresh main schema
 
-**Status:** Original M2 checkpoint preserved from `ed7535d`, 2026-10-08 JST. Current M2–M4 qualification is recorded in the [integration plan](work-delegation-implementation.md). The topic branch includes main through `1f0dd3c` (merge checkpoint `5e1b84d`). [Portable rules](workload-profile-v1.md) and [Rust WorkStore](../crates/worker/src/work_store/mod.rs) now run against the current Owner Vault baseline. The original checkpoint covered the core authority. Owner/source transport, independent OP framing and local initial-effect admission are now integrated and separately qualified in the same history; product screens and remote activation remain gated.
+**Status:** Original M2 checkpoint preserved from `ed7535d`, 2026-10-08 JST. Current M2–M6a qualification is recorded in the [integration plan](work-delegation-implementation.md). The topic branch includes main through `407f50e` (merge checkpoint `f00c49d`). [Portable rules](workload-profile-v1.md) and [Rust WorkStore](../crates/worker/src/work_store/mod.rs) now run against the current Owner Vault baseline. The original checkpoint covered the core authority. Owner/source transport, independent OP framing and local initial-effect admission are now integrated and separately qualified in the same history; product screens and remote activation remain gated.
 
 ## Schema and runtime boundaries
 

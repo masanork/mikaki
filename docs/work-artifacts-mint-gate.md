@@ -27,8 +27,11 @@ replace the same slot after primary restore. Retries compare immutable plan
 fields and receive no new permit. Initial and mint tombstones share the existing
 256-record bound; neither expiry nor token absence reclaims capacity.
 
-The [mint gate](../crates/work-effect-worker/mint.ts) receives only a fixed
-Artifacts `get` capability, the named Native adapter and this mint-only ledger.
+The [mint gate](../crates/work-effect-worker/mint.ts) owns the physical Artifacts
+binding, the named Native adapter and this mint-only ledger. Its implementation
+uses only `get` followed by the fixed repository operations; the TypeScript
+`Pick` annotation itself is not runtime capability attenuation. It returns no
+repository or raw binding capability.
 Its default/public handler returns 404. Its named handler accepts only POST
 `/mint` with `{attempt_id}`. The checkpoint binding cannot create repositories,
 bootstrap, reset, mutate OP frames or release credentials. Existing initial-effect

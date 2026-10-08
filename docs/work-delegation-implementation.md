@@ -1,12 +1,12 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4 and M5a source inspection locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance and the source review screen are integrated. Copy/delegation composition, productive upload/readback and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a source inspection and M6a mint/custody locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, the source review screen and one-shot upload/readback credential minting are integrated. Copy/delegation composition, productive upload/readback and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
 ## Preserved work and main baseline
 
-The old `feat/agent-vault-oidc-qualification` branch at `d441ce0a4583ebcf1ae54627e2ca3df29e2f20a9` has no commits outside current main and is 156 commits behind. Replaying its committed history adds no work.
+The old `feat/agent-vault-oidc-qualification` branch at `d441ce0a4583ebcf1ae54627e2ca3df29e2f20a9` had no commits outside main and was 156 commits behind at the initial catch-up. Replaying its committed history adds no work.
 
 Uncommitted work is preserved by stash commit `ea733061aefa6a3cb3262908aa685eb3337bc40d`, labeled `pre-main-catchup-20261008: preserve local work and qualification evidence`; its additional-file tree is `ceb868a163c1f21df9af3391c288bf672431ffa8`. Keep the stash until selected work/evidence is fully accounted for. It includes unrelated earlier changes and generated files; applying the whole stash is not the integration unit.
 
@@ -93,3 +93,5 @@ The [mint gate](work-artifacts-mint-gate.md) connects the six fixed credential s
 The standalone mint suite passes **28 cases** over the actual Rust/Wasm, D1 and persistent Workers RPC/SQLite runtime with synthetic Artifacts. Frozen Native batches remain fenced while the independent ledger preserves known cleanup observations. Unknown mint recovery, productive Git upload/readback and copy/delegation controls still require subsequent qualification. No remote mint trial, protected journal change, production binding or deployment is performed.
 
 The combined current backend/Git run passes **191/191 cases** (the previous 163 plus 28 mint cases). Production OP/service boundaries and baseline/Owner-schema/release-inventory regressions pass **13/13**. The production Worker build, named OP packaging, Wasm Clippy with warnings denied, Node/effect/checkpoint types, full formatting and documentation links pass. Existing UI budgets remain unchanged; OP Wasm is 5,936,405 raw bytes / 2,103,885 gzip estimate, within the existing 8 MiB / 3 MiB budgets.
+
+Latest main `407f50e` is integrated by merge `f00c49d`, preserving the qualified work-port history. Its UserInfo fixture changes do not change product source. The current default UserInfo qualification passes **2/2 cases** after rebuilding the previously stale ignored conformance Claim Worker with the exact CI command, `worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate`. Both actual workerd and browser v2 recipient/sharing/consent/withdrawal flows pass. No new profile benchmark or production-capacity claim is made. Node types, full formatting and documentation links pass after the merge.
