@@ -1,3 +1,7 @@
+#[path = "support/certificate.rs"]
+mod mutable_certificate;
+use mutable_certificate::Certificate;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use der::{
     Decode, Encode,
@@ -8,7 +12,7 @@ use mikaki_identity::{
 };
 use p256::ecdsa::SigningKey;
 use serde_json::Value;
-use x509_cert::{Certificate, ext::Extension};
+use x509_cert::ext::Extension;
 const OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.4.1.11129.2.1.17");
 fn certificate(name: &str) -> Certificate {
     Certificate::from_der(

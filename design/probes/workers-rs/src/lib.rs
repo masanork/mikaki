@@ -52,7 +52,7 @@ async fn issue_code(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
         response_type: "code".into(),
         scope: "openid".into(),
         state: "probe-state".into(),
-        nonce: "probe-nonce".into(),
+        nonce: Some("probe-nonce".into()),
         code_challenge: challenge,
         code_challenge_method: "S256".into(),
     }
@@ -237,11 +237,10 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
     )?
     .dyn_into::<js_sys::Object>()
     .map_err(|_| worker::Error::RustError("RSA private JWK import failed".into()))?;
-    let import_algorithm = js_sys::JSON::parse(
-        r#"{"name":"RSASSA-PKCS1-v1_5","hash":{"name":"SHA-256"}}"#,
-    )?
-    .dyn_into::<js_sys::Object>()
-    .map_err(|_| worker::Error::RustError("RSA import algorithm setup failed".into()))?;
+    let import_algorithm =
+        js_sys::JSON::parse(r#"{"name":"RSASSA-PKCS1-v1_5","hash":{"name":"SHA-256"}}"#)?
+            .dyn_into::<js_sys::Object>()
+            .map_err(|_| worker::Error::RustError("RSA import algorithm setup failed".into()))?;
     let imported = JsFuture::from(subtle.import_key_with_object(
         "jwk",
         &private_jwk,
@@ -260,7 +259,7 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
         "probe-subject",
         "probe-client",
         "probe-session",
-        "probe-nonce",
+        Some("probe-nonce"),
         1_000,
         1_001,
         1_061,
@@ -274,7 +273,9 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
     .await?;
     let signature = js_sys::Uint8Array::new(&signature).to_vec();
     if signature.len() != key.modulus_bytes() {
-        return Err(worker::Error::RustError("RSA signature length mismatch".into()));
+        return Err(worker::Error::RustError(
+            "RSA signature length mismatch".into(),
+        ));
     }
     let token = input
         .finish(&signature)

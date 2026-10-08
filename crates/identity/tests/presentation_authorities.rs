@@ -1,3 +1,7 @@
+#[path = "support/certificate.rs"]
+mod mutable_certificate;
+use mutable_certificate::Certificate;
+
 use base64::{
     Engine as _,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD as B64},
@@ -14,10 +18,7 @@ use mikaki_identity::{
 use p256::ecdsa::SigningKey;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use x509_cert::{
-    Certificate,
-    ext::pkix::{AuthorityKeyIdentifier, SubjectKeyIdentifier},
-};
+use x509_cert::ext::pkix::{AuthorityKeyIdentifier, SubjectKeyIdentifier};
 const NOW: u64 = 1791000000;
 const ISSUER: &str = "https://issuer.example/identity/issuer";
 fn bytes(name: &str) -> Vec<u8> {
@@ -304,14 +305,14 @@ fn sd_jwt_matches_aki_on_a_carried_intermediate_without_matching_a_configured_ro
         ecdsa::{Signature, signature::Signer},
         pkcs8::EncodePublicKey,
     };
-    use x509_cert::spki::SubjectPublicKeyInfoOwned;
+    use x509_cert::SubjectPublicKeyInfo;
     let root = Certificate::from_der(&bytes("sd-ca")).unwrap();
     let mut intermediate = root.clone();
     intermediate.tbs_certificate.subject = Certificate::from_der(&bytes("mdoc-ca"))
         .unwrap()
         .tbs_certificate
         .subject;
-    intermediate.tbs_certificate.subject_public_key_info = SubjectPublicKeyInfoOwned::from_der(
+    intermediate.tbs_certificate.subject_public_key_info = SubjectPublicKeyInfo::from_der(
         key(8)
             .verifying_key()
             .to_public_key_der()

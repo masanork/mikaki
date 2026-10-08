@@ -1,3 +1,7 @@
+#[path = "support/certificate.rs"]
+mod mutable_certificate;
+use mutable_certificate::Certificate;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use mikaki_identity::{
     certificate::{ReaderTrust, verify_reader_chain},
@@ -106,7 +110,7 @@ fn supplied_roots_do_not_establish_trust_and_limits_fail_closed() {
 fn ca_usage_restrictions_and_duplicate_extensions_are_enforced() {
     use der::{Decode, Encode, asn1::BitString};
     use p256::ecdsa::{Signature, signature::Signer};
-    let mut leaf = x509_cert::Certificate::from_der(&cert("leaf")).unwrap();
+    let mut leaf = Certificate::from_der(&cert("leaf")).unwrap();
     let extensions = leaf.tbs_certificate.extensions.as_mut().unwrap();
     extensions.push(extensions[0].clone());
     let signer = SigningKey::from_slice(&[8; 32]).unwrap();

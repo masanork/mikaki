@@ -237,29 +237,27 @@ pub fn validate_certificate(cert: &[u8], key: &PublicJwk, now: u64) -> Result<()
         return Err("invalid_mdoc_certificate");
     }
     let c = x509_cert::Certificate::from_der(cert).map_err(|_| "invalid_mdoc_certificate")?;
-    let t = &c.tbs_certificate;
+    let t = c.tbs_certificate();
     let public = p256::ecdsa::VerifyingKey::from_public_key_der(
-        &t.subject_public_key_info
+        &t.subject_public_key_info()
             .to_der()
             .map_err(|_| "invalid_mdoc_certificate")?,
     )
     .map_err(|_| "invalid_mdoc_certificate")?;
     if PublicJwk::from_key(&public) != *key
-        || now < t.validity.not_before.to_unix_duration().as_secs()
-        || now >= t.validity.not_after.to_unix_duration().as_secs()
+        || now < t.validity().not_before.to_unix_duration().as_secs()
+        || now >= t.validity().not_after.to_unix_duration().as_secs()
     {
         return Err("invalid_mdoc_certificate");
     }
     let mut extension_ids = HashSet::new();
-    if t.extensions
-        .as_ref()
+    if t.extensions()
         .is_none_or(|exts| exts.iter().any(|ext| !extension_ids.insert(ext.extn_id)))
     {
         return Err("invalid_mdoc_certificate");
     }
     let extension = |oid: ObjectIdentifier| {
-        t.extensions
-            .as_ref()
+        t.extensions()
             .and_then(|e| e.iter().find(|x| x.extn_id == oid))
             .map(|e| e.extn_value.as_bytes())
             .ok_or("invalid_mdoc_certificate")
@@ -289,8 +287,8 @@ pub fn certificate_valid_until(
     validate_certificate(cert, issuer, now)?;
     Ok(x509_cert::Certificate::from_der(cert)
         .map_err(|_| "invalid_mdoc_certificate")?
-        .tbs_certificate
-        .validity
+        .tbs_certificate()
+        .validity()
         .not_after
         .to_unix_duration()
         .as_secs())

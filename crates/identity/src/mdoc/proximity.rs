@@ -477,16 +477,16 @@ pub fn parse_device_request(
     let cert_bytes = &chain[0];
     let cert =
         x509_cert::Certificate::from_der(cert_bytes).map_err(|_| "invalid_reader_certificate")?;
-    let t = &cert.tbs_certificate;
-    if now < t.validity.not_before.to_unix_duration().as_secs()
-        || now >= t.validity.not_after.to_unix_duration().as_secs()
+    let t = cert.tbs_certificate();
+    if now < t.validity().not_before.to_unix_duration().as_secs()
+        || now >= t.validity().not_after.to_unix_duration().as_secs()
     {
         return Err("invalid_reader_certificate");
     }
     use der::asn1::ObjectIdentifier;
     use x509_cert::ext::pkix::{BasicConstraints, ExtendedKeyUsage, KeyUsage};
     let mut ids = HashSet::new();
-    let extensions = t.extensions.as_ref().ok_or("invalid_reader_certificate")?;
+    let extensions = t.extensions().ok_or("invalid_reader_certificate")?;
     if extensions.iter().any(|e| {
         !ids.insert(e.extn_id)
             || (e.critical
@@ -523,7 +523,7 @@ pub fn parse_device_request(
         return Err("invalid_reader_certificate");
     }
     let public = p256::ecdsa::VerifyingKey::from_public_key_der(
-        &t.subject_public_key_info
+        &t.subject_public_key_info()
             .to_der()
             .map_err(|_| "invalid_reader_certificate")?,
     )
@@ -539,7 +539,7 @@ pub fn parse_device_request(
         if !matches!(&headers[0].1, C::Bytes(_)) {
             return Err("certificate_required");
         }
-        t.validity.not_after.to_unix_duration().as_secs()
+        t.validity().not_after.to_unix_duration().as_secs()
     };
     if registered.name.is_empty() || registered.name.len() > 160 {
         return Err("reader_configuration_invalid");

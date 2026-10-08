@@ -1,17 +1,44 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: /
+    directories:
+      - /
+      - /apps/mikaki-client/src-tauri
+      - /design/probes/es256
+      - /design/probes/jose
+      - /design/probes/jose-custom
+      - /design/probes/native-identity-http
+      - /design/probes/pqc
+      - /design/probes/workers-rs
+      - /fuzz
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    groups:
+      rust-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: npm
-    directory: /
+    directories:
+      - /
+      - /apps/mikaki-client
+      - /design/probes
+      - /design/probes/vault-search
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    groups:
+      javascript-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
     ignore:
       # svelte-check's peer range currently excludes TypeScript 7.
       - dependency-name: typescript
@@ -23,3 +50,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - '*'

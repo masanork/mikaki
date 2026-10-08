@@ -10,20 +10,20 @@ civ-card = { path = "../../apps/mikaki-client/vendor/civ-card" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = "1.9"
-sha1 = "0.10.6"
+sha1 = "=0.11.0"
 sha2 = { version = "0.10", features = ["oid"] }
 rsa = { version = "=0.9.10", default-features = false, features = ["std", "u64_digit"] }
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
-base64 = "0.22"
+base64 = "=0.23.1"
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 hkdf = "0.12.4"
 miniz_oxide = "=0.9.1"
 url = "=2.5.8"
 ciborium.workspace = true
-der = { version = "0.7", features = ["alloc"] }
+der = { version = "=0.8.2", features = ["alloc", "derive"] }
 rustls-webpki = { version = "=0.103.15", default-features = false, features = ["alloc"] }
 rustls-pki-types = { version = "=1.15.1", default-features = false, features = ["alloc"] }
-x509-cert = { version = "0.2.5", default-features = false }
+x509-cert = { version = "=0.3.0", default-features = false }
 
 [dev-dependencies]
 rand_core = { version = "0.6", features = ["getrandom"] }

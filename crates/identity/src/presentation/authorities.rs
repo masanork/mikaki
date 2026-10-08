@@ -75,9 +75,8 @@ impl ApprovedRequest {
             let cert =
                 Certificate::from_der(&bytes).map_err(|_| "invalid_credential_certificate")?;
             if let Some(ext) = cert
-                .tbs_certificate
-                .extensions
-                .as_ref()
+                .tbs_certificate()
+                .extensions()
                 .and_then(|es| es.iter().find(|e| e.extn_id.to_string() == "2.5.29.35"))
             {
                 let authority = AuthorityKeyIdentifier::from_der(ext.extn_value.as_bytes())

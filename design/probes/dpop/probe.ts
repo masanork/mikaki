@@ -21,7 +21,7 @@ import { IssuerFixture, jsonResponse, profile, type Transport } from '../oid4vci
 
 export const dpopProfile = {
   algorithm: 'ES256',
-  libraryVersion: '0.6.0',
+  libraryVersion: '0.7.0',
   maxAgeSeconds: 60,
   clockSkewSeconds: 10,
   replayCapacity: 1000,
@@ -171,9 +171,12 @@ export class DpopGate {
       expectedJwkThumbprint: options.expectedJkt,
       allowedSigningAlgs: ['ES256'],
       maxProofAgeSeconds: dpopProfile.maxAgeSeconds,
-      allowedClockSkewSeconds: dpopProfile.clockSkewSeconds,
+      allowedSkewInSeconds: dpopProfile.clockSkewSeconds,
       now: new Date(this.#clock() * 1000),
     });
+    // Keep the probe profile strict when the library normalizes htu URLs.
+    const htu = new URL(verified.payload.htu);
+    if (htu.search || htu.hash) throw new Error('Invalid DPoP target URI');
     const current = this.#clock();
     const { iat, jti } = verified.payload;
     if (

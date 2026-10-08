@@ -22,7 +22,7 @@ export const profile = {
   vct: presentationProfile.vct,
   configurationId: 'membership_v1',
   grantType: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
-  issuerLibraryVersion: '0.6.0',
+  issuerLibraryVersion: '0.7.0',
   tokenEndpoint: `${presentationProfile.issuer}/token`,
   nonceEndpoint: `${presentationProfile.issuer}/nonce`,
   credentialEndpoint: `${presentationProfile.issuer}/credential`,
