@@ -1,9 +1,9 @@
 /** CI-only runtime qualification: real Rust Workers, disposable Secrets Store and browser WebCrypto. */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -77,12 +77,76 @@ async function createLocalSecret(state: string, storeId: string, value: string) 
   return secretId;
 }
 
-async function qualifyRecordUserInfo(browserCrypto: boolean) {
+type ProfileBenchmarkReport = {
+  schema_version: 1;
+  scope: 'local_synthetic_userinfo_only';
+  production_capacity_qualified: false;
+  full_auth_flow_measured: false;
+  production_build_performance: false;
+  authentication: 'preprovisioned_synthetic_sso_client_and_token';
+  claims_worker_build: 'conformance_gate_instrumented';
+  measured_source_head: string;
+  tracked_source_clean: boolean;
+  source: { storage_version: 2; kind: 'name'; revision: 1 };
+  passed: boolean;
+  failure_phase: string | null;
+  cleanup_ok: boolean;
+  phases: Array<{
+    phase: string;
+    sample: number;
+    status: number | null;
+    duration_ms: number | null;
+    expected_shape: 'sub_only' | 'name' | 'fail_closed';
+    passed: boolean;
+  }>;
+  summary: Record<string, unknown>;
+};
+
+const profilePercentile = (values: number[], fraction: number) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? null;
+};
+
+async function qualifyRecordUserInfo(browserCrypto: boolean, profileBenchmark = false) {
   const temporary = await mkdtemp(join(tmpdir(), 'mikaki-record-userinfo-'));
   let mf: Miniflare | undefined;
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let releaseGate: (() => void) | undefined;
+  let failurePhase: string | null = profileBenchmark ? 'setup' : null;
+  let testFailed = false;
+  let cleanupOk = true;
+  const benchmarkDeadline = profileBenchmark ? performance.now() + 180_000 : 0;
+  const benchmark: ProfileBenchmarkReport | undefined = profileBenchmark
+    ? {
+        schema_version: 1,
+        scope: 'local_synthetic_userinfo_only',
+        production_capacity_qualified: false,
+        full_auth_flow_measured: false,
+        production_build_performance: false,
+        authentication: 'preprovisioned_synthetic_sso_client_and_token',
+        claims_worker_build: 'conformance_gate_instrumented',
+        measured_source_head: 'unavailable',
+        tracked_source_clean: false,
+        source: { storage_version: 2, kind: 'name', revision: 1 },
+        passed: false,
+        failure_phase: null,
+        cleanup_ok: true,
+        phases: [],
+        summary: {},
+      }
+    : undefined;
   try {
+    if (benchmark) {
+      benchmark.measured_source_head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim();
+      benchmark.tracked_source_clean =
+        execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim() === '';
+    }
     const seed = randomBytes(64),
       storeId = randomBytes(16).toString('hex');
     await createLocalSecret(temporary, storeId, seed.toString('base64url'));
@@ -240,6 +304,90 @@ async function qualifyRecordUserInfo(browserCrypto: boolean) {
     const userinfo = () =>
       op.fetch(origin + '/userinfo', { headers: { Authorization: `Bearer ${access}` } });
     assert.deepEqual(await (await userinfo()).json(), { sub: 'pairwise' });
+    const audits = () =>
+      db.prepare('SELECT count(*) AS n FROM vault_claim_disclosure_audit').first<number>('n');
+    const profileRequest = async (
+      phase: string,
+      sample: number,
+      expectedShape: 'sub_only' | 'name',
+      expected: Record<string, string>,
+    ) => {
+      if (!benchmark) throw new Error('profile_benchmark_not_enabled');
+      const remainingMs = benchmarkDeadline - performance.now();
+      if (remainingMs <= 0) {
+        failurePhase = phase;
+        throw new Error('profile_benchmark_deadline');
+      }
+      const started = performance.now();
+      let status: number | null = null;
+      try {
+        const response = await op.fetch(origin + '/userinfo', {
+          headers: { Authorization: `Bearer ${access}` },
+          signal: AbortSignal.timeout(Math.min(10_000, remainingMs)),
+        });
+        status = response.status;
+        const body: unknown = await response.json();
+        const expectedKeys = Object.keys(expected).sort();
+        const bodyRecord =
+          typeof body === 'object' && body !== null && !Array.isArray(body)
+            ? (body as Record<string, unknown>)
+            : null;
+        const actualKeys = bodyRecord ? Object.keys(bodyRecord).sort() : [];
+        const passed =
+          status === 200 &&
+          actualKeys.length === expectedKeys.length &&
+          actualKeys.every((key, index) => key === expectedKeys[index]) &&
+          expectedKeys.every((key) => bodyRecord?.[key] === expected[key]);
+        benchmark.phases.push({
+          phase,
+          sample,
+          status,
+          duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+          expected_shape: expectedShape,
+          passed,
+        });
+        if (!passed) throw new Error('profile_benchmark_response_mismatch');
+      } catch {
+        if (!benchmark.phases.some((row) => row.phase === phase && row.sample === sample))
+          benchmark.phases.push({
+            phase,
+            sample,
+            status,
+            duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+            expected_shape: expectedShape,
+            passed: false,
+          });
+        failurePhase = phase;
+        throw new Error('profile_benchmark_request_failed');
+      }
+    };
+    const profileSeries = async (
+      phase: 'preconsent' | 'consented',
+      expectedShape: 'sub_only' | 'name',
+      expected: Record<string, string>,
+    ) => {
+      const warmupCount = 2;
+      const sampleCount = 20;
+      for (let index = 1; index <= warmupCount; index++)
+        await profileRequest(`${phase}_warmup`, index, expectedShape, expected);
+      for (let index = 1; index <= sampleCount; index++)
+        await profileRequest(`${phase}_sample`, index, expectedShape, expected);
+      const measurements = benchmark!.phases.filter((row) => row.phase === `${phase}_sample`);
+      assert.equal(measurements.length, sampleCount);
+      assert.ok(measurements.every((row) => row.passed && row.status === 200));
+      const durations = measurements.map((row) => row.duration_ms!);
+      benchmark!.summary[phase] = {
+        warmups: warmupCount,
+        samples: sampleCount,
+        requests: warmupCount + sampleCount,
+        status_counts: { '200': warmupCount + sampleCount },
+        latency_ms: {
+          p50: profilePercentile(durations, 0.5),
+          p95: profilePercentile(durations, 0.95),
+          p99: profilePercentile(durations, 0.99),
+        },
+      };
+    };
     let prepared: any;
     if (browserCrypto) {
       const bundle = await build({
@@ -499,6 +647,11 @@ window.recordProbe=async()=>{
     assert.equal(candidate['client_id'], 'rp');
     assert.equal(candidate['release_status'], null);
     assert.equal(candidate['authority_current'], 0);
+    if (profileBenchmark) {
+      failurePhase = 'preconsent';
+      await profileSeries('preconsent', 'sub_only', { sub: 'pairwise' });
+      assert.equal(await audits(), 0, 'pre-consent profile requests must disclose no name');
+    }
     const consentBody = {
       source: prepared.source,
       authority: prepared.authority,
@@ -525,17 +678,58 @@ window.recordProbe=async()=>{
     response = await userinfo();
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { sub: 'pairwise', name: 'Alice 山田 😀' });
-    const audits = () =>
-      db.prepare('SELECT count(*) AS n FROM vault_claim_disclosure_audit').first<number>('n');
-    assert.equal(await audits(), 1);
+    let expectedDisclosureAudits = 1;
+    assert.equal(await audits(), expectedDisclosureAudits);
+    if (profileBenchmark) {
+      failurePhase = 'consented';
+      await profileSeries('consented', 'name', { sub: 'pairwise', name: 'Alice 山田 😀' });
+      expectedDisclosureAudits += 22;
+      assert.equal(await audits(), expectedDisclosureAudits);
+    }
     const assertUnavailable = async () => {
-      const result = await userinfo();
-      assert.equal(result.status, 503);
-      assert.equal(result.headers.get('Retry-After'), '5');
-      assert.equal(result.headers.get('Cache-Control'), 'no-store');
-      assert.equal(result.headers.get('WWW-Authenticate'), null);
-      assert.ok(!(await result.text()).includes('Alice'));
-      assert.equal(await audits(), 1, 'failure must not create disclosure evidence');
+      const started = profileBenchmark ? performance.now() : 0;
+      let status: number | null = null;
+      const sample = benchmark
+        ? benchmark.phases.filter((row) => row.phase === 'fail_closed').length + 1
+        : 1;
+      try {
+        const result = await userinfo();
+        status = result.status;
+        assert.equal(result.status, 503);
+        assert.equal(result.headers.get('Retry-After'), '5');
+        assert.equal(result.headers.get('Cache-Control'), 'no-store');
+        assert.equal(result.headers.get('WWW-Authenticate'), null);
+        assert.ok(!(await result.text()).includes('Alice'));
+        assert.equal(
+          await audits(),
+          expectedDisclosureAudits,
+          'failure must not create disclosure evidence',
+        );
+        if (benchmark)
+          benchmark.phases.push({
+            phase: 'fail_closed',
+            sample,
+            status: result.status,
+            duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+            expected_shape: 'fail_closed',
+            passed: true,
+          });
+      } catch (error) {
+        if (benchmark) {
+          failurePhase = 'fail_closed';
+          if (!benchmark.phases.some((row) => row.phase === 'fail_closed' && row.sample === sample))
+            benchmark.phases.push({
+              phase: 'fail_closed',
+              sample,
+              status,
+              duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+              expected_shape: 'fail_closed',
+              passed: false,
+            });
+          throw new Error('userinfo_fail_closed_contract_failed');
+        }
+        throw error;
+      }
     };
     for (const failure of ['missing-secret', 'throw', 'unavailable'] as const) {
       claimFailure = failure;
@@ -557,13 +751,45 @@ window.recordProbe=async()=>{
     } finally {
       await db.prepare(view).run();
     }
-    const invalidToken = await op.fetch(origin + '/userinfo', {
-      headers: { Authorization: `Bearer ${randomBytes(32).toString('base64url')}` },
-    });
-    assert.equal(invalidToken.status, 401);
-    assert.match(invalidToken.headers.get('WWW-Authenticate') ?? '', /Bearer.*invalid_token/);
-    assert.equal(invalidToken.headers.get('Retry-After'), null);
-    assert.equal(await audits(), 1);
+    const invalidTokenStarted = profileBenchmark ? performance.now() : 0;
+    if (profileBenchmark) failurePhase = 'invalid_token';
+    let invalidTokenStatus: number | null = null;
+    try {
+      const invalidToken = await op.fetch(origin + '/userinfo', {
+        headers: { Authorization: `Bearer ${randomBytes(32).toString('base64url')}` },
+      });
+      invalidTokenStatus = invalidToken.status;
+      const invalidTokenBody = await invalidToken.text();
+      assert.equal(invalidToken.status, 401);
+      assert.match(invalidToken.headers.get('WWW-Authenticate') ?? '', /Bearer.*invalid_token/);
+      assert.equal(invalidToken.headers.get('Retry-After'), null);
+      assert.ok(!invalidTokenBody.includes('Alice'));
+      assert.equal(await audits(), expectedDisclosureAudits);
+      if (benchmark)
+        benchmark.phases.push({
+          phase: 'invalid_token',
+          sample: 1,
+          status: invalidToken.status,
+          duration_ms: Math.round((performance.now() - invalidTokenStarted) * 1000) / 1000,
+          expected_shape: 'fail_closed',
+          passed: true,
+        });
+    } catch (error) {
+      if (benchmark) {
+        failurePhase = 'invalid_token';
+        if (!benchmark.phases.some((row) => row.phase === 'invalid_token'))
+          benchmark.phases.push({
+            phase: 'invalid_token',
+            sample: 1,
+            status: invalidTokenStatus,
+            duration_ms: Math.round((performance.now() - invalidTokenStarted) * 1000) / 1000,
+            expected_shape: 'fail_closed',
+            passed: false,
+          });
+        throw new Error('userinfo_invalid_token_contract_failed');
+      }
+      throw error;
+    }
     let entered!: () => void;
     const enteredPromise = new Promise<void>((resolve) => (entered = resolve));
     const resume = new Promise<void>((resolve) => (releaseGate = resolve));
@@ -571,6 +797,7 @@ window.recordProbe=async()=>{
       entered();
       await resume;
     };
+    if (profileBenchmark) failurePhase = 'post_release_inflight';
     const pending = userinfo();
     await Promise.race([
       enteredPromise,
@@ -584,11 +811,67 @@ window.recordProbe=async()=>{
       body: JSON.stringify({ client_id: 'rp' }),
     });
     assert.equal(response.status, 200, await response.text());
+    if (profileBenchmark) failurePhase = 'post_revoke';
     releaseGate!();
     beforeAudit = undefined;
-    assert.equal((await pending).status, 503);
-    assert.equal(await audits(), 1);
-    assert.deepEqual(await (await userinfo()).json(), { sub: 'pairwise' });
+    const pendingResponse = await pending;
+    try {
+      assert.equal(pendingResponse.status, 503);
+      assert.equal(await audits(), expectedDisclosureAudits);
+    } catch (error) {
+      if (benchmark) {
+        failurePhase = 'post_release_inflight';
+        benchmark.phases.push({
+          phase: 'post_revoke_inflight',
+          sample: 1,
+          status: pendingResponse.status,
+          duration_ms: null,
+          expected_shape: 'fail_closed',
+          passed: false,
+        });
+        throw new Error('userinfo_post_revoke_inflight_contract_failed');
+      }
+      throw error;
+    }
+    if (benchmark) {
+      const pendingText = await pendingResponse.text();
+      if (pendingText.includes('Alice')) {
+        failurePhase = 'post_release_inflight';
+        benchmark.phases.push({
+          phase: 'post_revoke_inflight',
+          sample: 1,
+          status: pendingResponse.status,
+          duration_ms: null,
+          expected_shape: 'fail_closed',
+          passed: false,
+        });
+        throw new Error('userinfo_post_revoke_inflight_disclosed');
+      }
+      benchmark.phases.push({
+        phase: 'post_revoke_inflight',
+        sample: 1,
+        status: pendingResponse.status,
+        duration_ms: null,
+        expected_shape: 'fail_closed',
+        passed: true,
+      });
+      failurePhase = 'post_release_revoke';
+      await profileRequest('post_release_revoke', 1, 'sub_only', { sub: 'pairwise' });
+      assert.equal(await audits(), expectedDisclosureAudits);
+      benchmark.summary['post_release_revoke'] = {
+        requests: 1,
+        status_counts: { '200': 1 },
+        result: 'sub_only',
+        audit_entries_unchanged: true,
+        latency_ms: {
+          p50:
+            benchmark.phases.find((row) => row.phase === 'post_release_revoke')?.duration_ms ??
+            null,
+        },
+      };
+    } else {
+      assert.deepEqual(await (await userinfo()).json(), { sub: 'pairwise' });
+    }
     const withdrawn = ((await sharingStatus(releases))['clients'] as Record<string, unknown>[])[0]!;
     assert.equal(withdrawn['release_status'], 'revoked');
     assert.equal(withdrawn['authority_current'], 0);
@@ -600,8 +883,46 @@ window.recordProbe=async()=>{
         "CREATE TRIGGER fail_record_audit BEFORE INSERT ON vault_claim_disclosure_audit BEGIN SELECT RAISE(ABORT,'test'); END",
       )
       .run();
-    assert.equal((await userinfo()).status, 503);
-    assert.equal(await audits(), 1);
+    const auditFailureStarted = profileBenchmark ? performance.now() : 0;
+    if (profileBenchmark) failurePhase = 'fail_closed';
+    const auditFailureSample = benchmark
+      ? benchmark.phases.filter((row) => row.phase === 'fail_closed').length + 1
+      : 1;
+    let auditFailureStatus: number | null = null;
+    try {
+      const auditFailure = await userinfo();
+      auditFailureStatus = auditFailure.status;
+      assert.equal(auditFailure.status, 503);
+      assert.equal(await audits(), expectedDisclosureAudits);
+      if (benchmark)
+        benchmark.phases.push({
+          phase: 'fail_closed',
+          sample: auditFailureSample,
+          status: auditFailure.status,
+          duration_ms: Math.round((performance.now() - auditFailureStarted) * 1000) / 1000,
+          expected_shape: 'fail_closed',
+          passed: true,
+        });
+    } catch (error) {
+      if (benchmark) {
+        failurePhase = 'fail_closed';
+        if (
+          !benchmark.phases.some(
+            (row) => row.phase === 'fail_closed' && row.sample === auditFailureSample,
+          )
+        )
+          benchmark.phases.push({
+            phase: 'fail_closed',
+            sample: auditFailureSample,
+            status: auditFailureStatus,
+            duration_ms: Math.round((performance.now() - auditFailureStarted) * 1000) / 1000,
+            expected_shape: 'fail_closed',
+            passed: false,
+          });
+        throw new Error('userinfo_audit_failure_contract_failed');
+      }
+      throw error;
+    }
     await db.prepare('DROP TRIGGER fail_record_audit').run();
     await db
       .prepare(
@@ -619,12 +940,109 @@ window.recordProbe=async()=>{
       await db.prepare('SELECT status FROM vault_record_grant').first('status'),
       'revoked',
     );
-    assert.equal(await audits(), 1);
+    assert.equal(await audits(), expectedDisclosureAudits);
+    failurePhase = null;
+  } catch (error) {
+    testFailed = true;
+    if (benchmark && failurePhase === null) failurePhase = 'contract';
+    throw error;
   } finally {
     releaseGate?.();
-    await browser?.close();
-    await mf?.dispose();
-    await rm(temporary, { recursive: true, force: true });
+    if (!benchmark) {
+      await browser?.close();
+      await mf?.dispose();
+      await rm(temporary, { recursive: true, force: true });
+    } else {
+      const cleanup = async (work: () => Promise<unknown>) => {
+        try {
+          await work();
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const browserClosed = browser ? await cleanup(() => browser!.close()) : true;
+      const workersDisposed = mf ? await cleanup(() => mf!.dispose()) : true;
+      const temporaryRemoved = await cleanup(() => rm(temporary, { recursive: true, force: true }));
+      cleanupOk = browserClosed && workersDisposed && temporaryRemoved;
+      benchmark.cleanup_ok = cleanupOk;
+      benchmark.failure_phase = failurePhase;
+      benchmark.passed = failurePhase === null && cleanupOk;
+      const failedClosed = benchmark.phases.filter((row) => row.phase === 'fail_closed');
+      const failedClosedTimes = failedClosed.flatMap((row) =>
+        row.duration_ms === null ? [] : [row.duration_ms],
+      );
+      benchmark.summary['fail_closed'] = {
+        requests: failedClosed.length,
+        status_counts: {
+          '503': failedClosed.filter((row) => row.status === 503).length,
+        },
+        latency_ms: {
+          p50: profilePercentile(failedClosedTimes, 0.5),
+          p95: profilePercentile(failedClosedTimes, 0.95),
+          p99: profilePercentile(failedClosedTimes, 0.99),
+        },
+      };
+      benchmark.summary['invalid_token'] = {
+        requests: benchmark.phases.filter((row) => row.phase === 'invalid_token').length,
+        status_counts: {
+          '401': benchmark.phases.filter(
+            (row) => row.phase === 'invalid_token' && row.status === 401,
+          ).length,
+        },
+        latency_ms: {
+          p50: profilePercentile(
+            benchmark.phases
+              .filter((row) => row.phase === 'invalid_token' && row.duration_ms !== null)
+              .map((row) => row.duration_ms!),
+            0.5,
+          ),
+          p95: profilePercentile(
+            benchmark.phases
+              .filter((row) => row.phase === 'invalid_token' && row.duration_ms !== null)
+              .map((row) => row.duration_ms!),
+            0.95,
+          ),
+          p99: profilePercentile(
+            benchmark.phases
+              .filter((row) => row.phase === 'invalid_token' && row.duration_ms !== null)
+              .map((row) => row.duration_ms!),
+            0.99,
+          ),
+        },
+      };
+      benchmark.summary['post_release_inflight'] = {
+        requests: benchmark.phases.filter((row) => row.phase === 'post_revoke_inflight').length,
+        status_counts: {
+          '503': benchmark.phases.filter(
+            (row) => row.phase === 'post_revoke_inflight' && row.status === 503,
+          ).length,
+        },
+        latency_measured: false,
+        result: 'no_name_disclosed',
+      };
+      benchmark.summary['request_counts'] = Object.fromEntries(
+        [
+          'preconsent_warmup',
+          'preconsent_sample',
+          'consented_warmup',
+          'consented_sample',
+          'fail_closed',
+          'invalid_token',
+          'post_revoke_inflight',
+          'post_release_revoke',
+        ].map((phase) => [phase, benchmark.phases.filter((row) => row.phase === phase).length]),
+      );
+      try {
+        await mkdir(join(root, 'artifacts'), { recursive: true });
+        const reportPath = join(root, 'artifacts/profile-userinfo-benchmark.json');
+        await writeFile(reportPath, `${JSON.stringify(benchmark, null, 2)}\n`, { mode: 0o600 });
+        await chmod(reportPath, 0o600);
+      } catch {
+        if (!testFailed) throw new Error('profile_benchmark_report_write_failed');
+      }
+      if (!cleanupOk && !testFailed) throw new Error('profile_benchmark_cleanup_failed');
+    }
   }
 }
 
@@ -632,3 +1050,12 @@ test('workerd v2 recipient, real sharing CAS, selected RP consent and postdecryp
   qualifyRecordUserInfo(false));
 test('browser v2 recipient, real sharing CAS, selected RP consent and postdecrypt withdrawal', () =>
   qualifyRecordUserInfo(true));
+
+// Opt-in endpoint-only benchmark. The authenticated SSO/client/token fixture is preprovisioned;
+// this does not measure a Passkey/OIDC login, production build, remote database or capacity.
+// MIKAKI_PROFILE_BENCHMARK=1 node --test --test-concurrency=1 --test-name-pattern='local-only synthetic v2 profile UserInfo benchmark' local/conformance/vault-record-userinfo-live.test.ts
+if (process.env['MIKAKI_PROFILE_BENCHMARK'] === '1') {
+  test('local-only synthetic v2 profile UserInfo benchmark', { timeout: 240_000 }, () =>
+    qualifyRecordUserInfo(true, true),
+  );
+}
