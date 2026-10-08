@@ -1,20 +1,31 @@
 <script lang="ts">
   import { restoreActionFocus } from './action-focus.js';
-  import { onMount, setContext, tick } from 'svelte';
+  import { onMount, setContext, tick, type Snippet } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
-  import OwnerWorkspace from './OwnerWorkspace.svelte';
   import ProductHeader from './ProductHeader.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
   import { VaultScope, type LockReason } from './vault-lifecycle.js';
   import { VAULT_CONTEXT } from './vault-context.js';
   import { subscribeVaultLock } from './session-events.js';
-  let { locale }: { locale: Locale } = $props();
+  let {
+    locale,
+    sourceReview = false,
+    children,
+  }: { locale: Locale; sourceReview?: boolean; children: Snippet } = $props();
   let reason: LockReason | null = $state(null);
   let checking = $state(false);
   let suspended = $state(false);
   let generation = $state(0);
-  let scope = new VaultScope(locked);
+  const freshScope = () =>
+    new VaultScope(
+      locked,
+      undefined,
+      undefined,
+      undefined,
+      sourceReview ? '/work/session' : '/vault/session',
+    );
+  let scope = freshScope();
   const drafts = new SvelteSet<() => boolean>();
   const resumeChecks = new Set<() => Promise<void>>();
   const dirty = $derived([...drafts].some((read) => read()));
@@ -70,7 +81,7 @@
     if (checking) return;
     const previousFocus = document.activeElement;
     checking = true;
-    const candidate = new VaultScope(locked);
+    const candidate = freshScope();
     scope = candidate;
     await candidate.verify();
     if (!candidate.signal.aborted) {
@@ -130,7 +141,9 @@
 
 {#if !reason}
   <div hidden={suspended || checking} inert={suspended || checking}>
-    {#key generation}<OwnerWorkspace {locale} />{/key}
+    {#key generation}
+      {@render children()}
+    {/key}
   </div>
 {/if}
 {#if reason || suspended || checking}
@@ -145,23 +158,37 @@
             /></svg
           >
         </div>
-        <span class="product-eyebrow">PERSONAL VAULT</span>
+        <span class="product-eyebrow">{sourceReview ? 'SOURCE REVIEW' : 'PERSONAL VAULT'}</span>
         <h1 id="vault-lock-title" tabindex="-1">
-          {checking || suspended ? m.vaultSessionChecking() : m.vaultSessionLocked()}
+          {sourceReview
+            ? checking || suspended
+              ? m.source_loading()
+              : m.source_locked()
+            : checking || suspended
+              ? m.vaultSessionChecking()
+              : m.vaultSessionLocked()}
         </h1>
         <p role="status">
-          {checking || suspended
-            ? m.vaultSessionCheckingBody()
-            : reason === 'session'
-              ? m.vaultSessionChanged()
-              : reason === 'unconfirmed'
-                ? m.vaultSessionUnconfirmed()
-                : m.vaultSessionLockedBody()}
+          {sourceReview
+            ? checking || suspended
+              ? m.source_loading()
+              : reason === 'session'
+                ? m.source_session()
+                : reason === 'unconfirmed'
+                  ? m.source_unavailable()
+                  : m.source_lock_body()
+            : checking || suspended
+              ? m.vaultSessionCheckingBody()
+              : reason === 'session'
+                ? m.vaultSessionChanged()
+                : reason === 'unconfirmed'
+                  ? m.vaultSessionUnconfirmed()
+                  : m.vaultSessionLockedBody()}
         </p>
         {#if reason && !checking}<button
             class="product-button product-primary"
             type="button"
-            onclick={reopen}>{m.vaultSessionReopen()}</button
+            onclick={reopen}>{sourceReview ? m.source_reopen() : m.vaultSessionReopen()}</button
           >{/if}
       </section>
     </main>

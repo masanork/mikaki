@@ -97,6 +97,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     }
     let segments: Vec<_> = url.path().split('/').collect();
     let listing = request.method() == Method::Get && segments == ["", "work", "requests"];
+    let session = request.method() == Method::Get && segments == ["", "work", "session"];
     let reading = request.method() == Method::Get
         && segments.len() == 4
         && segments[1] == "work"
@@ -108,7 +109,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         && segments.len() == 5
         && segments[1..3] == ["work", "grants"]
         && segments[4] == "revoke";
-    if !listing && !reading && !revoking {
+    if !listing && !reading && !revoking && !session {
         return error(404, "not_found");
     }
     // Reject browser cross-site reads as well as all non-same-origin mutations.
@@ -118,7 +119,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     {
         return error(403, "invalid_origin");
     }
-    let id = if listing {
+    let id = if listing || session {
         String::new()
     } else {
         match resource_id(segments[3]) {
@@ -158,6 +159,29 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     };
     let store = WorkStore::from_env(&env)
         .map_err(|_| worker::Error::RustError("work_storage_unavailable".into()))?;
+    if session {
+        if let Err(error) = store.require_current_authority().await {
+            return match error {
+                StoreError::Denied(_) => crate::work_owner::error(409, "stale_authority"),
+                StoreError::Storage(_) => unavailable(),
+            };
+        }
+        // Recheck the live SSO after independent service I/O, before publishing
+        // the local display lease. It grants no source/disclosure permission.
+        let owner = match crate::vault_http::owner(&request, &db).await {
+            Ok(Some(owner)) => owner,
+            Ok(None) => return error(401, "authentication_required"),
+            Err(_) => return unavailable(),
+        };
+        return reply(
+            200,
+            &json!({
+                "session_tag": crate::passkey_login::hash(&format!("work-session-v1:{}", owner.secret_hash)),
+                "account_id": owner.account_id,
+                "credential_id": owner.credential_id,
+            }),
+        );
+    }
     let result = if listing {
         store.owner_requests(&owner.secret_hash, after.as_deref()).await
             .map(|page| json!({"format_version":1,"checked_at":crate::now_seconds(),"requests":page.requests,"next_after":page.next_after}))

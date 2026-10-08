@@ -135,6 +135,7 @@ jobs:
           npm ci --prefix design/probes/vault-search
           npm run test:vault-thread-search
           npm run test:worker-browser
+          npm run test:work-source-ui
           npm run test:agent-integration
           npm run test:vault-transfer
           npm run test:vault-disclosure
@@ -215,6 +216,7 @@ jobs:
           npm ci --prefix design/probes/vault-search
           npm run test:vault-thread-search
           npm run test:worker-browser
+          npm run test:work-source-ui
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

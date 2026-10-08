@@ -107,9 +107,48 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         Ok(None) => return error(401, "authentication_required"),
         Err(_) => return unavailable(),
     };
-    // Product review screens follow the qualified authority/effect increments.
     if page || static_asset {
-        return error(404, "not_found");
+        let store = WorkStore::from_env(&env)
+            .map_err(|_| worker::Error::RustError("work_storage_unavailable".into()))?;
+        if let Err(error) = store.require_current_authority().await {
+            return match error {
+                StoreError::Denied(_) => crate::work_owner::error(409, "stale_authority"),
+                StoreError::Storage(_) => unavailable(),
+            };
+        }
+        if page {
+            let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
+            let html = include_str!("../ui/work-sources.html")
+                .replace("{{locale}}", strings.locale)
+                .replace(
+                    "{{title}}",
+                    &crate::i18n::html_escape(strings.message("source_title")),
+                );
+            return Response::builder()
+                .with_header("Cache-Control", "no-store")?
+                .with_header("Vary", "Cookie, Origin")?
+                .with_header("Referrer-Policy", "no-referrer")?
+                .with_header("X-Content-Type-Options", "nosniff")?
+                .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
+                .from_html(html);
+        }
+        let (body, mime) = if url.path().ends_with(".js") {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-sources.js")),
+                "text/javascript; charset=utf-8",
+            )
+        } else {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-sources.css")),
+                "text/css; charset=utf-8",
+            )
+        };
+        return Ok(Response::builder()
+            .with_header("Cache-Control", "no-store")?
+            .with_header("Vary", "Cookie, Origin")?
+            .with_header("X-Content-Type-Options", "nosniff")?
+            .with_header("Content-Type", mime)?
+            .fixed(body.as_bytes().to_vec()));
     }
     let store = WorkStore::from_env(&env)
         .map_err(|_| worker::Error::RustError("work_storage_unavailable".into()))?;

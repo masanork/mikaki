@@ -24,6 +24,8 @@
   "include": [
     "login.ts",
     "vault.ts",
+    "work-sources.ts",
+    "work-source-view.ts",
     "admin.ts",
     "complete.ts",
     "locale.ts",

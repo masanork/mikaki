@@ -1195,3 +1195,114 @@ a {
   outline: 2px solid var(--product-accent, #8c8157);
   outline-offset: 4px;
 }
+/* Owner source review uses the same shell and session lock as the workspace. */
+.source-page .source-lead {
+  max-width: 44rem;
+  line-height: 1.8;
+}
+.source-page button {
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--product-line);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.source-page button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.source-page button:focus-visible,
+.source-page input:focus-visible {
+  outline: 3px solid var(--product-blue);
+  outline-offset: 3px;
+}
+.source-page .source-boundary {
+  padding: 1rem;
+  border: 1px solid var(--product-line);
+  border-radius: 0.7rem;
+}
+.source-page .source-toolbar,
+.source-page .source-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.source-page .source-card {
+  margin: 1.2rem 0;
+  padding: 1.2rem;
+  border: 1px solid var(--product-line);
+  border-radius: 0.8rem;
+  background: #fffdf4;
+}
+.source-page .source-heading h2 {
+  margin: 0.2rem 0;
+  font-size: 1.25rem;
+}
+.source-page dl div {
+  display: flex;
+  gap: 1rem;
+  margin: 0.5rem 0;
+}
+.source-page dt {
+  flex: 0 0 8rem;
+}
+.source-page dd {
+  margin: 0;
+  min-width: 0;
+}
+.source-page code,
+.source-page strong {
+  overflow-wrap: anywhere;
+}
+.source-page fieldset {
+  border: 0;
+  padding: 0;
+}
+.source-page .source-file {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 52px;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+.source-page .source-file input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.source-page .source-file span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.source-page .source-review-action {
+  margin: 2rem 0;
+}
+.source-page .source-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  border: 1px solid var(--product-line);
+  border-radius: 0.5rem;
+  line-height: 1.6;
+  background: #fffdf4;
+  max-height: 32rem;
+  overflow: auto;
+}
+.source-page pre:focus-visible {
+  outline: 2px solid var(--product-blue);
+  outline-offset: 3px;
+}
+@media (max-width: 420px) {
+  .source-page dt {
+    flex-basis: 5rem;
+  }
+}
+.source-page .source-error {
+  color: #92351e;
+  padding: 1rem;
+}

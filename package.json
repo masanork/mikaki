@@ -83,7 +83,8 @@
     "test:work-op-boundaries": "node --test --test-concurrency=1 local/conformance/work-op-boundaries.test.ts",
     "test:work-effects": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 local/conformance/work-effect-gate.test.ts",
     "check:work-effects": "node_modules/typescript/bin/tsc --project crates/work-effect-worker/tsconfig.qualification.json",
-    "generate:work-source-types": "wrangler types --config crates/work-source-worker/wrangler.example.jsonc crates/work-source-worker/worker-configuration.d.ts"
+    "generate:work-source-types": "wrangler types --config crates/work-source-worker/wrangler.example.jsonc crates/work-source-worker/worker-configuration.d.ts",
+    "test:work-source-ui": "npm run build:work-store-fixture && node --test --test-concurrency=1 local/conformance/work-source-browser.test.ts local/conformance/vault-lifecycle.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

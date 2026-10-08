@@ -49,6 +49,14 @@ test('production Rust shim and named OP facade refuse public/raw administration 
   try {
     await harness.listen();
     const op = harness.getWorker('work-op-boundary');
+    for (const path of [
+      '/work/session',
+      '/work/source-review',
+      '/work/source-review.js',
+      '/work/source-review.css',
+    ]) {
+      assert.equal((await op.fetch(`https://work.test${path}`)).status, 404);
+    }
     await op.applyD1Migrations('DB');
     const caller = await harness.getWorker('work-boundary-caller').getEnv();
     for (const binding of [caller.OP_PUBLIC, caller.OP_AUTHORITY_ADMIN, caller.WORK_EFFECT_STORE]) {

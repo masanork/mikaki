@@ -31,16 +31,19 @@ export class VaultScope {
   private readonly wall: () => number;
   private readonly monotonic: () => number;
   private readonly transport: typeof fetch;
+  private readonly sessionPath: '/vault/session' | '/work/session';
   constructor(
     invalid: (reason: LockReason) => void,
     wall = () => Date.now(),
     monotonic = () => performance.now(),
     transport: typeof fetch = (...args) => fetch(...args),
+    sessionPath: '/vault/session' | '/work/session' = '/vault/session',
   ) {
     this.invalid = invalid;
     this.wall = wall;
     this.monotonic = monotonic;
     this.transport = transport;
+    this.sessionPath = sessionPath;
     this.started = this.activityAt = this.lastWall = wall();
     this.monotonicStarted = this.monotonicActivityAt = monotonic();
   }
@@ -115,7 +118,7 @@ export class VaultScope {
       new URL(
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
         'https://vault.invalid',
-      ).pathname === '/vault/session' &&
+      ).pathname === this.sessionPath &&
       response.ok
     )
       this.observe(await response.clone().json());
@@ -126,7 +129,7 @@ export class VaultScope {
     this.assert();
     const check = async () => {
       try {
-        const response = await this.transport('/vault/session', {
+        const response = await this.transport(this.sessionPath, {
           cache: 'no-store',
           signal: this.signal,
         });

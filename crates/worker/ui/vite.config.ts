@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const entry = process.env['MIKAKI_UI_ENTRY'] ?? 'login';
 const outDir = process.env['MIKAKI_UI_OUTDIR'] ?? '../../../target/worker-ui-check';
-if (!['login', 'vault', 'admin', 'complete', 'logout'].includes(entry))
+if (!['login', 'vault', 'admin', 'complete', 'logout', 'work-sources'].includes(entry))
   throw new Error('Unknown Worker UI entry');
 
 export default defineConfig({
@@ -29,10 +29,13 @@ export default defineConfig({
       fileName: () => `${entry}.js`,
       cssFileName: entry,
     },
-    // Vite's ES library output normally preserves whitespace. The Vault entry
-    // uses the supported final output minifier without splitting or adding assets.
+    // Vite's ES library output normally preserves whitespace. Owner entries
+    // use the final output minifier without splitting or adding assets.
     rolldownOptions: {
-      output: { inlineDynamicImports: true, ...(entry === 'vault' ? { minify: true } : {}) },
+      output: {
+        inlineDynamicImports: true,
+        ...(['vault', 'work-sources'].includes(entry) ? { minify: true } : {}),
+      },
     },
   },
 });
