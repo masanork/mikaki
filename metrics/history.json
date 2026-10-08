@@ -1698,20 +1698,20 @@
   },
   {
     "date": "2026-10-08",
-    "commit": "44eddf0",
+    "commit": "83159cd",
     "code": {
-      "implementationLines": 44194,
-      "testLines": 10204,
+      "implementationLines": 44190,
+      "testLines": 10248,
       "implementationFiles": 185,
-      "testFiles": 28,
+      "testFiles": 29,
       "byLanguage": {
         "typescript": {
           "implementationLines": 14218,
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 25624,
-          "testLines": 7466
+          "implementationLines": 25620,
+          "testLines": 7510
         },
         "svelte": {
           "implementationLines": 4352,
@@ -1730,13 +1730,13 @@
         "dev": 10
       },
       "sourceLines": {
-        "npmRuntime": 356958,
-        "rustRuntime": 1370575,
-        "total": 1727533
+        "npmRuntime": 373303,
+        "rustRuntime": 1383505,
+        "total": 1756808
       },
       "sourcePackages": {
         "npmRuntime": 117,
-        "rustRuntime": 216
+        "rustRuntime": 212
       },
       "names": {
         "npmRuntime": [
@@ -1821,19 +1821,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 8807,
+        "covered": 8805,
         "count": 10042,
-        "percent": 87.70165305715992
+        "percent": 87.68173670583549
       },
       "regions": {
-        "covered": 14690,
-        "count": 17539,
-        "percent": 83.75620046752951
+        "covered": 14705,
+        "count": 17556,
+        "percent": 83.76053770790612
       },
       "functions": {
-        "covered": 783,
-        "count": 907,
-        "percent": 86.32855567805956
+        "covered": 782,
+        "count": 906,
+        "percent": 86.31346578366445
       }
     }
   }
