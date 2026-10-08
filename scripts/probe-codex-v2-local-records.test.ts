@@ -4,6 +4,7 @@ import {
   makeSyntheticRecord,
   completedMcpCalls,
   classifyCodexDiagnostic,
+  codexJsonlDiagnostic,
   exactAuditDelta,
   findToolOutputs,
   verifyStructuredOutput,
@@ -124,6 +125,34 @@ test('Codex stderr classification exposes only a known diagnostic category', () 
   assert.equal(classifyCodexDiagnostic('fetch failed: ECONNRESET'), 'network');
   assert.equal(classifyCodexDiagnostic('error: unknown option --bad'), 'cli_arguments');
   assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), 'unclassified');
+});
+
+test('Codex JSONL backend errors expose only safe event kind, category, and numeric HTTP status', () => {
+  const event = {
+    type: 'error',
+    message: 'Sensitive response body: HTTP 503 model unavailable',
+    code: 'secret-internal-code',
+    status: 503,
+  };
+  const diagnostic = codexJsonlDiagnostic(JSON.stringify(event));
+  assert.deepEqual(diagnostic, {
+    eventKind: 'error',
+    category: 'model_unavailable',
+    httpStatus: 503,
+  });
+  assert.equal(JSON.stringify(diagnostic).includes('Sensitive'), false);
+  assert.equal(JSON.stringify(diagnostic).includes('secret-internal-code'), false);
+  assert.equal(
+    codexJsonlDiagnostic(
+      JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'mcp_tool_call', error: { message: 'denied', status: 403 } },
+      }),
+      false,
+    ),
+    null,
+    'Expected tool-call errors are inspected by the invocation contract instead',
+  );
 });
 
 test('Codex audit delta must match exact allowed and denied calls', () => {

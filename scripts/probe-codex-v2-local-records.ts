@@ -94,6 +94,13 @@ export type CodexDiagnosticCategory =
   | 'network'
   | 'cli_arguments'
   | 'unclassified';
+export type CodexErrorEventKind = 'error' | 'turn_failed' | 'item_error' | 'other_error';
+
+export type CodexJsonlDiagnostic = Readonly<{
+  eventKind: CodexErrorEventKind;
+  category: CodexDiagnosticCategory;
+  httpStatus?: number;
+}>;
 
 export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory {
   if (/rate[\s_-]?limit|too many requests|\b429\b|quota exceeded/i.test(stderr))
@@ -121,20 +128,97 @@ export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory
   return 'unclassified';
 }
 
+export function codexJsonlDiagnostic(
+  jsonl: string,
+  includeToolErrors = true,
+): CodexJsonlDiagnostic | null {
+  for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
+    let event: unknown;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRecord(event)) continue;
+    const type = event['type'];
+    const item = isRecord(event['item']) ? event['item'] : undefined;
+    const topError = event['error'];
+    const itemError = item?.['error'];
+    const hasError =
+      type === 'error' ||
+      type === 'turn.failed' ||
+      item?.['type'] === 'error' ||
+      (includeToolErrors && item?.['type'] === 'mcp_tool_call' && itemError != null) ||
+      (topError !== undefined && topError !== null) ||
+      (includeToolErrors && itemError !== undefined && itemError !== null);
+    if (!hasError) continue;
+
+    const error = isRecord(itemError) ? itemError : isRecord(topError) ? topError : undefined;
+    const messages = [
+      event['message'],
+      typeof topError === 'string' ? topError : undefined,
+      error?.['message'],
+      typeof itemError === 'string' ? itemError : undefined,
+    ].filter((value): value is string => typeof value === 'string');
+    const codes = [
+      event['code'],
+      event['status'],
+      event['status_code'],
+      error?.['code'],
+      error?.['status'],
+    ];
+    const httpStatus = codes.find(
+      (value): value is number =>
+        typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599,
+    );
+    return {
+      eventKind:
+        type === 'error'
+          ? 'error'
+          : type === 'turn.failed'
+            ? 'turn_failed'
+            : item?.['type'] === 'error' || (includeToolErrors && itemError != null)
+              ? 'item_error'
+              : 'other_error',
+      category: classifyCodexDiagnostic(
+        [...messages, ...(httpStatus ? [String(httpStatus)] : [])].join('\n'),
+      ),
+      ...(httpStatus !== undefined ? { httpStatus } : {}),
+    };
+  }
+  return null;
+}
+
 class CodexCliError extends Error {
-  readonly code: 'codex_unavailable' | 'codex_timeout' | 'codex_output_limit' | 'codex_failed';
+  readonly code:
+    | 'codex_unavailable'
+    | 'codex_timeout'
+    | 'codex_output_limit'
+    | 'codex_failed'
+    | 'codex_backend_error';
   readonly exitCode: number | null | undefined;
   readonly diagnosticCategory: CodexDiagnosticCategory | undefined;
+  readonly errorEventKind: CodexErrorEventKind | undefined;
+  readonly httpStatus: number | undefined;
 
   constructor(
-    code: 'codex_unavailable' | 'codex_timeout' | 'codex_output_limit' | 'codex_failed',
+    code:
+      | 'codex_unavailable'
+      | 'codex_timeout'
+      | 'codex_output_limit'
+      | 'codex_failed'
+      | 'codex_backend_error',
     exitCode?: number | null,
     diagnosticCategory?: CodexDiagnosticCategory,
+    errorEventKind?: CodexErrorEventKind,
+    httpStatus?: number,
   ) {
     super(code);
     this.code = code;
     this.exitCode = exitCode;
     this.diagnosticCategory = diagnosticCategory;
+    this.errorEventKind = errorEventKind;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -226,6 +310,23 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
         clearStderr();
         return reject(failure);
       }
+      const output = Buffer.concat(stdout);
+      const jsonl = output.toString('utf8');
+      const jsonlDiagnostic = codexJsonlDiagnostic(jsonl, code !== 0);
+      if (jsonlDiagnostic) {
+        output.fill(0);
+        clearStderr();
+        return reject(
+          new CodexCliError(
+            'codex_backend_error',
+            code,
+            jsonlDiagnostic.category,
+            jsonlDiagnostic.eventKind,
+            jsonlDiagnostic.httpStatus,
+          ),
+        );
+      }
+      output.fill(0);
       if (code !== 0) {
         const diagnostic = Buffer.concat(stderr);
         const diagnosticCategory = classifyCodexDiagnostic(diagnostic.toString('utf8'));
@@ -234,7 +335,7 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
         return reject(new CodexCliError('codex_failed', code, diagnosticCategory));
       }
       clearStderr();
-      resolvePromise(Buffer.concat(stdout).toString('utf8'));
+      resolvePromise(jsonl);
     });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt);
@@ -583,6 +684,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           error: error.code,
           ...(error.exitCode !== undefined ? { exit_code: error.exitCode } : {}),
           ...(error.diagnosticCategory ? { diagnostic_category: error.diagnosticCategory } : {}),
+          ...(error.errorEventKind ? { error_event_kind: error.errorEventKind } : {}),
+          ...(error.httpStatus !== undefined ? { http_status: error.httpStatus } : {}),
         })}\n`,
       );
     } else {
