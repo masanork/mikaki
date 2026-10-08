@@ -148,6 +148,134 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  native-client:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.98.1 --profile minimal
+      - name: Native client library regressions
+        run: cargo test --locked --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib
+
+  jose-probes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: design/probes/package-lock.json
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: probe
+      - run: npm ci --prefix design/probes
+      - name: Compile native and Wasm JOSE providers
+        run: |
+          for probe in jose jose-custom; do
+            cargo build --locked --manifest-path "design/probes/$probe/Cargo.toml" --bin fixture
+            wasm-pack build "design/probes/$probe" --target nodejs --release --out-dir pkg -- --locked
+          done
+      - name: Independent JOSE interoperability and rejection cases
+        run: node --test --test-concurrency=1 design/probes/jose.test.ts design/probes/jose-custom.test.ts
+
+  android-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: apps/mikaki-client/package-lock.json
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Install pinned Android build targets
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+          printf 'NDK_HOME=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
+      - run: npm ci --prefix apps/mikaki-client
+      - name: Build Android aarch64 debug APK
+        working-directory: apps/mikaki-client
+        run: npm run tauri -- android build --debug --target aarch64 --apk --ci
+      - name: Proximity protocol regressions
+        working-directory: apps/mikaki-client/src-tauri/gen/android
+        run: ./gradlew --no-daemon :tauri-plugin-identity-proximity:testDebugUnitTest
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-client-validation
+          path: |
+            apps/mikaki-client/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
+            apps/mikaki-client/plugins/identity-proximity/android/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  android-verifier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: worker
+      - name: Fetch pinned upstream verifier
+        run: |
+          printf 'MIKAKI_KEYATTESTATION_CHECKOUT=%s/android-keyattestation\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          git clone https://github.com/android/keyattestation "$RUNNER_TEMP/android-keyattestation"
+          git -C "$RUNNER_TEMP/android-keyattestation" checkout --detach 55c35040a1b5b72e6d63bfb150c5c68a175c1462
+      - name: JVM verifier unit tests and distribution
+        run: apps/mikaki-client/src-tauri/gen/android/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
+      - run: npm ci
+      - name: Build broker and test the actual bridge/JVM chain
+        run: |
+          npm run generate:i18n
+          npm run build:policy
+          worker-build --release crates/worker
+          node --test local/conformance/identity-attester-jvm.test.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-verifier-validation
+          path: services/android-attestation-verifier/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
   dependency-advisories:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -245,7 +373,8 @@ jobs:
 
   supply-chain:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, dependency-advisories]
+    needs:
+      [verify, dependency-advisories, native-client, jose-probes, android-client, android-verifier]
     permissions:
       contents: read
       id-token: write
@@ -304,7 +433,16 @@ jobs:
 
   deploy-website:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, dependency-advisories, website]
+    needs:
+      [
+        verify,
+        dependency-advisories,
+        website,
+        native-client,
+        jose-probes,
+        android-client,
+        android-verifier,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:

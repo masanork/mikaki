@@ -24,6 +24,8 @@ CI should detect missing/extra message keys, parameter mismatches, empty transla
 
 ## Growth and coverage
 
+Dependency updates also run separate CI jobs for the native client library, both JOSE providers on native/Wasm, the Android aarch64 debug APK and proximity protocol unit tests, and the actual broker → private bridge → JVM verifier chain. These jobs gate the attested production build and website deployment. Gradle dependencies in the Android app, local plugins and JVM verifier are monitored by weekly grouped Dependabot updates, including majors. Android hardware checks remain a separate qualification task.
+
 Measure base/head under identical rules for handwritten Rust, TypeScript/Svelte, SQL, tests, docs, generated files, and bundled assets. Exclude generated/vendor lines from handwritten counts, while still measuring shipped bundle bytes. Review public APIs, largest files, dependencies, raw/gzip Wasm and frontend sizes, build/test duration, TODOs, unsafe/allow suppressions, and coverage exclusions. Treat 500 handwritten lines in a product file as a review signal and growth beyond 800 as requiring a reason, not an automatic split. Do not fail CI merely because total code grows.
 
 Record measurement JSON, HTML, LCOV, graphs, commit SHA, toolchain, features, exclusions, and metric version as CI artifacts and Job Summary. PR jobs should not get write tokens for a metrics history branch. The README links to [codebase growth](../README.md) and coverage reports.
