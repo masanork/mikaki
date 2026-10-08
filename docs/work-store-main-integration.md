@@ -40,3 +40,10 @@ npm run check:docs
 At the original `ed7535d` checkpoint, the Wasm/workerd/D1/R2/Git suite passed **65/65 cases**; native Rust workspace tests pass **209 cases including doctests**. Production-baseline, Owner-schema and release-inventory regressions pass **11/11**. Node types, production Wasm Clippy, formatting and source checks pass. Main's existing Identity code needed six semantics-preserving style fixes for the current Wasm Clippy check (conditional/range/borrow syntax); no Identity protocol behavior was changed.
 
 These are local results. The current 178-case run adds M3 framing, M4 local effect admission/refusal and M5a source inspection with the shared OwnerWorkspace/session shell. The [UI note](work-request-ui.md) records the rendered-source scope; copy/delegation and activity/result composition remain pending. Independent operator/checkpoint provisioning and actual provider recovery remain activation gates. No remote CI, migration, binding change, real credential issuance or production deployment is claimed.
+
+
+Subsequent reconciliation qualifies **246 backend/Git cases**, including fixed
+mint authority, known-ID safety recovery and actual Git copy/readback core. The
+[current implementation record](work-delegation-implementation.md) gives the
+selected source and remaining productive broker/activation gates; the M2 counts
+above remain historical evidence.

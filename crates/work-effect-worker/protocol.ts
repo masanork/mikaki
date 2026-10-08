@@ -32,9 +32,16 @@ export type MintRecord = {
   plan: MintPlan;
   state: 'outcome_unknown' | 'custodied' | 'closed';
   observation: MintObservation | null;
-  cleanup_requested: boolean;
   revoke_acknowledged: boolean;
+  cleanup_requested: boolean;
   receipt: string | null;
+  cleanup?: MintCleanup & { observed_at: number };
+};
+/** Specific control-plane evidence, not bearer refusal or copy verification. */
+export type MintCleanup = MintObservation & {
+  format_version: 1;
+  method: 'revoked_inventory' | 'revoke_acknowledged';
+  receipt: string;
 };
 export type Closure = {
   repo_id: string;
@@ -167,6 +174,29 @@ export function mintObservation(v: unknown): asserts v is MintObservation {
     v.expires_at < 1
   )
     throw new Error('effect_invalid');
+}
+export function mintCleanup(v: unknown): asserts v is MintCleanup {
+  if (
+    !closed(v, [
+      'repo_id',
+      'token_id',
+      'scope',
+      'expires_at',
+      'format_version',
+      'method',
+      'receipt',
+    ]) ||
+    v.format_version !== 1 ||
+    !hex(v.receipt) ||
+    !['revoked_inventory', 'revoke_acknowledged'].includes(String(v.method))
+  )
+    throw new Error('effect_invalid');
+  mintObservation({
+    repo_id: v.repo_id,
+    token_id: v.token_id,
+    scope: v.scope,
+    expires_at: v.expires_at,
+  });
 }
 export function revocationInventory(v: unknown): asserts v is RevocationInventory {
   if (

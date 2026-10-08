@@ -10,6 +10,7 @@ import {
   tokenObservation,
   mintPlan,
   mintObservation,
+  mintCleanup,
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
 import type { MintPlan, MintRecord } from '../work-effect-worker/protocol';
@@ -279,8 +280,8 @@ export class WorkCheckpoint extends DurableObject<Env> {
         plan: input,
         state: 'outcome_unknown',
         observation: null,
-        cleanup_requested: false,
         revoke_acknowledged: false,
+        cleanup_requested: false,
         receipt: null,
       };
       // The unique permanent slot prevents new attempt IDs after primary restore.
@@ -321,8 +322,8 @@ export class WorkCheckpoint extends DurableObject<Env> {
         !r ||
         r.plan.digest !== digest ||
         !r.observation ||
-        r.cleanup_requested ||
         r.revoke_acknowledged ||
+        r.cleanup_requested ||
         r.state === 'closed' ||
         r.observation.scope !== r.plan.scope ||
         r.observation.expires_at > r.plan.expires_at ||
@@ -337,21 +338,18 @@ export class WorkCheckpoint extends DurableObject<Env> {
     await this.ctx.storage.sync();
     return result;
   }
-  async requestMintCleanup(attempt: unknown, digest: unknown) {
+  async revokeMint(attempt: unknown, digest: unknown, safety = false) {
     this.ctx.storage.transactionSync(() => {
       const r = this.#mint(attempt);
-      if (!r || r.plan.digest !== digest) throw new Error('effect_conflict');
-      r.cleanup_requested = true;
-      if (r.state !== 'closed') r.state = 'outcome_unknown';
-      this.#saveMint(r);
-    });
-    await this.ctx.storage.sync();
-  }
-  async revokeMint(attempt: unknown, digest: unknown) {
-    this.ctx.storage.transactionSync(() => {
-      const r = this.#mint(attempt);
-      if (!r || r.plan.digest !== digest || !r.observation) throw new Error('effect_conflict');
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        !r.observation ||
+        (safety && (!r.cleanup_requested || r.state !== 'outcome_unknown'))
+      )
+        throw new Error('effect_conflict');
       r.revoke_acknowledged = true;
+      r.cleanup_requested = true;
       if (r.state !== 'closed') r.state = 'outcome_unknown';
       this.#saveMint(r);
     });
@@ -361,10 +359,62 @@ export class WorkCheckpoint extends DurableObject<Env> {
     if (!hex(receipt)) throw new Error('effect_invalid');
     const result = this.ctx.storage.transactionSync(() => {
       const r = this.#mint(attempt);
-      if (!r || r.plan.digest !== digest || !r.observation || (r.receipt && r.receipt !== receipt))
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        !r.observation ||
+        !r.cleanup_requested ||
+        r.observation.scope !== r.plan.scope ||
+        r.observation.expires_at > r.plan.expires_at ||
+        (r.receipt && r.receipt !== receipt)
+      )
         throw new Error('effect_conflict');
       r.state = 'closed';
       r.receipt = receipt;
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async beginMintCleanup(attempt: unknown, digest: unknown, productive = false) {
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt);
+      if (
+        !r ||
+        r.plan.digest !== digest ||
+        r.state === 'closed' ||
+        (!productive && r.state !== 'outcome_unknown')
+      )
+        throw new Error('effect_conflict');
+      r.cleanup_requested = true;
+      r.state = 'outcome_unknown';
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async recordMintCleanup(attempt: unknown, digest: unknown, input: unknown) {
+    mintCleanup(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt),
+        o = r?.observation;
+      if (
+        !r ||
+        !o ||
+        r.plan.digest !== digest ||
+        r.state !== 'outcome_unknown' ||
+        !r.cleanup_requested ||
+        o.repo_id !== input.repo_id ||
+        o.token_id !== input.token_id ||
+        o.scope !== input.scope ||
+        o.expires_at !== input.expires_at ||
+        (input.method === 'revoke_acknowledged' && !r.revoke_acknowledged) ||
+        (r.cleanup && (r.cleanup.receipt !== input.receipt || r.cleanup.method !== input.method))
+      )
+        throw new Error('effect_conflict');
+      if (!r.cleanup) r.cleanup = { ...input, observed_at: Math.floor(Date.now() / 1000) };
       this.#saveMint(r);
       return r;
     });
@@ -608,14 +658,41 @@ export class WorkMintCheckpoint extends WorkerEntrypoint<Env> {
   custody(attempt: unknown, digest: unknown) {
     return object(this.env).custodyMint(attempt, digest);
   }
-  cleanup(attempt: unknown, digest: unknown) {
-    return object(this.env).requestMintCleanup(attempt, digest);
-  }
   close(attempt: unknown, digest: unknown, receipt: unknown) {
     return object(this.env).closeMint(attempt, digest, receipt);
   }
+  abandon(attempt: unknown, digest: unknown) {
+    return object(this.env).beginMintCleanup(attempt, digest, true);
+  }
   revoked(attempt: unknown, digest: unknown) {
     return object(this.env).revokeMint(attempt, digest);
+  }
+}
+/** Physical broker's read-only view. No observation, dispatch or mutation. */
+export class WorkMintLookup extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+}
+/** Safety only: cannot claim, observe unknown IDs, custody, close or reset. */
+export class WorkMintMaintenance extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+  begin(attempt: unknown, digest: unknown) {
+    return object(this.env).beginMintCleanup(attempt, digest);
+  }
+  revoked(attempt: unknown, digest: unknown) {
+    return object(this.env).revokeMint(attempt, digest, true);
+  }
+  record(attempt: unknown, digest: unknown, value: unknown) {
+    return object(this.env).recordMintCleanup(attempt, digest, value);
   }
 }
 /** Safety-only capability: no claim, close, frame, floor, bootstrap or reset. */

@@ -1,6 +1,6 @@
 # Fixed Git copy payload and independent readback
 
-M6b1 provides the trusted local copy core in
+M6c1 provides the trusted local copy core in
 [work-git-copy.ts](../scripts/work-git-copy.ts). It performs no network I/O,
 credential decryption, Native admission, preparation verification or grant
 issuance. The private productive broker remains the next integration step.

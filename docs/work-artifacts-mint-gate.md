@@ -101,12 +101,14 @@ unchanged while the independent ledger retains the observed token and qualified
 revocation acknowledgement. No general checkpoint bypass is added for cleanup.
 
 A provider mint reply lost before the token is observed may leave an active token
-without plaintext. The tombstone retains the destination and charge, but this
-increment adds no fresh inventory-based mint recovery broker. Even an empty
-inventory or elapsed deadline cannot certify revocation/non-issuance. This must
-be resolved before productive Git execution or a remote mint trial. Malformed
-provider results likewise remain uncertain even if the known returned bearer was
-revoked.
+without plaintext. The tombstone retains the destination and charge. Subsequent
+[M6b known-ID recovery](work-artifacts-mint-recovery.md) can revoke only the token
+ID already observed for that operation. It cannot attribute an unobserved ID from
+inventory, even with exactly one matching active token. Empty inventory, an
+expired state or an elapsed deadline cannot certify revocation/non-issuance.
+Unobserved outcomes and full credential-backed productive use remain qualification gates
+before productive Git execution or a remote mint trial. Malformed provider
+results likewise remain uncertain even if the known returned bearer was revoked.
 
 SQLite admission uses `transactionSync` and waits for `storage.sync()` before
 returning a dispatch permit, following the [Durable Object storage contract](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
@@ -135,3 +137,8 @@ and Native key fingerprint from `45a0102`, and incorporates the separate mint
 facade, retained short expiry and refusal closure from the parallel
 `feat/work-productive-mint` prototype (`bb73f1d`, `b19913d`). That older branch is
 retained; its separate `token.create` protocol is superseded by this one contract.
+
+Known-ID safety recovery is integrated through the mint-only Native adapter;
+its control-plane evidence remains distinct from the explicit Git-refusal
+closure above. The recovery broker holds only `WorkMintLookup`; it cannot close
+a Native obligation, custody a secret or admit a new mint.

@@ -3,13 +3,14 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { closed, integer, opaque, resource, mintPlan } from './protocol';
 import type { MintPlan, MintObservation, MintRecord } from './protocol';
 import { expiry, jsonBody, scope } from './worker';
+import { mintOp as op, synchronizeMintClosure } from './mint-store';
 
 interface Ledger {
   lookup(attempt: string): Promise<MintRecord | null>;
   claim(plan: MintPlan): Promise<{ started: boolean; record: MintRecord }>;
   observe(attempt: string, digest: string, value: MintObservation): Promise<void>;
   custody(attempt: string, digest: string): Promise<MintRecord>;
-  cleanup(attempt: string, digest: string): Promise<void>;
+  abandon(attempt: string, digest: string): Promise<MintRecord>;
   revoked(attempt: string, digest: string): Promise<void>;
   close(attempt: string, digest: string, receipt: string): Promise<MintRecord>;
 }
@@ -22,14 +23,6 @@ interface Env {
   MINT_CHECKPOINT: Ledger;
   ARTIFACTS: Pick<Artifacts, 'get'>;
 }
-async function op(env: Pick<Env, 'OP_MINT_STORE'>, input: Record<string, unknown>) {
-  const response = await env.OP_MINT_STORE.fetch('https://private.invalid/mint-effect', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  if (response.status !== 200) throw new Error('effect_store_unavailable');
-  return jsonBody(response);
-}
 function output(r: MintRecord) {
   return {
     attempt_id: r.plan.attempt_id,
@@ -38,30 +31,13 @@ function output(r: MintRecord) {
     cleanup:
       r.state === 'closed'
         ? 'refused'
-        : r.revoke_acknowledged
-          ? 'revoke_acknowledged'
-          : 'unconfirmed',
+        : (r.cleanup?.method ?? (r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed')),
   };
 }
-async function synchronized(env: Pick<Env, 'OP_MINT_STORE'>, r: MintRecord) {
+async function synchronized(env: Pick<Env, 'OP_MINT_STORE' | 'MINT_CHECKPOINT'>, r: MintRecord) {
   let synced = false;
-  if (r.state === 'closed' && r.observation && r.receipt) {
-    try {
-      const v = await op(env, {
-        action: 'capture-mint-closed',
-        attempt_id: r.plan.attempt_id,
-        digest: r.plan.digest,
-        ...r.observation,
-        receipt: r.receipt,
-      });
-      synced =
-        closed(v, ['id', 'state', 'revision']) &&
-        v.id === r.plan.attempt_id &&
-        v.state === 'closed';
-    } catch {
-      /* Frozen/pending Native batches remain fenced; retained metadata is retryable. */
-    }
-  } else if (r.state === 'custodied' && r.observation) {
+  if (r.state === 'closed') return synchronizeMintClosure(env, r);
+  if (r.state === 'custodied' && r.observation) {
     try {
       const v = await op(env, {
         action: 'mint-status',
@@ -77,6 +53,14 @@ async function synchronized(env: Pick<Env, 'OP_MINT_STORE'>, r: MintRecord) {
         integer(v.revision) &&
         v.revision >= 3 &&
         v.revision <= 5;
+      // Current Native safety status can fence historical custody; failed reads cannot.
+      if (
+        closed(v, ['id', 'state', 'revision']) &&
+        v.id === r.plan.attempt_id &&
+        integer(v.revision) &&
+        ['revocation_pending', 'closed'].includes(String(v.state))
+      )
+        r = await env.MINT_CHECKPOINT.abandon(r.plan.attempt_id, r.plan.digest);
     } catch {
       /* Independent historical observation cannot recreate a lost secret. */
     }
@@ -224,7 +208,7 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
       return synchronized(env, await env.MINT_CHECKPOINT.custody(attempt, p.digest));
     } catch {
       try {
-        await env.MINT_CHECKPOINT.cleanup(attempt, p.digest);
+        await env.MINT_CHECKPOINT.abandon(attempt, p.digest);
       } catch {
         /* A retained admission still prevents another mint. */
       }
