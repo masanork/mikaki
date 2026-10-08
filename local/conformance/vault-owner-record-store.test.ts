@@ -649,8 +649,8 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
           mutate(owner, initial, 0, operation),
           mutate(owner, initial, 0, operation),
         ]);
-        for (const response of same)
-          assert.equal(response.status, 200, await response.clone().text());
+        // Successful concurrent responses need no diagnostic stream cloning.
+        for (const response of same) assert.equal(response.status, 200);
         assert.equal(await ledgerCount(owner), 1);
         assert.equal((await head(owner)).revision, 1);
         const a = await candidate(owner, 'one', 2, bytes('a')),
@@ -688,8 +688,7 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
           mutate(owner, deleteBody, now, deleteOp, 'DELETE'),
           mutate(owner, deleteBody, now, deleteOp, 'DELETE'),
         ]);
-        for (const response of duplicateDelete)
-          assert.equal(response.status, 200, await response.clone().text());
+        for (const response of duplicateDelete) assert.equal(response.status, 200);
         assert.equal((await head(owner)).revision, now + 1);
       },
     );
