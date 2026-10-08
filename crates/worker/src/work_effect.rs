@@ -10,11 +10,23 @@ use serde::Deserialize;
 use wasm_bindgen::JsValue;
 use worker::{Env, Request, Response};
 use zeroize::Zeroizing;
+mod git;
+mod preparation;
 mod refusal;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 enum Input {
+    PreparationVerify {
+        preparation_id: String,
+    },
+    GitPlan {
+        attempt_id: String,
+    },
+    GitExecute {
+        attempt_id: String,
+        plan: serde_json::Value,
+    },
     InitialPlan {
         attempt_id: String,
     },
@@ -93,14 +105,13 @@ enum Input {
     },
 }
 pub async fn handle(mut request: Request, env: &Env) -> worker::Result<Response> {
-    if request.url()?.path() == "/git-effect" {
-        return crate::work_git::handle(request, env).await;
-    }
-    let mint = request.url()?.path() == "/mint-effect";
-    if request.method() != worker::Method::Post || (!mint && request.url()?.path() != "/effect") {
+    let path = request.url()?.path().to_owned();
+    if request.method() != worker::Method::Post
+        || !matches!(path.as_str(), "/effect" | "/mint-effect" | "/git-effect")
+    {
         return Response::empty().map(|r| r.with_status(404));
     }
-    let result = execute(&mut request, env, mint).await;
+    let result = execute(&mut request, env, &path).await;
     match result {
         Ok(value) => Response::builder()
             .with_header("Cache-Control", "no-store")?
@@ -114,12 +125,12 @@ pub async fn handle(mut request: Request, env: &Env) -> worker::Result<Response>
 async fn execute(
     request: &mut Request,
     env: &Env,
-    mint: bool,
+    path: &str,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let enabled = if mint {
-        "WORK_MINT_STORE_ENABLED"
-    } else {
-        "WORK_EFFECT_STORE_ENABLED"
+    let enabled = match path {
+        "/mint-effect" => "WORK_MINT_STORE_ENABLED",
+        "/git-effect" => "WORK_GIT_STORE_ENABLED",
+        _ => "WORK_EFFECT_STORE_ENABLED",
     };
     if env.var(enabled)?.to_string() != "true" {
         return Err("effect_disabled".into());
@@ -137,14 +148,27 @@ async fn execute(
             | Input::MintRefusal { .. }
             | Input::MintClose { .. }
     );
-    if mint != mint_input {
+    let git_input = matches!(
+        &input,
+        Input::GitPlan { .. } | Input::GitExecute { .. } | Input::PreparationVerify { .. }
+    );
+    if (path == "/mint-effect") != mint_input || (path == "/git-effect") != git_input {
         return Err("invalid_effect_input".into());
     }
     let store = WorkStore::from_env(env)?;
-    // These fixed result-recording actions confer no dispatch or release.
-    // Native batches still require checkpoint framing; frozen/unavailable OP
-    // remains unchanged while the independent mint ledger records cleanup.
+    // Each fixed branch enforces its own authority/permit checks. Safety result
+    // recording grants no productive dispatch. All Native batches still require
+    // checkpoint framing, including cleanup after productive Git execution.
     let input = match input {
+        Input::PreparationVerify { preparation_id } => {
+            return preparation::verify(&store, env, &preparation_id).await;
+        }
+        Input::GitPlan { attempt_id } => {
+            return Ok(store.git_effect_plan(env, &attempt_id).await?);
+        }
+        Input::GitExecute { attempt_id, plan } => {
+            return git::execute(&store, env, &attempt_id, plan).await;
+        }
         Input::MintRefusal {
             attempt_id,
             digest,
@@ -326,6 +350,9 @@ async fn execute(
             )?)
         }
         Input::CaptureMint { .. }
+        | Input::PreparationVerify { .. }
+        | Input::GitPlan { .. }
+        | Input::GitExecute { .. }
         | Input::MintCleanup { .. }
         | Input::MintRefusal { .. }
         | Input::MintClose { .. } => unreachable!(),

@@ -1,129 +1,84 @@
-/** Fixed private Git HTTP transport. Consumes independent admission before I/O. */
+/** Identity-checked private bridge to a separately provisioned Git executor. */
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { opaque } from './protocol';
-import {
-  advertisement,
-  boundedBody,
-  fixedBody,
-  gitPlan,
-  responsePayload,
-  sameMetadata,
-} from './git-protocol';
-import type { GitRecord } from './git-protocol';
-import type { MintRecord } from './protocol';
-import { expiry, scope } from './worker';
+import { gitPlan, gitResult } from './protocol';
+import type { GitPlan, MintRecord } from './protocol';
+import { scope, expiry, jsonBody } from './worker';
 import { inventory } from './maintenance';
 interface Env {
   WORK_GIT_TRANSPORT_ENABLED: string;
   WORK_ARTIFACTS_ACCOUNT: string;
   WORK_ARTIFACTS_NAMESPACE: string;
   WORK_AUTHORITY_ID: string;
-  GIT_TRANSMISSION: {
-    take(attempt: string, digest: string): Promise<GitRecord>;
-    current(attempt: string, digest: string): Promise<void>;
-  };
-  MINT_LOOKUP: { lookup(attempt: string): Promise<MintRecord | null> };
-  GIT_LOOKUP: { lookup(attempt: string): Promise<GitRecord | null> };
   ARTIFACTS: Artifacts;
+  MINT_LOOKUP: { lookup(attempt: string): Promise<MintRecord | null> };
+  GIT_DISPATCH: { take(plan: GitPlan): Promise<{ taken: boolean }> };
+  GIT_EXECUTOR: Fetcher;
 }
 export class WorkGitTransport extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
     let repo: ArtifactsRepo | undefined;
     try {
-      const attempt = request.headers.get('X-Mikaki-Attempt-ID'),
-        digest = request.headers.get('X-Mikaki-Git-Digest'),
-        auth = request.headers.get('Authorization');
+      const auth = request.headers.get('Authorization');
       if (
         this.env.WORK_GIT_TRANSPORT_ENABLED !== 'true' ||
         request.method !== 'POST' ||
-        !opaque(attempt) ||
-        !digest ||
+        request.url !== 'https://private.invalid/git-execute' ||
         !auth ||
-        !/^Bearer [\x21-\x7e]{16,4096}$/.test(auth)
+        !/^Bearer [\x21-\x7e]{1,4096}$/.test(auth)
       )
         throw new Error('git_denied');
-      const retained = await this.env.GIT_LOOKUP.lookup(attempt);
-      if (!retained || retained.consumed || retained.plan.digest !== digest)
-        throw new Error('git_denied');
-      const p = retained.plan;
+      const p: unknown = await jsonBody(request);
       gitPlan(p);
-      const remote = scope(this.env, p.mint),
-        service = p.mint.purpose === 'upload' ? 'git-receive-pack' : 'git-upload-pack';
-      if (request.url !== `${remote}/${service}`) throw new Error('git_denied');
-      const body = await boundedBody(request);
-      await fixedBody(p, body);
-      // Permanent consumption gates every path through this private transport.
-      await this.env.GIT_TRANSMISSION.take(attempt, digest);
-      repo = await this.env.ARTIFACTS.get(p.mint.name);
-      const check = async () => {
-        await this.env.GIT_TRANSMISSION.current(attempt, digest);
-        const r = await this.env.MINT_LOOKUP.lookup(attempt),
+      const remote = scope(this.env, p);
+      repo = await this.env.ARTIFACTS.get(p.name);
+      const check = async (state: 'dispatching' | 'outcome_unknown') => {
+        const r = await this.env.MINT_LOOKUP.lookup(p.attempt_id),
           info = await repo!.info();
         if (
           !r ||
           r.state !== 'custodied' ||
           r.cleanup_requested ||
-          r.revoke_acknowledged ||
-          !sameMetadata(r.plan, p.mint) ||
-          !sameMetadata(r.observation, p.observation) ||
-          info.id !== p.mint.repo_id ||
-          info.name !== p.mint.name ||
+          r.git?.state !== state ||
+          JSON.stringify(r.git.plan) !== JSON.stringify(p) ||
+          info.id !== p.repo_id ||
+          info.name !== p.name ||
           info.remote !== remote ||
-          info.defaultBranch !== (p.mint.role === 'task' ? 'work' : 'snapshot') ||
-          info.description !== `mikaki initial ${p.mint.initial_attempt_id}`
+          info.defaultBranch !== p.branch ||
+          info.description !== `mikaki initial ${p.initial_attempt_id}`
         )
           throw new Error('git_denied');
-        const t = inventory(await repo!.listTokens()).tokens.find(
-          (t) => t.id === p.observation.token_id,
-        );
+        const tokens = inventory(await repo!.listTokens()).tokens,
+          t = tokens.find((t) => t.id === p.observation.token_id);
         if (
           !t ||
           t.state !== 'active' ||
-          t.scope !== p.mint.scope ||
+          t.scope !== p.scope ||
           expiry(t.expiresAt) !== p.observation.expires_at ||
-          p.observation.expires_at <= Math.floor(Date.now() / 1000)
+          tokens.filter((t) => t.state === 'active').length !== 1 ||
+          p.observation.expires_at <= Math.floor(Date.now() / 1000) + 5
         )
           throw new Error('git_denied');
       };
-      await check();
-      const advertised = await fetch(`${remote}/info/refs?service=${service}`, {
-        headers: { Authorization: auth },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(5000),
-      });
-      if (
-        advertised.status !== 200 ||
-        advertised.headers.get('Content-Type') !== `application/x-${service}-advertisement`
-      ) {
-        await advertised.body?.cancel();
-        throw new Error('git_denied');
-      }
-      advertisement(await boundedBody(advertised, 65536), p);
-      await check();
-      const result = await fetch(request.url, {
+      await check('dispatching');
+      if (!(await this.env.GIT_DISPATCH.take(p)).taken) throw new Error('git_denied');
+      await check('outcome_unknown');
+      const response = await this.env.GIT_EXECUTOR.fetch('https://private.invalid/git-execute', {
         method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': `application/x-${service}-request` },
-        body,
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
         redirect: 'manual',
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(60000),
       });
-      if (
-        result.status !== 200 ||
-        result.headers.get('Content-Type') !== `application/x-${service}-result`
-      ) {
-        await result.body?.cancel();
+      if (response.status !== 200) {
+        await response.body?.cancel();
         throw new Error('git_unknown');
       }
-      const bytes = await responsePayload(await boundedBody(result), p);
-      await check();
-      return new Response(bytes, {
-        headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' },
-      });
+      const value: unknown = await jsonBody(response);
+      gitResult(value, p);
+      await check('outcome_unknown');
+      return Response.json(value, { headers: { 'Cache-Control': 'no-store' } });
     } catch {
-      return Response.json(
-        { error: 'git_unavailable_or_unknown' },
-        { status: 409, headers: { 'Cache-Control': 'no-store' } },
-      );
+      return new Response(null, { status: 409, headers: { 'Cache-Control': 'no-store' } });
     } finally {
       repo?.[Symbol.dispose]();
     }

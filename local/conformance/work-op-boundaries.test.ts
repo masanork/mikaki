@@ -36,16 +36,16 @@ test('production Rust shim and named OP facade refuse public/raw administration 
               service: 'work-op-boundary',
               entrypoint: 'OpAuthorityAdmin',
             },
-            {
-              binding: 'WORK_EFFECT_STORE',
-              service: 'work-op-boundary',
-              entrypoint: 'WorkEffectStore',
-            },
             { binding: 'WORK_GIT_STORE', service: 'work-op-boundary', entrypoint: 'WorkGitStore' },
             {
               binding: 'WORK_MINT_STORE',
               service: 'work-op-boundary',
               entrypoint: 'WorkMintStore',
+            },
+            {
+              binding: 'WORK_EFFECT_STORE',
+              service: 'work-op-boundary',
+              entrypoint: 'WorkEffectStore',
             },
           ],
         },
@@ -105,9 +105,30 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       ).status,
       409,
     );
+    for (const input of [
+      { action: 'git-plan', attempt_id: 'a'.repeat(43) },
+      { action: 'preparation-verify', preparation_id: 'a'.repeat(43) },
+      { action: 'git-execute', attempt_id: 'a'.repeat(43), plan: {} },
+    ])
+      assert.equal(
+        (
+          await caller.WORK_EFFECT_STORE.fetch('https://private.invalid/effect', {
+            method: 'POST',
+            body: JSON.stringify(input),
+          })
+        ).status,
+        409,
+      );
     for (const binding of [caller.OP_PUBLIC, caller.WORK_EFFECT_STORE, caller.WORK_MINT_STORE]) {
       assert.equal(
         (await binding.fetch('https://private.invalid/git-effect', { method: 'POST', body: '{}' }))
+          .status,
+        404,
+      );
+    }
+    for (const binding of [caller.OP_PUBLIC, caller.WORK_EFFECT_STORE, caller.WORK_GIT_STORE]) {
+      assert.equal(
+        (await binding.fetch('https://private.invalid/mint-effect', { method: 'POST', body: '{}' }))
           .status,
         404,
       );
@@ -131,42 +152,6 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       404,
     );
     const { DB } = await op.getEnv();
-    assert.equal(
-      (
-        await caller.OP_PUBLIC.fetch('https://work.test/mint-effect', {
-          method: 'POST',
-          body: '{}',
-        })
-      ).status,
-      404,
-    );
-    assert.equal(
-      (
-        await caller.WORK_MINT_STORE.fetch('https://private.invalid/mint-effect', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'mint-plan', attempt_id: 'a'.repeat(43) }),
-        })
-      ).status,
-      409,
-    );
-    assert.equal(
-      (
-        await caller.WORK_EFFECT_STORE.fetch('https://private.invalid/mint-effect', {
-          method: 'POST',
-          body: '{}',
-        })
-      ).status,
-      404,
-    );
-    assert.equal(
-      (
-        await caller.WORK_MINT_STORE.fetch('https://private.invalid/effect', {
-          method: 'POST',
-          body: '{}',
-        })
-      ).status,
-      404,
-    );
     assert.equal(await DB.prepare('SELECT count(*) AS n FROM account_security').first('n'), 0);
     assert.equal(
       await DB.prepare(

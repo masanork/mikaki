@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { Request as MiniflareRequest, Response as MiniflareResponse } from 'miniflare';
 import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import type { V4WorkerOptions } from 'miniflare';
 import type { Artifacts } from '@cloudflare/workers-types';
@@ -25,7 +26,7 @@ export async function preparationFixture(
     bindings: Pick<V4WorkerOptions, 'artifacts'>;
     loseCreate?: boolean;
   },
-  gitHTTP?: V4WorkerOptions['outboundService'],
+  gitExecutor?: (request: Request) => Promise<Response>,
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -45,6 +46,8 @@ export async function preparationFixture(
     bindings: {
       MIKAKI_ISSUER: 'https://work.test',
       ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
+      ...(effectEnabled && !remote ? { WORK_GIT_EXECUTION_ENABLED: 'true' } : {}),
+      ...(effectEnabled && !remote ? { WORK_PREPARATION_VERIFY_ENABLED: 'true' } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -69,26 +72,39 @@ export async function preparationFixture(
                   EFFECT_PUBLIC: 'work-effect',
                   ...(!remote
                     ? {
-                        GIT_BROKER: { name: 'work-git', entrypoint: 'WorkGitBroker' },
+                        MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+                        GIT_GATE: { name: 'work-git', entrypoint: 'WorkGitGate' },
                         GIT_PUBLIC: 'work-git',
+                        PREPARATION_GATE: {
+                          name: 'work-preparation',
+                          entrypoint: 'WorkPreparationGate',
+                        },
+                        PREPARATION_PUBLIC: 'work-preparation',
+                        WORK_PREPARATION_EVIDENCE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixturePreparationEvidence',
+                        },
+                        PREPARATION_EVIDENCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkPreparationEvidence',
+                        },
                         GIT_CHECKPOINT: {
                           name: 'work-checkpoint',
                           entrypoint: 'WorkGitCheckpoint',
                         },
-                        GIT_TRANSMISSION: {
-                          name: 'work-checkpoint',
-                          entrypoint: 'WorkGitTransmission',
+                        WORK_GIT_EXECUTION_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitExecutionCheckpoint',
                         },
-                        GIT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkGitLookup' },
-                        WORK_GIT_METADATA: {
+                        GIT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkGitCheckpoint' },
+                        GIT_EXECUTION_CHECKPOINT: {
                           name: 'work-checkpoint',
-                          entrypoint: 'WorkGitMetadata',
+                          entrypoint: 'WorkGitExecutionCheckpoint',
                         },
                         WORK_GIT_TRANSPORT: {
-                          name: 'git-transport',
+                          name: 'work-git-transport',
                           entrypoint: 'WorkGitTransport',
                         },
-                        MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
                         MINT_PUBLIC: 'work-mint',
                         MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
                         MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
@@ -216,48 +232,85 @@ export async function preparationFixture(
                       modules: true,
                       scriptPath: join(modulesRoot, 'git.mjs'),
                       compatibilityDate: '2026-10-08',
-                      bindings: {
-                        WORK_GIT_BROKER_ENABLED: bindings.WORK_GIT_BROKER_ENABLED ?? 'true',
-                      },
+                      bindings: { WORK_GIT_GATE_ENABLED: bindings.WORK_GIT_GATE_ENABLED ?? 'true' },
                       serviceBindings: {
-                        OP_GIT_STORE: { name: 'preparation-owner', entrypoint: 'WorkGitStore' },
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        OP_GIT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
                         GIT_CHECKPOINT: {
                           name: 'preparation-owner',
-                          entrypoint: 'FixtureGitCheckpoint',
+                          entrypoint: 'FixtureGitLedger',
                         },
                       },
                     },
                     {
-                      name: 'git-transport',
+                      name: 'work-preparation',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'preparation.mjs'),
+                      // Installed Miniflare rejects 2026-10-09 as future; this
+                      // disposable fixture uses its latest supported date.
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_PREPARATION_GATE_ENABLED:
+                          bindings.WORK_PREPARATION_GATE_ENABLED ?? 'true',
+                      },
+                      serviceBindings: {
+                        OP_GIT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-git-transport',
                       modules: true,
                       scriptPath: join(modulesRoot, 'git-transport.mjs'),
                       compatibilityDate: '2026-10-08',
-                      outboundService: gitHTTP ?? 'synthetic-artifacts',
                       bindings: {
                         WORK_GIT_TRANSPORT_ENABLED: bindings.WORK_GIT_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
                         WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
                         WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
-                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
                       },
                       serviceBindings: {
-                        GIT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkGitLookup' },
-                        GIT_TRANSMISSION: {
-                          name: 'preparation-owner',
-                          entrypoint: 'FixtureGitTransmission',
-                        },
                         MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        GIT_DISPATCH: { name: 'work-checkpoint', entrypoint: 'WorkGitDispatch' },
                         ARTIFACTS: {
                           name: 'synthetic-artifacts',
                           entrypoint: 'SyntheticArtifacts',
+                        },
+                        GIT_EXECUTOR: async (request: MiniflareRequest) => {
+                          if (!gitExecutor) return new MiniflareResponse(null, { status: 409 });
+                          const response = await gitExecutor(
+                            new Request(request.url, {
+                              method: request.method,
+                              headers: [...request.headers],
+                              body: request.body
+                                ? new Uint8Array(await request.arrayBuffer())
+                                : undefined,
+                            }),
+                          );
+                          return new MiniflareResponse(
+                            new Uint8Array(await response.arrayBuffer()),
+                            {
+                              status: response.status,
+                              headers: [...response.headers],
+                            },
+                          );
                         },
                       },
                     },
                     {
                       name: 'work-mint',
-                      outboundService: 'synthetic-artifacts',
                       modules: true,
                       scriptPath: join(modulesRoot, 'mint.mjs'),
                       compatibilityDate: '2026-09-30',
+                      outboundService: 'synthetic-artifacts',
                       bindings: {
                         WORK_MINT_GATE_ENABLED: bindings.WORK_MINT_GATE_ENABLED ?? 'true',
                         WORK_AUTHORITY_ID: 'synthetic-managed-work',
@@ -631,12 +684,6 @@ export async function preparationFixture(
     account,
     session,
     fixtureFetch,
-    gitFetch: async (request: Request) =>
-      mf.dispatchFetch('https://work.test/git-fixture', {
-        method: request.method,
-        headers: Object.fromEntries(request.headers),
-        body: await request.arrayBuffer(),
-      }),
     async inspectRemote(name: string) {
       if (!remote || !/^wk-[a-f0-9]{32}-(code|snapshot)$/.test(name))
         throw new Error('fixture_remote_inspect_denied');

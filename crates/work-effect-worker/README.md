@@ -7,12 +7,16 @@ private capability.
 
 - `worker.ts`: one admitted initial task/snapshot create, immediate token
   revocation, inventory checks and explicit Git bearer refusal before closure.
-- `mint.ts`: one admitted upload/readback token mint through the distinct Native
-  `WorkMintStore`; encrypted custody and known-plaintext refusal closure only.
 - `maintenance.ts`: physical Artifacts owner returning only fixed-repository
   metadata/token inventory and admitted ID revocation capabilities.
 - `reconcile.ts`: safety-only recovery of admitted unknown creates, with no
   physical Artifacts binding, creation, mint, write, delete or workload release.
+- `git.ts` / `git-transport.ts`: independently admitted fixed Git exchanges using
+  encrypted Native custody and a separately provisioned private Git host. See
+  the [Git contract and deployment limits](../../docs/work-artifacts-git-gate.md).
+- `preparation.ts`: opaque composition trigger; Native validates the read-only
+  independent evidence and six closed custody records before recording verified
+  preparation. See the [composition contract](../../docs/work-preparation-evidence.md).
 
 Run `npm run check:work-effects` and `npm run test:work-effects`. The latter uses
 actual Rust/Wasm/workerd/RPC/DO with synthetic Artifacts/Git. The full local
@@ -20,11 +24,6 @@ authority/checkpoint/effect gate is `npm run test:work-delegation`.
 
 Existing protected remote journals and unresolved allocations must be
 reconciled against their original immutable IDs before any new remote trial.
-Local qualification does not reset or certify those resources. Upload/readback,
-workload credential release, authenticated copy consent and operator/recovery
-provenance retain separate gates.
-
-The [private Git broker](../../docs/work-git-broker.md) adds fixed productive
-upload/readback admission and Native custody use in `git.ts`, `git-transport.ts`
-and `git-protocol.ts`. Qualification uses actual Git through a local HTTP adapter;
-production activation and Native preparation verification remain pending.
+Local qualification does not reset or certify those resources. Git-host deployment,
+workload release, authenticated copy consent
+and operator/recovery provenance retain separate gates.

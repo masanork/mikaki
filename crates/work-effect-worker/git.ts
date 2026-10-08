@@ -1,68 +1,80 @@
-/** Private admission coordinator. No physical Artifacts, credential or egress. */
+/** One fixed Git use per custodied mint. No preparation/grant promotion. */
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { opaque } from './protocol';
-import { boundedBody, copyManifest, fixedBody, gitPlan, sameMetadata } from './git-protocol';
-import type { GitPlan, GitRecord } from './git-protocol';
+import { closed, opaque, gitPlan, gitResult } from './protocol';
+import type { GitPlan, GitResult, MintRecord } from './protocol';
 import { jsonBody } from './worker';
+import { mintOp } from './mint-store';
+import { gitOp as op } from './git-store';
 interface Env {
-  WORK_GIT_BROKER_ENABLED: string;
+  WORK_GIT_GATE_ENABLED: string;
   OP_GIT_STORE: Fetcher;
+  OP_MINT_STORE: Fetcher;
   GIT_CHECKPOINT: {
-    lookup(attempt: string): Promise<GitRecord | null>;
-    claim(plan: GitPlan): Promise<{ started: boolean; record: GitRecord }>;
+    lookup(attempt: string): Promise<MintRecord | null>;
+    claim(plan: GitPlan): Promise<{ started: boolean; record: MintRecord }>;
+    finish(attempt: string, result: GitResult | null): Promise<MintRecord>;
   };
 }
-export class WorkGitBroker extends WorkerEntrypoint<Env> {
+async function cleanup(env: Env, r: MintRecord) {
+  if (!r.observation) return;
+  try {
+    await mintOp(env, {
+      action: 'mint-cleanup',
+      attempt_id: r.plan.attempt_id,
+      digest: r.plan.digest,
+      ...r.observation,
+    });
+  } catch {
+    /* independent intent retains liability */
+  }
+}
+export class WorkGitGate extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
-    if (request.method !== 'POST' || new URL(request.url).pathname !== '/copy')
-      return new Response(null, { status: 404 });
     try {
-      const attempt = request.headers.get('X-Mikaki-Attempt-ID'),
-        encoded = request.headers.get('X-Mikaki-Copy');
       if (
-        this.env.WORK_GIT_BROKER_ENABLED !== 'true' ||
-        !opaque(attempt) ||
-        !encoded ||
-        encoded.length > 2048 ||
-        request.headers.has('Authorization')
+        this.env.WORK_GIT_GATE_ENABLED !== 'true' ||
+        request.method !== 'POST' ||
+        new URL(request.url).pathname !== '/git'
       )
         throw new Error('git_denied');
-      const manifest: unknown = JSON.parse(encoded);
-      copyManifest(manifest);
-      // A retained admission never produces another dispatch, including after restore.
-      const prior = await this.env.GIT_CHECKPOINT.lookup(attempt);
-      if (prior)
+      const input: unknown = await jsonBody(request);
+      if (!closed(input, ['attempt_id']) || !opaque(input.attempt_id))
+        throw new Error('git_invalid');
+      const attempt = input.attempt_id;
+      let r = await this.env.GIT_CHECKPOINT.lookup(attempt);
+      if (r?.git) {
+        if (r.state !== 'closed') {
+          r = await this.env.GIT_CHECKPOINT.finish(attempt, null);
+          await cleanup(this.env, r);
+        }
         return Response.json(
-          { stage: 'outcome_unknown', attempt_id: attempt },
-          { status: 409, headers: { 'Cache-Control': 'no-store' } },
+          { attempt_id: attempt, state: r.git!.state, result: r.git!.result },
+          { headers: { 'Cache-Control': 'no-store' } },
         );
-      const body = await boundedBody(request);
-      const planResponse = await this.env.OP_GIT_STORE.fetch('https://private.invalid/git-effect', {
-        method: 'POST',
-        headers: {
-          'X-Mikaki-Action': 'plan',
-          'X-Mikaki-Attempt-ID': attempt,
-          'X-Mikaki-Copy': encoded,
-        },
-        body,
-      });
-      if (planResponse.status !== 200) throw new Error('git_denied');
-      const plan = await jsonBody(planResponse);
-      gitPlan(plan);
-      if (plan.mint.attempt_id !== attempt || !sameMetadata(plan.manifest, manifest))
-        throw new Error('git_denied');
-      await fixedBody(plan, body);
-      const admission = await this.env.GIT_CHECKPOINT.claim(plan);
-      if (!admission.started) throw new Error('git_unknown');
-      return await this.env.OP_GIT_STORE.fetch('https://private.invalid/git-effect', {
-        method: 'POST',
-        headers: {
-          'X-Mikaki-Action': 'execute',
-          'X-Mikaki-Attempt-ID': attempt,
-          'X-Mikaki-Copy': encoded,
-        },
-        body,
-      });
+      }
+      const p = await op(this.env, { action: 'git-plan', attempt_id: attempt });
+      gitPlan(p);
+      const claim = await this.env.GIT_CHECKPOINT.claim(p);
+      if (!claim.started)
+        return Response.json({
+          attempt_id: attempt,
+          state: claim.record.git!.state,
+          result: claim.record.git!.result,
+        });
+      let result: GitResult | null = null;
+      try {
+        const value = await op(this.env, { action: 'git-execute', attempt_id: attempt, plan: p });
+        gitResult(value, p);
+        result = value;
+      } catch {
+        /* a consumed permit can never replay */
+      }
+      r = await this.env.GIT_CHECKPOINT.finish(attempt, result);
+      await cleanup(this.env, r);
+      return Response.json(
+        { attempt_id: attempt, state: r.git!.state, result: r.git!.result },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
     } catch {
       return Response.json(
         { error: 'git_unavailable_or_denied' },
