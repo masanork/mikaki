@@ -5,6 +5,7 @@ import {
   completedMcpCalls,
   classifyCodexDiagnostic,
   codexJsonlDiagnostic,
+  summarizeCodexJsonl,
   exactAuditDelta,
   findToolOutputs,
   verifyStructuredOutput,
@@ -124,7 +125,45 @@ test('Codex stderr classification exposes only a known diagnostic category', () 
   assert.equal(classifyCodexDiagnostic('The requested model is unavailable'), 'model_unavailable');
   assert.equal(classifyCodexDiagnostic('fetch failed: ECONNRESET'), 'network');
   assert.equal(classifyCodexDiagnostic('error: unknown option --bad'), 'cli_arguments');
+  assert.equal(classifyCodexDiagnostic('Failed to initialize MCP server'), 'mcp_startup');
+  assert.equal(classifyCodexDiagnostic('MCP server configuration is invalid'), 'configuration');
+  assert.equal(classifyCodexDiagnostic('ENOENT: no such file or directory'), 'filesystem');
   assert.equal(classifyCodexDiagnostic('sensitive arbitrary text'), 'unclassified');
+});
+
+test('Codex event summary reports only fixed event counts and whether a turn started', () => {
+  const jsonl = [
+    { type: 'thread.started', thread_id: 'private-id' },
+    { type: 'turn.started', turn_id: 'private-id' },
+    { type: 'item.started', item: { type: 'mcp_tool_call', tool: 'private-tool' } },
+    { type: 'item.completed', item: { type: 'agent_message', text: 'private output' } },
+    { type: 'error', message: 'private error' },
+    { type: 'unknown.private-event', payload: 'private' },
+  ]
+    .map((event) => JSON.stringify(event))
+    .join('\n');
+  const summary = summarizeCodexJsonl(jsonl);
+  assert.deepEqual(summary, {
+    started: true,
+    thread_started: 1,
+    turn_started: 1,
+    item_started: 1,
+    item_completed: 1,
+    error: 1,
+    turn_failed: 0,
+    other: 1,
+  });
+  assert.equal(JSON.stringify(summary).includes('private'), false);
+  assert.deepEqual(summarizeCodexJsonl('not-json'), {
+    started: false,
+    thread_started: 0,
+    turn_started: 0,
+    item_started: 0,
+    item_completed: 0,
+    error: 0,
+    turn_failed: 0,
+    other: 0,
+  });
 });
 
 test('Codex JSONL backend errors expose only safe event kind, category, and numeric HTTP status', () => {

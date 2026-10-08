@@ -93,6 +93,9 @@ export type CodexDiagnosticCategory =
   | 'model_unavailable'
   | 'network'
   | 'cli_arguments'
+  | 'mcp_startup'
+  | 'configuration'
+  | 'filesystem'
   | 'unclassified';
 export type CodexErrorEventKind = 'error' | 'turn_failed' | 'item_error' | 'other_error';
 
@@ -101,6 +104,19 @@ export type CodexJsonlDiagnostic = Readonly<{
   category: CodexDiagnosticCategory;
   httpStatus?: number;
 }>;
+
+export type CodexEventSummary = Readonly<{
+  started: boolean;
+  thread_started: number;
+  turn_started: number;
+  item_started: number;
+  item_completed: number;
+  error: number;
+  turn_failed: number;
+  other: number;
+}>;
+
+const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory {
   if (/rate[\s_-]?limit|too many requests|\b429\b|quota exceeded/i.test(stderr))
@@ -125,7 +141,64 @@ export function classifyCodexDiagnostic(stderr: string): CodexDiagnosticCategory
     )
   )
     return 'cli_arguments';
+  if (
+    /mcp.{0,60}(?:start|spawn|initiali[sz]e|handshake|connect)|(?:start|spawn|initiali[sz]e).{0,60}mcp/i.test(
+      stderr,
+    )
+  )
+    return 'mcp_startup';
+  if (
+    /invalid (?:toml|configuration|config)|configuration error|(?:config|configuration).{0,80}(?:invalid|error)|mcp_servers.{0,40}(?:invalid|unknown|missing)/i.test(
+      stderr,
+    )
+  )
+    return 'configuration';
+  if (/ENOENT|EACCES|permission denied|no such file or directory|cannot open/i.test(stderr))
+    return 'filesystem';
   return 'unclassified';
+}
+
+export function summarizeCodexJsonl(jsonl: string): CodexEventSummary {
+  const counts = {
+    thread_started: 0,
+    turn_started: 0,
+    item_started: 0,
+    item_completed: 0,
+    error: 0,
+    turn_failed: 0,
+    other: 0,
+  };
+  for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
+    try {
+      const event: unknown = JSON.parse(line);
+      if (!isRecord(event) || typeof event['type'] !== 'string') continue;
+      switch (event['type']) {
+        case 'thread.started':
+          counts.thread_started++;
+          break;
+        case 'turn.started':
+          counts.turn_started++;
+          break;
+        case 'item.started':
+          counts.item_started++;
+          break;
+        case 'item.completed':
+          counts.item_completed++;
+          break;
+        case 'error':
+          counts.error++;
+          break;
+        case 'turn.failed':
+          counts.turn_failed++;
+          break;
+        default:
+          counts.other++;
+      }
+    } catch {
+      // Non-JSON progress text is ignored and never reported.
+    }
+  }
+  return { started: counts.thread_started + counts.turn_started > 0, ...counts };
 }
 
 export function codexJsonlDiagnostic(
@@ -200,6 +273,7 @@ class CodexCliError extends Error {
   readonly diagnosticCategory: CodexDiagnosticCategory | undefined;
   readonly errorEventKind: CodexErrorEventKind | undefined;
   readonly httpStatus: number | undefined;
+  readonly stdoutEvents: CodexEventSummary | undefined;
 
   constructor(
     code:
@@ -212,6 +286,7 @@ class CodexCliError extends Error {
     diagnosticCategory?: CodexDiagnosticCategory,
     errorEventKind?: CodexErrorEventKind,
     httpStatus?: number,
+    stdoutEvents?: CodexEventSummary,
   ) {
     super(code);
     this.code = code;
@@ -219,6 +294,7 @@ class CodexCliError extends Error {
     this.diagnosticCategory = diagnosticCategory;
     this.errorEventKind = errorEventKind;
     this.httpStatus = httpStatus;
+    this.stdoutEvents = stdoutEvents;
   }
 }
 
@@ -254,12 +330,15 @@ export function completedMcpCalls(jsonl: string): CompletedMcpCall[] {
   return calls;
 }
 
-async function runCodex(args: string[], prompt: string): Promise<string> {
+async function runCodex(
+  args: string[],
+  prompt: string,
+): Promise<{ jsonl: string; stdoutEvents: CodexEventSummary }> {
   return new Promise((resolvePromise, reject) => {
     // The Codex CLI documents `-` as the prompt-from-stdin sentinel, keeping
     // synthetic prompt text out of process listings.
     const child = spawn(process.env['CODEX_BIN'] ?? 'codex', [...args, '-'], {
-      cwd: process.cwd(),
+      cwd: repoRoot,
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -312,6 +391,7 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
       }
       const output = Buffer.concat(stdout);
       const jsonl = output.toString('utf8');
+      const stdoutEvents = summarizeCodexJsonl(jsonl);
       const jsonlDiagnostic = codexJsonlDiagnostic(jsonl, code !== 0);
       if (jsonlDiagnostic) {
         output.fill(0);
@@ -323,6 +403,7 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
             jsonlDiagnostic.category,
             jsonlDiagnostic.eventKind,
             jsonlDiagnostic.httpStatus,
+            stdoutEvents,
           ),
         );
       }
@@ -332,10 +413,19 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
         const diagnosticCategory = classifyCodexDiagnostic(diagnostic.toString('utf8'));
         diagnostic.fill(0);
         clearStderr();
-        return reject(new CodexCliError('codex_failed', code, diagnosticCategory));
+        return reject(
+          new CodexCliError(
+            'codex_failed',
+            code,
+            diagnosticCategory,
+            undefined,
+            undefined,
+            stdoutEvents,
+          ),
+        );
       }
       clearStderr();
-      resolvePromise(jsonl);
+      resolvePromise({ jsonl, stdoutEvents });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt);
@@ -357,7 +447,7 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 function codexArgs(dir: string, serverArgs: string[]) {
-  const config = `mcp_servers.mikaki_v2_local={command=${JSON.stringify(process.execPath)},args=${JSON.stringify(serverArgs)},required=true}`;
+  const config = `mcp_servers={mikaki_v2_local={command=${JSON.stringify(process.execPath)},args=${JSON.stringify(serverArgs)},required=true}}`;
   return [
     'exec',
     '--ignore-user-config',
@@ -421,6 +511,7 @@ async function sdkPreflight(
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: serverArgs,
+    cwd: repoRoot,
     stderr: 'pipe',
   });
   try {
@@ -577,7 +668,7 @@ export async function probe(recordId: RecordId) {
     await writeFile(exportPath, fixture.bundleBytes, { mode: 0o600, flag: 'wx' });
     await writeFile(grantPath, JSON.stringify(fixture.grant), { mode: 0o600, flag: 'wx' });
     const serverArgs = [
-      resolve('local/agent-mcp.ts'),
+      join(repoRoot, 'local/agent-mcp.ts'),
       grantPath,
       exportPath,
       auditPath,
@@ -587,11 +678,11 @@ export async function probe(recordId: RecordId) {
     await writeFile(grantPath, JSON.stringify(fixture.grant), { mode: 0o600 });
     const codexServerArgs = [...serverArgs.slice(0, 3), codexAuditPath, ...serverArgs.slice(4)];
     const targetPrompt = JSON.stringify({ id: recordId });
-    const positiveJsonl = await runCodex(
+    const positiveRun = await runCodex(
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_list with {}, then mikaki_search with {"query":"v2-probe-needle"}, then mikaki_read with ${targetPrompt}, exactly once each. Do not use any other tools. Do not repeat or quote returned content. Finish with the single word done.`,
     );
-    const positiveCalls = completedMcpCalls(positiveJsonl);
+    const positiveCalls = completedMcpCalls(positiveRun.jsonl);
     if (positiveCalls.some((call) => call.server !== 'mikaki_v2_local'))
       throw new Error('codex_unexpected_mcp_server');
     assertCalls(positiveCalls, ['mikaki_list', 'mikaki_search', 'mikaki_read'], false);
@@ -629,11 +720,11 @@ export async function probe(recordId: RecordId) {
     const grant = JSON.parse(await readFile(grantPath, 'utf8')) as JsonRecord;
     grant['revoked'] = true;
     await writeFile(grantPath, JSON.stringify(grant), { mode: 0o600 });
-    const revokedJsonl = await runCodex(
+    const revokedRun = await runCodex(
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_read with ${targetPrompt} exactly once. Do not use any other tools or repeat/quote content. Finish with one word.`,
     );
-    const revokeCalls = completedMcpCalls(revokedJsonl);
+    const revokeCalls = completedMcpCalls(revokedRun.jsonl);
     if (revokeCalls.some((call) => call.server !== 'mikaki_v2_local'))
       throw new Error('codex_unexpected_mcp_server');
     assertCalls(revokeCalls, ['mikaki_read'], true);
@@ -650,8 +741,10 @@ export async function probe(recordId: RecordId) {
       mcp_server: 'local-stdio',
       codex_invocation: {
         positive_tool_calls: ['list', 'search', 'read'],
+        positive_event_summary: positiveRun.stdoutEvents,
         structured_content_source_authority: codexStructured,
         revoked_invocation_tool_calls: ['read'],
+        revoked_event_summary: revokedRun.stdoutEvents,
         revoked_read_denied: true,
         note: 'The revocation check uses a new Codex invocation with the same local MCP configuration.',
       },
@@ -686,6 +779,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           ...(error.diagnosticCategory ? { diagnostic_category: error.diagnosticCategory } : {}),
           ...(error.errorEventKind ? { error_event_kind: error.errorEventKind } : {}),
           ...(error.httpStatus !== undefined ? { http_status: error.httpStatus } : {}),
+          ...(error.stdoutEvents ? { stdout_events: error.stdoutEvents } : {}),
         })}\n`,
       );
     } else {
