@@ -1,3 +1,7 @@
+#[path = "support/certificate.rs"]
+mod mutable_certificate;
+use mutable_certificate::Certificate;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use der::{
     Decode, Encode,
@@ -8,10 +12,7 @@ use mikaki_identity::{
     issuance::PublicJwk,
 };
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
-use x509_cert::{
-    Certificate,
-    ext::pkix::{AuthorityKeyIdentifier, BasicConstraints},
-};
+use x509_cert::ext::pkix::{AuthorityKeyIdentifier, BasicConstraints};
 const NOW: u64 = 1791000000;
 fn bytes(name: &str) -> Vec<u8> {
     std::fs::read(format!(

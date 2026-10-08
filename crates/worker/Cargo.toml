@@ -24,7 +24,7 @@ mikaki-identity = { path = "../identity" }
 zeroize = "1.9"
 base64.workspace = true
 futures-util.workspace = true
-js-sys = "=0.3.105"
+js-sys = "=0.3.106"
 mikaki-oidc = { path = "../oidc" }
 mikaki-auth = { path = "../auth" }
 mikaki-webauthn = { path = "../webauthn" }
@@ -32,10 +32,10 @@ serde_json.workspace = true
 serde_urlencoded = "=0.7.1"
 sha2.workspace = true
 subtle.workspace = true
-wasm-bindgen = "=0.2.128"
-wasm-bindgen-futures = "=0.4.78"
-web-sys = { version = "=0.3.105", features = ["AbortSignal", "Crypto", "CryptoKey", "SubtleCrypto"] }
-worker = { version = "=0.8.6", features = ["d1", "queue"] }
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "=0.4.79"
+web-sys = { version = "=0.3.106", features = ["AbortSignal", "Crypto", "CryptoKey", "SubtleCrypto"] }
+worker = { version = "=0.8.7", features = ["d1", "queue"] }
 
 [lints]
 workspace = true

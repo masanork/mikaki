@@ -13,7 +13,7 @@ p256.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-rsa = { version = "=0.10.0-rc.18", default-features = false, features = ["encoding"] }
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["alloc"] }
 sha1 = "=0.11.0"
 der = { version = "=0.8.2", features = ["derive", "alloc"] }
@@ -22,7 +22,7 @@ p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "al
 p521 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
 k256 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "=0.3.78"
+wasm-bindgen-test = "=0.3.79"
 
 [lints]
 workspace = true
