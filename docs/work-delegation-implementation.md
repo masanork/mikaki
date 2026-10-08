@@ -199,3 +199,14 @@ pass **29/29**. Node/service/effect/checkpoint types, full formatting, product
 source checks and documentation links pass. Default production Wasm Clippy with
 warnings denied and the Worker build pass. These remain local results; no remote
 CI or provider compatibility claim is made.
+
+Implementation is committed as `c95a64d`. The production Worker is rebuilt with
+that exact source revision after detecting stale embedded revision metadata in
+the first size-check attempt. Named OP packaging preserves the 64-statement
+static Agent SQL catalog. The production boundary/schema/roster/release subset
+passes **29/29 again** against that rebuilt Worker. Served UI and both Wasm size
+budgets pass; OP Wasm is **6,101,707 raw bytes / 2,146,047 gzip estimate**, below
+the existing 8 MiB / 3 MiB ceilings. Rustfmt, default production Wasm Clippy with
+warnings denied, Node/service/effect/checkpoint types, Prettier, product sources
+and documentation checks pass. No new product browser or remote CI evidence is
+claimed, and no push, deployment or real Artifacts I/O is performed.
