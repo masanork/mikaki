@@ -46,6 +46,7 @@ Start with [architecture](architecture.md) for responsibilities and trust bounda
 | Typed owner data | [Encrypted note schema, validation, import/export and provenance](vault-typed-attributes.md) |
 | Move saved data to another Passkey | [Owner passkey addition and Vault transfer](vault-passkey-transfer.md) |
 | Delegate repository work | [ADR 0016](adr/0016-personal-context-and-workload-delegation.md), [domain profile](workload-profile-v1.md), [AuthZEN/ABAC contract](workload-authorization.md), [UI design](work-request-ui.md), and [main integration](work-delegation-implementation.md) |
+| Review current WorkStore qualification | [Fresh-schema Native/D1/R2 integration, opt-in profile and evidence limits](work-store-main-integration.md) |
 
 ## Planned work and earlier design
 

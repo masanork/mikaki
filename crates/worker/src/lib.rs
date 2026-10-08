@@ -1,6 +1,9 @@
 //! Cloudflare Workers platform adapter. Protocol decisions remain in `mikaki-oidc`.
 
 #[cfg(target_arch = "wasm32")]
+pub mod work_store;
+
+#[cfg(target_arch = "wasm32")]
 mod admin_invitations;
 #[cfg(any(target_arch = "wasm32", test))]
 mod app_association;

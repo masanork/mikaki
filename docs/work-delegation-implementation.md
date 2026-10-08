@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** Main integration checkpoint, 2026-10-08 JST. The reviewed ADR and portable core are restored on a topic branch based on current main. Earlier D1, Worker, UI and Artifacts work is preserved for integration with main's fresh schema. No production activation is included.
+**Status:** Main integration checkpoint, 2026-10-08 JST. The reviewed ADR, portable core and [fresh-schema D1/custody foundation](work-store-main-integration.md) are restored on a topic branch including main through `1f0dd3c`. Earlier checkpoint coordination, product UI/transport and Artifacts work remains preserved for integration. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -21,7 +21,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | Increment | Outcome and qualification gate | State |
 | --- | --- | --- |
 | M1: Portable rules/decisions | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass. | Complete locally: 35 unit cases plus one compile-fail case. |
-| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Pending. |
+| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | [Complete locally](work-store-main-integration.md): 65 cases; additive schema remains opt-in. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Pending; required before new productive effects. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Pending on main. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Pending on main. |
@@ -32,6 +32,8 @@ Preserved pre-main qualification passed 160 combined delegation cases, including
 Record selected source, implementation, checks and remaining gates for each increment. Commit reviewable units, then refresh Artifacts from a selected qualified commit. Old CI/release inventory or workspace overlays do not qualify new source.
 
 M1 qualification passes `cargo test --workspace --offline --locked` (**209 cases**, including doctests), the auth Wasm target check, auth all-target Clippy with warnings denied, workspace formatting, product-source and documentation checks. Native workspace tests do not exercise the unported work HTTP/D1/Artifacts paths or production Workers. No prior Worker/browser qualification is counted as a current check.
+
+M2 rebuilds the Wasm fixture with main's SDK/dependencies and qualifies the fresh schema with **65/65** work/D1/R2/Git cases, **209** native workspace cases, and **11/11** production schema/release regressions. Production Wasm Clippy and Node/source/format checks pass. Work schema lives outside the active production migration directory; old owner HTTP assertions are explicitly narrowed to Native projections until M5. Checkpoint enrollment without its service rejects new writes. [Evidence and limits](work-store-main-integration.md).
 
 ## Product delivery backlog
 

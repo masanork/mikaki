@@ -1,6 +1,6 @@
 # Managed-work domain profile v1
 
-**Status:** Portable Rust core integrated with main baseline `8d48ba93fef64f4802627939ec63235eeef6aa68`, 2026-10-08 JST. D1/Worker/UI integration remains pending; no endpoint, issuer or external effect is activated.
+**Status:** Portable Rust core plus [fresh-schema D1/custody foundation](work-store-main-integration.md) locally qualified, 2026-10-08 JST, including main through `1f0dd3c`. Independent checkpoint coordination, product ingress/UI and provider effects remain pending; no endpoint, issuer or external effect is activated.
 
 This narrows [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) and the [authorization contract](workload-authorization.md). The [integration plan](work-delegation-implementation.md) distinguishes current qualification from preserved pre-main evidence.
 
@@ -9,7 +9,7 @@ This narrows [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) an
 | Concern | Authority |
 | --- | --- |
 | Request, grant, run, candidate and exact approval | Portable [mikaki-auth::work](../crates/auth/src/work/mod.rs), under [ADR 0009](adr/0009-rust-oidc-and-worker-stack.md). |
-| Durable transitions, current owner/source state and audit | Rust OP adapter, pending integration of retained WorkStore with main's fresh schema. |
+| Durable transitions, current owner/source state and audit | [Rust WorkStore](../crates/worker/src/work_store/mod.rs), locally qualified on main's fresh schema with an opt-in additive profile. |
 | Checkpoint and external-effect admission | Independent durable authority plus fixed-operation adapters, pending main integration. Preserve [ADR 0015](adr/0015-service-data-ownership.md); downstream services receive bounded capabilities. |
 | Frontend | [Work-request UI contract](work-request-ui.md); display durable confirmed state and bind each confirmation to the reviewed operation. |
 
