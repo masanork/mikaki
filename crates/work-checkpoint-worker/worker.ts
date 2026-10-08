@@ -1,5 +1,7 @@
 /** Private write-ahead checkpoint. No D1, credential, Git or public capability. */
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
+import { gitPlan, sameMetadata } from '../work-effect-worker/git-protocol';
+import type { GitPlan, GitRecord } from '../work-effect-worker/git-protocol';
 import {
   initialPlan,
   closure,
@@ -11,6 +13,7 @@ import {
   mintPlan,
   mintObservation,
   mintCleanup,
+  mintRefusal,
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
 import type { MintPlan, MintRecord } from '../work-effect-worker/protocol';
@@ -84,6 +87,94 @@ export class WorkCheckpoint extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       'CREATE TABLE IF NOT EXISTS mint_ledger(attempt_id TEXT PRIMARY KEY, slot TEXT UNIQUE NOT NULL, body TEXT NOT NULL)',
     );
+    this.ctx.storage.sql.exec(
+      'CREATE TABLE IF NOT EXISTS git_ledger(attempt_id TEXT PRIMARY KEY, slot TEXT UNIQUE NOT NULL, body TEXT NOT NULL)',
+    );
+  }
+  private git(attempt: unknown): GitRecord | null {
+    if (!opaque(attempt)) throw new Error('git_invalid');
+    const rows = this.ctx.storage.sql
+      .exec<{ body: string }>('SELECT body FROM git_ledger WHERE attempt_id=?', attempt)
+      .toArray();
+    return rows.length ? (JSON.parse(rows[0]!.body) as GitRecord) : null;
+  }
+  async lookupGit(attempt: unknown) {
+    return this.git(attempt);
+  }
+  private checkGit(p: GitPlan, release: unknown) {
+    const s = this.current(release),
+      m = this.#mint(p.mint.attempt_id);
+    if (
+      s.pending ||
+      !equal(s.checkpoint, p.checkpoint) ||
+      !m ||
+      m.state !== 'custodied' ||
+      m.cleanup_requested ||
+      m.revoke_acknowledged ||
+      !sameMetadata(m.plan, p.mint) ||
+      !sameMetadata(m.observation, p.observation) ||
+      p.observation.expires_at <= Math.floor(Date.now() / 1000)
+    )
+      throw new Error('git_blocked');
+  }
+  async claimGit(input: unknown, release: unknown) {
+    gitPlan(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      this.checkGit(input, release);
+      if (input.mint.purpose === 'readback') {
+        const rows = this.ctx.storage.sql
+          .exec<{ body: string }>(
+            'SELECT body FROM git_ledger WHERE slot=?',
+            JSON.stringify([input.mint.namespace, input.mint.name, 'upload']),
+          )
+          .toArray();
+        const upload = rows.length ? (JSON.parse(rows[0]!.body) as GitRecord) : null;
+        if (!upload?.consumed || !sameMetadata(upload.plan.manifest, input.manifest))
+          throw new Error('git_upload_missing');
+      }
+      const prior = this.git(input.mint.attempt_id);
+      if (prior) {
+        if (prior.plan.digest !== input.digest) throw new Error('git_conflict');
+        return { started: false, record: prior };
+      }
+      const n = this.ctx.storage.sql
+        .exec<{ n: number }>(
+          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger)+(SELECT count(*) FROM git_ledger) AS n',
+        )
+        .one().n;
+      if (n >= 256) throw new Error('effect_capacity');
+      const r: GitRecord = { plan: input, consumed: false };
+      this.ctx.storage.sql.exec(
+        'INSERT INTO git_ledger VALUES(?,?,?)',
+        input.mint.attempt_id,
+        JSON.stringify([input.mint.namespace, input.mint.name, input.mint.purpose]),
+        JSON.stringify(r),
+      );
+      return { started: true, record: r };
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
+  async currentGit(attempt: unknown, digest: unknown, release: unknown) {
+    const r = this.git(attempt);
+    if (!r || !r.consumed || r.plan.digest !== digest) throw new Error('git_denied');
+    this.checkGit(r.plan, release);
+  }
+  async takeGit(attempt: unknown, digest: unknown, release: unknown) {
+    const r = this.ctx.storage.transactionSync(() => {
+      const r = this.git(attempt);
+      if (!r || r.consumed || r.plan.digest !== digest) throw new Error('git_consumed');
+      this.checkGit(r.plan, release);
+      r.consumed = true;
+      this.ctx.storage.sql.exec(
+        'UPDATE git_ledger SET body=? WHERE attempt_id=?',
+        JSON.stringify(r),
+        attempt as string,
+      );
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return r;
   }
   private state(): State {
     const rows = this.ctx.storage.sql
@@ -272,7 +363,7 @@ export class WorkCheckpoint extends DurableObject<Env> {
       }
       const n = this.ctx.storage.sql
         .exec<{ n: number }>(
-          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger) AS n',
+          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger)+(SELECT count(*) FROM git_ledger) AS n',
         )
         .one().n;
       if (n >= 256) throw new Error('effect_capacity');
@@ -321,10 +412,10 @@ export class WorkCheckpoint extends DurableObject<Env> {
       if (
         !r ||
         r.plan.digest !== digest ||
+        r.state === 'closed' ||
         !r.observation ||
         r.revoke_acknowledged ||
         r.cleanup_requested ||
-        r.state === 'closed' ||
         r.observation.scope !== r.plan.scope ||
         r.observation.expires_at > r.plan.expires_at ||
         r.observation.expires_at <= Math.floor(Date.now() / 1000)
@@ -344,13 +435,14 @@ export class WorkCheckpoint extends DurableObject<Env> {
       if (
         !r ||
         r.plan.digest !== digest ||
+        r.state === 'closed' ||
         !r.observation ||
         (safety && (!r.cleanup_requested || r.state !== 'outcome_unknown'))
       )
         throw new Error('effect_conflict');
       r.revoke_acknowledged = true;
       r.cleanup_requested = true;
-      if (r.state !== 'closed') r.state = 'outcome_unknown';
+      r.state = 'outcome_unknown';
       this.#saveMint(r);
     });
     await this.ctx.storage.sync();
@@ -421,6 +513,34 @@ export class WorkCheckpoint extends DurableObject<Env> {
     await this.ctx.storage.sync();
     return result;
   }
+  async closeMintRefused(attempt: unknown, digest: unknown, input: unknown) {
+    mintRefusal(input);
+    const result = this.ctx.storage.transactionSync(() => {
+      const r = this.#mint(attempt),
+        o = r?.observation;
+      if (
+        !r ||
+        !o ||
+        !r.cleanup ||
+        !r.cleanup_requested ||
+        r.plan.digest !== digest ||
+        r.state === 'custodied' ||
+        input.key_version !== r.plan.key_version ||
+        input.repo_id !== o.repo_id ||
+        input.token_id !== o.token_id ||
+        input.scope !== o.scope ||
+        input.expires_at !== o.expires_at ||
+        (r.refusal && r.refusal.receipt !== input.receipt)
+      )
+        throw new Error('effect_conflict');
+      if (!r.refusal) r.refusal = { ...input, observed_at: Math.floor(Date.now() / 1000) };
+      r.state = 'closed';
+      this.#saveMint(r);
+      return r;
+    });
+    await this.ctx.storage.sync();
+    return result;
+  }
   async claimEffect(input: unknown, release: unknown) {
     initialPlan(input);
     const result = this.ctx.storage.transactionSync(() => {
@@ -447,7 +567,7 @@ export class WorkCheckpoint extends DurableObject<Env> {
       // Retained tombstones never expire or get reclaimed. Capacity fails closed.
       const n = this.ctx.storage.sql
         .exec<{ n: number }>(
-          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger) AS n',
+          'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger)+(SELECT count(*) FROM git_ledger) AS n',
         )
         .one().n;
       if (n >= 256) throw new Error('effect_capacity');
@@ -677,6 +797,18 @@ export class WorkMintLookup extends WorkerEntrypoint<Env> {
     return object(this.env).lookupMint(attempt);
   }
 }
+/** Retain verified refusal only; no mint, plaintext, cleanup intent or OP framing. */
+export class WorkMintRefusalCheckpoint extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  lookup(attempt: unknown) {
+    return object(this.env).lookupMint(attempt);
+  }
+  refused(attempt: unknown, digest: unknown, value: unknown) {
+    return object(this.env).closeMintRefused(attempt, digest, value);
+  }
+}
 /** Safety only: cannot claim, observe unknown IDs, custody, close or reset. */
 export class WorkMintMaintenance extends WorkerEntrypoint<Env> {
   fetch() {
@@ -718,3 +850,60 @@ export default {
     return new Response(null, { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+/** Productive admission only; no transmission, mint, custody or OP framing. */
+export class WorkGitCheckpoint extends WorkerEntrypoint<Env> {
+  lookup(attempt: string) {
+    return object(this.env).lookupGit(attempt);
+  }
+  claim(plan: GitPlan) {
+    return object(this.env).claimGit(plan, 1);
+  }
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+}
+/** Metadata only: cannot dispatch or consume a Git operation. */
+export class WorkGitLookup extends WorkerEntrypoint<Env> {
+  lookup(attempt: string) {
+    return object(this.env).lookupGit(attempt);
+  }
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+}
+/** Physical transport alone consumes one fixed send before provider I/O. */
+export class WorkGitTransmission extends WorkerEntrypoint<Env> {
+  take(attempt: string, digest: string) {
+    return object(this.env).takeGit(attempt, digest, 1);
+  }
+  current(attempt: string, digest: string) {
+    return object(this.env).currentGit(attempt, digest, 1);
+  }
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+}
+/** Named Native metadata reader, no raw DO or productive methods. */
+export class WorkGitMetadata extends WorkerEntrypoint<Env> {
+  async fetch(request: Request) {
+    if (request.method !== 'POST' || new URL(request.url).pathname !== '/git-metadata')
+      return new Response(null, { status: 404 });
+    try {
+      const bytes = await (
+        await import('../work-effect-worker/git-protocol')
+      ).boundedBody(request, 1024);
+      const i: unknown = JSON.parse(new TextDecoder().decode(bytes));
+      if (!closed(i, ['attempt_id']) || !opaque(i.attempt_id)) throw new Error('git_invalid');
+      return Response.json(
+        {
+          mint: await object(this.env).lookupMint(i.attempt_id),
+          git: await object(this.env).lookupGit(i.attempt_id),
+        },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
+    } catch {
+      return Response.json({ error: 'git_denied' }, { status: 409 });
+    }
+  }
+}

@@ -21,5 +21,10 @@ authority/checkpoint/effect gate is `npm run test:work-delegation`.
 Existing protected remote journals and unresolved allocations must be
 reconciled against their original immutable IDs before any new remote trial.
 Local qualification does not reset or certify those resources. Upload/readback,
-productive Git credential use/release, authenticated copy consent and operator/recovery
+workload credential release, authenticated copy consent and operator/recovery
 provenance retain separate gates.
+
+The [private Git broker](../../docs/work-git-broker.md) adds fixed productive
+upload/readback admission and Native custody use in `git.ts`, `git-transport.ts`
+and `git-protocol.ts`. Qualification uses actual Git through a local HTTP adapter;
+production activation and Native preparation verification remain pending.

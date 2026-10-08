@@ -356,6 +356,13 @@ impl ResolvedDisclosure {
     pub fn selected_bytes(&self) -> u64 {
         self.data.selected_bytes
     }
+    /// Exact Git roots registered by the trusted disclosure verifier.
+    pub fn copy_binding(&self, role: CredentialRole) -> (&str, &str) {
+        match role {
+            CredentialRole::Task => (&self.data.code.commit, &self.data.code.tree),
+            CredentialRole::Snapshot => (&self.data.snapshot.commit, &self.data.snapshot.tree),
+        }
+    }
     pub fn review(&self) -> impl Serialize + '_ {
         &self.data
     }

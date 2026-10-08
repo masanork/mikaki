@@ -3,7 +3,7 @@
 M6c1 provides the trusted local copy core in
 [work-git-copy.ts](../scripts/work-git-copy.ts). It performs no network I/O,
 credential decryption, Native admission, preparation verification or grant
-issuance. The private productive broker remains the next integration step.
+issuance. The [private productive broker](work-git-broker.md) connects this core to Native custody and independent admission.
 
 ## Fixed bytes
 

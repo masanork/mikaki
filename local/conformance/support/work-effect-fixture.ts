@@ -26,16 +26,20 @@ export type Remote = {
     tokens: { id: string; scope: string; state: string; expiresAt: string }[];
   }[];
 };
-export async function effectFixture(overrides: Record<string, string> = {}) {
+export async function effectFixture(
+  overrides: Record<string, string> = {},
+  gitHTTP?: Parameters<typeof preparationFixture>[5],
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-effect-'));
   const bindings = {
     WORK_CREDENTIAL_KEY_FLOOR: '1',
     WORK_CREDENTIAL_KEY_V1: randomBytes(32).toString('base64url'),
     WORK_EFFECT_STORE_ENABLED: 'true',
     WORK_MINT_STORE_ENABLED: 'true',
+    WORK_GIT_STORE_ENABLED: 'true',
     ...overrides,
   };
-  let op = await preparationFixture(directory, bindings, true, true),
+  let op = await preparationFixture(directory, bindings, true, true, undefined, gitHTTP),
     stopped = false;
   try {
     const code = await gitFixture(directory, 'code', { 'README.md': 'Synthetic code\n' });
@@ -69,11 +73,21 @@ export async function effectFixture(overrides: Record<string, string> = {}) {
     }
     async function restart(extra: Record<string, string> = {}) {
       await stop();
-      op = await preparationFixture(directory, { ...bindings, ...extra }, true, true);
+      op = await preparationFixture(
+        directory,
+        { ...bindings, ...extra },
+        true,
+        true,
+        undefined,
+        gitHTTP,
+      );
       stopped = false;
     }
     return {
       p,
+      code,
+      selected,
+      gitFetch: (request: Request) => op.gitFetch(request),
       call: (input: Record<string, unknown>) => op.call(input),
       task,
       snapshot,

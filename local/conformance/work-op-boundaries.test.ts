@@ -41,6 +41,7 @@ test('production Rust shim and named OP facade refuse public/raw administration 
               service: 'work-op-boundary',
               entrypoint: 'WorkEffectStore',
             },
+            { binding: 'WORK_GIT_STORE', service: 'work-op-boundary', entrypoint: 'WorkGitStore' },
             {
               binding: 'WORK_MINT_STORE',
               service: 'work-op-boundary',
@@ -69,6 +70,7 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       caller.OP_AUTHORITY_ADMIN,
       caller.WORK_EFFECT_STORE,
       caller.WORK_MINT_STORE,
+      caller.WORK_GIT_STORE,
     ]) {
       assert.equal((await binding.administer_op_authority()).status, 404);
       assert.equal((await binding.administer_work_effect()).status, 404);
@@ -102,6 +104,31 @@ test('production Rust shim and named OP facade refuse public/raw administration 
         })
       ).status,
       409,
+    );
+    for (const binding of [caller.OP_PUBLIC, caller.WORK_EFFECT_STORE, caller.WORK_MINT_STORE]) {
+      assert.equal(
+        (await binding.fetch('https://private.invalid/git-effect', { method: 'POST', body: '{}' }))
+          .status,
+        404,
+      );
+    }
+    assert.equal(
+      (
+        await caller.WORK_GIT_STORE.fetch('https://private.invalid/git-effect', {
+          method: 'POST',
+          body: '{}',
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await caller.WORK_GIT_STORE.fetch('https://private.invalid/effect', {
+          method: 'POST',
+          body: '{}',
+        })
+      ).status,
+      404,
     );
     const { DB } = await op.getEnv();
     assert.equal(

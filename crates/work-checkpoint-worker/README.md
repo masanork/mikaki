@@ -10,3 +10,7 @@ Before integration, assign independent storage/operator/recovery ownership and o
 slots, metadata-only custody, cleanup intent and explicit refusal closures. It
 checks its own initial-effect closure before admission. Safety observations can
 survive freeze; they do not bypass Native framing or release a credential.
+
+Git slots retain fixed upload/readback manifests and one consumed transmission
+outside D1. Separate named admission, read-only metadata and transmission
+capabilities are described in the [Git broker note](../../docs/work-git-broker.md).

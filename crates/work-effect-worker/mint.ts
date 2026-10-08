@@ -28,8 +28,9 @@ function output(r: MintRecord) {
     attempt_id: r.plan.attempt_id,
     state: r.state,
     repo_id: r.plan.repo_id,
-    cleanup:
-      r.state === 'closed'
+    cleanup: r.refusal
+      ? 'git_bearer_refused'
+      : r.state === 'closed'
         ? 'refused'
         : (r.cleanup?.method ?? (r.revoke_acknowledged ? 'revoke_acknowledged' : 'unconfirmed')),
   };

@@ -36,11 +36,20 @@ export type MintRecord = {
   cleanup_requested: boolean;
   receipt: string | null;
   cleanup?: MintCleanup & { observed_at: number };
+  refusal?: MintRefusal & { observed_at: number };
 };
 /** Specific control-plane evidence, not bearer refusal or copy verification. */
 export type MintCleanup = MintObservation & {
   format_version: 1;
   method: 'revoked_inventory' | 'revoke_acknowledged';
+  receipt: string;
+};
+/** Native-decrypted bearer refused at the fixed Git endpoint. No copy authority. */
+export type MintRefusal = MintObservation & {
+  format_version: 1;
+  method: 'git_bearer_refused';
+  status: 403;
+  key_version: number;
   receipt: string;
 };
 export type Closure = {
@@ -189,6 +198,34 @@ export function mintCleanup(v: unknown): asserts v is MintCleanup {
     v.format_version !== 1 ||
     !hex(v.receipt) ||
     !['revoked_inventory', 'revoke_acknowledged'].includes(String(v.method))
+  )
+    throw new Error('effect_invalid');
+  mintObservation({
+    repo_id: v.repo_id,
+    token_id: v.token_id,
+    scope: v.scope,
+    expires_at: v.expires_at,
+  });
+}
+export function mintRefusal(v: unknown): asserts v is MintRefusal {
+  if (
+    !closed(v, [
+      'repo_id',
+      'token_id',
+      'scope',
+      'expires_at',
+      'format_version',
+      'method',
+      'status',
+      'key_version',
+      'receipt',
+    ]) ||
+    v.format_version !== 1 ||
+    v.method !== 'git_bearer_refused' ||
+    v.status !== 403 ||
+    !integer(v.key_version) ||
+    v.key_version < 1 ||
+    !hex(v.receipt)
   )
     throw new Error('effect_invalid');
   mintObservation({

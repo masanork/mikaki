@@ -223,10 +223,14 @@ export class SyntheticRemote extends DurableObject<Env> {
     if (s.mode === 'git-unavailable') return 503;
     if (s.mode === 'git-redirect') return 302;
     if (s.mode === 'git-active') return 200;
-    return (token === `Bearer ${r.token}` && r.state === 'active') ||
-      (r.minted ?? []).some((t) => token === `Bearer ${t.plaintext}` && t.state === 'active')
-      ? 200
-      : 403;
+    const minted = r.minted?.find((t) => token === `Bearer ${t.plaintext}`);
+    return minted
+      ? minted.state === 'active'
+        ? 200
+        : 403
+      : token === `Bearer ${r.token}` && r.state === 'active'
+        ? 200
+        : 403;
   }
   async note() {
     const s = this.#state();

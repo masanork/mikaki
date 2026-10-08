@@ -25,6 +25,7 @@ export async function preparationFixture(
     bindings: Pick<V4WorkerOptions, 'artifacts'>;
     loseCreate?: boolean;
   },
+  gitHTTP?: V4WorkerOptions['outboundService'],
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -43,6 +44,7 @@ export async function preparationFixture(
     compatibilityDate: '2026-09-30',
     bindings: {
       MIKAKI_ISSUER: 'https://work.test',
+      ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -62,10 +64,30 @@ export async function preparationFixture(
               ? {
                   OP_EFFECT_STORE: { name: 'preparation-owner', entrypoint: 'WorkEffectStore' },
                   OP_MINT_STORE: { name: 'preparation-owner', entrypoint: 'WorkMintStore' },
+                  OP_GIT_STORE: { name: 'preparation-owner', entrypoint: 'WorkGitStore' },
                   EFFECT_GATE: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
                   EFFECT_PUBLIC: 'work-effect',
                   ...(!remote
                     ? {
+                        GIT_BROKER: { name: 'work-git', entrypoint: 'WorkGitBroker' },
+                        GIT_PUBLIC: 'work-git',
+                        GIT_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitCheckpoint',
+                        },
+                        GIT_TRANSMISSION: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitTransmission',
+                        },
+                        GIT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkGitLookup' },
+                        WORK_GIT_METADATA: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitMetadata',
+                        },
+                        WORK_GIT_TRANSPORT: {
+                          name: 'git-transport',
+                          entrypoint: 'WorkGitTransport',
+                        },
                         MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
                         MINT_PUBLIC: 'work-mint',
                         MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
@@ -84,6 +106,17 @@ export async function preparationFixture(
                           entrypoint: 'WorkMintArtifactsMaintenance',
                         },
                         MINT_MAINTENANCE_PUBLIC: 'mint-maintenance',
+                        MINT_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
+                        MINT_CLOSURE_PUBLIC: 'mint-closure',
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintRefusalCheckpoint',
+                        },
+                        WORK_MINT_REFUSAL_TRANSPORT: {
+                          name: 'mint-refusal-transport',
+                          entrypoint: 'WorkMintRefusalTransport',
+                        },
+                        MINT_REFUSAL_TRANSPORT_PUBLIC: 'mint-refusal-transport',
                       }
                     : {}),
                   EFFECT_RECONCILER: { name: 'work-reconcile', entrypoint: 'WorkEffectReconciler' },
@@ -179,6 +212,47 @@ export async function preparationFixture(
               ...(!remote
                 ? [
                     {
+                      name: 'work-git',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_GIT_BROKER_ENABLED: bindings.WORK_GIT_BROKER_ENABLED ?? 'true',
+                      },
+                      serviceBindings: {
+                        OP_GIT_STORE: { name: 'preparation-owner', entrypoint: 'WorkGitStore' },
+                        GIT_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitCheckpoint',
+                        },
+                      },
+                    },
+                    {
+                      name: 'git-transport',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      outboundService: gitHTTP ?? 'synthetic-artifacts',
+                      bindings: {
+                        WORK_GIT_TRANSPORT_ENABLED: bindings.WORK_GIT_TRANSPORT_ENABLED ?? 'true',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                      },
+                      serviceBindings: {
+                        GIT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkGitLookup' },
+                        GIT_TRANSMISSION: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitTransmission',
+                        },
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
                       name: 'work-mint',
                       outboundService: 'synthetic-artifacts',
                       modules: true,
@@ -250,6 +324,49 @@ export async function preparationFixture(
                         MINT_ARTIFACTS_MAINTENANCE: {
                           name: 'mint-maintenance',
                           entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-refusal-transport',
+                      outboundService: 'synthetic-artifacts',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-refusal-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_REFUSAL_TRANSPORT_ENABLED:
+                          bindings.WORK_MINT_REFUSAL_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-closure',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-closure.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_CLOSURE_ENABLED: bindings.WORK_MINT_CLOSURE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureMintRefusalLedger',
                         },
                         OP_MINT_STORE: {
                           name: 'preparation-owner',
@@ -514,6 +631,12 @@ export async function preparationFixture(
     account,
     session,
     fixtureFetch,
+    gitFetch: async (request: Request) =>
+      mf.dispatchFetch('https://work.test/git-fixture', {
+        method: request.method,
+        headers: Object.fromEntries(request.headers),
+        body: await request.arrayBuffer(),
+      }),
     async inspectRemote(name: string) {
       if (!remote || !/^wk-[a-f0-9]{32}-(code|snapshot)$/.test(name))
         throw new Error('fixture_remote_inspect_denied');

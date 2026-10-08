@@ -18,14 +18,14 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 
 ## Main integration order
 
-| Increment | Outcome and qualification gate | State |
-| --- | --- | --- |
-| M1: Portable rules/decisions | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass. | Complete locally: 35 unit cases plus one compile-fail case. |
-| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
-| M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
-| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
-| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a source review complete locally; copy/delegation composition and activity/result controls remain pending. |
-| M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | M6a one-shot mint/Native custody reconciled; M6b known-ID safety recovery and M6c1 fixed Git payload/readback core implemented. Private productive admission/custody use and release remain pending. |
+| Increment                       | Outcome and qualification gate                                                                                                                                                                                                                                                     | State                                                                                                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1: Portable rules/decisions    | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass.                                                                                                                                                                  | Complete locally: 35 unit cases plus one compile-fail case.                                                                                                                                          |
+| M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                           | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                   |
+| M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                                      | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                      |
+| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                           | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                         |
+| M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                                   | M5a source review complete locally; copy/delegation composition and activity/result controls remain pending.                                                                                         |
+| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | M6a one-shot mint/Native custody reconciled; M6b known-ID safety recovery and M6c1 fixed Git payload/readback core implemented. Private productive admission/custody use and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -41,30 +41,30 @@ Current M2 qualification: `npm run test:work-delegation` passes **94 cases**, in
 
 The first usable outcome is one owner, one non-sensitive disclosure, one managed run, one candidate and one exact code adoption into an experimental development target. Code adoption and saving a decision require separate confirmations.
 
-| Card | Outcome and prerequisites |
-| --- | --- |
+| Card  | Outcome and prerequisites                                                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------------------------ |
 | WD-00 | Verified committed Artifacts development baseline and bootstrap cleanup; refresh from a newly selected qualified source. |
-| WD-01 | Bounded workload profile and component ownership; M1 restores the portable portion. |
-| WD-02 | Durable request/grant/run/approval/operation authority; M2/M3. |
-| WD-03 | Actual context/snapshot/history review and copy consent; WD-01/02, M5. |
-| WD-04 | Controlled launch and instance/client/key-bound exchange; WD-01/02 and named launcher/issuer verification. |
-| WD-05 | Task-repository effects and credential reconciliation; WD-02, M4/M6, WD-04 before workload access. |
-| WD-06 | One run submits a candidate with confirmed activity state; WD-03/04/05. |
-| WD-07 | Exact owner adoption; WD-02/06 and independent candidate/evidence/write reconciliation. |
-| WD-08 | Separate permission stop, execution stop and credential cleanup; integrate through WD-06/07. |
-| WD-09 | Separate decision adoption and next-day handoff with fresh authority; WD-03/07/08. |
-| WD-10 | Two-run comparison and individually qualified external clients; WD-09. |
+| WD-01 | Bounded workload profile and component ownership; M1 restores the portable portion.                                      |
+| WD-02 | Durable request/grant/run/approval/operation authority; M2/M3.                                                           |
+| WD-03 | Actual context/snapshot/history review and copy consent; WD-01/02, M5.                                                   |
+| WD-04 | Controlled launch and instance/client/key-bound exchange; WD-01/02 and named launcher/issuer verification.               |
+| WD-05 | Task-repository effects and credential reconciliation; WD-02, M4/M6, WD-04 before workload access.                       |
+| WD-06 | One run submits a candidate with confirmed activity state; WD-03/04/05.                                                  |
+| WD-07 | Exact owner adoption; WD-02/06 and independent candidate/evidence/write reconciliation.                                  |
+| WD-08 | Separate permission stop, execution stop and credential cleanup; integrate through WD-06/07.                             |
+| WD-09 | Separate decision adoption and next-day handoff with fresh authority; WD-03/07/08.                                       |
+| WD-10 | Two-run comparison and individually qualified external clients; WD-09.                                                   |
 
 Owner-enrolled clients, managed execution identity, Token Exchange, SPIFFE and AuthZEN HTTP retain distinct qualification gates. Internal ABAC rules do not establish issuer/PDP interoperability.
 
 ## Cloudflare CI lane
 
-| Card | Completion boundary |
-| --- | --- |
+| Card  | Completion boundary                                                                                                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | CI-01 | Test-only Artifacts-triggered Workflow: fixed committed source/ref, passing/failing runs, exact checkout, reports, duplicates/cancellation and bounded cost. |
-| CI-02 | Required Rust/Wasm/contract/browser parity at the same commit; qualified toolchain/cache identity and immutable reports/build bytes. |
-| CI-03 | Isolated staging and trusted publisher: exact approval, binding/schema/secret inventories, upload/activation reconciliation. |
-| CI-04 | Trusted provenance, recovery fencing, compatible rollback and one authoritative write direction before canonical migration. |
+| CI-02 | Required Rust/Wasm/contract/browser parity at the same commit; qualified toolchain/cache identity and immutable reports/build bytes.                         |
+| CI-03 | Isolated staging and trusted publisher: exact approval, binding/schema/secret inventories, upload/activation reconciliation.                                 |
+| CI-04 | Trusted provenance, recovery fencing, compatible rollback and one authoritative write direction before canonical migration.                                  |
 
 CI-01 can proceed separately once its exact source/resources are selected. Deployment credentials stay in the publisher boundary; a Workflow event, identity token or successful test does not grant production promotion.
 
@@ -76,7 +76,7 @@ M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 1
 
 Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
 
-Next: M6c2 connects the fixed Git copy core to independent productive admission and bounded private custody use, before M5's copy/delegation controls can complete that flow. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+Next: bind both productive payload receipts and all six credential closures to Native preparation verification, before M5's copy/delegation controls can complete that flow. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
 
 Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
 
@@ -95,7 +95,6 @@ The standalone mint suite passes **28 cases** over the actual Rust/Wasm, D1 and 
 The combined current backend/Git run passes **191/191 cases** (the previous 163 plus 28 mint cases). Production OP/service boundaries and baseline/Owner-schema/release-inventory regressions pass **13/13**. The production Worker build, named OP packaging, Wasm Clippy with warnings denied, Node/effect/checkpoint types, full formatting and documentation links pass. Existing UI budgets remain unchanged; OP Wasm is 5,936,405 raw bytes / 2,103,885 gzip estimate, within the existing 8 MiB / 3 MiB budgets.
 
 Latest main `407f50e` is integrated by merge `f00c49d`, preserving the qualified work-port history. Its UserInfo fixture changes do not change product source. The current default UserInfo qualification passes **2/2 cases** after rebuilding the previously stale ignored conformance Claim Worker with the exact CI command, `worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate`. Both actual workerd and browser v2 recipient/sharing/consent/withdrawal flows pass. No new profile benchmark or production-capacity claim is made. Node types, full formatting and documentation links pass after the merge.
-
 
 ## M6a reconciliation and M6c1 Git copy core
 
@@ -137,13 +136,11 @@ are untouched. Unobserved-token operator recovery,
 productive fixed Git upload/readback and owner copy/delegation composition remain
 the next gates.
 
-
 The combined reconciliation routes both mint and recovery through the separate
 `WorkMintStore` binding. Retained explicit Git-refusal closures synchronize through
 either gate with no provider replay; known-ID control-plane proof remains
 revocation-pending and cannot erase its charge. The final combined validation is
 recorded after reconciling `a639def` with `022eca1`.
-
 
 Final reconciliation validation: **246/246** backend/Git cases pass in one
 `npm run test:work-delegation` run (163 existing + 33 mint + 33 recovery + 17 fixed
@@ -160,3 +157,38 @@ refusal recovery is a separate increment and is preserved without overwriting
 its uncommitted files. The coherent reviewed source for this increment is
 `feat/work-mint-reconciliation`; production activation and the productive Git
 broker remain pending.
+
+## M6c safety closure: Native bearer refusal and independent closure
+
+The [closure note](work-artifacts-mint-closure.md) connects retained encrypted
+revocation-pending custody to a fixed, private refusal-only HTTP transport. Native
+decrypts the exact bearer under the existing key floor; the transport checks the
+independent cleanup record and immutable Artifacts identity before and after a
+concrete Git upload-pack refusal. The separately bound closer retains exact
+Native proof outside D1 before asking Native to close that obligation.
+
+Focused local cases qualify both roles/purposes, loss/restore/freeze, missing or
+substituted wrapping authority, guarded ciphertext writes, failed/redirected Git,
+identity/inventory substitution, audit rollback, cancellation and private-capability
+limits. Native closure erases its encrypted credential and releases that charge;
+the independent permanent slot remains. This supplies no copy verification or
+workload authority. Combined validation and main integration follow this source
+increment. Production and protected remote evidence remain untouched.
+
+## M6c2: Private productive Git custody and transmission
+
+The [Git broker](work-git-broker.md) connects both fixed role copies to Native
+source/checkpoint/key validation, encrypted service custody, independent permanent
+admission and one consumed physical transmission. Exact smart HTTP discovery,
+create-only receive-pack and independent upload-pack readback use actual Git in
+local qualification. Upload is closed before the coordinator mints readback.
+Neither payload verification nor a Native transport acknowledgement promotes
+preparation/workload authority.
+
+Root commit `bf2a170`'s Native bearer-refusal closure and main catch-up `811f503`
+are reconciled with the separate mint-only facade and fixed Git copy core. Both
+histories are retained. This increment is qualified locally on 2026-10-09 JST;
+final checks are recorded below when complete. No production/Artifacts operation
+or protected journal modification is performed. The next gate is Native
+preparation verification using both exact payloads and all six independent
+credential closures, followed by owner copy/delegation composition.

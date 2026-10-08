@@ -660,6 +660,46 @@ impl WorkStore {
             row.envelope.as_deref().ok_or(Denied::BindingMismatch)?,
         )?)
     }
+    /// Fixed private Git adapter only. This never becomes a public credential API.
+    pub(crate) async fn credential_for_git(
+        &self,
+        id: &str,
+        key: &WrappingKey,
+        expected: &CredentialObservation,
+    ) -> Result<CredentialSecret> {
+        self.current_authority_checkpoint().await?;
+        let row = self.credential_row(id).await?;
+        let a = self.credential_attempt(&row).await?;
+        if a.purpose() == CredentialPurpose::Initial
+            || row.state != "captured"
+            || row.observation.as_deref() != Some(&expected.authority_record()?)
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        self.check_key(key, true).await?;
+        let p = self.preparation(a.preparation_id()).await?;
+        if self
+            .statement(
+                include_str!("../../sql/work/credential-capture-current.sql"),
+                &[text(p.id())],
+            )?
+            .first::<String>(Some("operation_id"))
+            .await?
+            .is_none()
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        let secret = self.decrypt_row(&row, &a, key).await?;
+        let current = self.credential_row(id).await?;
+        if current.state != "captured"
+            || current.revision != row.revision
+            || current.envelope != row.envelope
+        {
+            return Err(Denied::StaleAuthority.into());
+        }
+        self.current_authority_checkpoint().await?;
+        Ok(secret)
+    }
     /// Only cleanup recovery is exposed. A productive broker needs its own
     /// operation/dispatch guard; this is not a generic workload token getter.
     pub async fn credential_for_cleanup(
