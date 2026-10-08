@@ -1,9 +1,10 @@
 //! Read-only device preparation validator. Inputs are public build configuration/metadata.
+use getrandom::SysRng;
 use mikaki_identity::{
     issuance_encryption::WalletEncryption,
     wallet_profile::{self, Configuration},
 };
-use rand_core::{OsRng, RngCore};
+use rand_core::{Rng, UnwrapErr};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -76,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (|| -> Result<(), String> {
             let metadata = metadata.as_ref().ok_or("metadata_unavailable")?;
             let mut entropy = [0; 32];
-            OsRng.fill_bytes(&mut entropy);
+            UnwrapErr(SysRng).fill_bytes(&mut entropy);
             let encryption = WalletEncryption::from_metadata(metadata, entropy, "preflight")
                 .map_err(str::to_string)?
                 .ok_or("invalid_metadata")?;

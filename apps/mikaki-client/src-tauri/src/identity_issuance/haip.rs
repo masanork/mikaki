@@ -141,9 +141,9 @@ impl Session {
         holder: HolderKey,
     ) -> Result<Self, String> {
         let mut entropy = Zeroizing::new([0; 32]);
-        OsRng.fill_bytes(&mut *entropy);
+        UnwrapErr(SysRng).fill_bytes(&mut *entropy);
         let mut verifier = Zeroizing::new([0; 32]);
-        OsRng.fill_bytes(&mut *verifier);
+        UnwrapErr(SysRng).fill_bytes(&mut *verifier);
         let protocol = Authorization::new(
             ISSUER,
             client,
@@ -286,9 +286,9 @@ impl Enrollment {
         attester_headers(&self.instance, &self.client, attestation, trust, at)?;
         let dpop = HolderKey::create(app)?;
         let mut entropy = Zeroizing::new([0; 32]);
-        OsRng.fill_bytes(&mut *entropy);
+        UnwrapErr(SysRng).fill_bytes(&mut *entropy);
         let mut verifier = Zeroizing::new([0; 32]);
-        OsRng.fill_bytes(&mut *verifier);
+        UnwrapErr(SysRng).fill_bytes(&mut *verifier);
         let protocol = Authorization::new_pending_holder(
             ISSUER,
             &self.client,

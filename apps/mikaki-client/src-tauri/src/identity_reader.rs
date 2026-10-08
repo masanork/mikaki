@@ -65,7 +65,8 @@ pub async fn read_identity_card(
     }
     #[cfg(target_os = "android")]
     {
-        use rand_core::{OsRng, RngCore};
+        use getrandom::SysRng;
+        use rand_core::TryRng;
         use tauri::Manager;
         let session = {
             let mut active = state
@@ -76,7 +77,7 @@ pub async fn read_identity_card(
                 return Err(FailureCode::ReaderBusy.into());
             }
             let mut random = [0u8; 16];
-            OsRng
+            SysRng
                 .try_fill_bytes(&mut random)
                 .map_err(|_| CardFailure::from(FailureCode::TransportError))?;
             let session = Arc::new(Session {

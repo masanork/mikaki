@@ -19,7 +19,8 @@ use rsa::{
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Sha256;
-use signature::{Error, Signer, Verifier};
+use signature::Verifier as _;
+use signature_legacy::{Error, Signer, Verifier};
 use std::sync::OnceLock;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -129,8 +130,16 @@ fn decoding_key(algorithm: Algorithm, public_jwk_json: &str) -> Option<DecodingK
             let modulus = URL_SAFE_NO_PAD.decode(&params.n).ok()?;
             let exponent = URL_SAFE_NO_PAD.decode(&params.e).ok()?;
             let public_key = RsaPublicKey::new(
-                rsa::BigUint::from_bytes_be(&modulus),
-                rsa::BigUint::from_bytes_be(&exponent),
+                rsa::BoxedUint::from_be_slice(
+                    &modulus,
+                    u32::try_from(modulus.len().checked_mul(8)?).ok()?,
+                )
+                .ok()?,
+                rsa::BoxedUint::from_be_slice(
+                    &exponent,
+                    u32::try_from(exponent.len().checked_mul(8)?).ok()?,
+                )
+                .ok()?,
             )
             .ok()?;
             let der = public_key.to_pkcs1_der().ok()?;

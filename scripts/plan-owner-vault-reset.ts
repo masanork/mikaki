@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 
 type Migration = { name: string; sha256: string; sql: string };
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string };

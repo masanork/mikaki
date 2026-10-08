@@ -37,6 +37,9 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/search.ts");
     println!("cargo:rerun-if-changed=ui/ThreadSearch.svelte");
     println!("cargo:rerun-if-changed=../../package-lock.json");
+    println!("cargo:rerun-if-changed=../../tools/svelte-check/package.json");
+    println!("cargo:rerun-if-changed=../../tools/svelte-check/package-lock.json");
+    println!("cargo:rerun-if-changed=../../tools/svelte-check/check.cjs");
     println!("cargo:rerun-if-changed=ui/OwnerRecordEditor.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerLocalExport.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-controller.ts");
@@ -126,7 +129,7 @@ fn main() {
         commit.unwrap_or_default()
     );
     println!("cargo:rustc-env=MIKAKI_SOURCE_CLEAN={clean}");
-    let compiler = manifest.join("../../node_modules/@typescript/native/bin/tsc");
+    let compiler = manifest.join("../../node_modules/typescript/bin/tsc");
     let output = PathBuf::from(env::var_os("OUT_DIR").expect("build output directory"));
     let paraglide = manifest.join("../../node_modules/.bin/paraglide-js");
     let status = Command::new(paraglide)
@@ -146,8 +149,9 @@ fn main() {
         .status()
         .expect("TypeScript 7 compiler is required; run npm ci");
     assert!(status.success(), "Worker UI TypeScript compilation failed");
-    let svelte_check = manifest.join("../../node_modules/.bin/svelte-check");
-    let status = Command::new(svelte_check)
+    let svelte_check = manifest.join("../../tools/svelte-check/check.cjs");
+    let status = Command::new("node")
+        .arg(svelte_check)
         .arg("--tsconfig")
         .arg(manifest.join("ui/tsconfig.json"))
         .arg("--tsgo")

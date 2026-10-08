@@ -1,4 +1,5 @@
 //! First-party OID4VCI flow. Evidence, grant secrets and separate holder keys stay in Rust.
+use p256::elliptic_curve::Generate;
 mod completion;
 mod credential_transport;
 pub mod haip;
@@ -7,6 +8,7 @@ pub mod invocation;
 mod presentation_transport;
 pub mod proximity;
 use crate::identity_wallet::{self, HolderKey, Receipt};
+use getrandom::SysRng;
 use mikaki_identity::{
     card::{CardFailure, FailureCode},
     evidence::Evidence,
@@ -14,7 +16,7 @@ use mikaki_identity::{
     mdoc,
 };
 use openidconnect::reqwest::{Client, Response};
-use rand_core::{OsRng, RngCore};
+use rand_core::{Rng, UnwrapErr};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
@@ -159,7 +161,7 @@ fn gate(state: &IdentityState) -> Result<Gate, String> {
 }
 fn random() -> String {
     let mut bytes = [0; 32];
-    OsRng.fill_bytes(&mut bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut bytes);
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -472,7 +474,7 @@ pub async fn receive_identity_credential(
     }
     issuer_key.verifying_key().map_err(str::to_string)?;
     let mut recipient_entropy = Zeroizing::new([0u8; 32]);
-    OsRng.fill_bytes(&mut *recipient_entropy);
+    UnwrapErr(SysRng).fill_bytes(&mut *recipient_entropy);
     let encryption = mikaki_identity::issuance_encryption::WalletEncryption::from_metadata(
         &metadata,
         *recipient_entropy,
@@ -538,8 +540,8 @@ pub async fn receive_identity_credential(
     let request = if let Some(encryption) = &encryption {
         let mut entropy = Zeroizing::new([0u8; 32]);
         let mut iv = [0u8; 12];
-        OsRng.fill_bytes(&mut *entropy);
-        OsRng.fill_bytes(&mut iv);
+        UnwrapErr(SysRng).fill_bytes(&mut *entropy);
+        UnwrapErr(SysRng).fill_bytes(&mut iv);
         let wire = encryption
             .prepare_request(payload, *entropy, iv)
             .map_err(|_| "issuance_failed")?;
@@ -788,7 +790,7 @@ fn prepare_presentation(
 ) -> Result<PresentationReview, String> {
     let request = Zeroizing::new(request.to_string());
     let mut wallet_nonce = [0; 32];
-    OsRng.fill_bytes(&mut wallet_nonce);
+    UnwrapErr(SysRng).fill_bytes(&mut wallet_nonce);
     let registry = verifier_registry()?;
     let vct = format!("{ISSUER}/types/linked-document");
     let inventory_request = match retrieval {
@@ -961,9 +963,9 @@ pub async fn confirm_identity_presentation(
         };
         let encrypted = pending.request.response_encryption().is_some();
         let token = Zeroizing::new(if encrypted {
-            let ephemeral = p256::SecretKey::random(&mut OsRng);
+            let ephemeral = p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng));
             let mut iv = [0; 12];
-            OsRng.fill_bytes(&mut iv);
+            UnwrapErr(SysRng).fill_bytes(&mut iv);
             mikaki_identity::presentation::encryption::encrypt_response(
                 &vp,
                 &pending.request,

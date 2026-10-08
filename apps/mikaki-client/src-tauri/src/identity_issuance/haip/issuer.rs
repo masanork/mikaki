@@ -170,7 +170,7 @@ pub(super) async fn metadata(guard: &Gate, configuration: &str) -> Result<Contex
     let jwks = json(send(http.get(format!("{ISSUER}/jwks"))).await?, 200, 8192).await?;
     let (key, kid) = mikaki_identity::wallet_profile::issuer_key(&jwks)?;
     let mut entropy = Zeroizing::new([0; 32]);
-    OsRng.fill_bytes(&mut *entropy);
+    UnwrapErr(SysRng).fill_bytes(&mut *entropy);
     let encryption = WalletEncryption::from_metadata(&metadata, *entropy, &random())
         .map_err(|_| "invalid_metadata")?
         .ok_or("invalid_metadata")?;
@@ -216,8 +216,8 @@ where
         live(guard)?;
         let mut entropy = Zeroizing::new([0; 32]);
         let mut iv = [0; 12];
-        OsRng.fill_bytes(&mut *entropy);
-        OsRng.fill_bytes(&mut iv);
+        UnwrapErr(SysRng).fill_bytes(&mut *entropy);
+        UnwrapErr(SysRng).fill_bytes(&mut iv);
         let wire = Zeroizing::new(
             context
                 .encryption
