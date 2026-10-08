@@ -258,3 +258,30 @@ superseded by the opaque registered-source Git gate; no duplicate productive
 protocol remains. The independent 17-case copy core remains as a separate local
 validation utility. This integration does not activate production or alter
 protected remote allocations, journals or the preserved stash.
+
+Unified implementation/qualification source is
+`f53357e68974e60d97b448106da818a4c22a0c84` on
+`feat/work-mint-reconciliation`, including the scoped-authority merge `70d8f5a`.
+The package's complete work test-file list is covered in two serial groups:
+**89 mint/custody/cleanup cases and 222 remaining cases (311 total)**. The first
+mint run passed 88/89; empty-inventory recovery encountered an internal Miniflare
+response-hydration assertion and passed its same-source isolated rerun (1/1).
+The remaining group passed 222/222. No application change or test relaxation was
+made for that harness retry.
+
+Rust workspace tests pass **209/209**. Default-production Wasm Clippy with
+warnings denied, Rustfmt, Node/checkpoint/effect/service types, full Prettier,
+product sources and documentation checks pass. Production OP/service/enrollment/
+logout boundaries pass **13/13** against the Worker rebuilt with the exact
+qualification source; baseline/Owner-schema, worker-roster, release-inventory,
+reset-plan and static SQL regressions pass **34/34**. Named OP packaging retains
+64 static Agent SQL statements. Served UI and both Wasm budgets pass; OP Wasm
+measures **6,255,865 raw bytes / 2,189,644 gzip estimate**, below 8 MiB / 3 MiB.
+Build metadata and the budget artifact both identify the clean `f53357e` source.
+
+The root branch separately advanced with native owner preparation/disclosure
+review (`a0eb5ef`) during qualification. That work is preserved and is outside
+these exact-source results. The next integration combines this scoped-authority
+branch with the owner UI work before connecting copy/delegation actions and
+requalifying their composed build. This record adds documentation only. No new
+browser, remote CI, real Artifacts or production-activation result is claimed.
