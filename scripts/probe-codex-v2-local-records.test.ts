@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   makeSyntheticRecord,
   completedMcpCalls,
+  exactAuditDelta,
   findToolOutputs,
 } from './probe-codex-v2-local-records.ts';
 import { toolOutputs } from '../crates/agent-worker/tool-results.ts';
@@ -63,12 +64,81 @@ test('Codex probe counts only completed MCP tool events for its named server', (
     },
     { type: 'item.completed', item: { type: 'agent_message', text: 'done' } },
   ];
-  assert.deepEqual(completedMcpCalls(events.map((event) => JSON.stringify(event)).join('\n')), [
-    { server: 'mikaki_v2_local', tool: 'mikaki_list' },
-    { server: 'mikaki_v2_local', tool: 'mikaki_search' },
-    { server: 'mikaki_v2_local', tool: 'mikaki_read' },
-    { server: 'other', tool: 'mikaki_read' },
-  ]);
+  assert.deepEqual(
+    completedMcpCalls(events.map((event) => JSON.stringify(event)).join('\n')).map(
+      ({ server, tool, failed }) => ({ server, tool, failed }),
+    ),
+    [
+      { server: 'mikaki_v2_local', tool: 'mikaki_list', failed: false },
+      { server: 'mikaki_v2_local', tool: 'mikaki_search', failed: false },
+      { server: 'mikaki_v2_local', tool: 'mikaki_read', failed: false },
+      { server: 'other', tool: 'mikaki_read', failed: false },
+    ],
+  );
+});
+
+test('Codex MCP tool completion rejects item, status, and result errors', () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: {
+        type: 'mcp_tool_call',
+        server: 'mikaki_v2_local',
+        tool: 'mikaki_list',
+        status: 'failed',
+      },
+    },
+    {
+      type: 'item.completed',
+      item: {
+        type: 'mcp_tool_call',
+        server: 'mikaki_v2_local',
+        tool: 'mikaki_search',
+        error: { message: 'failed' },
+      },
+    },
+    {
+      type: 'item.completed',
+      item: {
+        type: 'mcp_tool_call',
+        server: 'mikaki_v2_local',
+        tool: 'mikaki_read',
+        result: { isError: true },
+      },
+    },
+  ];
+  assert.deepEqual(
+    completedMcpCalls(events.map((event) => JSON.stringify(event)).join('\n')).map(
+      (call) => call.failed,
+    ),
+    [true, true, true],
+  );
+});
+
+test('Codex audit delta must match exact allowed and denied calls', () => {
+  const positive = [
+    { operation: 'list', outcome: 'allowed' },
+    { operation: 'search', outcome: 'allowed' },
+    { operation: 'read', outcome: 'allowed' },
+  ];
+  assert.equal(exactAuditDelta([], positive, positive), true);
+  assert.equal(exactAuditDelta([], [...positive, positive[2]!], positive), false);
+  assert.equal(
+    exactAuditDelta(
+      positive,
+      [...positive, { operation: 'read', outcome: 'denied' }],
+      [{ operation: 'read', outcome: 'denied' }],
+    ),
+    true,
+  );
+  assert.equal(
+    exactAuditDelta(
+      positive,
+      [...positive, { operation: 'read', outcome: 'allowed' }],
+      [{ operation: 'read', outcome: 'denied' }],
+    ),
+    false,
+  );
 });
 
 test('Codex JSONL structured result parsing validates v2 read metadata when exposed', () => {
@@ -101,4 +171,20 @@ test('Codex JSONL structured result parsing validates v2 read metadata when expo
   if (parsed.source_info.kind !== 'vault-record') throw new Error('Expected a v2 record source');
   assert.deepEqual(parsed.source_info.source, fixture.source);
   assert.deepEqual(parsed.source_info.authority, fixture.authority);
+});
+
+test('Codex structuredContent is retained even when malformed so validation can fail closed', () => {
+  const events = [
+    {
+      type: 'item.completed',
+      item: {
+        type: 'mcp_tool_call',
+        server: 'mikaki_v2_local',
+        tool: 'mikaki_read',
+        result: { structuredContent: { result_version: 99 } },
+      },
+    },
+  ];
+  assert.deepEqual(findToolOutputs(events, 'read'), [{ result_version: 99 }]);
+  assert.throws(() => toolOutputs.read.parse(findToolOutputs(events, 'read')[0]));
 });

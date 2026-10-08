@@ -80,9 +80,16 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Parse only completed Codex MCP calls; never include event contents in reports. */
-export function completedMcpCalls(jsonl: string): Array<{ server: string; tool: string }> {
-  const calls: Array<{ server: string; tool: string }> = [];
+export type CompletedMcpCall = Readonly<{
+  server: string;
+  tool: string;
+  failed: boolean;
+  event: JsonRecord;
+}>;
+
+/** Parse completed Codex MCP calls and retain result envelopes only for local validation. */
+export function completedMcpCalls(jsonl: string): CompletedMcpCall[] {
+  const calls: CompletedMcpCall[] = [];
   for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
     let event: unknown;
     try {
@@ -96,21 +103,20 @@ export function completedMcpCalls(jsonl: string): Array<{ server: string; tool: 
     if (item['type'] !== 'mcp_tool_call') continue;
     const server = item['server'];
     const tool = item['tool'] ?? item['tool_name'] ?? item['name'];
-    if (typeof server === 'string' && typeof tool === 'string') calls.push({ server, tool });
+    if (typeof server !== 'string' || typeof tool !== 'string') continue;
+    const result = item['result'];
+    const status = typeof item['status'] === 'string' ? item['status'].toLowerCase() : undefined;
+    calls.push({
+      server,
+      tool,
+      event: item,
+      failed:
+        (item['error'] !== undefined && item['error'] !== null) ||
+        (status !== undefined && !['completed', 'success', 'succeeded'].includes(status)) ||
+        (isRecord(result) && result['isError'] === true),
+    });
   }
   return calls;
-}
-
-function parseJsonl(jsonl: string): unknown[] {
-  const events: unknown[] = [];
-  for (const line of jsonl.split(/\r?\n/).filter(Boolean)) {
-    try {
-      events.push(JSON.parse(line));
-    } catch {
-      // Ignore non-JSON progress lines; they are never emitted in the report.
-    }
-  }
-  return events;
 }
 
 async function runCodex(args: string[], prompt: string): Promise<string> {
@@ -124,32 +130,52 @@ async function runCodex(args: string[], prompt: string): Promise<string> {
     });
     const stdout: Buffer[] = [];
     let bytes = 0;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
+    let failure: Error | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
+    const stop = (reason: string) => {
+      if (failure) return;
+      failure = new Error(reason);
       child.kill('SIGTERM');
-    }, 120_000);
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
+    };
+    const timer = setTimeout(() => stop('codex_timeout'), 120_000);
     child.stdout.on('data', (chunk: Buffer) => {
       bytes += chunk.length;
       if (bytes > 2 * 1024 * 1024) {
-        child.kill('SIGTERM');
+        stop('codex_output_limit');
         return;
       }
       stdout.push(Buffer.from(chunk));
     });
     child.on('error', () => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(new Error('codex_unavailable'));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (timedOut) return reject(new Error('codex_timeout'));
-      if (bytes > 2 * 1024 * 1024) return reject(new Error('codex_output_limit'));
+      if (killTimer) clearTimeout(killTimer);
+      if (failure) return reject(failure);
       if (code !== 0) return reject(new Error('codex_failed'));
       resolvePromise(Buffer.concat(stdout).toString('utf8'));
     });
+    child.stdin.on('error', () => {});
     child.stdin.end(prompt);
   });
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label}_timeout`)), 10_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function codexArgs(dir: string, serverArgs: string[]) {
@@ -196,11 +222,7 @@ export function findToolOutputs(value: unknown, tool: 'list' | 'search' | 'read'
       return;
     }
     if (!isRecord(current)) return;
-    if (
-      isRecord(current['structuredContent']) &&
-      toolOutputs[tool].safeParse(current['structuredContent']).success
-    )
-      add(current['structuredContent']);
+    if (Object.hasOwn(current, 'structuredContent')) add(current['structuredContent']);
     if (toolOutputs[tool].safeParse(current).success) add(current);
     for (const [key, child] of Object.entries(current)) {
       if (key === 'text' && typeof child === 'string') visit(child, depth + 1);
@@ -224,13 +246,22 @@ async function sdkPreflight(
     stderr: 'pipe',
   });
   try {
-    await client.connect(transport);
-    const list = await client.callTool({ name: 'mikaki_list', arguments: {} });
-    const search = await client.callTool({
-      name: 'mikaki_search',
-      arguments: { query: 'v2-probe-needle' },
-    });
-    const read = await client.callTool({ name: 'mikaki_read', arguments: { id: recordId } });
+    await withTimeout(client.connect(transport), 'sdk_connect');
+    const list = await withTimeout(
+      client.callTool({ name: 'mikaki_list', arguments: {} }),
+      'sdk_list',
+    );
+    const search = await withTimeout(
+      client.callTool({
+        name: 'mikaki_search',
+        arguments: { query: 'v2-probe-needle' },
+      }),
+      'sdk_search',
+    );
+    const read = await withTimeout(
+      client.callTool({ name: 'mikaki_read', arguments: { id: recordId } }),
+      'sdk_read',
+    );
     const parsed = {
       list: toolOutputs.list.parse(list.structuredContent),
       search: toolOutputs.search.parse(search.structuredContent),
@@ -261,13 +292,18 @@ async function sdkPreflight(
     const grant = JSON.parse(await readFile(serverArgs[1]!, 'utf8')) as JsonRecord;
     grant['revoked'] = true;
     await writeFile(serverArgs[1]!, JSON.stringify(grant), { mode: 0o600 });
-    const denied = await client.callTool({ name: 'mikaki_read', arguments: { id: recordId } });
+    const denied = await withTimeout(
+      client.callTool({ name: 'mikaki_read', arguments: { id: recordId } }),
+      'sdk_revoked_read',
+    );
     if (!denied.isError || denied.structuredContent !== undefined)
       throw new Error('stdio_revoke_failed');
     return { calls: ['list', 'search', 'read'], revokedReadDenied: true };
   } finally {
-    await client.close();
-    await transport.close();
+    await Promise.allSettled([
+      Promise.resolve().then(() => client.close()),
+      Promise.resolve().then(() => transport.close()),
+    ]);
   }
 }
 
@@ -281,6 +317,74 @@ async function auditSummary(path: string) {
   } catch {
     return [];
   }
+}
+
+export function exactAuditDelta(
+  before: readonly { operation: unknown; outcome: unknown }[],
+  after: readonly { operation: unknown; outcome: unknown }[],
+  expected: readonly { operation: string; outcome: string }[],
+): boolean {
+  const counts = (rows: readonly { operation: unknown; outcome: unknown }[]) => {
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      const key = `${String(row.operation)}\0${String(row.outcome)}`;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  };
+  const oldCounts = counts(before);
+  const nextCounts = counts(after);
+  const wanted = counts(expected);
+  const keys = new Set([...oldCounts.keys(), ...nextCounts.keys(), ...wanted.keys()]);
+  return [...keys].every(
+    (key) => (nextCounts.get(key) ?? 0) === (oldCounts.get(key) ?? 0) + (wanted.get(key) ?? 0),
+  );
+}
+
+function assertCalls(
+  calls: readonly CompletedMcpCall[],
+  expectedTools: readonly string[],
+  expectedFailed: boolean,
+) {
+  if (
+    calls.length !== expectedTools.length ||
+    calls.some(
+      (call, index) => call.tool !== expectedTools[index] || call.failed !== expectedFailed,
+    )
+  )
+    throw new Error('codex_tool_calls_incomplete');
+}
+
+function verifyStructuredOutput(
+  calls: readonly CompletedMcpCall[],
+  tool: 'list' | 'search' | 'read',
+  recordId: RecordId,
+  source: unknown,
+  authority: unknown,
+): 'verified' | 'not_exposed' {
+  const call = calls.find((item) => item.tool === `mikaki_${tool}`);
+  if (!call) throw new Error('codex_tool_call_missing');
+  const outputs = findToolOutputs(call.event, tool);
+  if (outputs.length === 0) return 'not_exposed';
+  if (outputs.length !== 1) throw new Error('codex_structured_result_ambiguous');
+  const parsed = toolOutputs[tool].parse(outputs[0]);
+  type ResultDocument = {
+    id: string;
+    source_info: { kind: 'vault-record'; source: unknown; authority: unknown };
+  };
+  const documents: readonly ResultDocument[] =
+    tool === 'read'
+      ? [parsed as unknown as ResultDocument]
+      : (parsed as unknown as { documents: readonly ResultDocument[] }).documents;
+  if (
+    documents.length !== 1 ||
+    documents[0]?.id !== recordId ||
+    documents[0]?.source_info.kind !== 'vault-record' ||
+    JSON.stringify(documents[0]?.source_info.source) !== JSON.stringify(source) ||
+    JSON.stringify(documents[0]?.source_info.authority) !== JSON.stringify(authority)
+  )
+    throw new Error('codex_structured_source_mismatch');
+  return 'verified';
 }
 
 export async function probe(recordId: RecordId) {
@@ -309,50 +413,40 @@ export async function probe(recordId: RecordId) {
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_list with {}, then mikaki_search with {"query":"v2-probe-needle"}, then mikaki_read with ${targetPrompt}, exactly once each. Do not use any other tools. Do not repeat or quote returned content. Finish with the single word done.`,
     );
-    const positiveCalls = completedMcpCalls(positiveJsonl).filter(
-      (call) => call.server === 'mikaki_v2_local',
-    );
-    const completedTools = ['mikaki_list', 'mikaki_search', 'mikaki_read'].filter((tool) =>
-      positiveCalls.some((call) => call.tool === tool),
-    );
-    // Codex versions differ in whether structuredContent is surfaced in JSONL. When exposed,
-    // validate it; the SDK preflight above always checks the exact structured source/authority.
-    const events = parseJsonl(positiveJsonl);
-    const codexStructured = (['list', 'search', 'read'] as const).map((tool) => {
-      const outputs = findToolOutputs(events, tool);
-      for (const value of outputs) {
-        const parsed = toolOutputs[tool].parse(value);
-        type ResultDocument = {
-          id: string;
-          source_info: {
-            kind: 'vault-record';
-            source: unknown;
-            authority: unknown;
-          };
-        };
-        const documents: readonly ResultDocument[] =
-          tool === 'read'
-            ? [parsed as unknown as ResultDocument]
-            : (parsed as unknown as { documents: readonly ResultDocument[] }).documents;
-        if (
-          documents.length !== 1 ||
-          documents[0]?.id !== recordId ||
-          documents[0]?.source_info.kind !== 'vault-record' ||
-          JSON.stringify(documents[0]?.source_info.source) !== JSON.stringify(fixture.source) ||
-          JSON.stringify(documents[0]?.source_info.authority) !== JSON.stringify(fixture.authority)
-        )
-          throw new Error('codex_structured_source_mismatch');
-      }
-      return outputs.length > 0;
-    });
-    const allowedAudit = await auditSummary(codexAuditPath);
-    if (
-      completedTools.length !== 3 ||
-      !['list', 'search', 'read'].every((op) =>
-        allowedAudit.some((entry) => entry.operation === op && entry.outcome === 'allowed'),
-      )
-    )
-      throw new Error('codex_positive_calls_incomplete');
+    const positiveCalls = completedMcpCalls(positiveJsonl);
+    if (positiveCalls.some((call) => call.server !== 'mikaki_v2_local'))
+      throw new Error('codex_unexpected_mcp_server');
+    assertCalls(positiveCalls, ['mikaki_list', 'mikaki_search', 'mikaki_read'], false);
+    const codexStructured = {
+      list: verifyStructuredOutput(
+        positiveCalls,
+        'list',
+        recordId,
+        fixture.source,
+        fixture.authority,
+      ),
+      search: verifyStructuredOutput(
+        positiveCalls,
+        'search',
+        recordId,
+        fixture.source,
+        fixture.authority,
+      ),
+      read: verifyStructuredOutput(
+        positiveCalls,
+        'read',
+        recordId,
+        fixture.source,
+        fixture.authority,
+      ),
+    };
+    const positiveAudit = await auditSummary(codexAuditPath);
+    const exactPositiveAudit = exactAuditDelta([], positiveAudit, [
+      { operation: 'list', outcome: 'allowed' },
+      { operation: 'search', outcome: 'allowed' },
+      { operation: 'read', outcome: 'allowed' },
+    ]);
+    if (!exactPositiveAudit) throw new Error('codex_positive_calls_incomplete');
 
     const grant = JSON.parse(await readFile(grantPath, 'utf8')) as JsonRecord;
     grant['revoked'] = true;
@@ -361,25 +455,33 @@ export async function probe(recordId: RecordId) {
       codexArgs(dir, codexServerArgs),
       `Use only the MCP server mikaki_v2_local. Call mikaki_read with ${targetPrompt} exactly once. Do not use any other tools or repeat/quote content. Finish with one word.`,
     );
-    const revokeCall = completedMcpCalls(revokedJsonl).some(
-      (call) => call.server === 'mikaki_v2_local' && call.tool === 'mikaki_read',
-    );
+    const revokeCalls = completedMcpCalls(revokedJsonl);
+    if (revokeCalls.some((call) => call.server !== 'mikaki_v2_local'))
+      throw new Error('codex_unexpected_mcp_server');
+    assertCalls(revokeCalls, ['mikaki_read'], true);
     const allAudit = await auditSummary(codexAuditPath);
-    const deniedRead = allAudit.some(
-      (entry) => entry.operation === 'read' && entry.outcome === 'denied',
-    );
-    if (!revokeCall || !deniedRead) throw new Error('codex_revoke_not_observed');
+    const exactDeniedAudit = exactAuditDelta(positiveAudit, allAudit, [
+      { operation: 'read', outcome: 'denied' },
+    ]);
+    if (!exactDeniedAudit) throw new Error('codex_revoke_not_observed');
     return {
       passed: true,
       client: 'Codex CLI',
       data: 'synthetic-only',
       record: recordId,
       mcp_server: 'local-stdio',
-      completed_tools: completedTools,
-      sdk_structured_source_authority_verified: true,
-      codex_jsonl_structured_content_exposed: codexStructured,
-      revoked_read_denied: true,
-      preflight,
+      codex_invocation: {
+        positive_tool_calls: ['list', 'search', 'read'],
+        structured_content_source_authority: codexStructured,
+        revoked_invocation_tool_calls: ['read'],
+        revoked_read_denied: true,
+        note: 'The revocation check uses a new Codex invocation with the same local MCP configuration.',
+      },
+      sdk_preflight: {
+        source_authority_verified: true,
+        calls: preflight.calls,
+        revoked_read_denied: preflight.revokedReadDenied,
+      },
       audit_entries: allAudit.length,
     };
   } finally {
