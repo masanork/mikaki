@@ -11,7 +11,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/mikaki-ci-tools-${{ inputs.profile }}
-        key: ${{ runner.os }}-${{ runner.arch }}-cargo-tools-v1-${{ inputs.profile }}-${{ hashFiles('rust-toolchain.toml', 'scripts/install-ci-tools.sh', '.github/actions/setup-cargo-tools/action.yml', '.github/workflows/ci.yml', '.github/workflows/supply-chain-build.yml') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-tools-v1-${{ inputs.profile }}-${{ hashFiles('rust-toolchain.toml', 'scripts/install-ci-tools.sh', '.github/actions/setup-cargo-tools/action.yml') }}
     - name: Install exact Cargo tool versions
       shell: bash
       env:
