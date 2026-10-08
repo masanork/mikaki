@@ -42,6 +42,25 @@ updates:
           - major
           - minor
           - patch
+  - package-ecosystem: gradle
+    directories:
+      - /apps/mikaki-client/src-tauri/gen/android
+      - /apps/mikaki-client/plugins/identity-proximity/android
+      - /apps/mikaki-client/plugins/identity-reader/android
+      - /apps/mikaki-client/plugins/native-dpop/android
+      - /services/android-attestation-verifier
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      jvm-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - major
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
