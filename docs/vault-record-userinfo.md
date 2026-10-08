@@ -151,3 +151,42 @@ Browser-WebCrypto qualification remains a CI gate. Local system Chromium is
 blocked by the execution environment's socket/ptrace restrictions; a native
 workerd pass must not be reported as browser evidence. The preview UI remains a
 placeholder for this service capability.
+
+## Opt-in local profile UserInfo measurement
+
+The live fixture can measure the existing v2 name disclosure path without creating
+another environment. From a clean checkout, install the locked dependencies and
+build the current source before running it:
+
+```sh
+npm ci
+npm run build:policy
+worker-build --release crates/worker
+worker-build --release crates/userinfo-claim-worker
+worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
+MIKAKI_PROFILE_BENCHMARK=1 node --test --test-concurrency=1 --test-name-pattern='local-only synthetic v2 profile UserInfo benchmark' local/conformance/vault-record-userinfo-live.test.ts
+```
+
+The opt-in case uses disposable local D1/R2/Secrets Store, the real Rust OP and
+Claims Worker, and browser WebCrypto to prepare an encrypted synthetic name. It
+uses the same preprovisioned authenticated token for a sub-only control before RP
+release and the name response after explicit v2 system sharing and RP release.
+Each condition has two excluded warmups and twenty sequential measured requests.
+Elapsed time includes the UserInfo response body read and exact expected-shape
+validation. Setup and owner consent are outside these samples.
+
+The report at `artifacts/profile-userinfo-benchmark.json` records only source
+version, condition, status, duration, counts, outcomes and cleanup status. It does
+not contain tokens, headers, names, subjects, account/record IDs or keys, and is
+written with mode 0600. It separates invalid-token denial, fail-closed cases,
+in-flight withdrawal and the sub-only response after release withdrawal from the
+successful measured requests. Exact disclosure-audit counts remain assertions.
+Normal CI retains both existing live contract cases and does not opt into timing.
+
+This measures the UserInfo endpoint of a preprovisioned fixture. It does not
+measure Passkey authentication, authorize/token/session-check, a signed ID-token
+subject comparison, or the combined RP journey. The Claims Worker is the
+`conformance-gate` build and includes an extra local gate call before audit, so
+these timings do not describe the production binary. Local sequential samples
+cannot establish stable tail SLOs, concurrency or sustained capacity, Cloudflare
+CPU, remote SQL cost, or storage migration thresholds. Those remain work in #106.
