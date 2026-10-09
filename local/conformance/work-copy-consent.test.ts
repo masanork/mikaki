@@ -296,9 +296,9 @@ test('copy authority cannot outlive the approving SSO or reach external admissio
     );
     assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_consent').first('n'), 0);
     // Captured primary SQL cannot bypass the Native deadline check at commit.
-    const before = await f.DB.prepare(
+    const before = (await f.DB.prepare(
       'SELECT * FROM work_authority_checkpoint WHERE id=1',
-    ).first<any>();
+    ).first()) as any;
     await assert.rejects(
       f.DB.batch([
         // This disposable negative case supplies a matching, transaction-local
