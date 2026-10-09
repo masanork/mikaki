@@ -24,7 +24,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
-| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a source review and M5b preparation/disclosure inspection complete locally: 105 relevant Native/browser/regression cases, 29 production boundaries and 2 existing Vault browser cases. Public routing, copy/delegation composition and activity/result controls remain pending. |
+| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a/M5b integrated with scoped mint/Git/preparation authority: 311 work cases, 30 owner review/display-lease cases and 2 existing Vault browser cases pass locally. Public routing, copy/delegation composition and activity/result controls remain pending. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
@@ -285,3 +285,43 @@ these exact-source results. The next integration combines this scoped-authority
 branch with the owner UI work before connecting copy/delegation actions and
 requalifying their composed build. This record adds documentation only. No new
 browser, remote CI, real Artifacts or production-activation result is claimed.
+
+## Owner review and scoped evidence integration
+
+Integration source `79304b04c13e91287254bcf44ffa51baceda1712` combines the
+qualified scoped mint/Git/evidence branch with owner preparation/disclosure
+review through `3450ca5`, preserving its Wasm-only module guard. Both local Git
+copy and preparation-UI test commands remain available. The actual both-role
+Git/effect composition now also feeds the product's strict owner reader: the
+Native paged list, preparation and disclosure match the verified destinations
+and selected context while reporting no materialization or current execution
+authority. It still creates no task, grant or run.
+
+The complete work command passes **311/311** in one serial run. Preparation/source
+owner Native/browser/display-lease qualification passes **30/30**, and the existing
+Owner Vault browser lane passes **2/2** separately. Browser display-state evidence
+remains explicitly synthetic; the added reader integration uses real local Git
+copies/readbacks and all six closed Native credential records with synthetic
+Artifacts. Japanese/English and 375px screenshots were visually inspected. No
+assertion, timeout or capability boundary was relaxed.
+
+Rust workspace tests pass **209/209**; default-production Wasm Clippy denies all
+warnings. Rustfmt, full Prettier, Node/Worker UI/service/effect/checkpoint types,
+the 600-key bilingual catalog, product sources and documentation checks pass.
+Production OP/service/enrollment/logout boundaries pass **13/13** against the
+Worker rebuilt from the clean integration source. Baseline/Owner-schema,
+worker-roster, release-inventory, reset-plan and Agent SQL regressions pass
+**34/34**. Named OP packaging retains 64 static product SQL statements.
+
+Served UI and both Wasm budgets pass. OP Wasm is **6,262,962 raw bytes /
+2,191,815 gzip-estimate bytes**; the budget artifact and embedded revision identify
+the clean `79304b0` source. Preparation JavaScript is **184,053 / 58,467**, within
+192 KiB / 64 KiB, and served Vault JavaScript is **302,958 / 87,015**. Gzip sizes
+are local estimates. This qualification record adds documentation only.
+
+Copy/delegation confirmation and productive owner mutations, issuer/launcher
+contracts, activity/result controls and Cloudflare Git-host/source-registry
+deployment remain the next gates. The production public Router still omits the
+work surface; no production flag, binding or baseline migration was activated.
+Protected Artifacts resources/journals and the preserved stash remain untouched;
+no push, deployment, remote CI or real provider mutation was performed.
