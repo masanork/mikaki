@@ -8,6 +8,11 @@ import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { createTestHarness } from 'wrangler';
 import { exportJWK, generateKeyPair } from 'jose';
+import {
+  parseHaipIssuerSelection,
+  resolveOfficialHaipFormats,
+  selectOfficialHaipModules,
+} from './haip-issuer-selection.ts';
 import { identityFixture } from './support/identity-fixture.ts';
 import { credentialPki } from './support/credential-pki.ts';
 
@@ -15,29 +20,14 @@ const sourceRevision = '440eec8bac7b12b7389d7ca9cbc459b53507a443';
 const suiteImage =
   'registry.gitlab.com/openid/conformance-suite@sha256:69495f453a920c262f66e5e72abd12501c33e05ce88051cddf300c00621a4d70';
 const planName = 'oid4vci-1_0-issuer-haip-test-plan';
-const positive = process.argv.slice(2).includes('--positive');
-const encrypted = positive || process.argv.slice(2).includes('--encrypted');
-const keyAttestation = encrypted || process.argv.slice(2).includes('--key-attestation');
-const resource = keyAttestation || process.argv.slice(2).includes('--resource');
-const lifecycle = resource || process.argv.slice(2).includes('--lifecycle');
-const fapi = lifecycle || process.argv.slice(2).includes('--fapi');
-const negative = fapi || process.argv.slice(2).includes('--negative');
-assert.ok(
-  process.argv
-    .slice(2)
-    .every((arg) =>
-      [
-        '--negative',
-        '--fapi',
-        '--lifecycle',
-        '--resource',
-        '--key-attestation',
-        '--encrypted',
-        '--positive',
-      ].includes(arg),
-    ),
-  'Use --negative, --fapi, --lifecycle, --resource, --key-attestation, --encrypted, --positive or no arguments',
-);
+const selection = parseHaipIssuerSelection(process.argv.slice(2));
+const positive = selection.legacyFlags.includes('--positive');
+const encrypted = positive || selection.legacyFlags.includes('--encrypted');
+const keyAttestation = encrypted || selection.legacyFlags.includes('--key-attestation');
+const resource = keyAttestation || selection.legacyFlags.includes('--resource');
+const lifecycle = resource || selection.legacyFlags.includes('--lifecycle');
+const fapi = lifecycle || selection.legacyFlags.includes('--fapi');
+const negative = fapi || selection.legacyFlags.includes('--negative');
 const selectedFapiModules = new Set(
   [
     'discovery-end-point-verification',
@@ -154,21 +144,25 @@ assert.equal(suite.revision, sourceRevision.slice(0, 7));
 const available = await api('/api/plan/available');
 const definition = available.find((p: any) => p.planName === planName);
 assert.ok(definition, 'Official HAIP Issuer plan is required');
-const selectedModules = definition.modules.filter(
-  (module: any) =>
-    ['oid4vci-1_0-issuer-metadata-test', 'oid4vci-1_0-issuer-happy-flow'].includes(
-      module.testModule,
-    ) ||
-    (positive &&
-      [
-        'oid4vci-1_0-issuer-happy-flow-additional-requests',
-        'oid4vci-1_0-issuer-happy-flow-multiple-clients',
-      ].includes(module.testModule)) ||
-    (negative &&
-      module.testModule.startsWith('oid4vci-1_0-issuer-fail-') &&
-      !Object.hasOwn(deferredModules, module.testModule)) ||
-    (fapi && selectedFapiModules.has(module.testModule)),
-);
+const selectedModules = selection.moduleNames.length
+  ? selectOfficialHaipModules(definition.modules, selection.moduleNames)
+  : definition.modules.filter(
+      (module: any) =>
+        ['oid4vci-1_0-issuer-metadata-test', 'oid4vci-1_0-issuer-happy-flow'].includes(
+          module.testModule,
+        ) ||
+        (positive &&
+          [
+            'oid4vci-1_0-issuer-happy-flow-additional-requests',
+            'oid4vci-1_0-issuer-happy-flow-multiple-clients',
+          ].includes(module.testModule)) ||
+        (negative &&
+          module.testModule.startsWith('oid4vci-1_0-issuer-fail-') &&
+          !Object.hasOwn(deferredModules, module.testModule)) ||
+        (fapi && selectedFapiModules.has(module.testModule)),
+    );
+assert.ok(selectedModules.length > 0, 'At least one official HAIP issuer module must be selected');
+const selectedFormats = resolveOfficialHaipFormats(selection.formats);
 await writeFile(new URL('plan-definition.json', directory), JSON.stringify(definition, null, 2), {
   mode: 0o600,
 });
@@ -558,10 +552,13 @@ try {
     relay!.once('error', reject);
     relay!.listen(8794, '0.0.0.0', resolve);
   });
-  for (const [format, configuration] of [
+  const configurations = [
     ['sd_jwt_vc', 'linked_document'],
     ['mdoc', 'linked_document_mdoc'],
-  ]) {
+  ] as const;
+  for (const [format, configuration] of configurations.filter(([format]) =>
+    selectedFormats.includes(format),
+  )) {
     const variant = {
       credential_format: format,
       grant_management: 'disabled',
@@ -713,6 +710,15 @@ try {
       active = undefined;
     }
   }
+  const expectedTuples = selectedFormats.flatMap((format) =>
+    selectedModules.map((module: any) => ({ format, module: module.testModule })),
+  );
+  const executedTuples = runs.map(({ format, module }) => ({ format, module }));
+  assert.deepEqual(
+    executedTuples,
+    expectedTuples,
+    `Expected all ${expectedTuples.length} official module/format tuples to execute exactly once`,
+  );
   const report = {
     generatedAt: new Date().toISOString(),
     suite,
@@ -720,8 +726,14 @@ try {
     sourceRevision,
     suiteImage,
     planName,
-    scope: `Official HAIP Final metadata and first issuance${negative ? ' plus selected negative modules' : ''}${fapi ? ' and selected inherited FAPI modules' : ''} against actual workerd; no full-plan pass claim`,
+    scope: selection.moduleNames.length
+      ? `Selected official HAIP issuer modules against actual workerd; no full-plan pass claim`
+      : `Official HAIP Final metadata and first issuance${negative ? ' plus selected negative modules' : ''}${fapi ? ' and selected inherited FAPI modules' : ''} against actual workerd; no full-plan pass claim`,
     selectedModules: selectedModules.map((m: any) => m.testModule),
+    requestedModules: selection.moduleNames,
+    selectedFormats,
+    expectedRunTuples: expectedTuples,
+    executedRunTuples: executedTuples,
     unselectedModules: definition.modules
       .filter((m: any) => !selectedModules.includes(m))
       .map((m: any) => m.testModule),
