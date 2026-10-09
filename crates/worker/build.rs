@@ -22,6 +22,12 @@ fn main() {
         "WorkSources.svelte",
         "WorkSourceWorkspace.svelte",
         "WorkSourceSession.svelte",
+        "work-preparations.ts",
+        "work-preparations.html",
+        "work-preparation-view.ts",
+        "WorkPreparations.svelte",
+        "WorkPreparationWorkspace.svelte",
+        "WorkPreparationSession.svelte",
     ] {
         println!("cargo:rerun-if-changed=ui/{source}");
     }
@@ -198,6 +204,7 @@ fn main() {
         "complete",
         "logout",
         "work-sources",
+        "work-preparations",
     ] {
         let status = Command::new(&vite)
             .arg("build")

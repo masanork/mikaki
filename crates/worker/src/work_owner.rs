@@ -95,8 +95,15 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     ) {
         return crate::work_sources::handle(request, env).await;
     }
+    if matches!(
+        url.path(),
+        "/work/preparation-review" | "/work/preparation-review.js" | "/work/preparation-review.css"
+    ) {
+        return crate::work_preparations::handle(request, env).await;
+    }
     let segments: Vec<_> = url.path().split('/').collect();
-    let listing = request.method() == Method::Get && segments == ["", "work", "requests"];
+    let listing = request.method() == Method::Get
+        && (segments == ["", "work", "requests"] || segments == ["", "work", "preparations"]);
     let session = request.method() == Method::Get && segments == ["", "work", "session"];
     let reading = request.method() == Method::Get
         && segments.len() == 4
@@ -183,8 +190,13 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         );
     }
     let result = if listing {
-        store.owner_requests(&owner.secret_hash, after.as_deref()).await
+        if segments[2] == "preparations" {
+            store.owner_preparations(&owner.secret_hash, after.as_deref()).await
+                .map(|page| json!({"format_version":1,"checked_at":crate::now_seconds(),"preparations":page["preparations"],"next_after":page["next_after"]}))
+        } else {
+            store.owner_requests(&owner.secret_hash, after.as_deref()).await
             .map(|page| json!({"format_version":1,"checked_at":crate::now_seconds(),"requests":page.requests,"next_after":page.next_after}))
+        }
     } else if revoking {
         if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
             return error(415, "invalid_content_type");

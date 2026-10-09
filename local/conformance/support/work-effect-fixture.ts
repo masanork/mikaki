@@ -109,6 +109,7 @@ export async function effectFixture(
       p,
       gitSources: { code, selected, personal },
       call: (input: Record<string, unknown>) => op.call(input),
+      ownerRead: (path: string) => op.ownerRead(path),
       task,
       snapshot,
       directory,

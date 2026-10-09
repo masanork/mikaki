@@ -21,6 +21,8 @@
   import type { SearchHit } from './vault-thread-search.ts';
   let { locale }: { locale: Locale } = $props();
   const sourceReview = document.getElementById('app')?.dataset['workSourceReview'] === 'true';
+  const preparationReview =
+    document.getElementById('app')?.dataset['workPreparationReview'] === 'true';
   const context = vaultContext(),
     scope = context.current();
   let owner: OwnerVaultController | null = $state(null);
@@ -378,6 +380,9 @@
           <a href="#profile">{m.productProfile()}</a><a href="#owner-note">{m.vaultNoteHeading()}</a
           ><a href="#threads">{m.ownerWorkspaceThreads()}</a>
           {#if sourceReview}<a href={`/work/source-review?lang=${locale}`}>{m.source_title()}</a
+            >{/if}
+          {#if preparationReview}<a href={`/work/preparation-review?lang=${locale}`}
+              >{m.preparation_title()}</a
             >{/if}
         </nav>
         <div class="product-content">

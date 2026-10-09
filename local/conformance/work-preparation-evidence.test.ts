@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { effectFixture } from './support/work-effect-fixture.ts';
 import { gitHttpFixture } from './support/work-git-http-fixture.ts';
 import { fixedGitExecutor } from '../../scripts/work-git-executor.ts';
+import { preparationHttpPort } from '../../crates/worker/ui/work-preparation-view.ts';
 import type { GitPlan, GitResult } from '../../crates/work-effect-worker/protocol.ts';
 type Role = 'task' | 'snapshot';
 type Review = {
@@ -156,6 +157,34 @@ test('both real Git copies and all six closed credentials compose exactly once a
       remote.repos.find((r) => r.name === f.plans[1]!.name)!.id,
     );
     assert.match(a.destination_digest, /^[a-f0-9]{64}$/);
+    // Use the product's strict reader on independently composed Native evidence,
+    // in addition to the synthetic display states exercised by the browser lane.
+    const ownerPort = preparationHttpPort(async (path) => {
+      const r = await f.ownerRead(String(path));
+      return Response.json(r.body, {
+        status: r.status,
+        headers: Object.fromEntries(r.headers),
+      });
+    });
+    const signal = new AbortController().signal;
+    const page = await ownerPort.list(null, signal);
+    assert.deepEqual(
+      page.preparations.map((p) => p.id),
+      [f.p.id],
+    );
+    const review = await ownerPort.review(f.p.id, signal);
+    assert.equal(review.preparation.state, 'verified');
+    assert.equal(review.preparation.destination_digest, a.destination_digest);
+    assert.deepEqual(review.preparation.task, a.task);
+    assert.deepEqual(review.preparation.snapshot, a.snapshot);
+    assert.equal(review.preparation.materialized, false);
+    assert.equal(review.preparation.current_authority, false);
+    assert.equal(review.currentSources, true);
+    assert.equal(review.disclosure.contexts[0]!.files[0]!.path, 'selected.md');
+    assert.doesNotMatch(
+      JSON.stringify(review),
+      /SYNTHETIC_MINT_SECRET|token_id|envelope|plaintext/,
+    );
     assert.equal(await f.audit(), 1);
     const checkpoint = await f.DB.prepare(
       'SELECT sequence,tip FROM work_authority_checkpoint',
