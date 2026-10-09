@@ -20,12 +20,14 @@ test('OP Queue producer/consumer config is source-bound and isolated from local 
     },
   ]);
   assert.equal(production.observability.traces.enabled, true);
+  assert.deepEqual(production.compatibility_flags, ['global_fetch_strictly_public']);
   for (const path of [
     'crates/worker/wrangler.jsonc',
     'crates/worker/wrangler.conformance.jsonc',
     'crates/worker/wrangler.recipient-local.jsonc',
   ]) {
     const local = JSON.parse(readFileSync(path, 'utf8'));
+    assert.deepEqual(local.compatibility_flags, production.compatibility_flags);
     assert.equal(local.queues.producers[0].binding, 'LOGOUT_QUEUE');
     assert.notEqual(local.queues.producers[0].queue, 'mikaki-logout-wakeups');
     assert.equal(local.queues.consumers[0].queue, local.queues.producers[0].queue);
@@ -54,9 +56,20 @@ test('activation requires all configured native, Vault and runtime secret bindin
     ...Object.entries(config.vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
   ];
   const version = {
-    resources: { bindings, script_runtime: { compatibility_date: config.compatibility_date } },
+    resources: {
+      bindings,
+      script_runtime: {
+        compatibility_date: config.compatibility_date,
+        compatibility_flags: config.compatibility_flags,
+      },
+    },
   };
   checkBindings(version, config);
+  for (const flags of [undefined, [], ['global_fetch_private_origin']]) {
+    const changed = structuredClone(version);
+    changed.resources.script_runtime.compatibility_flags = flags;
+    assert.throws(() => checkBindings(changed, config), /compatibility flags/);
+  }
   for (const removed of [
     'DB',
     'VAULT_BLOBS',
@@ -97,7 +110,13 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     ...Object.entries(config.vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
   ];
   const version = {
-    resources: { bindings, script_runtime: { compatibility_date: config.compatibility_date } },
+    resources: {
+      bindings,
+      script_runtime: {
+        compatibility_date: config.compatibility_date,
+        compatibility_flags: config.compatibility_flags,
+      },
+    },
   };
   for (const extra of [
     { name: 'EXTRA_KV', type: 'kv_namespace', namespace_id: 'unapproved' },
@@ -150,7 +169,10 @@ test('Claim Worker must retain its Secrets Store key binding', () => {
   );
   const version = {
     resources: {
-      script_runtime: { compatibility_date: config.compatibility_date },
+      script_runtime: {
+        compatibility_date: config.compatibility_date,
+        compatibility_flags: config.compatibility_flags,
+      },
       bindings: [
         { name: 'CLAIM_STORE', type: 'service', service: 'mikaki-auth', entrypoint: 'ClaimStore' },
         { name: 'MIKAKI_ISSUER', type: 'plain_text', text: 'https://auth.mikaki.org' },
@@ -187,7 +209,10 @@ test('downstream production bindings exclude raw storage and preserve exact name
   );
   const version = {
     resources: {
-      script_runtime: { compatibility_date: config.compatibility_date },
+      script_runtime: {
+        compatibility_date: config.compatibility_date,
+        compatibility_flags: config.compatibility_flags,
+      },
       bindings: [{ name: 'DB', type: 'd1', database_id: 'unapproved' }],
     },
   };
