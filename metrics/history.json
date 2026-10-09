@@ -1843,10 +1843,10 @@
   },
   {
     "date": "2026-10-09",
-    "commit": "4f07b49",
+    "commit": "c5465da",
     "code": {
-      "implementationLines": 44503,
-      "testLines": 10250,
+      "implementationLines": 44507,
+      "testLines": 10265,
       "implementationFiles": 186,
       "testFiles": 29,
       "byLanguage": {
@@ -1855,8 +1855,8 @@
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 25630,
-          "testLines": 7512
+          "implementationLines": 25634,
+          "testLines": 7527
         },
         "svelte": {
           "implementationLines": 4655,
