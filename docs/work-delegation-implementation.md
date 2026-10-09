@@ -24,7 +24,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
-| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | M5a/M5b integrated with scoped mint/Git/preparation authority: 311 work cases, 30 owner review/display-lease cases and 2 existing Vault browser cases pass locally at the recorded integration source. Public owner routing is now composed with default-off flags; copy/delegation composition, activity/result controls and deployment remain pending. |
+| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Opt-in product entry passes 134 work/OP/UI regression cases and 2 existing Vault browser cases at `3cc4142`. The earlier scoped integration's full 311-case work result remains recorded separately. Copy/delegation composition, activity/result controls and deployment remain pending. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
@@ -321,7 +321,63 @@ are local estimates. This qualification record adds documentation only.
 
 Copy/delegation confirmation and productive owner mutations, issuer/launcher
 contracts, activity/result controls and Cloudflare Git-host/source-registry
-deployment remain the next gates. The production public Router still omits the
-work surface; no production flag, binding or baseline migration was activated.
+deployment remain the next gates. At that integration source, the production
+public Router still omitted the work surface. No production flag, binding or
+baseline migration was activated.
 Protected Artifacts resources/journals and the preserved stash remain untouched;
 no push, deployment, remote CI or real provider mutation was performed.
+
+## Opt-in product entry qualification
+
+Source `3cc41420fca4dcd3ba15396b05eb97a40630f06a` composes the existing owner
+transport into the default-production Rust Router, after the native callback-host
+guard. The owner flag still returns closed, no-store JSON 404 responses before
+work-schema access. Source and preparation screens retain their additional
+flags; enabled access needs the opt-in schema, live SSO, an enrolled matching
+independent checkpoint and the private reader for plaintext inspection. No
+deployment configuration enables these paths.
+
+Actual product-entry tests found source/request lists lacking checkpoint checks.
+Native lists and every owner record projection now check the independent
+checkpoint before their final live-SSO SQL selection. An absent enrolled marker
+is stale authority, rather than a missing-resource result. Freeze, pending intent,
+release-floor increases, mismatched checkpoints and missing bindings refuse
+review; a pending intent introduced inside source RPC prevents plaintext release.
+The work ingress budget is charged once, and callback hosts expose no work routes.
+
+The product and qualification compilations are tested separately with identical
+unenrolled data: only the qualification build has its pre-enrollment exemption.
+`LOCAL_WORK_QUALIFICATION=true` cannot activate it or fixture endpoints in the
+product. Synthetic initial SSO is seeded before enrollment; subsequent session
+revocation uses the actual product's named Native admin authority and checkpoint
+frames. No SQL guard, assertion or timeout is weakened.
+
+The exact-source rebuild passes **134/134** in one serial run: **111** existing
+work/source/preparation/browser/display-lease/checkpoint/evidence cases, **10**
+enabled product-entry cases and **13** existing cold OP/service/enrollment/logout
+cases. The existing Owner Vault browser lane passes **2/2** separately.
+Baseline/Owner-schema, Worker roster, release/reset and Agent SQL cases pass
+**34/34**. Rust workspace tests pass **209/209**, with default-production Wasm
+Clippy denying warnings. Host Worker checking, Node/Worker UI/service/source
+types, Rustfmt, full Prettier, the 600-key bilingual catalog, product-source and
+documentation checks pass. The prior complete 311-case work result is historical;
+this increment does not claim a rerun of every mint/recovery lane.
+
+All served UI/Wasm budgets pass. The budget artifact and embedded Worker revision
+identify clean `3cc4142` source. OP Wasm is **6,863,268 raw / 2,382,004 gzip-estimate
+bytes**, within 8 MiB / 3 MiB. Served source JavaScript is **173,744 / 55,396** and
+preparation JavaScript **184,053 / 58,467**, within 192 KiB / 64 KiB; private styles
+stay within their existing budget. Vault JavaScript remains **302,958 / 87,015**.
+Gzip figures are local estimates. Japanese/English and 375px screenshots were
+visually inspected. Browser preparation verification remains explicitly
+synthetic; the Native composition lane uses actual local Git copies/readbacks
+and all six closed credential records with synthetic Artifacts.
+
+`test:work-preparation-ui` builds both entries; `test:work-owner-product` runs the
+enabled and cold boundaries. Existing CI and PR browser jobs include the new
+product/preparation checks. No remote CI result is claimed. Copy/delegation
+confirmation, productive owner actions, issuer/launcher contracts and deployment
+remain pending. Production flags, bindings, baseline migrations, protected
+Artifacts resources/journals and the preserved stash remain unchanged. No push,
+deployment or real provider mutation was performed. This record adds
+documentation only; the selected Worker source remains `3cc4142`.
