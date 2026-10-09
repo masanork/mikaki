@@ -9,7 +9,7 @@ import { seedPreparationReview } from './support/work-preparation-review-fixture
 import { preparationFixture } from './support/work-preparation-fixture.ts';
 
 test('preparation review is private, paged, historical and independent of grant issuance', async (t) => {
-  const f = await createSourceFixture(undefined, true);
+  const f = await createSourceFixture(undefined, true, 'product');
   try {
     const s = await seedPreparationReview(f);
     const json = async (path: string, o = f.first, target = f.worker) => {
@@ -110,9 +110,7 @@ test('preparation review is private, paged, historical and independent of grant 
         assert.equal(history.materialized, true);
         assert.equal(history.current_authority, false);
         assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_grant').first('n'), 0);
-        await f.DB.prepare('UPDATE sso_session SET revoked=1 WHERE account_id=?')
-          .bind(f.first.account)
-          .run();
+        await f.revokeSession();
         assert.equal((await json('/work/preparations')).status, 401);
       },
     );

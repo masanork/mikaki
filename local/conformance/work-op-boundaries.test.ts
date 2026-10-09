@@ -57,6 +57,9 @@ test('production Rust shim and named OP facade refuse public/raw administration 
     const op = harness.getWorker('work-op-boundary');
     for (const path of [
       '/work/session',
+      '/work/requests',
+      '/work/sources',
+      '/work/sources/read',
       '/work/source-review',
       '/work/source-review.js',
       '/work/source-review.css',
@@ -64,8 +67,15 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       '/work/preparation-review',
       '/work/preparation-review.js',
       '/work/preparation-review.css',
+      '/work/grants/missing',
+      '/work/grants/missing/revoke',
     ]) {
-      assert.equal((await op.fetch(`https://work.test${path}`)).status, 404);
+      for (const method of ['GET', 'POST', 'OPTIONS']) {
+        const r = await op.fetch(`https://work.test${path}`, { method });
+        assert.equal(r.status, 404);
+        assert.equal(r.headers.get('Cache-Control'), 'no-store');
+        assert.deepEqual(await r.json(), { error: 'not_found' });
+      }
     }
     await op.applyD1Migrations('DB');
     const caller = await harness.getWorker('work-boundary-caller').getEnv();

@@ -10,7 +10,7 @@ export async function seedPreparationReview(f: Awaited<ReturnType<typeof createS
     ...f.codeSource,
   });
   const call = async (input: Record<string, unknown>, o = f.first) => {
-    const r = await f.worker.fetch('https://work.test/fixture', {
+    const r = await f.fixture.fetch('https://work.test/fixture', {
       method: 'POST',
       body: JSON.stringify({ session: o.hash, ...input }),
     });

@@ -13,7 +13,10 @@ export async function createSourceFixture(
     artifacts: { accountId: string; namespace: string };
   },
   preparationReview = false,
+  entry: 'qualification' | 'product' | 'product-unenrolled' = 'qualification',
 ) {
+  const product = entry !== 'qualification';
+  const enrolled = entry === 'product';
   const root = new URL('../../..', import.meta.url).pathname;
   const parent = await mkdtemp(join(tmpdir(), 'mikaki-source-review-'));
   const contents = {
@@ -73,9 +76,20 @@ export async function createSourceFixture(
   const blobs = Object.fromEntries(
     files.map((f) => [f.blob, localGit(git.dir, ['cat-file', 'blob', f.blob]).toString()]),
   );
+  const checkpointServices = enrolled
+    ? [
+        {
+          binding: 'WORK_AUTHORITY_CHECKPOINT',
+          service: 'source-checkpoint',
+          entrypoint: 'WorkCheckpointService',
+        },
+      ]
+    : [];
   const config = {
     name: 'source-owner',
-    main: `${root}/local/generated/work-store-main/worker.mjs`,
+    main: product
+      ? `${root}/crates/worker/service/entrypoint.ts`
+      : `${root}/local/generated/work-store-main/worker.mjs`,
     compatibility_date: '2026-10-06',
     vars: {
       LOCAL_WORK_QUALIFICATION: 'true',
@@ -84,6 +98,7 @@ export async function createSourceFixture(
       ...(preparationReview ? { WORK_PREPARATION_REVIEW_ENABLED: 'true' } : {}),
     },
     services: [
+      ...checkpointServices,
       {
         binding: 'WORK_SOURCE_READER',
         service: 'source-reader',
@@ -104,6 +119,49 @@ export async function createSourceFixture(
     workers: [
       { config },
       { config: { ...config, name: 'source-owner-b' } },
+      ...(product
+        ? [
+            {
+              config: {
+                ...config,
+                name: 'source-fixture',
+                main: `${root}/local/generated/work-store-main/worker.mjs`,
+                services: [
+                  ...config.services,
+                  {
+                    binding: 'CHECKPOINT_ADMIN',
+                    service: 'source-checkpoint',
+                    entrypoint: 'WorkCheckpointAdmin',
+                  },
+                  {
+                    binding: 'OP_AUTHORITY_ADMIN',
+                    service: 'source-owner',
+                    entrypoint: 'OpAuthorityAdmin',
+                  },
+                ],
+              },
+            },
+            {
+              config: {
+                ...config,
+                name: 'source-unenrolled',
+                services: config.services.filter((s) => s.binding !== 'WORK_AUTHORITY_CHECKPOINT'),
+              },
+            },
+            {
+              config: {
+                name: 'source-checkpoint',
+                main: `${root}/crates/work-checkpoint-worker/worker.ts`,
+                compatibility_date: '2026-10-08',
+                vars: { WORK_AUTHORITY_ID: 'synthetic-source-review' },
+                durable_objects: {
+                  bindings: [{ name: 'CHECKPOINTS', class_name: 'WorkCheckpoint' }],
+                },
+                migrations: [{ tag: 'source-test-v1', new_sqlite_classes: ['WorkCheckpoint'] }],
+              },
+            },
+          ]
+        : []),
       {
         config: {
           ...config,
@@ -140,6 +198,7 @@ export async function createSourceFixture(
                 }),
               },
               d1_databases: config.d1_databases,
+              services: checkpointServices,
             },
       },
     ],
@@ -147,6 +206,9 @@ export async function createSourceFixture(
   try {
     await harness.listen();
     const worker = harness.getWorker('source-owner');
+    // Fixture mutation glue is a separate Worker; it is never served by the
+    // product entry, even with LOCAL_WORK_QUALIFICATION in the product Env.
+    const fixture = product ? harness.getWorker('source-fixture') : worker;
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
     await applyWorkMigrations(DB);
@@ -161,6 +223,12 @@ export async function createSourceFixture(
       'CREATE TABLE source_reader_fault(source_id TEXT PRIMARY KEY,mode TEXT,owner_id TEXT)',
     ).run();
     await DB.prepare('CREATE TABLE source_reader_calls(source_id TEXT,request TEXT)').run();
+    async function checkpoint(input: Record<string, unknown>) {
+      return fixture.fetch('https://work.test/checkpoint-fixture', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    }
     async function owner(account: string) {
       const cookie = `synthetic-source-cookie:${account}`,
         hash = createHash('sha256').update(cookie).digest('base64url'),
@@ -195,7 +263,7 @@ export async function createSourceFixture(
         code: null,
         ...patch,
       };
-      const response = await worker.fetch('https://work.test/fixture', {
+      const response = await fixture.fetch('https://work.test/fixture', {
         method: 'POST',
         body: JSON.stringify({ action: 'source-body', source }),
       });
@@ -218,6 +286,36 @@ export async function createSourceFixture(
     const first = await owner('source-owner-a'),
       foreign = await owner('source-owner-foreign');
     const source = await register('personal', first);
+    // Synthetic initial SSO is seeded before enrollment. Thereafter covered OP
+    // mutations, including session revocation, must use Native framing.
+    if (enrolled) {
+      const initial = {
+        authority: 'synthetic-source-review',
+        epoch: 'a'.repeat(64),
+        sequence: 0,
+        tip: 'b'.repeat(64),
+      };
+      const r = await checkpoint({ action: 'bootstrap', checkpoint: initial, floor: 1 });
+      if (!r.ok) throw new Error('source_checkpoint_bootstrap_failed');
+      await DB.prepare('INSERT INTO work_authority_checkpoint VALUES(1,?,?,?,?)')
+        .bind(initial.authority, initial.epoch, initial.sequence, initial.tip)
+        .run();
+    }
+    async function revokeSession(o = first) {
+      if (!product) throw new Error('product_session_revocation_required');
+      const r = await fixture.fetch('https://work.test/authority-fixture', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'revoke-session',
+          session: `sso:${o.account}`,
+          account: o.account,
+          expected_epoch: 0,
+          actor: 'source-product-fixture',
+          reason: 'local SSO revocation qualification',
+        }),
+      });
+      if (!r.ok) throw new Error('source_session_revocation_failed');
+    }
     const input = (id = 'personal', paths = ['preferences/writing.md']) => ({
       format_version: 1,
       source_id: id,
@@ -256,6 +354,10 @@ export async function createSourceFixture(
     return {
       harness,
       worker,
+      fixture,
+      checkpoint,
+      revokeSession,
+      ...(product ? { unenrolled: harness.getWorker('source-unenrolled') } : {}),
       b: harness.getWorker('source-owner-b'),
       disabled: harness.getWorker('source-disabled'),
       DB,

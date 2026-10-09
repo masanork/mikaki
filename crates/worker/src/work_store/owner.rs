@@ -133,6 +133,7 @@ impl WorkStore {
         if after.is_some_and(|id| !owner_id_shape(id)) {
             return Err(Denied::InvalidInput.into());
         }
+        self.require_current_authority().await?;
         let mut rows = self.owner_statement(session_hash,
             "SELECT h.request_id,h.digest,h.revision,w.expires_at FROM work_request_head h \
              JOIN authenticated_owner a ON a.account_id=h.owner_id JOIN work_request w ON w.digest=h.digest \
@@ -161,12 +162,7 @@ impl WorkStore {
         if !owner_id_shape(id) {
             return Err(Denied::InvalidInput.into());
         }
-        if matches!(
-            kind,
-            OwnerRecordKind::Preparation | OwnerRecordKind::Disclosure
-        ) {
-            self.require_current_authority().await?;
-        }
+        self.require_current_authority().await?;
         if matches!(kind, OwnerRecordKind::Preparation) {
             let sql = format!(
                 "SELECT {OWNER_PREPARATION_FIELDS} FROM work_preparation p JOIN authenticated_owner a ON a.account_id=p.owner_id WHERE p.operation_id=?2"

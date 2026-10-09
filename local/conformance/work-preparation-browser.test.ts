@@ -1,4 +1,4 @@
-/** Actual Rust owner page/assets and saved Native records; Git-backed source
+/** Production OP entry, Rust owner page/assets and independent checkpoint; Git-backed source
  * contents, seeded OP SSO and explicitly synthetic preparation verification. */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { seedPreparationReview } from './support/work-preparation-review-fixture
 import { auditAccessibility } from './support/accessibility-audit.ts';
 
 test('owner preparation review keeps copy evidence, access and delegation separate', async (t) => {
-  const f = await createSourceFixture(undefined, true);
+  const f = await createSourceFixture(undefined, true, 'product');
   const s = await seedPreparationReview(f);
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
@@ -338,9 +338,7 @@ test('owner preparation review keeps copy evidence, access and delegation separa
     await t.test('revoked OP SSO clears and locks the complete review', async () => {
       await choose().click();
       await expect(details()).toBeVisible();
-      await f.DB.prepare('UPDATE sso_session SET revoked=1 WHERE account_id=?')
-        .bind(f.first.account)
-        .run();
+      await f.revokeSession();
       await refresh().click();
       await expect(
         page.getByRole('heading', { name: '準備の確認画面をロックしました', exact: true }),
