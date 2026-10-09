@@ -71,7 +71,7 @@
     "test:identity-wallet-eudi": "node --test local/conformance/eudi-wallet.test.ts",
     "test:identity-wallet-eudi-issuance": "node --test local/conformance/eudi-issuance.test.ts",
     "test:identity-wallet-preflight": "node --test scripts/check-identity-wallet-device.test.ts",
-    "test:identity-contracts": "node --test --test-concurrency=1 local/conformance/identity-presentation.test.ts local/conformance/identity-proximity.test.ts local/conformance/identity-revocation.test.ts local/conformance/identity-attester.test.ts local/conformance/android-verifier-bridge.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts scripts/check-identity-wallet-device.test.ts",
+    "test:identity-contracts": "node --test --test-concurrency=1 local/conformance/haip-issuer-selection.test.ts local/conformance/identity-presentation.test.ts local/conformance/identity-proximity.test.ts local/conformance/identity-revocation.test.ts local/conformance/identity-attester.test.ts local/conformance/android-verifier-bridge.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts scripts/check-identity-wallet-device.test.ts",
     "check:service-authority": "node scripts/build-service-catalog.ts --check && node_modules/typescript/bin/tsc --project crates/worker/service/tsconfig.json",
     "build:op-authority": "node scripts/build-service-catalog.ts --check && node scripts/build-op-authority.ts"
   },

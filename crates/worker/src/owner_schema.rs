@@ -1,4 +1,4 @@
-//! Narrow migration bridge for the additive owner-key wrapper receipt table.
+//! Narrow bridges for reviewed additive owner-schema migrations.
 //! The deployment gate still compares the complete schema before promotion.
 const BASELINE: &str = "0001_owner_vault_initial.sql";
 const WRAPPERS: &str = "0002_owner_key_wrap_operations.sql";
@@ -7,7 +7,10 @@ const WAITLIST: &str = "0003_enrollment_waitlist.sql";
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
         BASELINE => ledger == BASELINE || ledger == format!("{BASELINE},{WRAPPERS}"),
-        WRAPPERS => ledger == format!("{BASELINE},{WRAPPERS}"),
+        WRAPPERS => {
+            ledger == format!("{BASELINE},{WRAPPERS}")
+                || ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}")
+        }
         WAITLIST => ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}"),
         _ => false,
     }
@@ -50,6 +53,21 @@ mod tests {
             format!("{ledger},0004_unknown.sql"),
         ] {
             assert!(!ready(&invalid, WAITLIST));
+        }
+    }
+
+    #[test]
+    fn wrapper_binary_remains_ready_during_the_reviewed_waitlist_upgrade() {
+        let ledger = format!("{BASELINE},{WRAPPERS},{WAITLIST}");
+        assert!(ready(&ledger, WRAPPERS));
+        assert!(!ready(&ledger, BASELINE));
+        for invalid in [
+            format!("{BASELINE},{WAITLIST}"),
+            format!("{BASELINE},{WAITLIST},{WRAPPERS}"),
+            format!("{ledger},{WAITLIST}"),
+            format!("{ledger},0004_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, WRAPPERS));
         }
     }
 }
