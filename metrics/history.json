@@ -1843,23 +1843,23 @@
   },
   {
     "date": "2026-10-09",
-    "commit": "741aaa2",
+    "commit": "a58fb51",
     "code": {
-      "implementationLines": 44507,
-      "testLines": 10265,
-      "implementationFiles": 186,
+      "implementationLines": 45440,
+      "testLines": 10280,
+      "implementationFiles": 190,
       "testFiles": 29,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 14218,
+          "implementationLines": 14249,
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 25634,
-          "testLines": 7527
+          "implementationLines": 26261,
+          "testLines": 7542
         },
         "svelte": {
-          "implementationLines": 4655,
+          "implementationLines": 4930,
           "testLines": 0
         }
       }
