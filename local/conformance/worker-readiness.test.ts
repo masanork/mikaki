@@ -96,7 +96,18 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
       .run();
     await check(204);
     const { VAULT_BLOBS } = await op.getEnv();
-    // A feature binary requires the complete upgraded ledger, unlike the preceding bridge.
+    // The existing Worker remains ready across only the reviewed additive upgrade.
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0003_enrollment_waitlist.sql')
+      .run();
+    await check(204);
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)').bind('0004_unknown.sql').run();
+    await check(503);
+    await DB.prepare('DELETE FROM d1_migrations WHERE name=?').bind('0004_unknown.sql').run();
+    await check(204);
+    await DB.prepare('DELETE FROM d1_migrations WHERE name=?')
+      .bind('0003_enrollment_waitlist.sql')
+      .run();
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)').bind('0003_unknown.sql').run();
     await check(503);
     await DB.prepare('DELETE FROM d1_migrations WHERE name=?').bind('0003_unknown.sql').run();
