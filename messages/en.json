@@ -598,5 +598,17 @@
   "preparation_unknown": "Unconfirmed",
   "preparation_stale": "The expiry, permissions or pinned versions changed. Refresh the preparation list.",
   "preparation_unavailable": "Preparation information could not be checked. Refresh the list and try again.",
-  "preparation_locked": "Preparation review locked"
+  "preparation_locked": "Preparation review locked",
+  "preparation_copy_consent": "Copy consent",
+  "preparation_copy_scope": "Approve copying the selected context snapshot and code history to the preparation repositories shown above. Agent access and execution require separate approval.",
+  "preparation_copy_operator": "Destination operator",
+  "preparation_copy_account": "Destination account",
+  "preparation_copy_inspect_first": "Inspect the disclosed contents first. Approval applies only to the displayed sources, destinations and expiry.",
+  "preparation_copy_acknowledge": "I have reviewed the operator and disclosed contents and approve this copy",
+  "preparation_copy_approve": "Approve this copy",
+  "preparation_copy_approved": "Copy consent recorded. Copy start and completion are checked separately.",
+  "preparation_copy_inactive": "Consent is recorded, but it does not currently permit copying.",
+  "preparation_copy_withdraw": "Withdraw copy consent",
+  "preparation_copy_withdrawn": "Consent withdrawn. New copying is no longer permitted.",
+  "preparation_copy_withdraw_boundary": "Withdrawal does not erase existing copies. Copies and credentials already created require separate cleanup."
 }

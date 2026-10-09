@@ -110,6 +110,36 @@ export const disclosureSchema = z
 export type WorkDisclosure = z.infer<typeof disclosureSchema>;
 const envelope = <S extends z.ZodType>(record: S) =>
   z.strictObject({ format_version: z.literal(1), checked_at: time, record });
+const copySchema = z.strictObject({
+  review_digest: digest,
+  subject: z.strictObject({
+    format_version: z.literal(1),
+    purpose: z.literal('private-preparation-copy'),
+    preparation_id: id,
+    preparation_digest: digest,
+    preparation_revision: z.literal(1),
+    disclosure_digest: digest,
+    operator: z.literal('Cloudflare Artifacts'),
+    artifacts_account: z.string().regex(/^[a-f0-9]{32}$/),
+    expires_at: time,
+  }),
+  status: z.enum(['unconfirmed', 'approved', 'withdrawn']),
+  current: z.boolean(),
+  can_approve: z.boolean(),
+});
+export type CopyReview = z.infer<typeof copySchema>;
+function copyMatches(p: WorkPreparation, c: CopyReview) {
+  if (
+    c.subject.preparation_id !== p.id ||
+    c.subject.preparation_digest !== p.digest ||
+    c.subject.disclosure_digest !== p.disclosure_digest ||
+    c.subject.expires_at !== p.expires_at ||
+    (c.can_approve && (c.status !== 'unconfirmed' || p.state !== 'reserved')) ||
+    (c.current && c.status !== 'approved')
+  )
+    throw new SourceError('invalid');
+  return c;
+}
 const pageSchema = z.strictObject({
   format_version: z.literal(1),
   checked_at: time,
@@ -170,6 +200,40 @@ export function preparationHttpPort(transport: typeof fetch = fetch) {
       checked(r, schema, signal),
     );
   return {
+    async copyReview(p: WorkPreparation, signal: AbortSignal) {
+      const result = await get(
+        '/work/preparations/' + encodeURIComponent(id.parse(p.id)) + '/copy-consent',
+        envelope(copySchema),
+        signal,
+      );
+      return copyMatches(p, result.record);
+    },
+    async copyDecision(
+      p: WorkPreparation,
+      c: CopyReview,
+      method: 'POST' | 'DELETE',
+      signal: AbortSignal,
+    ) {
+      copyMatches(p, c);
+      const r = await transport(
+        '/work/preparations/' + encodeURIComponent(id.parse(p.id)) + '/copy-consent',
+        {
+          method,
+          signal,
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ format_version: 1, review_digest: c.review_digest }),
+        },
+      );
+      const result = await checked(r, envelope(copySchema), signal);
+      if (
+        result.record.review_digest !== c.review_digest ||
+        result.record.status !== (method === 'POST' ? 'approved' : 'withdrawn')
+      )
+        throw new SourceError('invalid');
+      return copyMatches(p, result.record);
+    },
     async list(after: string | null, signal: AbortSignal) {
       const page = await get(
         '/work/preparations' + (after ? '?after=' + encodeURIComponent(id.parse(after)) : ''),

@@ -14,6 +14,7 @@ export async function createSourceFixture(
   },
   preparationReview = false,
   entry: 'qualification' | 'product' | 'product-unenrolled' = 'qualification',
+  copyConsent = false,
 ) {
   const product = entry !== 'qualification';
   const enrolled = entry === 'product';
@@ -96,6 +97,17 @@ export async function createSourceFixture(
       WORK_OWNER_API_ENABLED: 'true',
       WORK_SOURCE_API_ENABLED: 'true',
       ...(preparationReview ? { WORK_PREPARATION_REVIEW_ENABLED: 'true' } : {}),
+      ...(copyConsent
+        ? {
+            WORK_COPY_CONSENT_ENABLED: 'true',
+            WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+            WORK_EFFECT_STORE_ENABLED: 'true',
+            WORK_MINT_STORE_ENABLED: 'true',
+            WORK_GIT_STORE_ENABLED: 'true',
+            WORK_CREDENTIAL_KEY_FLOOR: '1',
+            WORK_CREDENTIAL_KEY_V1: Buffer.alloc(32, 1).toString('base64url'),
+          }
+        : {}),
     },
     services: [
       ...checkpointServices,
@@ -119,6 +131,17 @@ export async function createSourceFixture(
     workers: [
       { config },
       { config: { ...config, name: 'source-owner-b' } },
+      ...(copyConsent
+        ? [
+            {
+              config: {
+                ...config,
+                name: 'source-other-account',
+                vars: { ...config.vars, WORK_ARTIFACTS_ACCOUNT: 'b'.repeat(32) },
+              },
+            },
+          ]
+        : []),
       ...(product
         ? [
             {
@@ -138,6 +161,13 @@ export async function createSourceFixture(
                     service: 'source-owner',
                     entrypoint: 'OpAuthorityAdmin',
                   },
+                  ...(copyConsent
+                    ? ['WorkEffectStore', 'WorkMintStore', 'WorkGitStore'].map((entrypoint, i) => ({
+                        binding: ['OP_EFFECT_STORE', 'OP_MINT_STORE', 'OP_GIT_STORE'][i]!,
+                        service: 'source-owner',
+                        entrypoint,
+                      }))
+                    : []),
                 ],
               },
             },
@@ -211,7 +241,7 @@ export async function createSourceFixture(
     const fixture = product ? harness.getWorker('source-fixture') : worker;
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
-    await applyWorkMigrations(DB);
+    await applyWorkMigrations(DB, copyConsent ? 13 : 12);
     await activateWorkerPolicy(
       DB,
       JSON.parse(
@@ -355,6 +385,7 @@ export async function createSourceFixture(
       harness,
       worker,
       fixture,
+      ...(copyConsent ? { otherAccount: harness.getWorker('source-other-account') } : {}),
       checkpoint,
       revokeSession,
       ...(product ? { unenrolled: harness.getWorker('source-unenrolled') } : {}),

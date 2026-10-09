@@ -9,11 +9,16 @@
     inspectDisclosure,
     type WorkPreparation,
     type PreparationReview,
+    type CopyReview,
   } from './work-preparation-view.js';
   const context = vaultContext(),
     scope = context.current();
   const port = preparationHttpPort(scope.request),
     sources = sourceHttpPort(scope.request);
+  const copyEnabled = document.documentElement.dataset.workCopyConsent === 'true';
+  let copy = $state<CopyReview | null>(null),
+    inspected = $state(false),
+    acknowledged = $state(false);
   let generation = 0,
     controller = new AbortController();
   let preparations = $state<WorkPreparation[]>([]),
@@ -45,6 +50,9 @@
     controller.abort();
     controller = new AbortController();
     review = null;
+    copy = null;
+    inspected = false;
+    acknowledged = false;
     reads = [];
     busy = false;
     failure = '';
@@ -57,6 +65,9 @@
   }
   function failed(e: unknown) {
     review = null;
+    copy = null;
+    inspected = false;
+    acknowledged = false;
     reads = [];
     failure = e instanceof SourceError ? e.reason : 'unavailable';
   }
@@ -89,10 +100,14 @@
     busy = true;
     try {
       const result = await port.review(id, controller.signal);
+      const copyReview = copyEnabled
+        ? await port.copyReview(result.preparation, controller.signal)
+        : null;
       if (current !== generation) return;
       scope.assert();
       if (result.preparation.expires_at <= Date.now() / 1000) throw new SourceError('stale');
       review = result;
+      copy = copyReview;
       await tick();
       if (current === generation) heading?.focus();
     } catch (e) {
@@ -107,6 +122,8 @@
       selected = review;
     busy = true;
     reads = [];
+    inspected = false;
+    acknowledged = false;
     failure = '';
     try {
       const contents = await inspectDisclosure(sources, selected.disclosure, controller.signal);
@@ -124,8 +141,38 @@
       )
         throw new SourceError('stale');
       reads = contents;
+      inspected = true;
       await tick();
       if (current === generation) previewHeading?.focus();
+    } catch (e) {
+      if (current === generation) failed(e);
+    } finally {
+      if (current === generation) busy = false;
+    }
+  }
+  async function decideCopy(method: 'POST' | 'DELETE') {
+    if (
+      !review ||
+      !copy ||
+      busy ||
+      (method === 'POST' && (!inspected || !acknowledged || !copy.can_approve))
+    )
+      return;
+    const current = generation,
+      selected = review,
+      intent = copy;
+    busy = true;
+    try {
+      const result = await port.copyDecision(
+        selected.preparation,
+        intent,
+        method,
+        controller.signal,
+      );
+      if (current !== generation) return;
+      scope.assert();
+      copy = result;
+      acknowledged = false;
     } catch (e) {
       if (current === generation) failed(e);
     } finally {
@@ -272,10 +319,48 @@
               </li>{/each}
           </ul>
         </article>{/each}
-      {#if d.contexts.length}<button type="button" disabled={busy} onclick={inspect}
-          >{m.preparation_inspect()}</button
-        >{/if}
+      <button type="button" disabled={busy} onclick={inspect}>{m.preparation_inspect()}</button>
       <p>{m.source_read_boundary()}</p>
+      {#if copy}
+        <section class="source-card" aria-label={m.preparation_copy_consent()}>
+          <h3>{m.preparation_copy_consent()}</h3>
+          <p>{m.preparation_copy_scope()}</p>
+          <dl>
+            <div>
+              <dt>{m.preparation_copy_operator()}</dt>
+              <dd>{copy.subject.operator}</dd>
+            </div>
+            <div>
+              <dt>{m.preparation_copy_account()}</dt>
+              <dd><code>{copy.subject.artifacts_account}</code></dd>
+            </div>
+          </dl>
+          {#if copy.status === 'unconfirmed'}
+            <p>{m.preparation_copy_inspect_first()}</p>
+            <label
+              ><input
+                type="checkbox"
+                bind:checked={acknowledged}
+                disabled={busy || !inspected || !copy.can_approve}
+              />
+              {m.preparation_copy_acknowledge()}</label
+            >
+            <button
+              type="button"
+              disabled={busy || !inspected || !acknowledged || !copy.can_approve}
+              onclick={() => decideCopy('POST')}>{m.preparation_copy_approve()}</button
+            >
+          {:else if copy.status === 'approved'}
+            <p role="status">
+              {copy.current ? m.preparation_copy_approved() : m.preparation_copy_inactive()}
+            </p>
+            <button type="button" disabled={busy} onclick={() => decideCopy('DELETE')}
+              >{m.preparation_copy_withdraw()}</button
+            >
+          {:else}<p role="status">{m.preparation_copy_withdrawn()}</p>{/if}
+          <p>{m.preparation_copy_withdraw_boundary()}</p>
+        </section>
+      {/if}
       <h3>{m.preparation_delegation()}</h3>
       <p>{m.preparation_delegation_body()}</p>
       <details>

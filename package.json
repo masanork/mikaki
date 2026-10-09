@@ -89,7 +89,8 @@
     "test:work-copy": "node --test --test-concurrency=1 scripts/work-git-copy.test.ts",
     "build:work-owner-fixture": "npm run build:work-store-fixture && worker-build --release crates/worker && npm run build:op-authority",
     "test:work-owner-product": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-owner-product.test.ts local/conformance/work-op-boundaries.test.ts",
-    "test:work-preparation-ui": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-preparation-browser.test.ts local/conformance/work-preparation-owner.test.ts local/conformance/vault-lifecycle.test.ts"
+    "test:work-preparation-ui": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-preparation-browser.test.ts local/conformance/work-preparation-owner.test.ts local/conformance/work-copy-consent.test.ts local/conformance/work-copy-consent-browser.test.ts local/conformance/vault-lifecycle.test.ts",
+    "test:work-copy-consent": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-copy-consent.test.ts local/conformance/work-copy-consent-browser.test.ts local/conformance/work-op-boundaries.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

@@ -2,7 +2,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { closed, integer, opaque, resource, mintPlan } from './protocol';
 import type { MintPlan, MintObservation, MintRecord } from './protocol';
-import { expiry, jsonBody, scope } from './worker';
+import { expiry, jsonBody, productiveScope } from './worker';
 import { mintOp as op, synchronizeMintClosure } from './mint-store';
 
 interface Ledger {
@@ -124,7 +124,7 @@ export class WorkMintGate extends WorkerEntrypoint<Env> {
     const p = await op(env, { action: 'mint-plan', attempt_id: attempt });
     mintPlan(p);
     if (p.attempt_id !== attempt) throw new Error('effect_invalid');
-    const remote = scope(env, p);
+    const remote = productiveScope(env, p);
     const admitted = await env.MINT_CHECKPOINT.claim(p);
     if (!admitted.started) return synchronized(env, admitted.record);
     // The durable tombstone precedes every provider call. Even preflight loss

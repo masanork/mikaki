@@ -2,7 +2,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { gitPlan, gitResult } from './protocol';
 import type { GitPlan, MintRecord } from './protocol';
-import { scope, expiry, jsonBody } from './worker';
+import { productiveScope, expiry, jsonBody } from './worker';
 import { inventory } from './maintenance';
 interface Env {
   WORK_GIT_TRANSPORT_ENABLED: string;
@@ -29,7 +29,7 @@ export class WorkGitTransport extends WorkerEntrypoint<Env> {
         throw new Error('git_denied');
       const p: unknown = await jsonBody(request);
       gitPlan(p);
-      const remote = scope(this.env, p);
+      const remote = productiveScope(this.env, p);
       repo = await this.env.ARTIFACTS.get(p.name);
       const check = async (state: 'dispatching' | 'outcome_unknown') => {
         const r = await this.env.MINT_LOOKUP.lookup(p.attempt_id),

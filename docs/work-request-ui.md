@@ -1,6 +1,6 @@
 # Work-request UI and interaction design
 
-**Status:** M5a source inspection and M5b preparation/disclosure inspection are integrated with current product components, 2026-10-09 JST. Compose, copy/delegation consent and productive activity/result controls remain pending. The retained pre-main full work-request prototype and its earlier browser results are not current-main UI evidence.
+**Status:** M5a source inspection, M5b preparation/disclosure inspection and explicit copy consent for existing reserved preparations are integrated with current product components, 2026-10-09 JST. Compose, productive copy orchestration, delegation and activity/result controls remain pending. The retained pre-main full work-request prototype and its earlier browser results are not current-main UI evidence.
 
 [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) and the [designer/technical review](workload-delegation-review.md) fix responsibilities. Follow the existing [product UI](product-ui-preview.md), [quality gates](product-quality.md) and [main integration plan](work-delegation-implementation.md).
 
@@ -16,6 +16,23 @@
 | Result review | Exact candidate/diff, original disclosure, target/head and independently sourced checks; render agent explanations as untrusted content. |
 | Adopt | Separate exact code adoption from saving a decision. Fresh owner approval can use retained results without reactivating the producer. |
 | Continue | Review adopted decisions, open questions and current versions for a new recipient with fresh run authority. |
+
+The opt-in preparation screen now confirms only a private preparation copy. It
+shows the selected versions and contents, reachable code history, fixed task and
+snapshot destinations, Cloudflare Artifacts operator/account and absolute expiry.
+Intended recipient/workload identifiers remain identifiers, not verified launcher
+identity. After content inspection the owner explicitly acknowledges the copy;
+the confirmation saves the exact Native review digest, with no create, mint,
+upload, grant or launch in that HTTP request.
+
+Consent status is independent of copy completion and workload authority. Native
+productive preparation/credential dispatch and Git plans require current consent
+bound to the original live SSO, owner epoch, policy and source versions. Native
+and external gates also bind the destination account. Withdrawal prevents new
+productive copying; already admitted effects can remain uncertain, and existing
+copies/credentials require their separate retained cleanup path. A locked view
+discards inspection and acknowledgement. A late response cannot restore it;
+refreshing reads the durable outcome of any already committed confirmation.
 
 ## State and recovery
 
@@ -57,7 +74,7 @@ Selecting a preparation reads its current Native projection and exact disclosure
 
 Actual context inspection matches registered source/access revisions, roles, commits, trees, code inventory and the manifest's selected file metadata. The existing Native source reader rechecks current permission around private RPC and verifies the real selected UTF-8 Git blobs. Browser hash verification and a final preparation/manifest/current-source read precede display. Each response is checked against a closed schema, with preparation/manifest response bytes bounded to 64 KiB before JSON parsing. Only the current 20-row preparation page is retained; source lookup is bounded to 20 ten-row pages.
 
-The shared `/work/session` display lease covers the new screen. Refresh, selection, errors, expiry, hidden state, lock and session replacement clear the review and text; abort plus generation checks discard late replies. Text is rendered as text, with no browser persistence. Copy confirmation, copy start, task creation, delegation and launch controls remain absent until their owner mutation and issuer/launcher contracts are qualified.
+The shared `/work/session` display lease covers the new screen. Refresh, selection, errors, expiry, hidden state, lock and session replacement clear the review and text; abort plus generation checks discard late replies. Text is rendered as text, with no browser persistence. The additional opt-in consent control records an exact copy approval. Copy start, task creation, delegation and launch controls remain pending their productive orchestration and issuer/launcher contracts.
 
 Implementation is `a0eb5ef4ce5aecf142b978998e0cbfaa25b101f6`, finalized by the Wasm-only module guard and explicit production-routing limit in `cd12667af9a4359cfe22ad84b1b92d3823a001f1`. Local qualification passes **105 cases**: 41 preparation/source Native/browser/display-lease cases plus 64 existing owner/disclosure/prepared-authority/checkpoint cases. The prepared-authority contract's direct Node imports use `.ts` extensions; its nine cases pass after resolving the initial `.js` lookup failure. Browser preparation verification facts are explicitly synthetic; Git source text is real.
 

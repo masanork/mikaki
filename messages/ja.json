@@ -598,5 +598,17 @@
   "preparation_unknown": "未確認",
   "preparation_stale": "期限、権限または参照版が変わりました。準備一覧を再読み込みしてください。",
   "preparation_unavailable": "準備情報を確認できませんでした。一覧を再読み込みしてやり直してください。",
-  "preparation_locked": "準備の確認画面をロックしました"
+  "preparation_locked": "準備の確認画面をロックしました",
+  "preparation_copy_consent": "コピーの承認",
+  "preparation_copy_scope": "選択した文脈のスナップショットとコードの履歴を、表示した準備用リポジトリにコピーすることを承認します。エージェントへのアクセス権や実行権限は含みません。",
+  "preparation_copy_operator": "コピー先の運営者",
+  "preparation_copy_account": "コピー先のアカウント",
+  "preparation_copy_inspect_first": "まず開示対象の内容を確認してください。表示した参照元・コピー先・期限に限って承認します。",
+  "preparation_copy_acknowledge": "運営者とコピー対象を確認し、このコピーを承認する",
+  "preparation_copy_approve": "このコピーを承認",
+  "preparation_copy_approved": "コピーの承認を記録しました。コピーの開始・完了は別途確認されます。",
+  "preparation_copy_inactive": "コピーの承認記録はありますが、現在のコピー許可はありません。",
+  "preparation_copy_withdraw": "コピーの承認を取り消す",
+  "preparation_copy_withdrawn": "コピーの承認を取り消しました。新しいコピーは許可されません。",
+  "preparation_copy_withdraw_boundary": "取り消しても既存のコピーは消えません。作成済みのコピーや資格情報の後片付けは別に行います。"
 }

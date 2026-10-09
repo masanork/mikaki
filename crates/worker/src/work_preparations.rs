@@ -1,5 +1,5 @@
 //! Private owner review shell. The bundle reads existing Native projections;
-//! it has no copy, grant, token or launch capability.
+//! Optional explicit copy consent remains separate from grants, tokens and launch.
 use crate::work_owner::{error, unavailable};
 use crate::work_store::{StoreError, WorkStore};
 use worker::{Env, Method, Request, Response};
@@ -68,6 +68,17 @@ pub async fn handle(request: Request, env: Env) -> worker::Result<Response> {
     if page {
         let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
         let html = include_str!("../ui/work-preparations.html")
+            .replace(
+                "{{copy_consent}}",
+                if env
+                    .var("WORK_COPY_CONSENT_ENABLED")
+                    .is_ok_and(|v| v.to_string() == "true")
+                {
+                    "true"
+                } else {
+                    "false"
+                },
+            )
             .replace("{{locale}}", strings.locale)
             .replace(
                 "{{title}}",

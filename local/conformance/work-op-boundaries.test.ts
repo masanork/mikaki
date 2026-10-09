@@ -64,6 +64,7 @@ test('production Rust shim and named OP facade refuse public/raw administration 
       '/work/source-review.js',
       '/work/source-review.css',
       '/work/preparations',
+      '/work/preparations/missing/copy-consent',
       '/work/preparation-review',
       '/work/preparation-review.js',
       '/work/preparation-review.css',

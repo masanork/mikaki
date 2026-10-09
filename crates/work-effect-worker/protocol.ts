@@ -10,6 +10,9 @@ export type InitialPlan = {
   role: 'task' | 'snapshot';
   deadline: number;
   checkpoint: Checkpoint;
+  // Absent only in retained pre-consent journals. New productive dispatches
+  // require it; historical inspection/cleanup keeps the original identity.
+  artifacts_account?: string;
 };
 export type MintPlan = Omit<InitialPlan, 'effect'> & {
   effect: 'token.mint';
@@ -117,9 +120,16 @@ export const opaque = (v: unknown): v is string =>
 export const resource = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(v);
 export const integer = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
+const closedPlan = (v: unknown, keys: string[]): v is Record<string, unknown> =>
+  closed(
+    v,
+    typeof v === 'object' && v !== null && Object.hasOwn(v, 'artifacts_account')
+      ? [...keys, 'artifacts_account']
+      : keys,
+  );
 export function initialPlan(v: unknown): asserts v is InitialPlan {
   if (
-    !closed(v, [
+    !closedPlan(v, [
       'format_version',
       'effect',
       'attempt_id',
@@ -132,6 +142,8 @@ export function initialPlan(v: unknown): asserts v is InitialPlan {
     ]) ||
     v.format_version !== 1 ||
     v.effect !== 'repo.create' ||
+    (v.artifacts_account !== undefined &&
+      (typeof v.artifacts_account !== 'string' || !/^[a-f0-9]{32}$/.test(v.artifacts_account))) ||
     !opaque(v.attempt_id) ||
     !hex(v.digest) ||
     typeof v.namespace !== 'string' ||
@@ -170,7 +182,7 @@ export function mintPlan(v: unknown): asserts v is MintPlan {
     'key_fingerprint',
   ];
   if (
-    !closed(v, [
+    !closedPlan(v, [
       'format_version',
       'effect',
       'attempt_id',
@@ -212,7 +224,7 @@ export function mintObservation(v: unknown): asserts v is MintObservation {
 }
 export function gitPlan(v: unknown): asserts v is GitPlan {
   if (
-    !closed(v, [
+    !closedPlan(v, [
       'format_version',
       'effect',
       'attempt_id',

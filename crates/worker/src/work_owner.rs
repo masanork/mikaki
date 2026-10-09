@@ -13,6 +13,12 @@ use crate::work_store::{OwnerRecordKind, StoreError, WorkStore, owner_id_shape};
 struct RevokeBody {
     format_version: u8,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CopyBody {
+    format_version: u8,
+    review_digest: String,
+}
 
 pub(super) fn reply(status: u16, body: &Value) -> worker::Result<Response> {
     Response::builder()
@@ -116,13 +122,26 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         && segments.len() == 5
         && segments[1..3] == ["work", "grants"]
         && segments[4] == "revoke";
-    if !listing && !reading && !revoking && !session {
+    let copy = matches!(
+        request.method(),
+        Method::Get | Method::Post | Method::Delete
+    ) && segments.len() == 5
+        && segments[1..3] == ["work", "preparations"]
+        && segments[4] == "copy-consent";
+    if copy
+        && !env
+            .var("WORK_COPY_CONSENT_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+    {
+        return error(404, "not_found");
+    }
+    if !listing && !reading && !revoking && !session && !copy {
         return error(404, "not_found");
     }
     // Reject browser cross-site reads as well as all non-same-origin mutations.
     if request.headers().get("Sec-Fetch-Site")?.as_deref() == Some("cross-site")
         || (request.headers().get("Origin")?.is_some() && !same_origin(&request)?)
-        || (revoking && !same_origin(&request)?)
+        || ((revoking || (copy && request.method() != Method::Get)) && !same_origin(&request)?)
     {
         return error(403, "invalid_origin");
     }
@@ -189,7 +208,45 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             }),
         );
     }
-    let result = if listing {
+    let result = if copy {
+        let account = match crate::work_store::copy_account(&env) {
+            Ok(a) => a,
+            Err(_) => return unavailable(),
+        };
+        if request.method() == Method::Get {
+            store
+                .owner_copy_review(&owner.secret_hash, &id, &account)
+                .await
+        } else {
+            if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+                return error(415, "invalid_content_type");
+            }
+            let body = match crate::read_bounded_body(&mut request, 256).await {
+                Ok(b) => b,
+                Err(_) => return error(413, "invalid_request"),
+            };
+            if mikaki_webauthn::strict_json(&body, 256, 4).is_err() {
+                return error(400, "invalid_request");
+            }
+            let body = match serde_json::from_str::<CopyBody>(&body) {
+                Ok(b) if b.format_version == 1 => b,
+                _ => return error(400, "invalid_request"),
+            };
+            let digest = match mikaki_auth::work::Digest::parse_hex(&body.review_digest) {
+                Ok(d) => d,
+                Err(_) => return error(400, "invalid_request"),
+            };
+            if request.method() == Method::Post {
+                store
+                    .confirm_copy(&owner.secret_hash, &id, &account, digest)
+                    .await
+            } else {
+                store
+                    .withdraw_copy(&owner.secret_hash, &id, &account, digest)
+                    .await
+            }
+        }
+    } else if listing {
         if segments[2] == "preparations" {
             store.owner_preparations(&owner.secret_hash, after.as_deref()).await
                 .map(|page| json!({"format_version":1,"checked_at":crate::now_seconds(),"preparations":page["preparations"],"next_after":page["next_after"]}))

@@ -148,6 +148,8 @@ impl WorkStore {
         if a.purpose() != CredentialPurpose::Initial || a.expected_repo_id().is_some() {
             return Err(Denied::BindingMismatch.into());
         }
+        self.require_copy_consent(a.preparation_id(), Some(&copy_account(env)?))
+            .await?;
         let version = self
             .statement(
                 "SELECT version FROM work_credential_key WHERE state='active'",
@@ -178,13 +180,15 @@ impl WorkStore {
             return Err(Denied::StaleAuthority.into());
         }
         let (namespace, name) = p.credential_destination(a.role());
+        self.require_copy_consent(p.id(), Some(&copy_account(env)?))
+            .await?;
         if checkpoint != self.current_authority_checkpoint().await? {
             return Err(Denied::StaleAuthority.into());
         }
         Ok(
             serde_json::json!({"format_version":1,"effect":"repo.create","attempt_id":a.id(),
             "digest":a.digest().to_hex(),"namespace":namespace,"name":name,"role":a.role().name(),
-            "deadline":a.deadline(),"checkpoint":checkpoint}),
+            "deadline":a.deadline(),"checkpoint":checkpoint,"artifacts_account":copy_account(env)?}),
         )
     }
     /// Private OP adapter metadata for the same unknown/captured attempt. This
@@ -201,6 +205,8 @@ impl WorkStore {
         if a.purpose() == CredentialPurpose::Initial || a.expected_repo_id().is_none() {
             return Err(Denied::BindingMismatch.into());
         }
+        self.require_copy_consent(a.preparation_id(), Some(&copy_account(env)?))
+            .await?;
         let initial_id = self.statement(
             "SELECT attempt_id FROM work_credential_attempt WHERE preparation_id=?1 AND role=?2 AND purpose='initial' AND state='closed' AND confirmation='refused' AND json_extract(observation,'$.data.repo_id')=?3",
             &[text(a.preparation_id()), text(a.role().name()), text(a.expected_repo_id().unwrap_or_default())],
@@ -235,6 +241,8 @@ impl WorkStore {
             return Err(Denied::StaleAuthority.into());
         }
         let (namespace, name) = p.credential_destination(a.role());
+        self.require_copy_consent(p.id(), Some(&copy_account(env)?))
+            .await?;
         if checkpoint != self.current_authority_checkpoint().await? {
             return Err(Denied::StaleAuthority.into());
         }
@@ -244,7 +252,7 @@ impl WorkStore {
             "purpose":a.purpose().name(),"scope":if a.purpose()==CredentialPurpose::Readback {"read"} else {"write"},
             "repo_id":a.expected_repo_id(),"initial_attempt_id":initial_id,"deadline":a.deadline(),
             "expires_at":a.deadline().min((js_sys::Date::now() / 1000.0) as u64 + 300),
-            "key_version":version,"key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint}),
+            "key_version":version,"key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint,"artifacts_account":copy_account(env)?}),
         )
     }
     pub async fn capture_mint_effect_closed(
@@ -314,6 +322,8 @@ impl WorkStore {
         {
             return Err(Denied::StaleAuthority.into());
         }
+        self.require_copy_consent(p.id(), Some(&copy_account(env)?))
+            .await?;
         let version = row.key_version.ok_or(Denied::BindingMismatch)?;
         let key = credential_key(env, version)?;
         self.check_key(&key, true).await?;
@@ -357,6 +367,8 @@ impl WorkStore {
             return Err(Denied::InvalidInput.into());
         }
         let (namespace, name) = p.credential_destination(a.role());
+        self.require_copy_consent(p.id(), Some(&copy_account(env)?))
+            .await?;
         if checkpoint != self.current_authority_checkpoint().await? {
             return Err(Denied::StaleAuthority.into());
         }
@@ -366,7 +378,7 @@ impl WorkStore {
           "purpose":a.purpose().name(),"scope":if a.purpose()==CredentialPurpose::Upload {"write"} else {"read"},
           "repo_id":o.repo_id(),"initial_attempt_id":initial_id,"deadline":a.deadline(),"key_version":version,
           "key_fingerprint":key.fingerprint().to_hex(),"checkpoint":checkpoint,"preparation_digest":p.digest().to_hex(),
-          "disclosure_digest":p.disclosure_digest().to_hex(),"commit":commit,"tree":tree,
+          "disclosure_digest":p.disclosure_digest().to_hex(),"commit":commit,"tree":tree,"artifacts_account":copy_account(env)?,
           "branch":if a.role().name()=="task" {"work"} else {"snapshot"},
           "observation":{"repo_id":o.repo_id(),"token_id":o.token_id(),"scope":o.scope(),"expires_at":o.expires_at()}}),
         )
@@ -552,6 +564,7 @@ impl WorkStore {
         }
         self.check_key(key, true).await?;
         let p = self.preparation(preparation_id).await?;
+        self.require_copy_consent(p.id(), None).await?;
         let repo = if purpose == CredentialPurpose::Initial {
             None
         } else {
@@ -611,6 +624,7 @@ impl WorkStore {
         }
         self.check_key(key, true).await?;
         let p = self.preparation(a.preparation_id()).await?;
+        self.require_copy_consent(p.id(), None).await?;
         let result = self
             .atomic(
                 vec![self.statement(

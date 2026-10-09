@@ -175,6 +175,8 @@ test('cold flags, wrong namespace, closed request shape and raw/public capabilit
     await f.execute(f.task.id, 409);
     await f.restart({ WORK_ARTIFACTS_NAMESPACE: 'wrong' });
     await f.execute(f.task.id, 409);
+    await f.restart({ WORK_ARTIFACTS_ACCOUNT: 'b'.repeat(32) });
+    await f.execute(f.task.id, 409);
     assert.equal((await f.remote()).counts.create, 0);
     assert.equal(await f.ledger(), null);
   } finally {
