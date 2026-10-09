@@ -11,6 +11,7 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == format!("{BASELINE},{WRAPPERS}")
                 || ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}")
         }
+        WAITLIST => ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}"),
         _ => false,
     }
 }
@@ -38,6 +39,21 @@ mod tests {
             assert!(!ready(&invalid, WRAPPERS));
         }
         assert!(!ready(&upgraded, "0003_unknown.sql"));
+    }
+
+    #[test]
+    fn waitlist_requires_the_exact_complete_feature_chain() {
+        let ledger = format!("{BASELINE},{WRAPPERS},{WAITLIST}");
+        assert!(ready(&ledger, WAITLIST));
+        for invalid in [
+            BASELINE.to_owned(),
+            format!("{BASELINE},{WRAPPERS}"),
+            format!("{BASELINE},{WAITLIST}"),
+            format!("{ledger},{WAITLIST}"),
+            format!("{ledger},0004_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, WAITLIST));
+        }
     }
 
     #[test]

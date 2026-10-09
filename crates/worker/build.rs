@@ -63,6 +63,8 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/seal-light.ts");
     println!("cargo:rerun-if-changed=ui/Admin.svelte");
     println!("cargo:rerun-if-changed=ui/admin.ts");
+    println!("cargo:rerun-if-changed=ui/Waitlist.svelte");
+    println!("cargo:rerun-if-changed=ui/waitlist.ts");
     println!("cargo:rerun-if-changed=ui/Complete.svelte");
     println!("cargo:rerun-if-changed=ui/complete.ts");
     println!("cargo:rerun-if-changed=ui/AgentOAuth.svelte");
@@ -180,7 +182,7 @@ fn main() {
         .status()
         .expect("esbuild is required; run npm ci");
     assert!(status.success(), "Search Worker build failed");
-    for entry in ["login", "vault", "admin", "complete", "logout"] {
+    for entry in ["login", "vault", "admin", "complete", "logout", "waitlist"] {
         let status = Command::new(&vite)
             .arg("build")
             .arg("--config")

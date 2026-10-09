@@ -13,6 +13,10 @@ export const OWNER_MIGRATIONS = [
     name: '0002_owner_key_wrap_operations.sql',
     sha256: 'd07bf3272960421a4d0516050508e5d5d8c97cf01b0e240884907dcd37344e2b',
   },
+  {
+    name: '0003_enrollment_waitlist.sql',
+    sha256: '769f3cd22812ac3436656115074d0f9371eb6c3b91a19c376ebc21b337450b07',
+  },
 ] as const;
 
 export function assertProductionOwnerSchema(

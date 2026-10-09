@@ -15,6 +15,7 @@ export const resources = [
   '/ui/session-events.js',
   '/enroll/complete.js',
   '/admin/admin.js',
+  '/waitlist/waitlist.js',
   '/vault/vault.js',
   '/vault/search.js',
   '/vault/sqlite3.wasm',

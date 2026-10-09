@@ -31,7 +31,9 @@ test('owner promotion pins bytes, full schema and ordered complete feature ledge
     assert.throws(
       () =>
         assertProductionOwnerSchema(
-          [{ ...migrations[0]!, sql: migrations[0]!.sql + '\n' }, migrations[1]!],
+          migrations.map((migration, index) =>
+            index === 0 ? { ...migration, sql: migration.sql + '\n' } : migration,
+          ),
           ledger,
           schema,
         ),
@@ -40,7 +42,9 @@ test('owner promotion pins bytes, full schema and ordered complete feature ledge
     assert.throws(
       () =>
         assertProductionOwnerSchema(
-          [migrations[0]!, { ...migrations[1]!, sql: migrations[1]!.sql + '\n' }],
+          migrations.map((migration, index) =>
+            index === 1 ? { ...migration, sql: migration.sql + '\n' } : migration,
+          ),
           ledger,
           schema,
         ),

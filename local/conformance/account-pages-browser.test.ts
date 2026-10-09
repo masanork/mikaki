@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chromium, type Route } from '@playwright/test';
+import { chromium, type BrowserContext, type Route } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
+import { drainBrowserRoutes } from './support/browser-route-teardown.ts';
 
 test('account pages use the product styles under CSP and fit a mobile viewport', async () => {
   const issuer = 'https://mikaki.test';
@@ -18,6 +19,8 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     ],
   });
   let browser;
+  let context: BrowserContext | undefined;
+  let staticContext: BrowserContext | undefined;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -57,7 +60,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     assert.match(await stylesheet.text(), /\.product-header/);
 
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    context = await browser.newContext();
     await context.addCookies([
       {
         name: '__Host-op-sso',
@@ -142,7 +145,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       'none',
     );
     assert.deepEqual(errors, []);
-    const staticContext = await browser.newContext({ javaScriptEnabled: false });
+    staticContext = await browser.newContext({ javaScriptEnabled: false });
     await staticContext.addCookies(await context.cookies());
     await staticContext.route(`${issuer}/**`, forward);
     const staticPage = await staticContext.newPage();
@@ -156,9 +159,18 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     assert.equal((await confirmed).status(), 200);
     await staticPage.getByRole('heading', { name: 'You have logged out', exact: true }).waitFor();
     assert.equal(await staticPage.locator('body').getAttribute('data-session-state'), 'ended');
+    await drainBrowserRoutes(staticContext);
     await staticContext.close();
+    staticContext = undefined;
   } finally {
-    await browser?.close();
-    await harness.close();
+    try {
+      await Promise.all([drainBrowserRoutes(context), drainBrowserRoutes(staticContext)]);
+    } finally {
+      try {
+        await browser?.close();
+      } finally {
+        await harness.close();
+      }
+    }
   }
 });

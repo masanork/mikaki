@@ -20,6 +20,7 @@ type Config = {
   r2_buckets?: { binding: string; bucket_name: string }[];
   services?: { binding: string; service: string; entrypoint?: string }[];
   secrets?: { required: string[] };
+  send_email?: { name: string; allowed_sender_addresses?: string[] }[];
   version_metadata?: { binding: string };
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
   assets?: { binding: string };
@@ -88,6 +89,11 @@ export function checkBindings(
       entrypoint: item.entrypoint,
     });
   for (const name of config.secrets?.required ?? []) expect(name, { type: 'secret_text' });
+  for (const item of config.send_email ?? [])
+    expect(item.name, {
+      type: 'send_email',
+      allowed_sender_addresses: item.allowed_sender_addresses,
+    });
   if (config.version_metadata)
     expect(config.version_metadata.binding, { type: 'version_metadata' });
   for (const item of config.secrets_store_secrets ?? [])
@@ -149,6 +155,22 @@ export function sourceIsCurrent(changedPaths: string[]) {
     'metrics/dependency-inventory.md',
   ]);
   return changedPaths.every((path) => metrics.has(path));
+}
+
+export function assertWaitlistMailKey(value: unknown): asserts value is string {
+  assert.ok(
+    typeof value === 'string',
+    'WAITLIST_MAIL_KEY must be 32 bytes encoded as unpadded base64url',
+  );
+  const bytes = Buffer.from(value, 'base64url');
+  try {
+    assert.ok(
+      bytes.length === 32 && bytes.toString('base64url') === value,
+      'WAITLIST_MAIL_KEY must be 32 bytes encoded as unpadded base64url',
+    );
+  } finally {
+    bytes.fill(0);
+  }
 }
 
 async function main() {
@@ -214,12 +236,16 @@ async function main() {
     schemaProbe[1].results,
   );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
-  assert.ok(process.env.OP_PRIVATE_JWK && process.env.MIKAKI_READY_TOKEN);
+  assert.ok(
+    process.env.OP_PRIVATE_JWK && process.env.MIKAKI_READY_TOKEN && process.env.WAITLIST_MAIL_KEY,
+  );
+  assertWaitlistMailKey(process.env.WAITLIST_MAIL_KEY);
   writeFileSync(
     secretFile,
     JSON.stringify({
       OP_PRIVATE_JWK: process.env.OP_PRIVATE_JWK,
       MIKAKI_READY_TOKEN: process.env.MIKAKI_READY_TOKEN,
+      WAITLIST_MAIL_KEY: process.env.WAITLIST_MAIL_KEY,
     }),
     { mode: 0o600 },
   );

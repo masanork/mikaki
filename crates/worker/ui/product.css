@@ -1195,3 +1195,27 @@ a {
   outline: 2px solid var(--product-accent, #8c8157);
   outline-offset: 4px;
 }
+.waitlist-entries {
+  list-style: none;
+  padding: 0;
+}
+.waitlist-entries li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--product-border, #d5dce4);
+}
+.waitlist-entries strong {
+  overflow-wrap: anywhere;
+}
+.waitlist-entries button {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .waitlist-entries li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
