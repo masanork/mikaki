@@ -19,6 +19,7 @@ fn main() {
         "work-sources.ts",
         "work-sources.html",
         "work-source-view.ts",
+        "work-compose-view.ts",
         "WorkSources.svelte",
         "WorkSourceWorkspace.svelte",
         "WorkSourceSession.svelte",

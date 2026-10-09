@@ -16,6 +16,7 @@ export async function createSourceFixture(
   entry: 'qualification' | 'product' | 'product-unenrolled' = 'qualification',
   copyConsent = false,
   ownerSessionSeconds = 3600,
+  compose = false,
 ) {
   const product = entry !== 'qualification';
   const enrolled = entry === 'product';
@@ -107,6 +108,14 @@ export async function createSourceFixture(
             WORK_GIT_STORE_ENABLED: 'true',
             WORK_CREDENTIAL_KEY_FLOOR: '1',
             WORK_CREDENTIAL_KEY_V1: Buffer.alloc(32, 1).toString('base64url'),
+          }
+        : {}),
+      ...(compose
+        ? {
+            WORK_PREPARATION_COMPOSE_ENABLED: 'true',
+            WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
+            WORK_COPY_RECIPIENT: 'synthetic-client',
+            WORK_COPY_WORKLOAD: 'synthetic-workload',
           }
         : {}),
     },

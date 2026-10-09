@@ -1,5 +1,6 @@
-//! Opt-in OP owner transport for existing managed-work records. No issuer,
-//! requester/actor input, new grant or external effect. Separately gated source
+//! Opt-in OP owner transport for managed-work metadata. No issuer,
+//! requester/actor input, new grant or external effect. Separately gated selection
+//! composition reserves metadata only. Separately gated source
 //! inspection delegates to work_sources with its live source-access checks.
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -110,6 +111,14 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     let segments: Vec<_> = url.path().split('/').collect();
     let listing = request.method() == Method::Get
         && (segments == ["", "work", "requests"] || segments == ["", "work", "preparations"]);
+    let creating = request.method() == Method::Post && segments == ["", "work", "preparations"];
+    if creating
+        && !env
+            .var("WORK_PREPARATION_COMPOSE_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+    {
+        return error(404, "not_found");
+    }
     let session = request.method() == Method::Get && segments == ["", "work", "session"];
     let reading = request.method() == Method::Get
         && segments.len() == 4
@@ -135,17 +144,18 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     {
         return error(404, "not_found");
     }
-    if !listing && !reading && !revoking && !session && !copy {
+    if !listing && !reading && !revoking && !session && !copy && !creating {
         return error(404, "not_found");
     }
     // Reject browser cross-site reads as well as all non-same-origin mutations.
     if request.headers().get("Sec-Fetch-Site")?.as_deref() == Some("cross-site")
         || (request.headers().get("Origin")?.is_some() && !same_origin(&request)?)
-        || ((revoking || (copy && request.method() != Method::Get)) && !same_origin(&request)?)
+        || ((creating || revoking || (copy && request.method() != Method::Get))
+            && !same_origin(&request)?)
     {
         return error(403, "invalid_origin");
     }
-    let id = if listing || session {
+    let id = if listing || session || creating {
         String::new()
     } else {
         match resource_id(segments[3]) {
@@ -208,7 +218,26 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             }),
         );
     }
-    let result = if copy {
+    let result = if creating {
+        if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+            return error(415, "invalid_content_type");
+        }
+        let body = match crate::read_bounded_body(&mut request, 16384).await {
+            Ok(b) => b,
+            Err(_) => return error(413, "invalid_request"),
+        };
+        if mikaki_webauthn::strict_json(&body, 16384, 8).is_err() {
+            return error(400, "invalid_request");
+        }
+        let input = match serde_json::from_str::<crate::work_store::PreparationComposeInput>(&body)
+        {
+            Ok(i) => i,
+            Err(_) => return error(400, "invalid_request"),
+        };
+        store
+            .compose_preparation(&env, &owner.secret_hash, input)
+            .await
+    } else if copy {
         let account = match crate::work_store::copy_account(&env) {
             Ok(a) => a,
             Err(_) => return unavailable(),

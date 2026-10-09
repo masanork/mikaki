@@ -180,7 +180,19 @@
     }
   }
   onMount(() => {
-    void load();
+    const linked = window.location.hash.slice(1);
+    void load().then(() => {
+      // A fragment names only a review, never an approval or productive action.
+      // Reopening needs a fresh display lease and Native owner projection.
+      if (
+        loaded &&
+        !busy &&
+        !scope.signal.aborted &&
+        document.visibilityState === 'visible' &&
+        /^[A-Za-z0-9_.:-]{1,128}$/.test(linked)
+      )
+        void choose(linked);
+    });
     const visibility = () => {
       if (document.visibilityState === 'hidden') clear();
     };

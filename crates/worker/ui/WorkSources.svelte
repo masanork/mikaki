@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { getLocale } from './paraglide/runtime.js';
   import * as m from './paraglide/messages.js';
   import { vaultContext } from './vault-context.js';
   import {
@@ -8,9 +9,16 @@
     type SourceRead,
     sourceHttpPort,
   } from './work-source-view.js';
+  import { preparationComposePort, type PreparedSelection } from './work-compose-view.js';
   let { port }: { port: ReturnType<typeof sourceHttpPort> } = $props();
   const context = vaultContext(),
     scope = context.current();
+  const composePort = preparationComposePort(scope.request);
+  const composeEnabled = document.documentElement.dataset.workCompose === 'true';
+  let codeId = $state(''),
+    minutes = $state(10),
+    compositionExpires = 0;
+  let prepared = $state<PreparedSelection | null>(null);
   let generation = 0;
   let controller = new AbortController();
   function clear() {
@@ -24,6 +32,9 @@
     loaded = false;
     busy = false;
     failure = '';
+    codeId = '';
+    prepared = null;
+    compositionExpires = 0;
   }
   let sources = $state<OwnedSource[]>([]),
     next = $state<string | null>(null),
@@ -45,9 +56,15 @@
   );
   const count = $derived(Object.values(selected).reduce((n, p) => n + p.length, 0));
   const contexts = $derived(Object.values(selected).filter((p) => p.length > 0).length);
+  const codeSource = $derived(sources.find((s) => s.role === 'code' && s.source_id === codeId));
+  const date = (time: number) =>
+    new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'long' }).format(
+      time * 1000,
+    );
   function failed(e: unknown) {
     failure = e instanceof SourceError ? e.reason : 'unavailable';
     reads = [];
+    prepared = null;
   }
   async function load(more = false) {
     if (busy) return;
@@ -55,11 +72,15 @@
     busy = true;
     failure = '';
     reads = [];
+    prepared = null;
     if (!more) {
       sources = [];
       selected = {};
       loaded = false;
       next = null;
+      codeId = '';
+      prepared = null;
+      compositionExpires = 0;
     }
     try {
       const page = await port.list(more ? next : null, controller.signal);
@@ -82,6 +103,53 @@
     };
     reads = [];
     failure = '';
+    prepared = null;
+    compositionExpires = 0;
+  }
+  function chooseCode(id: string) {
+    codeId = id;
+    reads = [];
+    prepared = null;
+    compositionExpires = 0;
+    failure = '';
+  }
+  async function prepare() {
+    if (
+      busy ||
+      !codeSource ||
+      !Number.isInteger(minutes) ||
+      minutes < 2 ||
+      minutes > 30 ||
+      (contexts > 0 && reads.length !== contexts) ||
+      contexts > 4 ||
+      count > 32 ||
+      total > 131072
+    )
+      return;
+    const current = generation;
+    compositionExpires ||= Math.floor(Date.now() / 1000) + minutes * 60;
+    busy = true;
+    failure = '';
+    prepared = null;
+    try {
+      const result = await composePort.prepare(
+        codeSource,
+        sources.flatMap((source) =>
+          selected[source.source_id]?.length
+            ? [{ source, paths: selected[source.source_id]! }]
+            : [],
+        ),
+        compositionExpires,
+        controller.signal,
+      );
+      if (current !== generation) return;
+      scope.assert();
+      prepared = result;
+    } catch (e) {
+      if (current === generation) failed(e);
+    } finally {
+      if (current === generation) busy = false;
+    }
   }
   async function review() {
     if (busy || count === 0 || count > 32 || total > 131072 || contexts > 4) return;
@@ -89,6 +157,7 @@
     busy = true;
     reads = [];
     failure = '';
+    prepared = null;
     try {
       const results = [];
       for (const source of sources) {
@@ -165,7 +234,17 @@
       </dl>
       {#if source.code}<p>
           {m.source_history({ commits: source.code.commits, files: source.code.head_files })}
-        </p>{:else}
+        </p>
+        {#if composeEnabled}<label
+            ><input
+              type="radio"
+              name="copy-code"
+              disabled={busy}
+              checked={codeId === source.source_id}
+              onchange={() => chooseCode(source.source_id)}
+            />{m.source_compose_code()} ({source.label})</label
+          >{/if}
+      {:else}
         <p>{m.source_selected_only()}</p>
         <fieldset disabled={busy}>
           <legend>{m.source_choose()}</legend>
@@ -207,5 +286,47 @@
             <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to a named, scrollable file region.) -->
             <pre tabindex="0" role="region" aria-label={file.path}>{file.content}</pre>
           </article>{/each}{/each}
+    </section>{/if}
+  {#if composeEnabled}<section class="source-preview" aria-label={m.source_compose_title()}>
+      <h2>{m.source_compose_title()}</h2>
+      <p>{m.source_compose_intro()}</p>
+      <label
+        >{m.source_compose_minutes()}<input
+          type="number"
+          min="2"
+          max="30"
+          step="1"
+          bind:value={minutes}
+          disabled={busy}
+          onchange={() => {
+            prepared = null;
+            compositionExpires = 0;
+          }}
+        /></label
+      >
+      <button
+        class="source-primary"
+        type="button"
+        disabled={busy ||
+          !codeSource ||
+          !Number.isInteger(minutes) ||
+          minutes < 2 ||
+          minutes > 30 ||
+          contexts > 4 ||
+          count > 32 ||
+          total > 131072 ||
+          (contexts > 0 && reads.length !== contexts)}
+        onclick={prepare}>{m.source_compose_action()}</button
+      >
+      {#if prepared}<div role="status">
+          <p>{m.source_compose_ready()}</p>
+          <p>{m.preparation_expiry()}: {date(prepared.expires_at)}</p>
+          <a
+            href={'/work/preparation-review?lang=' +
+              getLocale() +
+              '#' +
+              encodeURIComponent(prepared.preparation_id)}>{m.source_compose_review()}</a
+          >
+        </div>{/if}
     </section>{/if}
 </section>

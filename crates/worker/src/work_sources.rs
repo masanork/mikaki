@@ -22,15 +22,15 @@ extern "C" {
     ) -> std::result::Result<js_sys::Promise, JsValue>;
 }
 
-async fn read(
+pub(crate) async fn read_registered(
     store: &WorkStore,
     env: &Env,
     session: &str,
-    i: SourceReadInput,
-) -> Result<serde_json::Value, StoreError> {
+    i: &SourceReadInput,
+) -> Result<(crate::work_store::OwnerSource, String), StoreError> {
     let source = store.owner_source(session, &i.source_id).await?;
     store.require_current_authority().await?;
-    let input = source.service_request(&i)?;
+    let input = source.service_request(i)?;
     let binding: SourceReader = env.service("WORK_SOURCE_READER")?.into_rpc();
     // One named RPC takes/returns bounded closed JSON. Never forward arbitrary
     // method names, SQL, owner/session facts or caller-supplied repository names.
@@ -51,12 +51,22 @@ async fn read(
         }
     };
     let body = value.as_string().ok_or(Denied::InvalidInput)?;
-    let verified = source.verify_reply(&i, &body)?;
+    source.verify_reply(i, &body)?;
     store
         .confirm_source_read(session, &i.source_id, &source)
         .await?;
     store.require_current_authority().await?;
-    Ok(verified)
+    Ok((source, body))
+}
+
+async fn read(
+    store: &WorkStore,
+    env: &Env,
+    session: &str,
+    i: SourceReadInput,
+) -> Result<serde_json::Value, StoreError> {
+    let (source, body) = read_registered(store, env, session, &i).await?;
+    source.verify_reply(&i, &body)
 }
 
 pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> {
@@ -120,6 +130,17 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
             let html = include_str!("../ui/work-sources.html")
                 .replace("{{locale}}", strings.locale)
+                .replace(
+                    "{{compose}}",
+                    if env
+                        .var("WORK_PREPARATION_COMPOSE_ENABLED")
+                        .is_ok_and(|v| v.to_string() == "true")
+                    {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                )
                 .replace(
                     "{{title}}",
                     &crate::i18n::html_escape(strings.message("source_title")),

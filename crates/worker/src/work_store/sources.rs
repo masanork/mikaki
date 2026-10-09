@@ -20,6 +20,12 @@ pub struct OwnerSource {
     owner_epoch: u64,
 }
 impl OwnerSource {
+    pub(super) fn registered(&self) -> &RegisteredSource {
+        &self.source
+    }
+    pub(super) fn access_revision(&self) -> u64 {
+        self.access_revision
+    }
     pub(super) fn disclosure_fact(&self) -> (&RegisteredSource, u64) {
         (&self.source, self.access_revision)
     }

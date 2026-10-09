@@ -2,6 +2,7 @@
 //! Only trusted OP callers receive this capability; actor facts must be verified
 //! by the selected launcher/requester/DPoP adapter before calling these methods.
 mod checkpoint;
+mod compose;
 mod copy_consent;
 mod credentials;
 mod disclosures;
@@ -20,6 +21,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use worker::{D1Database, D1PreparedStatement};
 
 pub use checkpoint::AuthorityCheckpoint;
+pub use compose::PreparationComposeInput;
 pub use copy_consent::copy_account;
 pub(crate) use credentials::ClosedCredential;
 pub use credentials::{CredentialDispatch, CredentialStatus, credential_key};

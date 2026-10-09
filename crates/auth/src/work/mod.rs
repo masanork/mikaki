@@ -13,6 +13,7 @@ mod payload;
 mod preparation;
 mod records;
 mod request;
+mod selected_snapshot;
 mod sources;
 #[cfg(test)]
 mod tests;
@@ -26,11 +27,11 @@ pub use delegation::{
     Candidate, CandidateInput, Grant, ManagedActor, ManagedActorFacts, PreparedCandidate, Run,
     SubmissionGuard,
 };
-pub use disclosure::{GitDisclosureInput, ResolvedDisclosure};
+pub use disclosure::{GitDisclosureInput, RegisteredDisclosureInput, ResolvedDisclosure};
 pub use payload::{CandidateGitFacts, CandidatePayload, MAX_CANDIDATE_BUNDLE_BYTES};
 pub use preparation::{Preparation, PreparationState, VerifiedPreparation};
 pub use request::{CodeTarget, RequestInput, TaskRepository, WorkRequest};
-pub use sources::{RegisteredSource, SourceInput, SourceReadInput};
+pub use sources::{RegisteredSource, SourceInput, SourceReadInput, VerifiedSourceSelection};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest as _, Sha256};
@@ -212,6 +213,9 @@ pub struct OwnerSession {
 }
 
 impl OwnerSession {
+    pub fn expires_at(&self) -> u64 {
+        self.expires_at
+    }
     pub fn from_verified_session(id: &str, epoch: u64, expires_at: u64) -> Result<Self, Denied> {
         stored_number(epoch, true)?;
         stored_number(expires_at, false)?;

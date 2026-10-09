@@ -20,6 +20,12 @@ and a fixed `WORK_ARTIFACTS_ACCOUNT`. Older qualification fixtures explicitly
 stop at 0012; the product consent lane installs 0013 with an enrolled independent
 checkpoint. This historical fixture exemption is absent from product builds.
 
+Owner selection composition reuses the same schema and adds no migration. Its
+metadata-only `POST /work/preparations` separately requires
+`WORK_PREPARATION_COMPOSE_ENABLED=true`, fixed namespace/recipient/workload/account
+configuration and the existing private source reader. It does not approve or
+dispatch a copy; see [the composition decision](../../../docs/work-preparation-compose.md).
+
 Run `npm run test:work-delegation` from the repository root to build the actual
 Rust/Wasm fixture and exercise the additive schema with workerd/D1/R2. The
 fixture uses synthetic verifier facts; its successful cases do not qualify a

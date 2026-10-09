@@ -4,7 +4,7 @@ const id = z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/),
   revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const git = z.string().regex(/^[a-f0-9]{40}$/),
   digest = z.string().regex(/^[a-f0-9]{64}$/);
-function comparePaths(a: string, b: string) {
+export function comparePaths(a: string, b: string) {
   const aa = new TextEncoder().encode(a),
     bb = new TextEncoder().encode(b);
   for (let i = 0; i < Math.min(aa.length, bb.length); i++) {
@@ -85,8 +85,9 @@ export class SourceError extends Error {
     this.reason = reason;
   }
 }
-async function checked(response: Response): Promise<unknown> {
-  if (!response.ok)
+export async function checked(response: Response, maximum = 393216): Promise<unknown> {
+  if (!response.ok) {
+    await response.body?.cancel();
     throw new SourceError(
       response.status === 401
         ? 'session'
@@ -94,8 +95,35 @@ async function checked(response: Response): Promise<unknown> {
           ? 'stale'
           : 'unavailable',
     );
+  }
   try {
-    return await response.json();
+    const reader = response.body?.getReader();
+    if (!reader) throw new SourceError('unavailable');
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maximum) {
+          await reader.cancel();
+          throw new SourceError('unavailable');
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.length;
+    }
+    return JSON.parse(
+      new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes),
+    ) as unknown;
   } catch {
     throw new SourceError('unavailable');
   }
