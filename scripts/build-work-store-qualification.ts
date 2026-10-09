@@ -217,6 +217,9 @@ export class FixturePreparationEvidence extends WorkerEntrypoint {
     if(mode==='inventory-both')for(const m of e.mint)if(m.plan.role==='task')m.git.result.inventory_sha256='f'.repeat(64);
     if(mode==='key')e.mint[0].refusal.key_version=2;
     if(mode==='initial')e.initial[0].closure.receipt='f'.repeat(64);
+    if(mode==='account-initial')e.initial[0].plan.artifacts_account='b'.repeat(32);
+    if(mode==='account-mint')e.mint[0].plan.artifacts_account='b'.repeat(32);
+    if(mode==='account-git')e.mint[0].git.plan.artifacts_account='b'.repeat(32);
     if(mode==='checkpoint')e.mint[0].git.plan.checkpoint.epoch='f'.repeat(64);
     if(mode==='commit')e.mint[0].git.result.commit='f'.repeat(40);
     if(mode==='plan')e.mint[0].git.plan.url='https://attacker.invalid/';

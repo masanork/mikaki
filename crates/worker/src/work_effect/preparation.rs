@@ -133,6 +133,18 @@ fn base(p: &Preparation, f: &ClosedCredential, cp: Value, effect: &str) -> Value
     json!({"format_version":1,"effect":effect,"attempt_id":a.id(),"digest":a.digest().to_hex(),
         "namespace":namespace,"name":name,"role":a.role().name(),"deadline":a.deadline(),"checkpoint":cp})
 }
+/// Extend the exact Native reconstruction with the account-bound plan format.
+/// Retained older evidence can omit it; that omission never permits a new
+/// productive effect (the external gates require an explicit account).
+fn account_binding(mut fixed: Value, observed: &Value, account: &str) -> Result<Value> {
+    if let Some(actual) = observed.get("artifacts_account") {
+        if actual.as_str() != Some(account) {
+            return Err("preparation_account_mismatch".into());
+        }
+        fixed["artifacts_account"] = json!(account);
+    }
+    Ok(fixed)
+}
 fn observation(f: &ClosedCredential) -> Value {
     let o = &f.observation;
     json!({"repo_id":o.repo_id(),"token_id":o.token_id(),"scope":o.scope(),"expires_at":o.expires_at()})
@@ -172,6 +184,7 @@ fn verify_role(
     role: CredentialRole,
     data: &Value,
     current: &Value,
+    account: &str,
 ) -> Result<Value> {
     let initial = fact(facts, role, CredentialPurpose::Initial)?;
     let mut matches = e
@@ -180,7 +193,12 @@ fn verify_role(
         .filter(|i| i.plan["attempt_id"] == initial.attempt.id());
     let i = matches.next().ok_or("initial_missing")?;
     if matches.next().is_some()
-        || i.plan != base(p, initial, checkpoint(&i.plan, current)?, "repo.create")
+        || i.plan
+            != account_binding(
+                base(p, initial, checkpoint(&i.plan, current)?, "repo.create"),
+                &i.plan,
+                account,
+            )?
         || i.closure.repo_id != initial.observation.repo_id()
         || i.closure.token_id != initial.observation.token_id()
         || i.closure.expires_at != initial.observation.expires_at()
@@ -210,12 +228,16 @@ fn verify_role(
         let r = &m.refusal;
         if matches.next().is_some()
             || m.plan
-                != mint_plan(
-                    p,
-                    f,
-                    initial,
-                    checkpoint(&m.plan, current)?,
-                    m.plan["expires_at"].as_u64().ok_or("missing_expiry")?,
+                != account_binding(
+                    mint_plan(
+                        p,
+                        f,
+                        initial,
+                        checkpoint(&m.plan, current)?,
+                        m.plan["expires_at"].as_u64().ok_or("missing_expiry")?,
+                    )?,
+                    &m.plan,
+                    account,
                 )?
             || serde_json::to_value(&m.observation)? != observation(f)
             || r.format_version != 1
@@ -230,12 +252,16 @@ fn verify_role(
         {
             return Err("mint_mismatch".into());
         }
-        let mut plan = mint_plan(
-            p,
-            f,
-            initial,
-            checkpoint(&m.git.plan, current)?,
-            m.plan["expires_at"].as_u64().ok_or("missing_expiry")?,
+        let mut plan = account_binding(
+            mint_plan(
+                p,
+                f,
+                initial,
+                checkpoint(&m.git.plan, current)?,
+                m.plan["expires_at"].as_u64().ok_or("missing_expiry")?,
+            )?,
+            &m.git.plan,
+            account,
         )?;
         plan.as_object_mut()
             .ok_or("invalid_plan")?
@@ -335,8 +361,25 @@ pub(super) async fn verify(store: &WorkStore, env: &Env, id: &str) -> Result<Val
     let d = store.disclosure(p.disclosure_digest()).await?;
     let data = serde_json::to_value(d.review())?;
     let current = serde_json::to_value(&cp)?;
-    let task = verify_role(&p, &facts, &e, CredentialRole::Task, &data, &current)?;
-    let snapshot = verify_role(&p, &facts, &e, CredentialRole::Snapshot, &data, &current)?;
+    let account = crate::work_store::copy_account(env)?;
+    let task = verify_role(
+        &p,
+        &facts,
+        &e,
+        CredentialRole::Task,
+        &data,
+        &current,
+        &account,
+    )?;
+    let snapshot = verify_role(
+        &p,
+        &facts,
+        &e,
+        CredentialRole::Snapshot,
+        &data,
+        &current,
+        &account,
+    )?;
     let payload = Digest::from_bytes(
         Sha256::digest(serde_json::to_vec(&json!([
             "mikaki.work-preparation-payload.v1",
