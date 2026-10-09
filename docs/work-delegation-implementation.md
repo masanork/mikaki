@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a/M5b source/preparation inspection and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition locally implemented on main through `9022fb2`, 2026-10-09 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing, initial-effect maintenance, source/preparation review and actual bounded Git exchange are integrated. Copy/delegation consent, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a/M5b source/preparation inspection, explicit owner copy consent and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main` through `311886a`, 2026-10-09 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing and the bounded Git exchange are integrated. Owner compose, productive copy orchestration, delegation, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -24,7 +24,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
-| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Opt-in product entry passes 134 work/OP/UI regression cases and 2 existing Vault browser cases at `3cc4142`. The earlier scoped integration's full 311-case work result remains recorded separately. Copy/delegation composition, activity/result controls and deployment remain pending. |
+| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Opt-in product entry and explicit copy consent for existing reserved preparations pass 167 work/OP/UI cases and 2 existing Vault browser cases at `311886a`. The complete 372-case run at `aa8f604` is recorded separately. Owner compose, productive copy orchestration, delegation, activity/result controls and deployment remain pending. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
@@ -76,7 +76,7 @@ M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 1
 
 Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
 
-Next: connect owner compose and separate copy/delegation confirmations to qualified Native mutation and issuer/launcher contracts, and place the Git host on Cloudflare. M5a/M5b inspect current sources and saved preparations; M6a–M6e qualify the private mint/Git/evidence chain locally. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+Next: connect owner compose and productive copy orchestration to the explicit copy confirmation, then connect delegation to qualified issuer/launcher contracts and place the Git host on Cloudflare. M5a/M5b inspect current sources and saved preparations; M6a–M6e qualify the private mint/Git/evidence chain locally. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
 
 Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
 
@@ -381,3 +381,75 @@ remain pending. Production flags, bindings, baseline migrations, protected
 Artifacts resources/journals and the preserved stash remain unchanged. No push,
 deployment or real provider mutation was performed. This record adds
 documentation only; the selected Worker source remains `3cc4142`.
+
+## Explicit copy consent for reserved preparations
+
+Selected source `311886a3c37d3bdb4bb76253f7e461384e2e1ba9` adds explicit owner
+consent for an existing reserved preparation. Native Rust creates the exact
+review digest from the immutable preparation/disclosure, fixed Cloudflare
+Artifacts operator/account and absolute deadline. The dedicated opt-in
+`GET/POST/DELETE /work/preparations/:id/copy-consent` transport uses live owner
+SSO, the independent checkpoint and same-origin, closed, bounded JSON. The
+browser supplies only the review digest; it cannot choose an actor, account,
+source, repository, credential or receipt.
+
+Additive migration `0013` retains approval and withdrawal without backfilling
+consent. Each mutation commits with its owner audit and Native transaction frame.
+Current consent requires the original approving SSO, active account/credential,
+matching epoch, current source bindings and policies. The copy deadline cannot
+exceed the approving SSO lifetime; both Native review and the D1 commit guard
+enforce that bound. Exact retries add no audit or authority, and withdrawal
+cannot reactivate the same consent. Historical consent does not prevent normal
+SSO garbage collection.
+
+Fresh Native preparation/credential dispatch and initial-create, mint and Git
+plans require current consent. New plans bind the configured Artifacts account;
+the independent external gates reject a missing or different account before
+provider I/O. Native evidence composition also checks that account in each
+retained plan. Older account-less journals remain readable for historical
+verification and cleanup; they cannot authorize fresh external effects. The
+qualification-only, explicitly pre-0013 schema exemption is absent from product
+builds. Withdrawal preserves existing effect identities and safety cleanup;
+it does not establish that an already admitted effect has stopped.
+
+The preparation screen requires actual content inspection and a fresh explicit
+acknowledgement before approval. Japanese/English review shows operator/account,
+destinations, selected contents/history and expiry. Consent, copy completion and
+workload authority remain distinct. Selection, refresh, hidden state, session
+replacement, expiry and lock discard the acknowledgement and inspected text.
+A late successful POST cannot revive a locked view; reopening reads the durable
+result. Visual inspection covers Japanese and English at 375px; keyboard and
+accessibility checks pass. Approval creates no repository, token, task, grant or
+run. Productive copying still needs its owner orchestration.
+
+The complete combined backend/product/UI regression run passes **372/372** at
+`aa8f604`, including the strict account-bound evidence fix. After the SSO deadline
+hardening, the clean selected `311886a` build passes **167/167** in one serial run,
+covering the new consent/API/browser cases and existing owner/source/preparation,
+checkpoint, evidence, delegation and cold OP/service/enrollment/logout cases.
+The deadline case also supplies a matching transaction-local frame and proves
+that captured SQL fails the deadline guard without changing the checkpoint.
+The existing Owner Vault browser lane passes **2/2** separately. These final
+results do not claim a second full rerun of every mint/recovery lane.
+
+Rust workspace tests pass **209/209**, including doctests; the work HTTP/D1 paths
+are exercised separately in actual Rust/Wasm/workerd fixtures. Production Wasm
+Clippy denies warnings. Node/Worker UI/service/source/effect/checkpoint types,
+Rustfmt, full Prettier, the **612-key** bilingual catalog, product-source and
+documentation checks pass. The unchanged baseline/Owner-schema, Worker roster,
+release/reset and Agent SQL lane passes **34/34** during this increment.
+
+The budget artifact and embedded Worker revision identify clean `311886a`
+source. OP Wasm measures **6,909,751 raw / 2,395,657 gzip-estimate bytes** within
+8 MiB / 3 MiB. Served preparation JavaScript is **190,643 / 60,370** and source
+JavaScript **173,744 / 55,396**, within 192 KiB / 64 KiB. Vault JavaScript remains
+**302,958 / 87,015**; all existing served UI/Wasm budgets pass without adjustment.
+Gzip figures are local estimates. Existing CI/PR preparation checks include the
+new consent cases, and `test:work-copy-consent` provides a focused local command.
+
+Owner compose and productive copy orchestration are the next increment;
+delegation needs the named issuer/launcher contracts. Production work flags and
+bindings remain disabled; the production baseline migrations are unchanged. Protected Artifacts
+resources/journals and the preserved stash remain intact. No push, deployment,
+remote CI qualification or real provider mutation was performed. This record
+adds documentation only; the selected Worker source remains `311886a`.
