@@ -180,7 +180,16 @@ async fn send(env: &worker::Env, row: &Mail) -> worker::Result<String> {
         "from":{"email":from,"name":"mikaki"},"to":row.email,"subject":subject,"text":text,"html":html,
     }))?)?;
     let binding = Reflect::get(env, &"ENROLLMENT_EMAIL".into())?;
-    let sent = call(&binding, "send", &[message]).await?;
+    let args = [message];
+    let sent = match futures_util::future::select(
+        Box::pin(call(&binding, "send", &args)),
+        Box::pin(worker::Delay::from(std::time::Duration::from_secs(30))),
+    )
+    .await
+    {
+        futures_util::future::Either::Left((sent, _)) => sent?,
+        futures_util::future::Either::Right(_) => return Err(unavailable()),
+    };
     Reflect::get(&sent, &"messageId".into())?
         .as_string()
         .filter(|id| !id.is_empty() && id.len() <= 256)
@@ -194,6 +203,9 @@ pub(crate) async fn run_due(env: &worker::Env) -> worker::Result<()> {
     // Obsolete jobs must not occupy the bounded retry scan ahead of current mail.
     db.prepare("UPDATE enrollment_mail SET state='cancelled',lease_token=NULL,lease_until=0 WHERE state IN ('pending','failed','sending') AND (expires_at<=unixepoch() OR NOT EXISTS(SELECT 1 FROM enrollment_waitlist w WHERE w.id=waitlist_id AND (kind='confirmation' AND w.verified_at IS NULL AND w.confirmation_hash=token_hash OR kind='invitation' AND w.invite_hash=token_hash AND EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>unixepoch()))))")
         .run().await?;
+    // A Worker terminated during its final attempt must leave a manually retryable state.
+    db.prepare("UPDATE enrollment_mail SET state='failed',lease_token=NULL,lease_until=0 WHERE state='sending' AND attempts>=5 AND lease_until<=unixepoch()")
+        .run().await?;
     #[derive(Deserialize)]
     struct Id {
         id: String,
@@ -206,7 +218,7 @@ pub(crate) async fn run_due(env: &worker::Env) -> worker::Result<()> {
     db.batch(vec![
         db.prepare("DELETE FROM enrollment_request_window WHERE window_start<unixepoch()-7200"),
         db.prepare("UPDATE enrollment_mail SET state='cancelled',lease_token=NULL,lease_until=0 WHERE expires_at<=unixepoch() AND state IN ('pending','failed','sending')"),
-        db.prepare("DELETE FROM enrollment_waitlist WHERE id IN (SELECT w.id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash WHERE w.verified_at IS NULL AND w.created_at<unixepoch()-2592000 OR i.consumed_at<unixepoch()-2592000 LIMIT 100)"),
+        db.prepare("DELETE FROM enrollment_waitlist WHERE id IN (SELECT w.id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash WHERE w.verified_at IS NULL AND w.confirmation_sent_at<unixepoch()-2592000 OR i.consumed_at<unixepoch()-2592000 LIMIT 100)"),
     ]).await?;
     Ok(())
 }

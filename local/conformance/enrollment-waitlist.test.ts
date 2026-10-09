@@ -326,6 +326,17 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       409,
     );
     await DB.prepare(
+      "UPDATE enrollment_mail SET state='sending',attempts=5,lease_token=?,lease_until=unixepoch()-1,last_attempt_at=unixepoch()-121 WHERE id=?",
+    )
+      .bind(hash('abandoned-final-lease'), issued.id)
+      .run();
+    await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
+    assert.equal(
+      (await DB.prepare('SELECT state FROM enrollment_mail WHERE id=?').bind(issued.id).first())
+        .state,
+      'failed',
+    );
+    await DB.prepare(
       "UPDATE enrollment_mail SET last_attempt_at=unixepoch()-61 WHERE kind='invitation'",
     ).run();
     await page.getByRole('button', { name: '一覧を更新' }).click();
@@ -482,6 +493,16 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       400,
     );
     await DB.prepare('UPDATE enrollment_waitlist SET created_at=unixepoch()-2592001 WHERE id=?')
+      .bind(unverified.id)
+      .run();
+    await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
+    assert.ok(
+      await DB.prepare('SELECT id FROM enrollment_waitlist WHERE id=?').bind(unverified.id).first(),
+      'A recent confirmation request retains an older contact',
+    );
+    await DB.prepare(
+      'UPDATE enrollment_waitlist SET confirmation_sent_at=unixepoch()-2592001 WHERE id=?',
+    )
       .bind(unverified.id)
       .run();
     await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
