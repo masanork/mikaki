@@ -296,12 +296,29 @@ test('copy authority cannot outlive the approving SSO or reach external admissio
     );
     assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_consent').first('n'), 0);
     // Captured primary SQL cannot bypass the Native deadline check at commit.
+    const before = await f.DB.prepare(
+      'SELECT * FROM work_authority_checkpoint WHERE id=1',
+    ).first<any>();
     await assert.rejects(
-      f.DB.prepare(
-        'INSERT INTO work_copy_consent(preparation_id,review_digest,preparation_digest,owner_id,session_hash,artifacts_account,expires_at,active,revision) SELECT operation_id,?,digest,owner_id,?,?,expires_at,1,1 FROM work_preparation WHERE operation_id=?',
-      )
-        .bind(record.review_digest, f.first.hash, 'a'.repeat(32), s.reserved.id)
-        .run(),
+      f.DB.batch([
+        // This disposable negative case supplies a matching, transaction-local
+        // frame, so the failure must come from the deadline binding guard.
+        f.DB.prepare(
+          'UPDATE work_authority_checkpoint SET sequence=sequence+1,tip=? WHERE id=1',
+        ).bind('c'.repeat(64)),
+        f.DB.prepare(
+          'INSERT INTO work_authority_frame(id,sequence,tip,closure) VALUES(1,?,?,1)',
+        ).bind(before.sequence + 1, 'c'.repeat(64)),
+        f.DB.prepare(
+          'INSERT INTO work_copy_consent(preparation_id,review_digest,preparation_digest,owner_id,session_hash,artifacts_account,expires_at,active,revision) SELECT operation_id,?,digest,owner_id,?,?,expires_at,1,1 FROM work_preparation WHERE operation_id=?',
+        ).bind(record.review_digest, f.first.hash, 'a'.repeat(32), s.reserved.id),
+        f.DB.prepare('DELETE FROM work_authority_frame WHERE id=1'),
+      ]),
+      /work_preparation_guard_failed/,
+    );
+    assert.deepEqual(
+      await f.DB.prepare('SELECT * FROM work_authority_checkpoint WHERE id=1').first(),
+      before,
     );
     assert.equal(
       await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
