@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { checkBindings, sourceIsCurrent } from './deploy-production.ts';
+import { assertWaitlistMailKey, checkBindings, sourceIsCurrent } from './deploy-production.ts';
+
+test('mail provisioning rejects malformed or noncanonical keys without exposing their value', () => {
+  assertWaitlistMailKey(Buffer.alloc(32, 7).toString('base64url'));
+  for (const value of [
+    undefined,
+    '',
+    Buffer.alloc(31).toString('base64url'),
+    Buffer.alloc(32).toString('base64'),
+    'a'.repeat(43),
+    'do-not-print-this-secret',
+  ]) {
+    assert.throws(
+      () => assertWaitlistMailKey(value),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes('WAITLIST_MAIL_KEY must be 32 bytes') &&
+        (value === '' || !error.message.includes(String(value))),
+    );
+  }
+});
 
 test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {
   const production = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
@@ -51,6 +71,12 @@ test('activation requires all configured native, Vault and runtime secret bindin
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
+    { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
+    {
+      name: 'ENROLLMENT_EMAIL',
+      type: 'send_email',
+      allowed_sender_addresses: config.send_email[0].allowed_sender_addresses,
+    },
     ...Object.entries(config.vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
   ];
   const version = {
@@ -63,6 +89,8 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'USERINFO_CLAIMS',
     'LOGOUT_QUEUE',
     'MIKAKI_READY_TOKEN',
+    'WAITLIST_MAIL_KEY',
+    'ENROLLMENT_EMAIL',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
   ]) {
     assert.throws(
@@ -79,6 +107,11 @@ test('activation requires all configured native, Vault and runtime secret bindin
       /Missing binding/,
     );
   }
+  const wrongSender = structuredClone(version);
+  wrongSender.resources.bindings.find(
+    (binding) => binding.name === 'ENROLLMENT_EMAIL',
+  )!.allowed_sender_addresses = ['other@example.test'];
+  assert.throws(() => checkBindings(wrongSender, config), /Binding ENROLLMENT_EMAIL/);
   const changed = structuredClone(version);
   changed.resources.bindings.find((binding) => binding.name === 'DB')!.database_id = 'wrong-db';
   assert.throws(() => checkBindings(changed, config), /Binding DB/);
@@ -94,6 +127,12 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
+    { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
+    {
+      name: 'ENROLLMENT_EMAIL',
+      type: 'send_email',
+      allowed_sender_addresses: config.send_email[0].allowed_sender_addresses,
+    },
     ...Object.entries(config.vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
   ];
   const version = {

@@ -256,6 +256,7 @@
     {#if enrollment}
       <section class="registration enrollment-form" aria-label={m.enrollHeading()}>
         {@render invitationForm()}
+        <a class="quiet" href={`/waitlist?lang=${locale}`}>{m.waitlistHeading()}</a>
       </section>
     {:else}
       <div class="bolt">

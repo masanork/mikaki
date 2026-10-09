@@ -23,6 +23,10 @@
     "raw": 96256,
     "gzip": 30720
   },
+  "/waitlist/waitlist.js": {
+    "raw": 96256,
+    "gzip": 30720
+  },
   "/vault/vault.js": {
     "raw": 323584,
     "gzip": 91136

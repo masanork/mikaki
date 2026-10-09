@@ -27,6 +27,9 @@
     >
   </main>
   <footer>
+    <a class="quiet home-waitlist" href={`/waitlist?lang=${locale}`}
+      >{m.waitlistHeading()}<span aria-hidden="true">↗</span></a
+    >
     <a class="quiet home-enroll" href={`/enroll?lang=${locale}`}
       >{m.homeEnroll()}<span aria-hidden="true">↗</span></a
     >

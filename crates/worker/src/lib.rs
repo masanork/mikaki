@@ -11,6 +11,10 @@ mod branding;
 #[cfg(target_arch = "wasm32")]
 mod dpop;
 #[cfg(target_arch = "wasm32")]
+mod enrollment_mail;
+#[cfg(target_arch = "wasm32")]
+mod enrollment_waitlist;
+#[cfg(target_arch = "wasm32")]
 mod token;
 #[cfg(target_arch = "wasm32")]
 use token::*;
@@ -2196,6 +2200,12 @@ pub async fn main(
         .post_async("/register/start", enrollment::start)
         .post_async("/register/finish", enrollment::finish)
         .get_async("/enroll", enrollment::entry)
+        .get_async("/waitlist", enrollment_waitlist::page)
+        .get_async("/waitlist/waitlist.js", enrollment_waitlist::script)
+        .post_async("/waitlist/request", enrollment_waitlist::request)
+        .post_async("/waitlist/confirm", enrollment_waitlist::confirm)
+        .get_async("/admin/waitlist", enrollment_waitlist::list)
+        .post_async("/admin/waitlist/start", admin_invitations::start)
         .get_async("/enroll/complete", enrollment::complete)
         .get_async("/enroll/complete.js", enrollment::complete_script)
         .post_async("/admin/invitations/start", admin_invitations::start)
@@ -2393,6 +2403,9 @@ pub async fn scheduled(
     env: worker::Env,
     _ctx: worker::ScheduleContext,
 ) {
+    if enrollment_mail::run_due(&env).await.is_err() {
+        worker::console_error!("{{\"event\":\"enrollment_mail_delivery_failure\"}}");
+    }
     if matches!(event.cron().as_str(), "*/10 * * * *" | "0 3 * * *")
         && vault_gc::run(&env, event.schedule() as u64).await.is_err()
     {

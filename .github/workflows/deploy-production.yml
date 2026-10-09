@@ -76,6 +76,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           OP_PRIVATE_JWK: ${{ secrets.OP_PRIVATE_JWK }}
           MIKAKI_READY_TOKEN: ${{ secrets.MIKAKI_READY_TOKEN }}
+          WAITLIST_MAIL_KEY: ${{ secrets.WAITLIST_MAIL_KEY }}
         run: node scripts/deploy-production.ts "$PROMOTION_DIR"
       - name: Remove temporary secret file
         if: always()

@@ -274,6 +274,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM account_security').first()).n, 1);
 
     await page.goto(`${issuer}/admin`);
+    await page.getByText('招待コードを直接渡す', { exact: true }).click();
     await page.getByRole('button', { name: 'Passkeyで招待を発行' }).click();
     const normalInvitation = await page.locator('code').textContent();
     assert.equal(normalInvitation?.length, 43);
