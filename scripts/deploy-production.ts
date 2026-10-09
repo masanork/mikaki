@@ -14,6 +14,7 @@ type Binding = Record<string, unknown>;
 type Config = {
   name: string;
   compatibility_date: string;
+  compatibility_flags?: string[];
   vars: Record<string, string>;
   d1_databases?: { binding: string; database_id: string }[];
   r2_buckets?: { binding: string; bucket_name: string }[];
@@ -40,11 +41,19 @@ type Config = {
 
 export function checkBindings(
   version: {
-    resources: { bindings: Binding[]; script_runtime: { compatibility_date: string } };
+    resources: {
+      bindings: Binding[];
+      script_runtime: { compatibility_date: string; compatibility_flags?: string[] };
+    };
   },
   config: Config,
 ) {
   assert.equal(version.resources.script_runtime.compatibility_date, config.compatibility_date);
+  assert.deepEqual(
+    [...(version.resources.script_runtime.compatibility_flags ?? [])].sort(),
+    [...(config.compatibility_flags ?? [])].sort(),
+    'Uploaded compatibility flags differ from the reviewed configuration',
+  );
   const bindings = version.resources.bindings;
   const names = new Set<string>();
   for (const binding of bindings) {
