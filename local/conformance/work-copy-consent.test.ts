@@ -275,3 +275,41 @@ test('a changed destination account cannot inherit consent and still permits own
     await f.close();
   }
 });
+
+test('copy authority cannot outlive the approving SSO or reach external admission with a longer deadline', async () => {
+  const f = await createSourceFixture(undefined, true, 'product', true, 120);
+  try {
+    const s = await seedPreparationReview(f);
+    const path = '/work/preparations/' + s.reserved.id + '/copy-consent';
+    const r = await f.http(path);
+    assert.equal(r.status, 200);
+    const { record } = (await r.json()) as any;
+    assert.equal(record.can_approve, false);
+    assert.equal(
+      (
+        await f.http(path, f.first, {
+          method: 'POST',
+          body: JSON.stringify({ format_version: 1, review_digest: record.review_digest }),
+        })
+      ).status,
+      409,
+    );
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_consent').first('n'), 0);
+    // Captured primary SQL cannot bypass the Native deadline check at commit.
+    await assert.rejects(
+      f.DB.prepare(
+        'INSERT INTO work_copy_consent(preparation_id,review_digest,preparation_digest,owner_id,session_hash,artifacts_account,expires_at,active,revision) SELECT operation_id,?,digest,owner_id,?,?,expires_at,1,1 FROM work_preparation WHERE operation_id=?',
+      )
+        .bind(record.review_digest, f.first.hash, 'a'.repeat(32), s.reserved.id)
+        .run(),
+    );
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(s.reserved.id)
+        .first('state'),
+      'reserved',
+    );
+  } finally {
+    await f.close();
+  }
+});

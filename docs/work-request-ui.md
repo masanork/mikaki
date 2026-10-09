@@ -27,7 +27,9 @@ upload, grant or launch in that HTTP request.
 
 Consent status is independent of copy completion and workload authority. Native
 productive preparation/credential dispatch and Git plans require current consent
-bound to the original live SSO, owner epoch, policy and source versions. Native
+bound to the original live SSO, owner epoch, policy and source versions. Approval
+requires the copy deadline to fall within that SSO's lifetime; the external
+gate's fixed operation deadline cannot extend it. Native
 and external gates also bind the destination account. Withdrawal prevents new
 productive copying; already admitted effects can remain uncertain, and existing
 copies/credentials require their separate retained cleanup path. A locked view

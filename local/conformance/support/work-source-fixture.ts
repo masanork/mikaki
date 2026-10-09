@@ -15,6 +15,7 @@ export async function createSourceFixture(
   preparationReview = false,
   entry: 'qualification' | 'product' | 'product-unenrolled' = 'qualification',
   copyConsent = false,
+  ownerSessionSeconds = 3600,
 ) {
   const product = entry !== 'qualification';
   const enrolled = entry === 'product';
@@ -270,7 +271,7 @@ export async function createSourceFixture(
           `sso:${account}`,
           account,
           `credential:${account}`,
-          now + 3600,
+          now + ownerSessionSeconds,
         ),
         DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(`sso:${account}`, hash, now),
       ]);

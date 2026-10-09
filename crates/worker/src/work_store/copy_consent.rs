@@ -13,6 +13,7 @@ struct ReviewRow {
     artifacts_account: Option<String>,
     active: Option<u8>,
     consent_current: u8,
+    session_expires_at: u64,
 }
 pub fn copy_account(env: &worker::Env) -> Result<String> {
     let account = env.var("WORK_ARTIFACTS_ACCOUNT")?.to_string();
@@ -34,7 +35,8 @@ impl WorkStore {
         }
         self.require_current_authority().await?;
         let row: ReviewRow = self.owner_statement(session,
-            "SELECT p.body,p.state,p.revision,EXISTS(SELECT 1 FROM work_disclosure_source_current d WHERE d.digest=p.disclosure_digest) AS sources_current,c.review_digest,c.artifacts_account,c.active,EXISTS(SELECT 1 FROM work_copy_consent_current v WHERE v.preparation_id=p.operation_id) AS consent_current \
+            "SELECT p.body,p.state,p.revision,EXISTS(SELECT 1 FROM work_disclosure_source_current d WHERE d.digest=p.disclosure_digest) AS sources_current,c.review_digest,c.artifacts_account,c.active,EXISTS(SELECT 1 FROM work_copy_consent_current v WHERE v.preparation_id=p.operation_id) AS consent_current, \
+             (SELECT ss.expires_at FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id WHERE sx.secret_hash=?1) AS session_expires_at \
              FROM work_preparation p JOIN authenticated_owner a ON a.account_id=p.owner_id \
              LEFT JOIN work_copy_consent c ON c.preparation_id=p.operation_id WHERE p.operation_id=?2", id)?
             .first(None).await?.ok_or(Denied::BindingMismatch)?;
@@ -56,7 +58,7 @@ impl WorkStore {
         Ok(json!({"review_digest":digest,"subject":subject,
             "status":match row.active { Some(1)=>"approved",Some(0)=>"withdrawn",_=>"unconfirmed" },
             "current":row.consent_current==1 && row.artifacts_account.as_deref()==Some(account),
-            "can_approve":row.active.is_none() && row.sources_current==1 && row.state==PreparationState::Reserved && row.revision==1 && p.expires_at()>now()}))
+            "can_approve":row.active.is_none() && row.sources_current==1 && row.state==PreparationState::Reserved && row.revision==1 && p.expires_at()>now() && p.expires_at()<=row.session_expires_at}))
     }
     pub async fn confirm_copy(
         &self,

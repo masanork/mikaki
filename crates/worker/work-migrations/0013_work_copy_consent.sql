@@ -22,7 +22,7 @@ JOIN sso_session ss ON ss.sso_id=sx.sso_id AND ss.account_id=c.owner_id AND ss.e
 JOIN credential k ON k.credential_id=ss.credential_id AND k.account_id=ss.account_id AND k.active=1
 JOIN account_security a ON a.account_id=c.owner_id AND a.active=1 AND a.epoch=p.owner_epoch
 WHERE c.active=1 AND c.expires_at=p.expires_at AND c.expires_at>unixepoch()
- AND ss.revoked=0 AND ss.expires_at>unixepoch() AND p.state IN('reserved','dispatched')
+ AND ss.revoked=0 AND ss.expires_at>=p.expires_at AND p.state IN('reserved','dispatched')
  AND EXISTS(SELECT 1 FROM work_preparation_policy WHERE id=1)
  AND EXISTS(SELECT 1 FROM work_resource_policy WHERE id=1);
 
@@ -35,7 +35,7 @@ WHEN NEW.active!=1 OR NEW.revision!=1 OR NOT EXISTS(
  JOIN account_security a ON a.account_id=p.owner_id AND a.active=1 AND a.epoch=p.owner_epoch
  WHERE p.operation_id=NEW.preparation_id AND p.digest=NEW.preparation_digest AND p.owner_id=NEW.owner_id
  AND p.state='reserved' AND p.revision=1 AND NEW.expires_at=p.expires_at AND p.expires_at>unixepoch()
- AND ss.revoked=0 AND ss.expires_at>unixepoch())
+ AND ss.revoked=0 AND ss.expires_at>=p.expires_at)
  OR NOT EXISTS(SELECT 1 FROM work_preparation_policy WHERE id=1)
  OR NOT EXISTS(SELECT 1 FROM work_resource_policy WHERE id=1)
 BEGIN SELECT RAISE(ABORT,'work_preparation_guard_failed'); END;
