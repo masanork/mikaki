@@ -36,6 +36,15 @@ Managed RP registration and key changes are described in [RP client operations](
 
 ## Deploy a reviewed commit
 
+The OP's Backchannel Logout sender calls dynamically registered RP URLs through
+global `fetch`. Its configs enable
+[`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public)
+so Cloudflare-hosted recipients are reached through their public routes. Internal
+Claim Worker calls still use service bindings. Promotion checks the uploaded
+compatibility flags as well as the date and bindings before activation. A matching
+config is not delivery evidence: verify the outbox's actual HTTP status and final
+state after the bounded retry runs.
+
 Run the following from the repository root, using an exact reviewed commit in a clean checkout that preserves the active native capabilities and schema. Record that commit and the current Worker version before changing production. The guards below must pass. The commands use the repository-pinned Wrangler and production config. Set `MIKAKI_SECRETS_FILE` to the ignored local file or its absolute path when deploying from an isolated checkout; verify that it exists, contains both required secret names, and is mode 0600. Never commit or print the file or its values.
 
 ```sh
