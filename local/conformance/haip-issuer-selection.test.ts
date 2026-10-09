@@ -38,6 +38,18 @@ test('targeted modules are validated and preserve official plan ordering', () =>
   ]);
 });
 
+test('official module names may contain underscores and still require exact plan membership', () => {
+  const moduleName = 'fapi2-security-profile-final-par-attempt-reuse-request_uri';
+  const selection = parseHaipIssuerSelection([`--module=${moduleName}`]);
+  const available = [
+    { testModule: 'fapi2-security-profile-final-par-attempt-reuse-request_uri' },
+    { testModule: 'fapi2-security-profile-final-par-attempt-reuse-request-uri' },
+  ];
+
+  assert.deepEqual(selection.moduleNames, [moduleName]);
+  assert.deepEqual(selectOfficialHaipModules(available, selection.moduleNames), [available[0]]);
+});
+
 test('each official format can be selected independently', () => {
   assert.deepEqual(
     resolveOfficialHaipFormats(parseHaipIssuerSelection(['--format=sd_jwt_vc']).formats),
@@ -62,6 +74,20 @@ test('unknown, duplicate, empty, and conflicting selectors fail closed', () => {
   );
   assert.throws(() => parseHaipIssuerSelection(['--module=']), /Invalid/);
   assert.throws(() => parseHaipIssuerSelection(['--module=../token']), /Invalid/);
+  assert.throws(
+    () =>
+      parseHaipIssuerSelection([
+        '--module=fapi2-security-profile-final-par-attempt-reuse/request_uri',
+      ]),
+    /Invalid/,
+  );
+  assert.throws(
+    () =>
+      parseHaipIssuerSelection([
+        '--module=fapi2-security-profile-final-par-attempt-reuse?request_uri',
+      ]),
+    /Invalid/,
+  );
   assert.throws(() => parseHaipIssuerSelection(['--unknown']), /Unsupported/);
   assert.throws(
     () => parseHaipIssuerSelection(['--module=oid4vci-1_0-issuer-case-a', '--positive']),

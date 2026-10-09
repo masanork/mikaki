@@ -18,7 +18,7 @@ const legacyFlags = new Set([
   '--positive',
 ]);
 const officialModuleName =
-  /^(?:oid4vci-1_0-issuer|fapi2-security-profile-final)-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  /^(?:oid4vci-1_0-issuer|fapi2-security-profile-final)-[a-z0-9_]+(?:-[a-z0-9_]+)*$/;
 
 export function parseHaipIssuerSelection(args: readonly string[]): HaipIssuerSelection {
   const parsed: HaipIssuerSelection = { legacyFlags: [], moduleNames: [], formats: [] };
