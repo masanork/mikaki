@@ -286,6 +286,9 @@ pub async fn finish(
             .bind(&[JsValue::from_f64(proof.counter() as f64),JsValue::from_f64(f64::from(proof.backup_state())),JsValue::from_str(&admin.credential_id),JsValue::from_f64(admin.revision as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
             .bind(&[JsValue::from_str(&format!("{guard}-key"))])?,
+        // Recheck authority in the same snapshot as consumption, including resends.
+        db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN EXISTS(SELECT 1 FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id JOIN account_security a ON a.account_id=ss.account_id JOIN account_role ar ON ar.account_id=ss.account_id AND ar.role='admin' AND ar.active=1 JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id AND c.active=1 WHERE sx.secret_hash=?2 AND ss.account_id=?3 AND ss.credential_id=?4 AND ss.revoked=0 AND ss.expires_at>unixepoch() AND a.active=1 AND a.epoch=ss.epoch) THEN 1 ELSE 0 END)")
+            .bind(&[format!("{guard}-auth").into(),browser_hash.clone().into(),admin.account_id.clone().into(),admin.credential_id.clone().into()])?,
     ];
     if row.waitlist_action.as_deref() != Some("resend") {
         statements.extend([
@@ -321,13 +324,16 @@ pub async fn finish(
                 .bind(&[format!("{guard}-target").into()])?,
         );
     }
-    for suffix in ["", "-key", "-invite"] {
+    for suffix in ["", "-key", "-auth", "-invite"] {
         statements.push(
             db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
                 .bind(&[format!("{guard}{suffix}").into()])?,
         );
     }
     if let Err(error) = db.batch(statements).await {
+        if !authenticated(&db, &browser_hash).await? {
+            return reject(403);
+        }
         #[derive(Deserialize)]
         struct Consumed {
             consumed: i64,

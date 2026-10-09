@@ -35,8 +35,10 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     const { DB } = await worker.getEnv();
     await DB.batch([
       DB.prepare('CREATE TABLE fixture_mail_capture(id TEXT PRIMARY KEY,message TEXT NOT NULL)'),
-      DB.prepare('CREATE TABLE fixture_mail_control(id INTEGER PRIMARY KEY,fail INTEGER NOT NULL)'),
-      DB.prepare('INSERT INTO fixture_mail_control VALUES(1,0)'),
+      DB.prepare(
+        'CREATE TABLE fixture_mail_control(id INTEGER PRIMARY KEY,fail INTEGER NOT NULL,revoke_before_batch INTEGER NOT NULL DEFAULT 0)',
+      ),
+      DB.prepare('INSERT INTO fixture_mail_control(id,fail) VALUES(1,0)'),
     ]);
     await activateWorkerPolicy(
       DB,
@@ -126,6 +128,7 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     let lastFinish: { body: string; headers: Record<string, string> } | undefined;
+    let lastFinishStatus = 0;
     let raceStatuses: number[] = [];
     let raceFirstApproval = true;
     await page.route(
@@ -151,6 +154,8 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
           raceStatuses = responses.map((item) => item.status);
           response = responses.find((item) => item.ok) ?? responses[0];
         } else response = await worker.fetch(request.url(), init);
+        if (new URL(request.url()).pathname === '/admin/invitations/finish')
+          lastFinishStatus = response.status;
         await route.fulfill({
           status: response.status,
           headers: Object.fromEntries(response.headers),
@@ -323,6 +328,37 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     await DB.prepare(
       "UPDATE enrollment_mail SET last_attempt_at=unixepoch()-61 WHERE kind='invitation'",
     ).run();
+    await page.getByRole('button', { name: '一覧を更新' }).click();
+    // Revoke after the server has verified the assertion, immediately before its batch.
+    await DB.prepare('UPDATE fixture_mail_control SET revoke_before_batch=1 WHERE id=1').run();
+    await page.getByRole('button', { name: '招待メールを再送' }).click();
+    await page.getByRole('alert').waitFor();
+    assert.equal(lastFinishStatus, 403);
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT count(*) AS n FROM fixture_mail_capture WHERE json_extract(message,'$.subject')='mikakiへの招待'",
+        ).first()
+      ).n,
+      1,
+    );
+    assert.equal(
+      (
+        await DB.prepare('SELECT consumed FROM admin_invitation_transaction WHERE operation_id=?')
+          .bind(JSON.parse(lastFinish!.body).operation_id)
+          .first()
+      ).consumed,
+      0,
+    );
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT count(*) AS n FROM enrollment_waitlist_audit WHERE action='resend'",
+        ).first()
+      ).n,
+      0,
+    );
+    await DB.prepare("UPDATE account_role SET active=1 WHERE role='admin'").run();
     await page.getByRole('button', { name: '一覧を更新' }).click();
     await page.getByRole('button', { name: '招待メールを再送' }).click();
     await page.getByText('招待メールを送信しました。', { exact: true }).waitFor();

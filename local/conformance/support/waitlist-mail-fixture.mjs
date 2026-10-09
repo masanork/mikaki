@@ -4,6 +4,30 @@ export default class MailFixture extends Op {
   constructor(ctx, env) {
     super(ctx, {
       ...env,
+      DB: new Proxy(env.DB, {
+        get(target, property) {
+          if (property === 'batch')
+            return async (statements) => {
+              if (
+                await target
+                  .prepare('SELECT revoke_before_batch FROM fixture_mail_control WHERE id=1')
+                  .first('revoke_before_batch')
+              ) {
+                await target.batch([
+                  target.prepare("UPDATE account_role SET active=0 WHERE role='admin'"),
+                  target.prepare(
+                    'UPDATE fixture_mail_control SET revoke_before_batch=0 WHERE id=1',
+                  ),
+                ]);
+              }
+              return target.batch(statements);
+            };
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' && property !== 'constructor'
+            ? value.bind(target)
+            : value;
+        },
+      }),
       ENROLLMENT_EMAIL: {
         async send(message) {
           const fail = await env.DB.prepare(
