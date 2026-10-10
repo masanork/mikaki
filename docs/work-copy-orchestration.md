@@ -84,6 +84,8 @@ The preparation review links to a separately bundled authenticated
 required to start. The screen distinguishes not started, queued, running,
 blocked/unknown and verified. Refresh reads Native status; it does not submit
 another start. Stop requests safety cleanup of the existing job.
+Withdrawing approval keeps the progress link available for the existing copy;
+it never makes that job startable again.
 
 The shared owner display lease clears local status and acknowledgement on
 lock, hidden state or session replacement, and rejects late replies. Reopening

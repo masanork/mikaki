@@ -180,6 +180,35 @@ test('copy progress needs a fresh start acknowledgement and discards late result
         await page.screenshot({ path: shots + '/verified-en-mobile.png', fullPage: true });
       },
     );
+    await t.test(
+      'withdrawn approval retains navigation to the existing verified copy',
+      async () => {
+        assert.equal(
+          (
+            await f.product(`/work/preparations/${f.p.id}/copy-consent`, 'DELETE', {
+              format_version: 1,
+              review_digest: f.digest,
+            })
+          ).status,
+          200,
+        );
+        await page.goto('https://work.test/work/preparation-review?lang=ja');
+        await page.locator('.preparation-list button').first().click();
+        const progress = page.getByRole('link', { name: 'コピーの進捗を開く', exact: true });
+        await expect(progress).toBeVisible();
+        await progress.click();
+        await expect(
+          page.getByText(
+            'コードと選択ファイルのコピーを検証し、コピー用の認証情報の失効を確認しました。作業の委任は未実行です。',
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await expect(page.getByRole('button', { name: 'コピーを開始', exact: true })).toHaveCount(
+          0,
+        );
+        assert.equal(posted.length, 1);
+      },
+    );
     assert.deepEqual(errors, []);
   } finally {
     release?.();
