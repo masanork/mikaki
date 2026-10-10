@@ -57,7 +57,7 @@ for (const change of ['withdraw', 'floor', 'account', 'key', 'expiry'] as const)
           200,
         );
       else if (change === 'floor') {
-        const r = await f.fixtureFetch('/checkpoint-fixture', { action: 'floor', floor: 2 });
+        const r = await f.fixtureFetch('/checkpoint-fixture', { action: 'raise-floor', floor: 2 });
         assert.equal(r.status, 200);
         await r.text();
       } else if (change === 'account') await f.restart({ WORK_ARTIFACTS_ACCOUNT: 'b'.repeat(32) });

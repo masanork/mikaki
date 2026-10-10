@@ -14,6 +14,10 @@ queues a job and its audit in one covered primary transaction before notifying
 the private Workflow starter. Every job keeps the reviewed digest and preparation
 ID. The owner transport accepts only format version and reviewed digest, with
 live SSO, same-origin, bounded strict JSON and current Native authority checks.
+Approval remains bound to the original live SSO. A replacement login for the
+same owner cannot adopt that approval or queue another job. Background
+progression checks the approving session rather than
+the currently open browser session.
 
 The Workflow identity is always `copy-<preparation_id>`. Lost starter replies can
 leave a queued outbox. An exact owner retry or the bounded scheduled drain
@@ -47,6 +51,11 @@ admission still protects against primary D1 or Workflow restoration. The Native
 completion transaction repeats current authority and consent; the final phase
 requires the actual verified preparation. Provider acknowledgements alone do
 not certify copying or data-plane credential refusal.
+Mint progression requires both encrypted Native custody and explicit OP
+synchronization. Final verification requires a matching preparation ID and
+verified gate response together with the actual Native verified record.
+After a completed initial effect, withdrawal, a raised release floor, a changed
+provider account, a missing wrapping key or expiry fences the next effect.
 
 Each productive Workflow step has retries disabled and a bounded timeout.
 This follows Cloudflare's requirement to make external effects idempotent and
@@ -100,6 +109,12 @@ effect journals, actual Cloudflare Workflow engine and real loopback Git smart
 HTTP. Owner identities, provider IDs and secrets are synthetic. Browser tests
 exercise Japanese/English, 375px layout, accessibility, explicit start,
 read-only progress recovery and a start committed before a late locked response.
+The integrated test also creates the preparation through the public composition
+API, records separate approval, materializes its exact Native disclosure into
+sealed Git packs and finishes both copies through the Workflow and HTTP host.
+It verifies all six credential closures and absence of task/request/grant/run
+authority. Session fixtures are seeded before checkpoint enrollment; expiry
+tests wait for their actual deadline without changing protected SSO rows.
 
 ```sh
 npm run test:work-copy-job

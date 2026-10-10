@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a/M5b source/preparation inspection, owner selection composition, explicit copy consent, productive copy orchestration and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main`. Native/UI source remains `34f31ca`; M6f adds sealed source registration, private R2 supply and the Cloudflare Containers Git-host configuration at `96b33df`, 2026-10-10 JST. Delegation, actual Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Selected source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines the qualified Workflow and Git-host work with public composition, session-bound approval and partial-progress authority checks, 2026-10-10 JST. Delegation, actual Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -24,7 +24,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                    | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                                                                                                                                                              |
 | M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
-| M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Owner composition, explicit copy approval and productive copy orchestration are integrated at `34f31ca`; the host integration at `96b33df` passes 64 focused regression cases with that unchanged product bundle. Earlier 423/26-case results retain their separate scopes. Delegation, activity/result controls and deployment remain pending. |
+| M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Integrated source `5cf4616` passes 43 copy/Workflow/host/API/browser cases, including public composition through sealed-host verification and partial-progress authority loss. The 400-case broad regression and 2 Vault browser cases have their separate scopes below. Delegation, activity/result controls and deployment remain pending. |
 | M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence composition and sealed private Git-host provisioning locally. Missing/unobserved custody, actual Cloudflare Git-host deployment and release remain pending.                                                                                      |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
@@ -76,7 +76,7 @@ M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 1
 
 Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
 
-Next: connect productive copy orchestration to the explicit copy confirmation, then connect delegation to qualified issuer/launcher contracts and place the Git host on Cloudflare. M5a/M5b now compose and inspect selected preparations; M6a–M6e qualify the private mint/Git/evidence chain locally. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+Next: qualify the private Git host in an isolated Cloudflare environment, then reconcile existing protected development allocations against their original identities before another real Artifacts trial. Delegation needs qualified issuer/launcher contracts. Owner composition, approval and productive Workflow copying are now locally connected.
 
 Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
 
@@ -668,3 +668,62 @@ Artifacts trial. The six protected repositories/journals and preserved stash
 remain intact. No push, remote deployment, provider create/mint or production
 activation is included. This delivery record changes documentation only;
 selected host source remains `96b33df` and Native/UI source remains `34f31ca`.
+
+
+## Integrated composition, consent, Workflow and sealed host
+
+Selected product source is clean
+`5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6`. It merges the qualified
+Workflow/progress changes and Git-host provisioning without replacing their
+independent permanent admissions. The previous browser-driven bounded-copy
+candidate remains preserved; this integrated product uses the Workflow engine.
+
+The public composition API creates a new preparation without approval or job
+side effects. Its exact Native disclosure then supplies the sealed host package.
+Separate owner approval and explicit start drive both real Git copies, six
+credential closures and final Native verification. Mint completion now also
+requires explicit OP synchronization; the verifier response must identify the
+same preparation and verified state alongside the actual Native verified record.
+
+Additional tests complete the first initial effect before withdrawing consent,
+raising the release floor, changing the provider account, removing the wrapping
+key or reaching the real session/deadline expiry. Each fences the next effect
+without creating another repository, minting or sending Git. Persistent restart
+retains one queued job; a replacement same-owner login cannot adopt its original
+session-bound consent. SSO fixtures are seeded before enrollment, and expiry
+uses elapsed time instead of direct protected-row mutation.
+
+| Check | Result and selected scope |
+| --- | --- |
+| Existing authority, checkpoint, custody, effects, mint/recovery/refusal, fixed Git and evidence | **311/311** at `1849e00`; Native production Rust is identical to the selected source. |
+| Existing owner/source/preparation/consent/composition UI, lease and OP/service/enrollment/logout regressions | **89/89** at `1849e00`. |
+| Final integrated copy/Workflow/progress, OP boundary and host/provisioning suite | **43/43** against the clean rebuilt `5cf4616` product and fresh qualification entry. |
+| Isolated Owner Vault browser lane | **2/2** against `5cf4616`, after the integrated run completed. |
+| Native workspace and production Wasm Clippy | **213/213**, including doctests; warnings denied. |
+| Baseline/Owner schema, roster, release/reset, Agent SQL, static SQL and budget-unit checks | **45/45**. |
+
+These are **445 passing runtime cases across the recorded scopes**, not a
+single-source rerun of all previous checks. The final rerun changes only the
+test fixture action to the actual `raise-floor` protocol; production source
+stays `5cf4616`. The Node/Worker UI/service/source/effect/checkpoint/Workflow/
+Git-host type checks, Rustfmt, full Prettier, product-source, **634-key** bilingual
+catalog and documentation checks pass. Japanese/English and 375px copy progress
+screenshots were visually inspected. The explicit Docker image lane remains
+qualified at its recorded unchanged host source `96b33df` above.
+
+The budget artifact and embedded Worker both identify clean `5cf4616`.
+OP Wasm measures **7,339,046 raw / 2,518,742 gzip-estimate bytes** and Claim Wasm
+**708,537 / 234,998**. Served source/preparation/progress JavaScript measures
+**179,999 / 57,145**, **191,626 / 60,596** and **167,516 / 52,744** respectively.
+Vault JavaScript remains **302,958 / 87,015**. All existing budgets pass without
+adjustment; gzip figures are local estimates. The integrated TAP report is
+`local/generated/work-store-main/workflow-integration-5cf4616.tap`.
+
+Next remains isolated Cloudflare private-host ingress, cold provisioning and
+latency qualification, followed by reconciliation of the original protected
+allocations before a real dev Artifacts trial. Qualified issuer/launcher
+contracts and activity/result controls follow for delegation. No push, remote
+deployment, provider create/mint, production binding/migration change or remote
+CI claim is included. Protected journals/resources, old branches and the
+preserved stash remain intact. This delivery record changes documentation and
+a test action only; selected product source remains `5cf4616`.
