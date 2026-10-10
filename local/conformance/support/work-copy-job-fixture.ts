@@ -229,6 +229,8 @@ export async function copyJobFixture(extra: Record<string, string> = {}, compose
       call: (...args: Parameters<typeof op.call>) => op.call(...args),
       triggerCopy: (...args: Parameters<typeof op.triggerCopy>) => op.triggerCopy(...args),
       drainCopies: () => op.drainCopies(),
+      createFailedCopyWorkflow: (...args: Parameters<typeof op.createFailedCopyWorkflow>) =>
+        op.createFailedCopyWorkflow(...args),
       p,
       digest,
       approve,
