@@ -20,6 +20,12 @@ fn main() {
         "work-sources.html",
         "work-source-view.ts",
         "work-compose-view.ts",
+        "work-copy.ts",
+        "work-copy.html",
+        "work-copy-view.ts",
+        "WorkCopy.svelte",
+        "WorkCopySession.svelte",
+        "WorkCopyWorkspace.svelte",
         "WorkSources.svelte",
         "WorkSourceWorkspace.svelte",
         "WorkSourceSession.svelte",
@@ -206,6 +212,7 @@ fn main() {
         "logout",
         "work-sources",
         "work-preparations",
+        "work-copy",
     ] {
         let status = Command::new(&vite)
             .arg("build")

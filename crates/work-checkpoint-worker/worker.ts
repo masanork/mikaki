@@ -987,6 +987,11 @@ export class WorkMintMaintenance extends WorkerEntrypoint<Env> {
   begin(attempt: unknown, digest: unknown) {
     return object(this.env).beginMintCleanup(attempt, digest);
   }
+  cancel(attempt: unknown, digest: unknown) {
+    // Explicit safety cancellation also fences an already custodied mint. It
+    // supplies no mint/custody/admission capability and retains the same slot.
+    return object(this.env).beginMintCleanup(attempt, digest, true);
+  }
   revoked(attempt: unknown, digest: unknown) {
     return object(this.env).revokeMint(attempt, digest, true);
   }

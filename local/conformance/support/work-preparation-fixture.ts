@@ -27,6 +27,7 @@ export async function preparationFixture(
     loseCreate?: boolean;
   },
   gitExecutor?: (request: Request) => Promise<Response>,
+  productCopy = false,
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -55,12 +56,33 @@ export async function preparationFixture(
     d1Databases: { DB: 'preparation-probe' },
     r2Buckets: { WORK_GIT_PAYLOADS: 'private-work-candidate-payloads' },
   };
+  const copyEnabled = bindings.WORK_COPY_EXECUTION_ENABLED === 'true';
+  const copyBindings: NonNullable<V4WorkerOptions['serviceBindings']> = copyEnabled
+    ? {
+        WORK_COPY_STARTER:
+          bindings.LOCAL_COPY_TRIGGER_UNAVAILABLE === 'true'
+            ? async () => new MiniflareResponse(null, { status: 409 })
+            : { name: 'work-copy', entrypoint: 'WorkCopyStarter' },
+        WORK_COPY_INITIAL: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
+        WORK_COPY_INITIAL_RECONCILER: {
+          name: 'work-reconcile',
+          entrypoint: 'WorkEffectReconciler',
+        },
+        WORK_COPY_MINT: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+        WORK_COPY_GIT: { name: 'work-git', entrypoint: 'WorkGitGate' },
+        WORK_COPY_RECONCILER: { name: 'mint-reconcile', entrypoint: 'WorkMintReconciler' },
+        WORK_COPY_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
+        WORK_COPY_VERIFIER: { name: 'work-preparation', entrypoint: 'WorkPreparationGate' },
+      }
+    : {};
   const mf = new Miniflare(
     convertV4MiniflareOptions({
+      unsafeTriggerHandlers: copyEnabled,
       workers: [
         {
           ...ownerWorker,
           serviceBindings: {
+            ...copyBindings,
             OP_PUBLIC: 'preparation-owner',
             OP_AUTHORITY_ADMIN: { name: 'preparation-owner', entrypoint: 'OpAuthorityAdmin' },
             ...(effectEnabled
@@ -171,6 +193,64 @@ export async function preparationFixture(
               : {}),
           },
         },
+        ...(productCopy
+          ? [
+              {
+                name: 'preparation-product',
+                modulesRoot: join(root, 'crates/worker/build'),
+                modules: [
+                  {
+                    type: 'ESModule' as const,
+                    path: join(root, 'crates/worker/build/worker/service.mjs'),
+                  },
+                  {
+                    type: 'ESModule' as const,
+                    path: join(root, 'crates/worker/build/worker/shim.mjs'),
+                  },
+                  { type: 'ESModule' as const, path: join(root, 'crates/worker/build/index.js') },
+                  {
+                    type: 'CompiledWasm' as const,
+                    path: join(root, 'crates/worker/build/index_bg.wasm'),
+                  },
+                ],
+                compatibilityDate: '2026-10-06',
+                versionMetadata: 'CF_VERSION_METADATA',
+                bindings: ownerWorker.bindings,
+                d1Databases: ownerWorker.d1Databases,
+                r2Buckets: ownerWorker.r2Buckets,
+                serviceBindings: {
+                  ...copyBindings,
+                  WORK_AUTHORITY_CHECKPOINT: {
+                    name: 'work-checkpoint',
+                    entrypoint: 'WorkCheckpointService',
+                  },
+                },
+              },
+            ]
+          : []),
+        ...(copyEnabled
+          ? [
+              {
+                name: 'work-copy',
+                modules: true,
+                scriptPath: join(modulesRoot, 'copy-workflow.mjs'),
+                compatibilityDate: '2026-10-10',
+                bindings: {
+                  WORK_COPY_WORKFLOW_ENABLED:
+                    bindings.LOCAL_COPY_TRIGGER_DISABLED === 'true' ? 'false' : 'true',
+                },
+                workflows: {
+                  COPY_WORKFLOW: { name: 'synthetic-copy', className: 'WorkCopyWorkflow' },
+                },
+                serviceBindings: {
+                  OP_COPY_STORE: {
+                    name: productCopy ? 'preparation-product' : 'preparation-owner',
+                    entrypoint: 'WorkCopyStore',
+                  },
+                },
+              },
+            ]
+          : []),
         ...(checkpointEnabled
           ? [
               {
@@ -681,6 +761,38 @@ export async function preparationFixture(
     call,
     initialize,
     ownerRead,
+    productFetch: async (path: string, options: FixtureRequestOptions = {}) => {
+      // Dispatch through the ingress harness (as Wrangler's test harness does),
+      // preserving the browser Origin instead of hitting the Node RPC bridge.
+      const headers = new Headers(options.headers);
+      if (!headers.has('Cookie')) headers.set('Cookie', '__Host-op-sso=synthetic-delivery-session');
+      headers.set('MF-Route-Override', productCopy ? 'preparation-product' : 'preparation-owner');
+      return mf.dispatchFetch('https://work.test' + path, {
+        ...options,
+        headers: Object.fromEntries(headers),
+      });
+    },
+    copyPrivate: async (input: Record<string, unknown>) => {
+      // Retrieve the actual private facade from the workflow's bindings.
+      const workflowEnv = await mf.getBindings('work-copy');
+      const copy = workflowEnv.OP_COPY_STORE as import('@cloudflare/workers-types').Fetcher;
+      return copy.fetch('https://private.invalid/copy-job', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    triggerCopy: async (id: string) => {
+      const env = await mf.getBindings(productCopy ? 'preparation-product' : 'preparation-owner');
+      const starter = env.WORK_COPY_STARTER as import('@cloudflare/workers-types').Fetcher;
+      return starter.fetch('https://private.invalid/start', {
+        method: 'POST',
+        body: JSON.stringify({ preparation_id: id }),
+      });
+    },
+    drainCopies: () =>
+      mf.dispatchFetch('https://work.test/cdn-cgi/local/scheduled?format=json&cron=*+*+*+*+*', {
+        headers: { 'MF-Route-Override': 'work-copy' },
+      }),
     account,
     session,
     fixtureFetch,

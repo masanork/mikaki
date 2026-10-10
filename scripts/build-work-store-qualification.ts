@@ -87,7 +87,7 @@ execFileSync(
 await writeFile(
   join(out, 'worker.mjs'),
   `import { WorkerEntrypoint } from 'cloudflare:workers';
-import { initSync, fetch, administer_op_authority, administer_work_effect } from './qualification.js';
+import { initSync, fetch, administer_op_authority, administer_work_effect, administer_work_copy } from './qualification.js';
 import { authorityFacades } from './authority-admin-facade.mjs';
 import module from './qualification_bg.wasm';
 initSync({ module });
@@ -108,9 +108,10 @@ class FixtureRustOp extends WorkerEntrypoint {
   fetch(request) { return fetch(request, this.env, this.ctx); }
   administer_op_authority(request, env) { return administer_op_authority(request, env); }
   administer_work_effect(request, env) { return administer_work_effect(request, env); }
+  administer_work_copy(request, env) { return administer_work_copy(request, env); }
 }
-const {Admin, Effect, Mint, Git, Public} = authorityFacades(FixtureRustOp);
-export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore, Mint as WorkMintStore, Git as WorkGitStore};
+const {Admin, Effect, Mint, Git, Copy, Public} = authorityFacades(FixtureRustOp);
+export {Admin as OpAuthorityAdmin, Effect as WorkEffectStore, Mint as WorkMintStore, Git as WorkGitStore, Copy as WorkCopyStore};
 export class FixtureEffectBridge extends WorkerEntrypoint {
   async fetch(request) {
     const refusalInput=await request.clone().json();
@@ -354,6 +355,7 @@ for (const [source, name] of [
   ['crates/work-effect-worker/mint.ts', 'mint.mjs'],
   ['crates/work-effect-worker/git.ts', 'git.mjs'],
   ['crates/work-effect-worker/preparation.ts', 'preparation.mjs'],
+  ['crates/work-copy-worker/worker.ts', 'copy-workflow.mjs'],
   ['crates/work-effect-worker/git-transport.ts', 'git-transport.mjs'],
   ['crates/work-effect-worker/mint-maintenance.ts', 'mint-maintenance.mjs'],
   ['crates/work-effect-worker/mint-reconcile.ts', 'mint-reconcile.mjs'],

@@ -617,5 +617,20 @@
   "preparation_copy_inactive": "Consent is recorded, but it does not currently permit copying.",
   "preparation_copy_withdraw": "Withdraw copy consent",
   "preparation_copy_withdrawn": "Consent withdrawn. New copying is no longer permitted.",
-  "preparation_copy_withdraw_boundary": "Withdrawal does not erase existing copies. Copies and credentials already created require separate cleanup."
+  "preparation_copy_withdraw_boundary": "Withdrawal does not erase existing copies. Copies and credentials already created require separate cleanup.",
+  "copy_title": "Copy progress",
+  "copy_boundary": "This process performs only the approved copy. Delegation and agent launch require separate confirmation.",
+  "copy_open": "Open copy progress",
+  "copy_refresh": "Refresh progress",
+  "copy_not_started": "Copying has not started.",
+  "copy_queued": "The start request is saved. Execution is not yet confirmed.",
+  "copy_running": "Copy processing is in progress. Completion is not yet confirmed.",
+  "copy_verified": "Both copies are verified and the copy credentials are confirmed closed. No work has been delegated.",
+  "copy_blocked": "Processing stopped or its outcome is uncertain. Do not resend the copy; check progress and credential cleanup.",
+  "copy_progress": "Confirmed steps: {done} / {total}",
+  "copy_acknowledge": "Start copying this exact preparation that I approved on the review screen.",
+  "copy_start": "Start copy",
+  "copy_unavailable": "The result could not be confirmed. Refresh progress to read the saved outcome.",
+  "copy_cleanup_pending": "Some credential cleanup remains unconfirmed.",
+  "copy_cleanup": "Stop and check credential cleanup"
 }

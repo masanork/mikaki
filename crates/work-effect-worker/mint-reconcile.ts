@@ -10,6 +10,7 @@ import type { MaintenanceAccess } from './maintenance';
 interface Maintenance {
   lookup(attempt: string): Promise<MintRecord | null>;
   begin(attempt: string, digest: string): Promise<MintRecord>;
+  cancel(attempt: string, digest: string): Promise<MintRecord>;
   revoked(attempt: string, digest: string): Promise<void>;
   record(attempt: string, digest: string, evidence: MintCleanup): Promise<MintRecord>;
 }
@@ -76,14 +77,18 @@ async function synchronized(env: Env, r: MintRecord) {
 }
 export class WorkMintReconciler extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
-    if (request.method !== 'POST' || new URL(request.url).pathname !== '/reconcile-mint')
+    const cancel = new URL(request.url).pathname === '/cancel-mint';
+    if (
+      request.method !== 'POST' ||
+      (!cancel && new URL(request.url).pathname !== '/reconcile-mint')
+    )
       return new Response(null, { status: 404 });
     try {
       if (this.env.WORK_MINT_RECONCILE_ENABLED !== 'true') throw new Error('effect_disabled');
       const input = await jsonBody(request);
       if (!closed(input, ['attempt_id']) || !opaque(input.attempt_id))
         throw new Error('effect_invalid');
-      return Response.json(await this.#reconcile(input.attempt_id), {
+      return Response.json(await this.#reconcile(input.attempt_id, cancel), {
         headers: { 'Cache-Control': 'no-store' },
       });
     } catch {
@@ -93,10 +98,10 @@ export class WorkMintReconciler extends WorkerEntrypoint<Env> {
       );
     }
   }
-  async #reconcile(attempt: string) {
+  async #reconcile(attempt: string, cancel: boolean) {
     const env = this.env;
     let r = await env.MINT_MAINTENANCE.lookup(attempt);
-    if (!r || r.state === 'custodied') throw new Error('effect_not_recoverable');
+    if (!r || (!cancel && r.state === 'custodied')) throw new Error('effect_not_recoverable');
     mintPlan(r.plan);
     const p = r.plan;
     scope(env, p);
@@ -105,7 +110,9 @@ export class WorkMintReconciler extends WorkerEntrypoint<Env> {
     if (r.cleanup) return synchronized(env, r);
     // Persist safety intent before any provider I/O. An in-flight mint can still
     // return, but cannot complete productive custody after this intent wins.
-    r = await env.MINT_MAINTENANCE.begin(attempt, p.digest);
+    r = cancel
+      ? await env.MINT_MAINTENANCE.cancel(attempt, p.digest)
+      : await env.MINT_MAINTENANCE.begin(attempt, p.digest);
     try {
       const repo = await env.MINT_ARTIFACTS_MAINTENANCE.open({ attempt_id: attempt });
       try {

@@ -617,5 +617,20 @@
   "preparation_copy_inactive": "コピーの承認記録はありますが、現在のコピー許可はありません。",
   "preparation_copy_withdraw": "コピーの承認を取り消す",
   "preparation_copy_withdrawn": "コピーの承認を取り消しました。新しいコピーは許可されません。",
-  "preparation_copy_withdraw_boundary": "取り消しても既存のコピーは消えません。作成済みのコピーや資格情報の後片付けは別に行います。"
+  "preparation_copy_withdraw_boundary": "取り消しても既存のコピーは消えません。作成済みのコピーや資格情報の後片付けは別に行います。",
+  "copy_title": "コピーの進捗",
+  "copy_boundary": "この処理は承認済みのコピーだけを行います。作業の委任やエージェントの起動は別の確認が必要です。",
+  "copy_open": "コピーの進捗を開く",
+  "copy_refresh": "進捗を確認",
+  "copy_not_started": "コピーはまだ開始していません。",
+  "copy_queued": "開始要求を保存しました。実行の確認を待っています。",
+  "copy_running": "コピー処理の途中です。完了はまだ確認できていません。",
+  "copy_verified": "コードと選択ファイルのコピーを検証し、コピー用の認証情報の失効を確認しました。作業の委任は未実行です。",
+  "copy_blocked": "処理が停止したか、結果が不明です。同じコピー操作を再送せず、進捗と認証情報の失効を確認してください。",
+  "copy_progress": "確認済みの段階: {done} / {total}",
+  "copy_acknowledge": "別画面で承認したこの準備のコピーを開始します。",
+  "copy_start": "コピーを開始",
+  "copy_unavailable": "結果を確認できません。進捗を再確認すると、保存済みの結果を読み直します。コピーを重複して作成する操作ではありません。",
+  "copy_cleanup_pending": "認証情報の失効には未確認の項目があります。",
+  "copy_cleanup": "停止して認証情報の失効を確認"
 }

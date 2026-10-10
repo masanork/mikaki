@@ -104,7 +104,12 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     }
     if matches!(
         url.path(),
-        "/work/preparation-review" | "/work/preparation-review.js" | "/work/preparation-review.css"
+        "/work/preparation-review"
+            | "/work/preparation-review.js"
+            | "/work/preparation-review.css"
+            | "/work/copy-review"
+            | "/work/copy-review.js"
+            | "/work/copy-review.css"
     ) {
         return crate::work_preparations::handle(request, env).await;
     }
@@ -137,6 +142,19 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     ) && segments.len() == 5
         && segments[1..3] == ["work", "preparations"]
         && segments[4] == "copy-consent";
+    let execution = matches!(
+        request.method(),
+        Method::Get | Method::Post | Method::Delete
+    ) && segments.len() == 5
+        && segments[1..3] == ["work", "preparations"]
+        && segments[4] == "copy";
+    if execution
+        && !env
+            .var("WORK_COPY_EXECUTION_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+    {
+        return error(404, "not_found");
+    }
     if copy
         && !env
             .var("WORK_COPY_CONSENT_ENABLED")
@@ -144,13 +162,13 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     {
         return error(404, "not_found");
     }
-    if !listing && !reading && !revoking && !session && !copy && !creating {
+    if !listing && !reading && !revoking && !session && !copy && !creating && !execution {
         return error(404, "not_found");
     }
     // Reject browser cross-site reads as well as all non-same-origin mutations.
     if request.headers().get("Sec-Fetch-Site")?.as_deref() == Some("cross-site")
         || (request.headers().get("Origin")?.is_some() && !same_origin(&request)?)
-        || ((creating || revoking || (copy && request.method() != Method::Get))
+        || ((creating || revoking || ((copy || execution) && request.method() != Method::Get))
             && !same_origin(&request)?)
     {
         return error(403, "invalid_origin");
@@ -218,7 +236,59 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             }),
         );
     }
-    let result = if creating {
+    let result = if execution {
+        let account = match crate::work_store::copy_account(&env) {
+            Ok(a) => a,
+            Err(_) => return unavailable(),
+        };
+        if request.method() == Method::Get {
+            store
+                .owner_copy_job(&owner.secret_hash, &id, &account)
+                .await
+        } else {
+            if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+                return error(415, "invalid_content_type");
+            }
+            let body = match crate::read_bounded_body(&mut request, 4096).await {
+                Ok(b) => b,
+                Err(_) => return error(413, "invalid_request"),
+            };
+            if mikaki_webauthn::strict_json(&body, 4096, 4).is_err() {
+                return error(400, "invalid_request");
+            }
+            let input = match serde_json::from_str::<CopyBody>(&body) {
+                Ok(i) if i.format_version == 1 => i,
+                _ => return error(400, "invalid_request"),
+            };
+            let digest = match mikaki_auth::work::Digest::parse_hex(&input.review_digest) {
+                Ok(d) => d,
+                Err(_) => return error(400, "invalid_request"),
+            };
+            if request.method() == Method::Post {
+                store
+                    .start_copy_job(&env, &owner.secret_hash, &id, digest)
+                    .await
+            } else {
+                let review = store
+                    .owner_copy_review(&owner.secret_hash, &id, &account)
+                    .await;
+                match review {
+                    Ok(r) if r["review_digest"] == digest.to_hex() => {
+                        match store.cleanup_copy_job(&env, &id).await {
+                            Ok(_) => {
+                                store
+                                    .owner_copy_job(&owner.secret_hash, &id, &account)
+                                    .await
+                            }
+                            Err(e) => Err(e),
+                        }
+                    }
+                    Ok(_) => Err(mikaki_auth::work::Denied::ReviewMismatch.into()),
+                    Err(e) => Err(e),
+                }
+            }
+        }
+    } else if creating {
         if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
             return error(415, "invalid_content_type");
         }
