@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` verifies private cold/warm readiness and R2 supply on Cloudflare; extension `1e0ef8e` verifies an independent stopped-state restart, natural shutdown and retained results, 2026-10-10 JST. The original third outcome remains unknown. Enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
+**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` verifies private cold/warm readiness and R2 supply on Cloudflare; extension `1e0ef8e` verifies an independent stopped-state restart, natural shutdown and retained results. Source `c8f26a1` verifies the original IDs and all-state token inventories of the six protected Artifacts allocations, 2026-10-10 JST. The original third host outcome and three initial-effect outcomes remain unknown. Current remote OP has no Work/checkpoint bindings. Enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -23,7 +23,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M1: Portable rules/decisions    | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass.                                                                                                                                                           | Complete locally: 35 unit cases plus one compile-fail case.                                                                                                                                                                                                                                                                                     |
 | M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                    | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                                                                                                                                                              |
 | M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
-| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
+| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases. Read-only remote identity/token inventory of all six protected allocations passes; three unknown outcomes remain charged and retained. Enrolled remote effects remain pending. |
 | M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Integrated source `5cf4616` passes 43 copy/Workflow/host/API/browser cases, including public composition through sealed-host verification and partial-progress authority loss. The 400-case broad regression and 2 Vault browser cases have their separate scopes below. Delegation, activity/result controls and deployment remain pending. |
 | M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence and sealed provisioning locally. Isolated Cloudflare cold/warm startup, R2 supply, independent stopped-state restart, natural shutdown and result retention pass. Enrolled remote authority, productive Git, missing custody and release remain pending. |
 
@@ -902,3 +902,78 @@ hash-linked restart evidence also match. The additional check performs no
 startup or productive Git call; its receipts are
 `artifacts/work-git-host/restart-independent-verification.json` and
 `artifacts/work-git-host/restart-final-status.log`.
+
+## Protected Artifacts allocations: current read-only inspection
+
+Clean selected source `c8f26a1fcf375d4d8dd09533136f0f5700e81159` adds an operator
+inspector for the six existing allocations. It pins the exact bytes of the three
+original journals, checks plan/result/ledger identities, and projects only the
+original attempt/repository IDs, names, state and token observations. There is no
+ledger import, state settlement, productive adoption or new checkpoint identity.
+The [effect note](work-artifacts-effect-gate.md#read-only-protected-allocation-inspection)
+records the fixed GET routes, bounded pagination, secret omission and receipts.
+
+The actual remote run completed from `2026-10-10T14:25:53.410Z` to
+`2026-10-10T14:26:00.246Z`. Its **21 GET requests** comprise the OP settings read,
+initial/final complete namespace inventories and metadata/token/metadata for
+each protected allocation. The namespace contains seven repositories: the six
+protected allocations and the historical `mikaki` bootstrap copy. No bootstrap
+token or Git endpoint was accessed. All six selected repositories matched their
+original ID/name/remote, reported `status=ready`, and had stable metadata before
+and after the all-state token read. The final namespace inventory matched.
+
+| Original journal / role | Original repository ID | Current token inventory | Retained state |
+| --- | --- | --- | --- |
+| `probe-09Ae4P` / task | `b0vt3pbxrvm0bram` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-09Ae4P` / snapshot | `tmtcnyg5hmrc19o7` | One write token, revoked; retained token ID matches. | `outcome_unknown` |
+| `probe-jYdl3a` / task | `qv9hbgpm7dastf4y` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-jYdl3a` / snapshot | `2g2ai4k3xhztc2g9` | One write token, revoked; original journal had no token observation. | `outcome_unknown` |
+| `probe-zgwc8e` / task | `ou3gvryxvx1vlpzg` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-zgwc8e` / snapshot | `aop5yrrfwwyzb1um` | One write token, revoked; retained token ID matches. | `outcome_unknown` |
+
+There are **zero active tokens** among the six protected repositories. The newly
+observed `probe-jYdl3a` snapshot token ID is retained only in the new inspection;
+the original journal is unchanged. All six report `last_push_at=null`, but this
+is metadata, not independent Git content/readback evidence. Revoked-token
+metadata does not reconstruct a lost create reply or qualify fresh bearer
+refusal. All three unknown initial-effect outcomes remain unknown and charged;
+historical closure records are neither downgraded nor newly certified.
+
+The existing environment API token successfully reads current `mikaki-auth`
+settings; the separate saved Artifacts OAuth credential successfully reads
+Artifacts. A diagnostic Artifacts GET with the environment token returned 401,
+so it is not used for that control plane. No OAuth consent, grant or token
+configuration changed. Only binding names/types are retained from OP settings,
+with no values. Current OP has **no `WORK_` bindings**, including no
+`WORK_AUTHORITY_CHECKPOINT`; no Native/checkpoint authority RPC or remote D1
+operation was invoked. This establishes the missing connection, not enrollment
+or a broader production authority audit.
+
+Final focused qualification at this clean source passes **11/11** in
+**437.73 ms**. It covers fixed v4 GET target selection, both cursor and observed
+offset pagination, stable counts, duplicate/replacement/changing identities,
+secret omission and preservation of unknown journal states using synthetic
+HTTP/provider responses. Actual GET receipts separately establish the selected
+remote observations. The report is
+`local/generated/work-artifacts-inspection/inspection-c8f26a1.tap`. Node types,
+formatting, product-source, documentation and diff checks pass; the new focused
+test is registered in CI, without claiming a new remote CI or full product run.
+
+The complete receipt directory is
+`local/generated/work-artifacts-inspection/inspection-loAfNJ`. Its exclusive
+`result.json` has SHA-256
+`52e129ea44f0909400f3acc35b6f3209a2fc10d29e80de370a3cd9ebd7eeb298`;
+the synchronized `inspection.jsonl` has SHA-256
+`ad97795e772b67a751774da98f135226ae6ece31b4659f14864a56a2e66b9b27`.
+Earlier incomplete read-only attempts remain separately retained. A v4-path
+admission error was corrected, and the deployed REST API's additional ready
+status/offset pagination were explicitly qualified. No failed observation was
+treated as a complete inventory. The original three journal hashes are unchanged.
+
+Next prepare an isolated Native/OP and independent checkpoint connection with
+dedicated D1/R2 identities, a reviewed clean source/schema/binding inventory and
+actual owner enrollment/consent. Verify source registration, current owner/session
+authority and revocation refusal before productive Artifacts mint/Git. The old
+synthetic checkpoints and unknown admissions must not be imported as authority
+for this new environment. Existing OP production configuration, migrations,
+Git-host resources, repositories, tokens, journals and stash remain unchanged.
