@@ -10,3 +10,17 @@ six retained closed-effect/Git records; it exposes none of the checkpoint,
 effect-admission or maintenance mutations.
 
 Before integration, assign independent storage/operator/recovery ownership and one fixed scope per D1 authority. Bind `WorkCheckpointService` to the trusted OP and reserve `WorkCheckpointAdmin` for the separate operator boundary. Complete external effect/release enforcement, coverage of other OP authority mutations and signed release/recovery provenance. Never reinitialize or restore the checkpoint from stale D1 data.
+
+`WorkCheckpointBootstrap` narrows initial operator access to `inspect()` and
+`enroll(plan)`. It exposes no framing, floor, freeze, effects or reset methods;
+its HTTP entrypoint returns 404. Enrollment requires the deployment's
+`WORK_BOOTSTRAP_PACKET_SHA256` pin and the exact fixed object's ID. The immutable
+plan and initial state are written in one SQLite transaction and synchronized
+before acknowledgment. Existing legacy state cannot be adopted into this ledger.
+Inspection reports retained state even when frozen or pending, without advancing
+it. Resource/version claims in the plan still require independent control-plane
+inventory; the DO cannot verify those claims itself.
+
+`npm run test:work-authority-bootstrap` exercises the bounded operator protocol
+against disposable actual D1 and SQLite DO, including both lost replies and
+independent restart. See the [isolated authority sequence](../../docs/work-authority-qualification.md).

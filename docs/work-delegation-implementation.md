@@ -1052,3 +1052,48 @@ and other inputs match. Its manifest SHA-256 is
 Clean qualifier `ecb3f9c` successfully repeats the frozen-module runtime check,
 with no account/checkpoint enrollment or remote operation. The additional
 receipt is `artifacts/work-authority/independent-qualification-ecb3f9c.json`.
+
+## Bounded initial authority enrollment, 2026-10-11 JST
+
+The [isolated authority sequence](work-authority-qualification.md#bounded-initial-operator-protocol)
+now has a narrow `WorkCheckpointBootstrap` capability and a bounded operator
+library. The new capability accepts one closed reviewed-packet/resource plan,
+checks the deployment's packet pin and exact object, and retains that plan with
+the initial marker in one synchronized SQLite transaction. Its two RPC methods
+return JSON data strings; default/named HTTP and framing, effects, floor/freeze
+or reset calls are unavailable through this capability. Legacy state cannot be
+adopted as a new packet enrollment. OP retains only `WorkCheckpointService`.
+
+The primary operator derives schema and all seed rows from the frozen fourteen
+migrations. It checks the complete ordered migration ledger, schema, foreign
+keys and every application table; marker insertion repeats schema/ledger/row
+guards in one D1 batch. The first local attempt exposed the pinned runtime's
+expression-depth limit; balanced predicates now permit the complete guard to
+execute. The private operator configuration fixes account, dedicated D1 and
+named checkpoint binding, with Workers public/preview URLs disabled.
+
+An exclusive child journal is synchronized before each independent write.
+Unknown replies consume that run; read-only inspection never resumes either
+write, substitutes an epoch or resets authority. Exact initial agreement can
+be observed after a lost primary reply, while pending, frozen, raised-floor,
+legacy or changed-primary state cannot complete. Completion enables no writers.
+The remote executor still needs a shared account/authority reservation across
+child packets and linked checkouts, retained provider/module/config/version
+observations and independently reviewed deployment/recovery ownership. Plan
+IDs and review digests alone do not establish those facts or quiescence.
+
+Actual local workerd/D1/SQLite DO tests pass **10/10**, covering both lost replies,
+restart, exact initial agreement, one-time concurrent admission, private method
+refusal, legacy state, primary changes between preflight and insertion, and
+pending/floor/freeze refusal. The existing Rust OP/checkpoint regression passes
+**16/16**, including D1 restore refusal and framed revocations. Frozen packet
+tests remain **8/8**. The new suite is registered in CI; these are local results,
+not a new remote CI or actual owner-enrollment result.
+
+The old reviewed `authority-nMECMX` packet is preserved. Its checkpoint bundle
+does not contain the new entrypoint/pin, so a new clean packet and a provider-
+verified child deployment must be reviewed before remote enrollment. The
+bootstrap increment performs no remote migration, checkpoint enrollment,
+owner ingress opening or Artifacts/Git effect. Next connect the bounded remote
+operator to verified retained resource identities, then qualify framed source
+registration and actual Passkey/PRF owner enrollment under those gates.

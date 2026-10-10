@@ -159,3 +159,62 @@ Actual Wrangler `deploy --dry-run --env-file /dev/null` verifies additional
 module discovery without uploading or changing remote bindings. A manual
 same-origin enrollment redirect stays inside local workerd rather than being
 followed by Node's network fetch.
+
+## Bounded initial operator protocol
+
+`WorkCheckpointBootstrap` is the new initial-enrollment capability. Its named
+RPC methods are only `inspect()` and `enroll(plan)`; their results are JSON strings
+carrying data rather than RPC targets, and HTTP returns 404. OP still
+receives only `WorkCheckpointService`. Floor/freeze administration remains a
+separate capability. The closed plan pins the reviewed product packet,
+allocation, ownership and quiescence reviews, account, primary D1 ID, checkpoint
+namespace/version/object ID, and one sequence-zero epoch/tip at release floor
+one. The checkpoint deployment must set `WORK_BOOTSTRAP_PACKET_SHA256` to the
+reviewed packet digest. Missing/wrong pins, wrong object/scope, existing state or
+effect ledgers, and any second enrollment are refused. Existing legacy initial
+state cannot acquire new packet provenance. The plan and state commit together
+using SQLite `transactionSync`, followed by `sync` before acknowledgment, per
+the [storage API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+
+`scripts/work-authority-bootstrap.ts` supplies the bounded operator sequence,
+read-only reconciliation and a private local operator connection configuration.
+It derives primary schema and seed rows from the frozen fourteen migrations.
+Preflight compares the complete ordered migration ledger, lexical schema,
+foreign keys and every application table against that initial state. Inserting
+the single primary marker repeats schema, ledger and all row guards in the same
+D1 batch; a changed guard rolls the batch back. Only known provider metadata is
+excluded: `sqlite_*`, `_cf_KV`, `_cf_METADATA` and `d1_migrations`. The ledger is
+checked separately. Query size and parameter count fit the documented
+[D1 bounds](https://developers.cloudflare.com/d1/platform/limits/); predicates
+use a balanced expression to fit the pinned runtime's expression-depth limit.
+
+The canonical child packet owns one exclusive `bootstrap.jsonl`, with its file
+and directory synchronized before crossing either write boundary. A completed
+or partial journal refuses another run. The future remote executor must also
+reserve the account/authority lane across child packets and linked checkouts;
+the per-child helper alone is not that global reservation. If either result is
+lost, `inspectBootstrap` observes the same identities without issuing either
+write. An exact initial marker may be observed after a lost primary reply; an
+absent marker does not authorize replay. Intermediate, legacy, dirty, pending,
+raised-floor or frozen state never completes enrollment. Completion itself
+enables no writer or browser ingress. RPC results are detached as bounded JSON
+and explicitly disposed according to the
+[RPC lifecycle](https://developers.cloudflare.com/workers/runtime-apis/rpc/lifecycle/).
+
+This implementation is a library plus actual local D1/SQLite DO qualification,
+not a qualified remote bootstrap executor. IDs/review digests supplied by a
+caller are claims until matched to retained provider observations. The DO cannot
+validate control-plane namespace/version ownership or prove quiescence from
+those strings. A remote executor must verify deployed module/config/version
+and primary resource identities, separate operator/recovery ownership, and the
+retained allocation before invoking this sequence. The previous immutable
+`authority-nMECMX` bundle has no new bootstrap entrypoint or packet pin; preserve
+it and build/review a new packet rather than substituting its checkpoint bytes.
+
+`npm run test:work-authority-bootstrap` is registered in CI. Its ten local cases
+cover exact initial agreement, restart, closed private methods, both lost replies,
+absence without replay, concurrent one-time enrollment, legacy-state refusal,
+primary changes between preflight and insertion, and pending/floor/freeze
+refusal. Disposable test IDs and local state are not provider allocation or real
+owner enrollment evidence. No remote migration, authority bootstrap or ingress
+opening is performed by this suite.

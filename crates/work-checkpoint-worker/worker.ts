@@ -17,6 +17,8 @@ import {
 } from '../work-effect-worker/protocol';
 import type { InitialPlan, Closure, EffectRecord } from '../work-effect-worker/protocol';
 import type { MintPlan, MintRecord, GitPlan, GitResult } from '../work-effect-worker/protocol';
+import { validateBootstrapPlan } from './bootstrap';
+import type { BootstrapInspection } from './bootstrap';
 
 export type Checkpoint = { authority: string; epoch: string; sequence: number; tip: string };
 export type Permit = { operation: string; previous: Checkpoint; next: Checkpoint };
@@ -30,6 +32,8 @@ type State = {
 export interface Env {
   CHECKPOINTS: DurableObjectNamespace<WorkCheckpoint>;
   WORK_AUTHORITY_ID: string;
+  /** Child operator config pins the reviewed packet; absent in legacy/local fixtures. */
+  WORK_BOOTSTRAP_PACKET_SHA256?: string;
 }
 const id = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9_.:-]{1,128}$/.test(v);
 const digest = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
@@ -82,6 +86,9 @@ export class WorkCheckpoint extends DurableObject<Env> {
       'CREATE TABLE IF NOT EXISTS checkpoint_state(id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL)',
     );
     this.ctx.storage.sql.exec(
+      'CREATE TABLE IF NOT EXISTS checkpoint_enrollment(id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL)',
+    );
+    this.ctx.storage.sql.exec(
       'CREATE TABLE IF NOT EXISTS effect_ledger(attempt_id TEXT PRIMARY KEY, body TEXT NOT NULL)',
     );
     this.ctx.storage.sql.exec(
@@ -107,6 +114,65 @@ export class WorkCheckpoint extends DurableObject<Env> {
       throw new Error('checkpoint_blocked');
     return s;
   }
+  private pristine() {
+    for (const table of [
+      'checkpoint_state',
+      'checkpoint_enrollment',
+      'effect_ledger',
+      'mint_ledger',
+    ])
+      if (this.ctx.storage.sql.exec(`SELECT 1 FROM ${table} LIMIT 1`).toArray().length)
+        throw new Error('checkpoint_already_initialized');
+  }
+  /** Inspect the same object even when frozen/pending; never repair or advance it. */
+  async inspectEnrollment(): Promise<BootstrapInspection> {
+    const state = this.ctx.storage.sql
+      .exec<{ body: string }>('SELECT body FROM checkpoint_state WHERE id=1')
+      .toArray();
+    const enrollment = this.ctx.storage.sql
+      .exec<{ body: string }>('SELECT body FROM checkpoint_enrollment WHERE id=1')
+      .toArray();
+    const count = this.ctx.storage.sql
+      .exec<{ n: number }>(
+        'SELECT (SELECT count(*) FROM effect_ledger)+(SELECT count(*) FROM mint_ledger) AS n',
+      )
+      .one().n;
+    const result: BootstrapInspection = {
+      authority: this.env.WORK_AUTHORITY_ID,
+      object_id: this.ctx.id.toString(),
+      enrollment: enrollment.length ? JSON.parse(enrollment[0]!.body) : null,
+      state: state.length ? JSON.parse(state[0]!.body) : null,
+      ledger_entries: count,
+    };
+    await this.ctx.storage.sync();
+    return result;
+  }
+  /** One write, no idempotent replay, reset, epoch replacement or D1 access. */
+  async enrollAuthority(plan: unknown) {
+    validateBootstrapPlan(plan);
+    if (
+      plan.initial.authority !== this.env.WORK_AUTHORITY_ID ||
+      plan.packet_sha256 !== this.env.WORK_BOOTSTRAP_PACKET_SHA256 ||
+      plan.checkpoint_object_id !== this.ctx.id.toString()
+    )
+      throw new Error('checkpoint_enrollment_scope_mismatch');
+    this.ctx.storage.transactionSync(() => {
+      this.pristine();
+      this.ctx.storage.sql.exec(
+        'INSERT INTO checkpoint_enrollment VALUES(1,?)',
+        JSON.stringify(plan),
+      );
+      this.save({
+        checkpoint: plan.initial,
+        pending: null,
+        last: null,
+        release_floor: 1,
+        frozen: false,
+      });
+    });
+    await this.ctx.storage.sync();
+    return this.inspectEnrollment();
+  }
   async bootstrap(initial: unknown, releaseFloor: unknown) {
     checkpoint(initial);
     if (
@@ -117,8 +183,7 @@ export class WorkCheckpoint extends DurableObject<Env> {
     )
       throw new Error('checkpoint_invalid');
     this.ctx.storage.transactionSync(() => {
-      if (this.ctx.storage.sql.exec('SELECT id FROM checkpoint_state').toArray().length)
-        throw new Error('checkpoint_already_initialized');
+      this.pristine();
       this.save({
         checkpoint: initial,
         pending: null,
@@ -899,6 +964,21 @@ export class WorkCheckpointAdmin extends WorkerEntrypoint<Env> {
   }
   freeze() {
     return object(this.env).freeze();
+  }
+}
+
+/** Initial operator capability only. OP receives WorkCheckpointService instead. */
+export class WorkCheckpointBootstrap extends WorkerEntrypoint<Env> {
+  fetch() {
+    return new Response(null, { status: 404 });
+  }
+  async inspect() {
+    using result = await object(this.env).inspectEnrollment();
+    return JSON.stringify(result);
+  }
+  async enroll(plan: unknown) {
+    using result = await object(this.env).enrollAuthority(plan);
+    return JSON.stringify(result);
   }
 }
 /** Separate binding: the gate cannot bootstrap, commit, unfreeze or reset history. */

@@ -101,6 +101,7 @@
     "prepare:work-authority": "node scripts/prepare-work-authority.ts",
     "qualify:work-authority-packet": "node scripts/qualify-work-authority-packet.ts",
     "test:work-authority-packet": "node --test scripts/work-authority-packet-review.test.ts scripts/work-authority-packet.test.ts",
+    "test:work-authority-bootstrap": "node --test --test-concurrency=1 local/conformance/work-authority-bootstrap.test.ts",
     "prepare:work-git-host-qualification": "node scripts/prepare-work-git-host-qualification.ts",
     "prepare:work-git-host-restart": "node scripts/prepare-work-git-host-restart.ts",
     "qualify:work-git-host-restart": "node scripts/qualify-work-git-host-restart.ts",
