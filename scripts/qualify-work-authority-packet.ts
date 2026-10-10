@@ -1,7 +1,7 @@
 /** Load only frozen product/checkpoint modules in local workerd. No remote enrollment. */
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
@@ -177,7 +177,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (receipt) {
     const path = relative(resolve(directory), resolve(receipt));
     assert.ok(
-      path.startsWith('..') || isAbsolute(path),
+      path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path),
       'Receipt must stay outside the frozen packet',
     );
   }

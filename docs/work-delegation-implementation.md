@@ -977,3 +977,68 @@ authority and revocation refusal before productive Artifacts mint/Git. The old
 synthetic checkpoints and unknown admissions must not be imported as authority
 for this new environment. Existing OP production configuration, migrations,
 Git-host resources, repositories, tokens, journals and stash remain unchanged.
+
+## Isolated authority preparation and frozen-module qualification, 2026-10-11 JST
+
+The [isolated authority note](work-authority-qualification.md) fixes the proposed
+dedicated Native/OP, D1, Owner Vault R2, logout Queue/DLQ and independent SQLite
+checkpoint. The OP receives only `WorkCheckpointService`; operator bootstrap,
+floor/freeze and OP authority administration are separate unresolved transports.
+Resource IDs, HTTPS origin, owner, source reader and initial marker remain
+unresolved. Templates disable public Workers URLs, cron writers, composition,
+copy, initial effects, mint and Git. There is no production-resource fallback,
+provider bearer, Artifacts binding or imported authority.
+
+Clean selected source `4d0870acfe5d3a99ed1178c1f0c275f88fdd1890` generated
+`local/generated/work-authority-qualification/authority-nMECMX` using locked,
+offline production Rust, current OP service packaging and the checkpoint bundle.
+The complete **35-member** packet contains fourteen frozen migrations: the exact
+two-file Owner Vault baseline plus Work `0003`–`0014`. In-memory SQLite verifies
+foreign keys, **449 schema objects** and empty authority tables. The schema digest
+is `8b8b09afbc7454ac8da1dfd62db08e687e280e6b0cdab7588786ac1c16c4b1b1`.
+The manifest digest is
+`5b06b4588934813995f965bf5e76da9c44d7e08c98045519192f888bdd2a02d3`.
+Wasm is **7,336,255 bytes**, with a **2,518,660-byte gzip estimate**, and contains
+the selected commit. This is a local byte/build inventory, not signed provenance.
+The selected frozen OP Wasm passes its existing **8 MiB raw / 3 MiB gzip**
+budgets using the shared measurement function; its receipt is
+`local/generated/work-authority-qualification/wasm-budget-4d0870a.json`.
+The full current-HEAD budget command refused the older selected build's source
+identity after qualifier-only commits. No full current-HEAD UI/claim budget run
+is claimed from that refusal or the focused frozen-Wasm measurement.
+
+Packet/schema rejection tests pass **8/8** and are registered in CI. They cover
+baseline changes, silently enrolled migrations, missing files, unexpected files,
+bundle/schema substitution, source mismatch, production D1 substitution,
+symlinks and file bounds. Actual Wrangler 4.148.0 dry-run discovers the complete
+generated ESM/Wasm module tree and reports **8,037.70 KiB total / 2,599.67 KiB
+gzip**; it uploads nothing. The unbundled test-harness path initially omitted the
+Rust shim. The qualifier now uses explicit Miniflare module roots/list matching
+the frozen upload and manually follows the same-origin enrollment redirect.
+
+Clean qualifier `5573245f7aefd44769527260db11453dfc9a14e5` loads these frozen
+modules in actual local workerd with disposable D1/SQLite DO. It applies the
+packaged fourteen migrations, observes no owner/checkpoint authority, serves
+`/enroll`'s 302 and its actual login page, refuses unauthenticated `/work/session`
+with 401, refuses fixture/admin HTTP routes and checkpoint default HTTP with
+404, observes 409 for the uninitialized checkpoint service, and refuses bootstrap
+through that OP service with 400. No account or checkpoint is enrolled.
+The exclusive receipt is
+`local/generated/work-authority-qualification/runtime-4d0870a.json`, SHA-256
+`13fce28e6826c44dee5725534e0d6833873b39358fb56e42c8207de0bb961899`.
+
+Next qualify bounded operator allocation/materialization and one-time authority
+bootstrap, plus framed source registration, before opening actual owner ingress.
+Separate deployment/restore ownership, fresh signing-key custody, real Passkey/
+PRF completion, current source/policy mapping, owner consent and revocation remain
+remote gates. Primary D1 and independent enrollment have no distributed atomic
+commit; bootstrap keeps all writers quiescent until exact matching state is
+observed. Unknown replies never authorize another epoch, reset or replacement.
+The original three protected journal digests still match their retained pins;
+unknown admissions remain unknown and charged. No remote allocation, migration,
+deployment, provider/Git effect, production activation or new remote CI result
+is claimed by this increment.
+
+Node types, full formatting, product-source and documentation checks pass. The
+focused packet cases and the existing three budget-checker cases pass; these
+are local results rather than a new remote CI or full product regression run.
