@@ -26,6 +26,12 @@ metadata-only `POST /work/preparations` separately requires
 configuration and the existing private source reader. It does not approve or
 dispatch a copy; see [the composition decision](../../../docs/work-preparation-compose.md).
 
+Migration 0014 adds one retained copy job per approved preparation, with covered
+primary admission, audit and a fixed Workflow identity. It backfills nothing.
+Native `WORK_COPY_EXECUTION_ENABLED` and the separate private Workflow flag,
+key, gate bindings and trusted host provisioning remain opt-in. See
+[copy orchestration](../../../docs/work-copy-orchestration.md).
+
 Run `npm run test:work-delegation` from the repository root to build the actual
 Rust/Wasm fixture and exercise the additive schema with workerd/D1/R2. The
 fixture uses synthetic verifier facts; its successful cases do not qualify a

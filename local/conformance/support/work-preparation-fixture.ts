@@ -59,7 +59,10 @@ export async function preparationFixture(
   const copyEnabled = bindings.WORK_COPY_EXECUTION_ENABLED === 'true';
   const copyBindings: NonNullable<V4WorkerOptions['serviceBindings']> = copyEnabled
     ? {
-        WORK_COPY_STARTER: { name: 'work-copy', entrypoint: 'WorkCopyStarter' },
+        WORK_COPY_STARTER:
+          bindings.LOCAL_COPY_TRIGGER_UNAVAILABLE === 'true'
+            ? async () => new MiniflareResponse(null, { status: 409 })
+            : { name: 'work-copy', entrypoint: 'WorkCopyStarter' },
         WORK_COPY_INITIAL: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
         WORK_COPY_INITIAL_RECONCILER: {
           name: 'work-reconcile',
@@ -74,6 +77,7 @@ export async function preparationFixture(
     : {};
   const mf = new Miniflare(
     convertV4MiniflareOptions({
+      unsafeTriggerHandlers: copyEnabled,
       workers: [
         {
           ...ownerWorker,
@@ -210,11 +214,20 @@ export async function preparationFixture(
                   },
                 ],
                 compatibilityDate: '2026-10-06',
+                versionMetadata: 'CF_VERSION_METADATA',
                 bindings: ownerWorker.bindings,
                 d1Databases: ownerWorker.d1Databases,
                 r2Buckets: ownerWorker.r2Buckets,
                 serviceBindings: {
                   ...copyBindings,
+                  ...(bindings.LOCAL_CHECKPOINT_SOURCE_REPLY
+                    ? {
+                        WORK_SOURCE_READER: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureCheckpointSourceReader',
+                        },
+                      }
+                    : {}),
                   WORK_AUTHORITY_CHECKPOINT: {
                     name: 'work-checkpoint',
                     entrypoint: 'WorkCheckpointService',
@@ -776,6 +789,18 @@ export async function preparationFixture(
         body: JSON.stringify(input),
       });
     },
+    triggerCopy: async (id: string) => {
+      const env = await mf.getBindings(productCopy ? 'preparation-product' : 'preparation-owner');
+      const starter = env.WORK_COPY_STARTER as import('@cloudflare/workers-types').Fetcher;
+      return starter.fetch('https://private.invalid/start', {
+        method: 'POST',
+        body: JSON.stringify({ preparation_id: id }),
+      });
+    },
+    drainCopies: () =>
+      mf.dispatchFetch('https://work.test/cdn-cgi/local/scheduled?format=json&cron=*+*+*+*+*', {
+        headers: { 'MF-Route-Override': 'work-copy' },
+      }),
     account,
     session,
     fixtureFetch,

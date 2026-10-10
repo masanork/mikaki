@@ -57,6 +57,7 @@ jobs:
           npm run check:service-authority
           npm run check:work-sources
           npm run check:work-checkpoint
+          npm run check:work-copy
           npm run check:work-effects
           npm run check:i18n
           npm run check:docs

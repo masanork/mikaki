@@ -1,12 +1,12 @@
 /** The actual product progress bundle and primary Native job, with synthetic
  * identity/provider mapping and real local Git. No browser grants authority. */
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 import { copyJobFixture } from './support/work-copy-job-fixture.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
-import { gzipSync } from 'node:zlib';
+import { measure } from '../../scripts/check-worker-budgets.ts';
 
 test('copy progress needs a fresh start acknowledgement and discards late results on lock', async (t) => {
   const f = await copyJobFixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
@@ -72,15 +72,37 @@ test('copy progress needs a fresh start acknowledgement and discards late result
     await t.test(
       'Japanese review exposes no automatic start and stays within the existing bundle cap',
       async () => {
-        const asset = await f.productFetch('/work/copy-review.js');
-        assert.equal(asset.status, 200);
-        const bytes = Buffer.from(await asset.arrayBuffer());
-        assert.ok(bytes.length <= 192 * 1024);
-        assert.ok(gzipSync(bytes, { level: 9 }).length <= 64 * 1024);
+        const measurements = [];
+        for (const path of [
+          '/work/source-review.js',
+          '/work/preparation-review.js',
+          '/work/copy-review.js',
+        ]) {
+          const asset = await f.productFetch(path);
+          assert.equal(asset.status, 200);
+          const measured = measure(path, new Uint8Array(await asset.arrayBuffer()));
+          assert.ok(measured.raw <= 192 * 1024, path);
+          assert.ok(measured.gzip <= 64 * 1024, path);
+          measurements.push(measured);
+        }
+        const version = await f.product('/version');
+        assert.equal(version.status, 200);
+        await writeFile(
+          shots + '/budgets.json',
+          JSON.stringify({ source: version.body, measurements }, null, 2) + '\n',
+        );
         await page.goto(url('ja'));
-        await expect(
-          page.getByRole('heading', { name: 'コピーの進捗', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'コピーの進捗', exact: true }))
+          .toBeVisible()
+          .catch(async (error) => {
+            throw new Error(
+              String(error) +
+                ' ' +
+                JSON.stringify(errors) +
+                ' ' +
+                (await page.locator('body').innerText()).slice(0, 600),
+            );
+          });
         await expect(
           page.getByRole('button', { name: 'コピーを開始', exact: true }),
         ).toBeDisabled();
@@ -90,6 +112,11 @@ test('copy progress needs a fresh start acknowledgement and discards late result
         await expect(page.getByRole('button', { name: 'コピーを開始', exact: true })).toBeEnabled();
         await auditAccessibility(page, 'work-copy-start');
         await page.screenshot({ path: shots + '/start-ja.png', fullPage: true });
+        await page.evaluate(() => (window as any).hideCopyProgress());
+        await expect(page.getByRole('checkbox')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'コピーを開始', exact: true })).toHaveCount(
+          0,
+        );
       },
     );
     await t.test('English mobile navigation discards acknowledgement', async () => {
@@ -113,9 +140,9 @@ test('copy progress needs a fresh start acknowledgement and discards late result
         hold = true;
         await page.getByRole('button', { name: 'コピーを開始', exact: true }).click();
         await pending;
-        await page.evaluate(() => (window as any).hideCopyProgress());
+        await page.getByRole('button', { name: '画面をロック', exact: true }).click();
         await expect(
-          page.getByRole('heading', { name: '表示をロックしました', exact: true }),
+          page.getByRole('heading', { name: '準備の確認画面をロックしました', exact: true }),
         ).toBeVisible();
         release?.();
         release = undefined;
