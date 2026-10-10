@@ -5,6 +5,9 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use p256::ecdsa::{Signature, signature::Verifier};
 use serde::Deserialize;
 
+// RFC 7519 §4.1.5 permits a small leeway for clock skew; keep nbf aligned with iat.
+const CLOCK_SKEW_LEEWAY_SECONDS: u64 = 30;
+
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttesterTrust {
@@ -146,8 +149,12 @@ pub fn verify(
         jwt::<Attestation>(attestation, "oauth-client-attestation+jwt")?;
     if claims.sub != client
         || claims.exp <= now
-        || claims.iat.is_some_and(|t| t > now + 30 || t >= claims.exp)
-        || claims.nbf.is_some_and(|t| t > now || t >= claims.exp)
+        || claims
+            .iat
+            .is_some_and(|t| t > now.saturating_add(CLOCK_SKEW_LEEWAY_SECONDS) || t >= claims.exp)
+        || claims
+            .nbf
+            .is_some_and(|t| t > now.saturating_add(CLOCK_SKEW_LEEWAY_SECONDS) || t >= claims.exp)
     {
         return Err("invalid_client");
     }
@@ -170,10 +177,13 @@ pub fn verify(
     if header.x5c.is_some()
         || proof.iss != client
         || !proof.aud.contains(issuer)
-        || proof.iat > now + 30
+        || proof.iat > now.saturating_add(CLOCK_SKEW_LEEWAY_SECONDS)
         || now.saturating_sub(proof.iat) > 300
         || proof.exp.is_some_and(|t| t <= now || t <= proof.iat)
-        || proof.nbf.is_some_and(|t| t > now)
+        || proof.nbf.is_some_and(|t| {
+            t > now.saturating_add(CLOCK_SKEW_LEEWAY_SECONDS)
+                || proof.exp.is_some_and(|exp| t >= exp)
+        })
         || proof.jti.is_empty()
         || proof.jti.len() > 128
     {

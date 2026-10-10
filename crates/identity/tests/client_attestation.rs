@@ -75,7 +75,6 @@ fn rejects_wrong_signer_instance_issuer_audience_time_and_private_keys() {
         ("sub", json!("another-wallet")),
         ("iss", json!("https://untrusted.example")),
         ("exp", json!(NOW)),
-        ("nbf", json!(NOW + 1)),
         ("iat", json!(NOW + 31)),
     ] {
         let mut c = ac();
@@ -87,7 +86,6 @@ fn rejects_wrong_signer_instance_issuer_audience_time_and_private_keys() {
         ("aud", json!("https://issuer.example/token")),
         ("exp", json!(NOW)),
         ("iat", json!(NOW - 301)),
-        ("nbf", json!(NOW + 1)),
         ("jti", json!("")),
     ] {
         let mut p = pc();
@@ -97,6 +95,54 @@ fn rejects_wrong_signer_instance_issuer_audience_time_and_private_keys() {
     let mut c = ac();
     c["cnf"]["jwk"]["d"] = json!(B64.encode([6; 32]));
     assert!(!check(ah(), c, ph(), pc(), 5, 6));
+}
+
+#[test]
+fn allows_small_future_nbf_within_clock_skew_and_rejects_larger_or_expired_values() {
+    for offset in [1, 30] {
+        let mut c = ac();
+        c["nbf"] = json!(NOW + offset);
+        assert!(
+            check(ah(), c, ph(), pc(), 5, 6),
+            "attestation nbf +{offset}"
+        );
+
+        let mut p = pc();
+        p["nbf"] = json!(NOW + offset);
+        assert!(check(ah(), ac(), ph(), p, 5, 6), "pop nbf +{offset}");
+    }
+
+    for (offset, expected) in [(31, false), (300, false)] {
+        let mut c = ac();
+        c["nbf"] = json!(NOW + offset);
+        assert_eq!(
+            check(ah(), c, ph(), pc(), 5, 6),
+            expected,
+            "attestation nbf +{offset}"
+        );
+
+        let mut p = pc();
+        p["nbf"] = json!(NOW + offset);
+        assert_eq!(
+            check(ah(), ac(), ph(), p, 5, 6),
+            expected,
+            "pop nbf +{offset}"
+        );
+    }
+
+    let mut expired = ac();
+    expired["exp"] = json!(NOW);
+    assert!(!check(ah(), expired, ph(), pc(), 5, 6));
+
+    let mut attestation_nbf_at_exp = ac();
+    attestation_nbf_at_exp["nbf"] = json!(NOW + 10);
+    attestation_nbf_at_exp["exp"] = json!(NOW + 10);
+    assert!(!check(ah(), attestation_nbf_at_exp, ph(), pc(), 5, 6));
+
+    let mut pop_nbf_at_exp = pc();
+    pop_nbf_at_exp["nbf"] = json!(NOW + 10);
+    pop_nbf_at_exp["exp"] = json!(NOW + 10);
+    assert!(!check(ah(), ac(), ph(), pop_nbf_at_exp, 5, 6));
 }
 #[test]
 fn rejects_untrusted_root_reader_purpose_root_in_header_and_critical_extensions() {
