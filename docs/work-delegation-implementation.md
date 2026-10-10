@@ -894,3 +894,11 @@ of the six protected development allocations before a productive Artifacts copy
 trial. The stash and protected repositories/journals remain intact. The
 [qualification protocol](work-git-host-qualification.md) records the fixed
 admission, inspection and lifecycle procedure.
+
+A subsequent independent read-only status RPC again returned `running=false`,
+the identical **2,127 ms** retained restart result and all three original
+admissions with their outcomes still `null`. The original packet hashes and
+hash-linked restart evidence also match. The additional check performs no
+startup or productive Git call; its receipts are
+`artifacts/work-git-host/restart-independent-verification.json` and
+`artifacts/work-git-host/restart-final-status.log`.
