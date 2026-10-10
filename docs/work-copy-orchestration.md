@@ -34,12 +34,12 @@ The Workflow and starter default HTTP entrypoints return 404.
 
 ## Native progression
 
-| Ordinals | Native operation |
-| --- | --- |
-| 0, 1 | Dispatch the approved preparation, then create each fixed repository and close its initial credential. |
-| 2–9 | Task upload and readback: mint, fixed Git exchange, known-ID revocation evidence, independent bearer refusal and Native closure. |
-| 10–17 | Snapshot upload and readback with the same four operations. |
-| 18 | Compose independent evidence for both copies and all six closed credential slots; publish verified status. |
+| Ordinals | Native operation                                                                                                                 |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 0, 1     | Dispatch the approved preparation, then create each fixed repository and close its initial credential.                           |
+| 2–9      | Task upload and readback: mint, fixed Git exchange, known-ID revocation evidence, independent bearer refusal and Native closure. |
+| 10–17    | Snapshot upload and readback with the same four operations.                                                                      |
+| 18       | Compose independent evidence for both copies and all six closed credential slots; publish verified status.                       |
 
 A covered compare-and-set records admission and audit before each physical
 gate. Only its winner invokes that gate. The gate's independent, permanent
@@ -111,9 +111,11 @@ wrapping key, fixed Artifacts account/namespace, all private gate bindings and
 the registered trusted Git host. Composition calculates object identities; it
 does not materialize or register repositories on that host. Deployment must
 provision and independently qualify that materialization/registration path
-before enabling owner execution. The local fixture explicitly registers the
-selected code history and parentless snapshot. It does not qualify a Cloudflare
-host deployment or real Artifacts copying.
+before enabling owner execution. The [private Git host](work-git-host.md) now
+materializes exact Native selections, supplies sealed packs through private R2
+and includes a code-only Linux image plus a retained Container admission bridge.
+Local qualification includes the sealed host path. It does not qualify remote
+Cloudflare Container deployment or real Artifacts copying.
 
 Both `WORK_COPY_EXECUTION_ENABLED` on Native and
 `WORK_COPY_WORKFLOW_ENABLED` on the Workflow remain opt-in. The existing owner,

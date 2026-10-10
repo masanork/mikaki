@@ -107,11 +107,13 @@ unchanged. Owner/source/key loss can reject results after an external effect was
 accepted; it cannot erase already delivered bytes. Concurrent retries may cancel
 an in-flight attempt into cleanup, but cannot obtain a second send.
 
-The Git host factory has no network listener or deployment configuration. Its
-service bridge is exercised through a private Miniflare host capability here.
-A Cloudflare-hosted execution environment, authenticated provisioning of the
-source registry and resource isolation/quotas still need a deployment increment.
-The Workers bridge alone does not make Node child processes available in Workers.
+The original Git host factory was qualified through a private Miniflare host
+capability. The [private host increment](work-git-host.md) now adds a bounded
+Linux listener, exact Native source registration, private R2 provisioning and
+Cloudflare Container configuration with retained host admission. Its local
+Linux/R2 qualification does not establish remote Container execution or
+Artifacts behavior. The Workers bridge alone does not make Node child processes
+available in Workers.
 Protected existing remote allocations must be reconciled before a real trial.
 M6e now [composes both-role evidence and six Native closures](work-preparation-evidence.md)
 into verified preparation. Owner copy/delegation consent, workload token release
