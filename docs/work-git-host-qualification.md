@@ -18,8 +18,8 @@ The R2 inventory read on 2026-10-10 did not contain the qualification bucket.
 Check inventory again before creation; a reused name does not establish ownership.
 
 The [qualification Worker](../crates/work-git-host-worker/qualification.ts)
-exports only a named private `WorkGitHostQualification.prepare()` RPC. It accepts
-no arguments. Default/named HTTP handlers return 404; Workers.dev, preview URLs
+exports named private `prepare()`, `status()` and `qualifyRestart()` RPC methods.
+They accept no arguments. Default/named HTTP handlers return 404; Workers.dev, preview URLs
 and routes are disabled. There is no Git dispatch handler or provider binding.
 Both `WORK_GIT_HOST_ENABLED=false` and `WORK_GIT_PROVISION_ENABLED=true` are
 required. Container Internet access is disabled. The program runs the same
@@ -28,7 +28,7 @@ trusted Linux entry and shared startup/provisioning code as the productive host.
 Before startup, an immutable SQLite frame pins the account, namespace, synthetic
 authority, disclosure and registry. At most three probe attempts are synchronized
 before I/O. Missing replies consume their slot, including across isolate restart.
-Frame changes and a fourth invocation are refused. These probe slots are separate
+Frame changes and a fourth `prepare()` invocation are refused. These probe slots are separate
 from the productive host's four Git slots. Nothing in this probe creates a task,
 repository, credential, grant or run, or qualifies Native authority remotely.
 
@@ -194,3 +194,71 @@ remote restart measurement, add retained inspection/outcome handling for the
 existing qualification and define an independently bounded measurement that
 preserves the original attempts. Productive activation also still requires the
 enrolled Native authority and protected Artifacts allocation reconciliation.
+
+## Retained inspection and independent restart measurement
+
+The follow-up keeps the existing Worker, application, SQLite namespace, DO name,
+R2 package and digest-pinned image. It adds tables and methods to the same
+qualification Worker; it does not change productive host code or create another
+qualification identity. The original frozen packet and journal stay unchanged.
+
+`status()` reads the retained frame, original attempt ordinals, restart admission,
+outcomes and Container `running` attribute. It does not start a Container, request
+a TCP port, contact Linux/R2 or charge a probe slot. The constructor creates any
+missing additive schema on first use. Older attempts have `result=null`; no
+success or failure is reconstructed for them. New ready/failed outcomes are
+immutable and synchronized **before** a result is returned. A lost reply can
+therefore be reconciled by inspection without repeating startup.
+
+`qualifyRestart()` has its own single fixed `inactive_restart_v1` admission. It
+requires the exact retained frame, all three original attempts, an available
+Container with `running=false`, and an account-scoped digest-pinned image. It
+records the same frame/image and prior attempt count, synchronizes admission,
+then invokes the shared startup/R2 readiness code with Internet disabled. A ready
+result must report a new start. Failure or a missing result consumes this separate
+slot; concurrent calls, subsequent calls and isolate restarts cannot rearm it.
+The original three slots and their unobserved outcomes remain intact. This is a
+new bounded measurement from a stopped state, not another original third call.
+
+From a clean committed source, append a frozen Worker revision to the original
+packet's exclusive `restart-qualification` directory:
+
+```sh
+npm run prepare:work-git-host-restart -- <original-packet>
+```
+
+The [revision preparer](../scripts/prepare-work-git-host-restart.ts) verifies the
+original file hashes and retained resource receipt. It refuses changes to the
+shared productive startup/Linux/source code relative to the original source.
+Its new receipt pins the current Worker bundle and source commit alongside the
+original pins, namespace/application ID and existing image. The generated config
+uses `images.host.image` with that existing immutable reference, so no image or
+source pack is rebuilt or uploaded. See
+[digest-pinned images](https://developers.cloudflare.com/workers/wrangler/configuration/#durable_object-scheduling-policy).
+Inspect current authentication, selected resource IDs, private bindings and
+inactive Container state before deployment; do not adopt an unexpected resource.
+Dry-run and deploy with the same qualification profile and
+`--containers-rollout none`, then verify the namespace/application IDs and image
+again before RPC. Keep the new Worker version receipt.
+
+```sh
+npm run qualify:work-git-host-restart -- inspect <original-packet>/restart-qualification
+npm run qualify:work-git-host-restart -- restart <original-packet>/restart-qualification
+```
+
+The [client](../scripts/qualify-work-git-host-restart.ts) uses the same private
+remote service binding. Inspections retain exclusive local `inspection-*.json`
+files. The restart command opens an exclusive synchronized `restart-run.jsonl`,
+reads the original attempts and stopped state, sends at most one restart RPC,
+retains the closed reply and checks it against another retained-state read. The
+original attempt results must remain byte-equivalent after parsing, and the
+retained restart result must match the reply. A previously retained success can
+be reconciled without another call; unknown/failed results cannot retry. Invalid
+responses or lost replies stop the client. Repeating the restart command cannot
+replace its local journal; use `inspect` to read a retained or uncertain outcome.
+
+After disconnecting the client, use provider Container instance reads to observe
+natural inactivity shutdown. Calling the DO repeatedly can alter its inactivity
+window. Provider inactivity is a lifecycle observation, not proof of erasure or
+productive Git/credential behavior. The enrolled-authority and protected-resource
+gates still apply.

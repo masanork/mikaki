@@ -12,8 +12,14 @@ import {
   qualificationImage,
   qualificationObservation,
   runQualificationSequence,
+  qualificationStatus,
+  runRestartQualification,
 } from '../../scripts/work-git-host-qualification.ts';
-async function fixture(directory: string, vars: Record<string, string> = {}) {
+async function fixture(
+  directory: string,
+  vars: Record<string, string> = {},
+  container: 'none' | 'stopped' | 'running' | 'ready' = 'none',
+) {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   const built = await build({
     stdin: {
@@ -22,6 +28,31 @@ async function fixture(directory: string, vars: Record<string, string> = {}) {
       import main, {WorkGitHostQualification, GitHostQualificationContainer} from './crates/work-git-host-worker/qualification.ts';
       export {WorkGitHostQualification};
       export class InspectionContainer extends GitHostQualificationContainer {
+        constructor(ctx, env) {
+          ${
+            container === 'none'
+              ? ''
+              : `Object.defineProperty(ctx, 'container', {value: {
+            running: ${container === 'running'},
+            images: {host: 'registry.cloudflare.com/' + env.WORK_ARTIFACTS_ACCOUNT + '/host@sha256:' + 'a'.repeat(64)},
+            start(options) {
+              ${container === 'ready' ? `if (options.enableInternet !== false) throw new Error('synthetic_internet_refused'); this.running = true;` : `throw new Error('synthetic_start_refused');`}
+            },
+            async setInactivityTimeout() {},
+            getTcpPort() { return {async fetch(url) {
+              if (url.endsWith('/health')) return new Response(null,{status:200});
+              if (url.endsWith('/ready')) return Response.json({registry_sha256:env.WORK_GIT_REGISTRY_SHA256,disclosure_digest:env.WORK_GIT_DISCLOSURE_DIGEST});
+              throw new Error('synthetic_port_refused');
+            }}; }
+          }});`
+          }
+          super(ctx, env);
+        }
+        seedLegacy() {
+          const frame = JSON.stringify([this.env.WORK_ARTIFACTS_ACCOUNT,this.env.WORK_ARTIFACTS_NAMESPACE,this.env.WORK_AUTHORITY_ID,this.env.WORK_GIT_DISCLOSURE_DIGEST,this.env.WORK_GIT_REGISTRY_SHA256]);
+          this.ctx.storage.sql.exec('INSERT INTO qualification_frame VALUES(1,?)',frame);
+          for (const n of [1,2,3]) this.ctx.storage.sql.exec('INSERT INTO qualification_attempt VALUES(?)',n);
+        }
         inspectQualification() { return {
           attempts: this.ctx.storage.sql.exec('SELECT * FROM qualification_attempt').toArray(),
           frame: this.ctx.storage.sql.exec('SELECT * FROM qualification_frame').toArray(),
@@ -67,9 +98,12 @@ async function fixture(directory: string, vars: Record<string, string> = {}) {
           const object = e.GIT_HOST.getByName('mikaki-git-host-qualification-v1:'+'d'.repeat(64));
           if (path === '/inspect') return Response.json(await object.inspectQualification());
           if (path === '/entry-fetch') return e.HOST.fetch(r);
+          if (path === '/seed-legacy') { await object.seedLegacy(); return new Response(null,{status:204}); }
           try {
             const args = await r.json();
-            const v = path === '/direct' ? await object.prepare(...args) : await e.HOST.prepare(...args);
+            const v = path === '/direct' ? await object.prepare(...args) :
+              path === '/status' ? await e.HOST.status(...args) :
+              path === '/restart' ? await e.HOST.qualifyRestart(...args) : await e.HOST.prepare(...args);
             return Response.json(v);
           } catch (error) { return new Response(null, {status: error.message === 'qualification_denied' ? 409 : 500}); }
         }}`,
@@ -109,6 +143,85 @@ async function fixture(directory: string, vars: Record<string, string> = {}) {
   };
   return { mf, call, denied, inspect };
 }
+test('retained status observes attempts without charging, starting, or reconstructing legacy outcomes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-status-'));
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    f = await fixture(dir);
+    for (let i = 0; i < 2; i++) {
+      const r = await f.call('/status');
+      assert.equal(r.status, 200);
+      const value = qualificationStatus(...statusSelection(), await r.json());
+      assert.equal(value.frame_present, false);
+      assert.deepEqual(value.attempts, []);
+      assert.equal(value.restart, null);
+    }
+    assert.deepEqual((await f.inspect()).attempts, []);
+    await f.denied();
+    const r = await f.call('/status');
+    const value = qualificationStatus(...statusSelection(), await r.json());
+    assert.equal(value.attempts[0]!.result?.kind, 'git_host_infrastructure_failed');
+    const rejected = await f.call('/status', ['other']);
+    assert.equal(rejected.status, 409);
+    await f.mf.dispose();
+    f = await fixture(dir, { WORK_GIT_REGISTRY_SHA256: 'e'.repeat(64) });
+    assert.equal((await f.call('/status')).status, 409);
+  } finally {
+    await f?.mf.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+function statusSelection(): [ReturnType<typeof selectedObservation>['target'], string] {
+  const { target, image } = selectedObservation();
+  return [target, image];
+}
+test('one stopped-state experiment preserves the original attempts and permanently refuses duplicates', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-restart-'));
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    f = await fixture(dir, {}, 'stopped');
+    assert.equal((await f.call('/restart')).status, 409);
+    for (let i = 0; i < 3; i++) await f.denied();
+    const before = await f.inspect();
+    const calls = await Promise.all([f.call('/restart'), f.call('/restart')]);
+    assert.deepEqual(
+      calls.map((r) => r.status),
+      [409, 409],
+    );
+    for (const r of calls) await r.text();
+    const r = await f.call('/status');
+    const value = qualificationStatus(...statusSelection(), await r.json());
+    assert.equal(value.restart?.result?.kind, 'git_host_infrastructure_failed');
+    assert.deepEqual(await f.inspect(), before);
+    await f.mf.dispose();
+    f = await fixture(dir, {}, 'stopped');
+    assert.equal((await f.call('/restart')).status, 409);
+    assert.deepEqual(await f.inspect(), before);
+    const restarted = await f.call('/status');
+    assert.deepEqual(qualificationStatus(...statusSelection(), await restarted.json()), value);
+  } finally {
+    await f?.mf.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test('a running process cannot charge the separate stopped-state experiment', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-running-'));
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    f = await fixture(dir);
+    for (let i = 0; i < 3; i++) await f.denied();
+    await f.mf.dispose();
+    f = await fixture(dir, {}, 'running');
+    assert.equal((await f.call('/restart')).status, 409);
+    const r = await f.call('/status');
+    const value = qualificationStatus(...statusSelection(), await r.json());
+    assert.equal(value.container_running, true);
+    assert.equal(value.restart, null);
+  } finally {
+    await f?.mf.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 test('qualification refuses public ingress, arguments and productive flags before admission', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-qualification-'));
   let f: Awaited<ReturnType<typeof fixture>> | undefined;
@@ -135,7 +248,7 @@ test('qualification refuses public ingress, arguments and productive flags befor
     await rm(dir, { recursive: true, force: true });
   }
 });
-test('unknown Container startup consumes the bounded probe budget across runtime restart', async () => {
+test('Container startup refusal consumes the bounded probe budget across runtime restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-qualification-'));
   let f: Awaited<ReturnType<typeof fixture>> | undefined;
   try {
@@ -152,6 +265,221 @@ test('unknown Container startup consumes the bounded probe budget across runtime
   } finally {
     await f?.mf.dispose();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+test('legacy attempts stay unknown after upgrading and after the independent restart experiment', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-legacy-'));
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    f = await fixture(dir, {}, 'stopped');
+    assert.equal((await f.call('/seed-legacy')).status, 204);
+    const r = await f.call('/status');
+    const before = qualificationStatus(...statusSelection(), await r.json());
+    assert.deepEqual(
+      before.attempts,
+      [1, 2, 3].map((ordinal) => ({ ordinal, result: null })),
+    );
+    assert.equal((await f.call('/restart')).status, 409);
+    await f.mf.dispose();
+    f = await fixture(dir, {}, 'stopped');
+    const after = await f.call('/status');
+    const value = qualificationStatus(...statusSelection(), await after.json());
+    assert.deepEqual(value.attempts, before.attempts);
+    assert.equal(value.restart?.result?.kind, 'git_host_infrastructure_failed');
+    assert.equal((await f.call('/restart')).status, 409);
+    await f.denied();
+    assert.deepEqual(
+      (await f.inspect()).attempts,
+      [1, 2, 3].map((ordinal) => ({ ordinal })),
+    );
+  } finally {
+    await f?.mf.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test('successful restart result is retained before its reply and reconciles after isolate restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mikaki-host-ready-'));
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    f = await fixture(dir, {}, 'ready');
+    assert.equal((await f.call('/seed-legacy')).status, 204);
+    const r = await f.call('/restart');
+    assert.equal(r.status, 200);
+    const result = await r.json();
+    const read = await f.call('/status');
+    const before = qualificationStatus(...statusSelection(), await read.json());
+    assert.deepEqual(before.restart?.result, result);
+    assert.equal(before.container_running, true);
+    await f.mf.dispose();
+    f = await fixture(dir, {}, 'stopped');
+    const current = f;
+    const [target, image] = statusSelection();
+    const reconciled = await runRestartQualification(
+      target,
+      image,
+      {
+        async status() {
+          const r = await current.call('/status');
+          return r.json();
+        },
+        async qualifyRestart() {
+          assert.fail('retained success must reconcile over read-only RPC');
+        },
+      },
+      async (_: unknown) => {},
+    );
+    assert.equal(reconciled.reconciled, true);
+    assert.deepEqual(reconciled.result, result);
+    const after = await f.call('/status');
+    assert.deepEqual(
+      qualificationStatus(target, image, await after.json()).attempts,
+      before.attempts,
+    );
+    assert.equal((await f.call('/restart')).status, 409);
+  } finally {
+    await f?.mf.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test('restart client requires stopped state and reconciles retained success without another startup', async () => {
+  const { target, image, observed } = selectedObservation();
+  const { kind, ordinal, ...fields } = observed;
+  const result = {
+    ...fields,
+    kind: 'git_host_infrastructure_restart',
+    experiment: 'inactive_restart_v1',
+    prior_attempts: 3,
+  };
+  const status = {
+    kind: 'git_host_infrastructure_status',
+    registry_sha256: target.registry_sha256,
+    disclosure_digest: target.disclosure_digest,
+    frame_present: true,
+    container_available: true,
+    container_running: false,
+    image,
+    attempts: [1, 2, 3].map((ordinal) => ({ ordinal, result: null })),
+    restart: null,
+    internet_enabled: false,
+    git_dispatches: 0,
+  };
+  let starts = 0,
+    reads = 0;
+  const record = async (_: unknown) => {};
+  const completed = await runRestartQualification(
+    target,
+    image,
+    {
+      async status() {
+        reads++;
+        return reads === 1
+          ? status
+          : { ...status, container_running: true, restart: { image, result } };
+      },
+      async qualifyRestart() {
+        starts++;
+        return result;
+      },
+    },
+    record,
+  );
+  assert.equal(completed.reconciled, false);
+  assert.equal(starts, 1);
+  const recovered = await runRestartQualification(
+    target,
+    image,
+    {
+      async status() {
+        return { ...status, restart: { image, result } };
+      },
+      async qualifyRestart() {
+        assert.fail('retained success must not start again');
+      },
+    },
+    record,
+  );
+  assert.equal(recovered.reconciled, true);
+  for (const change of [
+    { container_running: true },
+    { attempts: status.attempts.slice(0, 2) },
+    { restart: { image, result: null } },
+    {
+      restart: {
+        image,
+        result: {
+          kind: 'git_host_infrastructure_failed',
+          slot: 'inactive_restart_v1',
+          reason: 'not_ready',
+        },
+      },
+    },
+  ])
+    await assert.rejects(
+      runRestartQualification(
+        target,
+        image,
+        {
+          async status() {
+            return { ...status, ...change };
+          },
+          async qualifyRestart() {
+            assert.fail('ineligible/unobserved state must not start');
+          },
+        },
+        record,
+      ),
+    );
+});
+test('restart client cannot accept missing retention or changed original attempts', async () => {
+  const { target, image, observed } = selectedObservation();
+  const { kind, ordinal, ...fields } = observed;
+  const result = {
+    ...fields,
+    kind: 'git_host_infrastructure_restart',
+    experiment: 'inactive_restart_v1',
+    prior_attempts: 3,
+  };
+  const status = {
+    kind: 'git_host_infrastructure_status',
+    registry_sha256: target.registry_sha256,
+    disclosure_digest: target.disclosure_digest,
+    frame_present: true,
+    container_available: true,
+    container_running: false,
+    image,
+    attempts: [1, 2, 3].map((ordinal) => ({ ordinal, result: null })),
+    restart: null,
+    internet_enabled: false,
+    git_dispatches: 0,
+  };
+  for (const change of [
+    { restart: { image, result: null } },
+    {
+      restart: { image, result },
+      attempts: [{ ordinal: 1, result: observed }, ...status.attempts.slice(1)],
+    },
+  ]) {
+    let reads = 0,
+      starts = 0;
+    await assert.rejects(
+      runRestartQualification(
+        target,
+        image,
+        {
+          async status() {
+            reads++;
+            return reads === 1 ? status : { ...status, ...change };
+          },
+          async qualifyRestart() {
+            starts++;
+            return result;
+          },
+        },
+        async (_: unknown) => {},
+      ),
+      /qualification_retention_denied/,
+    );
+    assert.equal(starts, 1);
   }
 });
 test('a registry change cannot rebind the retained qualification frame', async () => {

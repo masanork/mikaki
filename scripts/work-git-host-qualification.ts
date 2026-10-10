@@ -37,6 +37,21 @@ export const qualificationObservationSchema = z
     git_dispatches: z.literal(0),
   })
   .strict();
+export const restartTargetSchema = z
+  .object({
+    format_version: z.literal(1),
+    experiment: z.literal('inactive_restart_v1'),
+    original: qualificationTargetSchema,
+    image: qualificationObservationSchema.shape.image,
+    namespace_id: z.string().regex(/^[a-f0-9]{32}$/),
+    container_application_id: z.string().regex(/^[a-f0-9]{32}$/),
+    previous_worker_version: z.string().uuid(),
+    source_commit: z.string().regex(/^[a-f0-9]{40}$/),
+    source_clean: z.literal(true),
+    worker_sha256: digest,
+  })
+  .strict()
+  .refine((t) => t.namespace_id === t.container_application_id);
 export function qualificationImage(account: string, image: string) {
   if (
     !/^[a-f0-9]{32}$/.test(account) ||
@@ -64,6 +79,146 @@ export function qualificationObservation(
   )
     throw new Error('qualification_observation_denied');
   return observation;
+}
+
+export const restartObservationSchema = qualificationObservationSchema
+  .omit({ kind: true, ordinal: true, started: true })
+  .extend({
+    kind: z.literal('git_host_infrastructure_restart'),
+    experiment: z.literal('inactive_restart_v1'),
+    prior_attempts: z.literal(3),
+    started: z.literal(true),
+  });
+const failureSchema = z
+  .object({
+    kind: z.literal('git_host_infrastructure_failed'),
+    slot: z.enum(['1', '2', '3', 'inactive_restart_v1']),
+    reason: z.literal('not_ready'),
+  })
+  .strict();
+export const qualificationStatusSchema = z
+  .object({
+    kind: z.literal('git_host_infrastructure_status'),
+    registry_sha256: digest,
+    disclosure_digest: digest,
+    frame_present: z.boolean(),
+    container_available: z.boolean(),
+    container_running: z.boolean(),
+    image: qualificationObservationSchema.shape.image.nullable(),
+    attempts: z
+      .array(
+        z
+          .object({
+            ordinal: z.number().int().min(1).max(3),
+            result: z.union([qualificationObservationSchema, failureSchema]).nullable(),
+          })
+          .strict(),
+      )
+      .max(3),
+    restart: z
+      .object({
+        image: qualificationObservationSchema.shape.image,
+        result: z.union([restartObservationSchema, failureSchema]).nullable(),
+      })
+      .strict()
+      .nullable(),
+    internet_enabled: z.literal(false),
+    git_dispatches: z.literal(0),
+  })
+  .strict();
+export function restartObservation(target: QualificationTarget, image: string, value: unknown) {
+  const result = restartObservationSchema.parse(value);
+  if (
+    result.registry_sha256 !== target.registry_sha256 ||
+    result.disclosure_digest !== target.disclosure_digest ||
+    result.image !== image
+  )
+    throw new Error('qualification_observation_denied');
+  return result;
+}
+export function qualificationStatus(target: QualificationTarget, image: string, value: unknown) {
+  const status = qualificationStatusSchema.parse(value);
+  if (
+    status.registry_sha256 !== target.registry_sha256 ||
+    status.disclosure_digest !== target.disclosure_digest ||
+    status.image !== (status.container_available ? image : null) ||
+    (!status.container_available && status.container_running) ||
+    (!status.frame_present && (status.attempts.length || status.restart)) ||
+    (status.restart && (status.restart.image !== image || status.attempts.length !== 3))
+  )
+    throw new Error('qualification_status_denied');
+  for (const [index, attempt] of status.attempts.entries()) {
+    if (attempt.ordinal !== index + 1) throw new Error('qualification_status_denied');
+    if (attempt.result?.kind === 'git_host_infrastructure')
+      qualificationObservation(
+        target,
+        image,
+        attempt.ordinal,
+        attempt.result.started,
+        attempt.result,
+      );
+    else if (attempt.result && attempt.result.slot !== String(attempt.ordinal))
+      throw new Error('qualification_status_denied');
+  }
+  if (status.restart?.result?.kind === 'git_host_infrastructure_restart')
+    restartObservation(target, image, status.restart.result);
+  else if (status.restart?.result && status.restart.result.slot !== 'inactive_restart_v1')
+    throw new Error('qualification_status_denied');
+  return status;
+}
+export interface RestartConnection {
+  status(): Promise<unknown>;
+  qualifyRestart(): Promise<unknown>;
+}
+/** Reconcile a retained result or charge the single separate stopped-state experiment. */
+export async function runRestartQualification(
+  target: QualificationTarget,
+  image: string,
+  connection: RestartConnection,
+  record: (value: unknown) => Promise<void>,
+) {
+  const before = qualificationStatus(target, image, await connection.status());
+  await record({ event: 'status_before', value: before });
+  if (before.restart) {
+    if (before.restart.result?.kind !== 'git_host_infrastructure_restart')
+      throw new Error('qualification_restart_unobserved');
+    return { reconciled: true, result: restartObservation(target, image, before.restart.result) };
+  }
+  if (
+    !before.frame_present ||
+    before.attempts.length !== 3 ||
+    !before.container_available ||
+    before.container_running
+  )
+    throw new Error('qualification_restart_denied');
+  await record({ event: 'intent', experiment: 'inactive_restart_v1' });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let reply: unknown;
+  try {
+    reply = await Promise.race([
+      connection.qualifyRestart(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('qualification_timeout')), 300000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+  const parsed = restartObservationSchema.safeParse(reply);
+  if (!parsed.success) {
+    await record({ event: 'response_refused', reason: 'invalid_shape' });
+    throw new Error('qualification_observation_denied');
+  }
+  await record({ event: 'response', value: parsed.data });
+  const result = restartObservation(target, image, parsed.data);
+  const after = qualificationStatus(target, image, await connection.status());
+  await record({ event: 'status_after', value: after });
+  if (
+    JSON.stringify(after.attempts) !== JSON.stringify(before.attempts) ||
+    JSON.stringify(after.restart?.result) !== JSON.stringify(result)
+  )
+    throw new Error('qualification_retention_denied');
+  return { reconciled: false, result };
 }
 
 export interface QualificationConnection {
