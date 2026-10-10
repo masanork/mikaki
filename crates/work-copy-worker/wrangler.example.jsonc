@@ -1,0 +1,18 @@
+{
+  "name": "mikaki-work-copy-example",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-10",
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "vars": { "WORK_COPY_WORKFLOW_ENABLED": "false" },
+  "triggers": { "crons": ["* * * * *"] },
+  "services": [
+    { "binding": "OP_COPY_STORE", "service": "mikaki-op-example", "entrypoint": "WorkCopyStore" },
+  ],
+  "workflows": [
+    {
+      "binding": "COPY_WORKFLOW",
+      "name": "mikaki-work-copy-example",
+      "class_name": "WorkCopyWorkflow",
+    },
+  ],
+}

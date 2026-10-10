@@ -5,6 +5,14 @@ use crate::work_store::{StoreError, WorkStore};
 use worker::{Env, Method, Request, Response};
 
 pub async fn handle(request: Request, env: Env) -> worker::Result<Response> {
+    let copy_page = request.url()?.path().starts_with("/work/copy-review");
+    if copy_page
+        && !env
+            .var("WORK_COPY_EXECUTION_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+    {
+        return error(404, "not_found");
+    }
     if !["WORK_PREPARATION_REVIEW_ENABLED", "WORK_SOURCE_API_ENABLED"]
         .iter()
         .all(|key| env.var(key).is_ok_and(|v| v.to_string() == "true"))
@@ -21,7 +29,7 @@ pub async fn handle(request: Request, env: Env) -> worker::Result<Response> {
     {
         return error(403, "invalid_origin");
     }
-    let page = url.path() == "/work/preparation-review";
+    let page = matches!(url.path(), "/work/preparation-review" | "/work/copy-review");
     let pairs: Vec<_> = url.query_pairs().collect();
     if pairs.len() > 1
         || pairs
@@ -67,26 +75,55 @@ pub async fn handle(request: Request, env: Env) -> worker::Result<Response> {
         .with_header("X-Content-Type-Options", "nosniff")?;
     if page {
         let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
-        let html = include_str!("../ui/work-preparations.html")
-            .replace(
-                "{{copy_consent}}",
-                if env
-                    .var("WORK_COPY_CONSENT_ENABLED")
-                    .is_ok_and(|v| v.to_string() == "true")
-                {
-                    "true"
-                } else {
-                    "false"
-                },
-            )
-            .replace("{{locale}}", strings.locale)
-            .replace(
-                "{{title}}",
-                &crate::i18n::html_escape(strings.message("preparation_title")),
-            );
+        let html = (if copy_page {
+            include_str!("../ui/work-copy.html")
+        } else {
+            include_str!("../ui/work-preparations.html")
+        })
+        .replace(
+            "{{execution}}",
+            if env
+                .var("WORK_COPY_EXECUTION_ENABLED")
+                .is_ok_and(|v| v.to_string() == "true")
+            {
+                "true"
+            } else {
+                "false"
+            },
+        )
+        .replace(
+            "{{copy_consent}}",
+            if env
+                .var("WORK_COPY_CONSENT_ENABLED")
+                .is_ok_and(|v| v.to_string() == "true")
+            {
+                "true"
+            } else {
+                "false"
+            },
+        )
+        .replace("{{locale}}", strings.locale)
+        .replace(
+            "{{title}}",
+            &crate::i18n::html_escape(strings.message(if copy_page {
+                "copy_title"
+            } else {
+                "preparation_title"
+            })),
+        );
         return builder.with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?.from_html(html);
     }
-    let (body, mime) = if url.path().ends_with(".js") {
+    let (body, mime) = if copy_page && url.path().ends_with(".js") {
+        (
+            include_str!(concat!(env!("OUT_DIR"), "/work-copy.js")),
+            "text/javascript; charset=utf-8",
+        )
+    } else if copy_page {
+        (
+            include_str!(concat!(env!("OUT_DIR"), "/work-copy.css")),
+            "text/css; charset=utf-8",
+        )
+    } else if url.path().ends_with(".js") {
         (
             include_str!(concat!(env!("OUT_DIR"), "/work-preparations.js")),
             "text/javascript; charset=utf-8",

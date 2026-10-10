@@ -16,6 +16,7 @@
   const port = preparationHttpPort(scope.request),
     sources = sourceHttpPort(scope.request);
   const copyEnabled = document.documentElement.dataset.workCopyConsent === 'true';
+  const executionEnabled = document.documentElement.dataset.workCopyExecution === 'true';
   let copy = $state<CopyReview | null>(null),
     inspected = $state(false),
     acknowledged = $state(false);
@@ -371,6 +372,10 @@
             >
           {:else}<p role="status">{m.preparation_copy_withdrawn()}</p>{/if}
           <p>{m.preparation_copy_withdraw_boundary()}</p>
+          {#if executionEnabled && copy.status === 'approved'}<a
+              href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
+              >{m.copy_open()}</a
+            >{/if}
         </section>
       {/if}
       <h3>{m.preparation_delegation()}</h3>

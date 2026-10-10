@@ -71,6 +71,19 @@ impl CredentialRow {
     }
 }
 impl WorkStore {
+    pub(super) async fn check_copy_key(&self, key: &WrappingKey) -> Result<()> {
+        self.check_key(key, true).await
+    }
+    pub(super) async fn copy_slot(
+        &self,
+        preparation: &str,
+        role: CredentialRole,
+        purpose: CredentialPurpose,
+    ) -> Result<CredentialStatus> {
+        let row: CredentialRow = self.first(&format!("SELECT {FIELDS} FROM work_credential_attempt WHERE preparation_id=?1 AND role=?2 AND purpose=?3"), &[text(preparation), text(role.name()), text(purpose.name())]).await?;
+        let attempt = self.credential_attempt(&row).await?;
+        Ok(row.status(&attempt))
+    }
     pub(crate) async fn closed_preparation_credentials(
         &self,
         preparation_id: &str,

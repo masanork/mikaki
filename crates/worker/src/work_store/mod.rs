@@ -4,6 +4,7 @@
 mod checkpoint;
 mod compose;
 mod copy_consent;
+mod copy_job;
 mod credentials;
 mod disclosures;
 mod operations;

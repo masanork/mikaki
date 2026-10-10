@@ -6,9 +6,16 @@ import { fileURLToPath } from 'node:url';
 const entry = process.env['MIKAKI_UI_ENTRY'] ?? 'login';
 const outDir = process.env['MIKAKI_UI_OUTDIR'] ?? '../../../target/worker-ui-check';
 if (
-  !['login', 'vault', 'admin', 'complete', 'logout', 'work-sources', 'work-preparations'].includes(
-    entry,
-  )
+  ![
+    'login',
+    'vault',
+    'admin',
+    'complete',
+    'logout',
+    'work-sources',
+    'work-preparations',
+    'work-copy',
+  ].includes(entry)
 )
   throw new Error('Unknown Worker UI entry');
 
@@ -38,7 +45,9 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         inlineDynamicImports: true,
-        ...(['vault', 'work-sources', 'work-preparations'].includes(entry) ? { minify: true } : {}),
+        ...(['vault', 'work-sources', 'work-preparations', 'work-copy'].includes(entry)
+          ? { minify: true }
+          : {}),
       },
     },
   },
