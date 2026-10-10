@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a/M5b source/preparation inspection, explicit owner copy consent and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main` through `311886a`, 2026-10-09 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing and the bounded Git exchange are integrated. Owner compose, productive copy orchestration, delegation, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a/M5b source/preparation inspection, owner selection composition, explicit copy consent and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main` through `14e7b4a`, 2026-10-10 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing and the bounded Git exchange are integrated. Productive copy orchestration, delegation, Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -24,7 +24,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
 | M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
-| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Opt-in product entry and explicit copy consent for existing reserved preparations pass 167 work/OP/UI cases and 2 existing Vault browser cases at `311886a`. The complete 372-case run at `aa8f604` is recorded separately. Owner compose, productive copy orchestration, delegation, activity/result controls and deployment remain pending. |
+| M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Owner selection composition and separate copy approval are integrated at `14e7b4a`; the exact-source qualification is recorded below. Prior consent qualification passes 167 work/OP/UI cases and 2 Vault browser cases at `311886a`; the complete 372-case run at `aa8f604` remains historical. Productive copy orchestration, delegation, activity/result controls and deployment remain pending. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
@@ -76,7 +76,7 @@ M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 1
 
 Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
 
-Next: connect owner compose and productive copy orchestration to the explicit copy confirmation, then connect delegation to qualified issuer/launcher contracts and place the Git host on Cloudflare. M5a/M5b inspect current sources and saved preparations; M6a–M6e qualify the private mint/Git/evidence chain locally. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+Next: connect productive copy orchestration to the explicit copy confirmation, then connect delegation to qualified issuer/launcher contracts and place the Git host on Cloudflare. M5a/M5b now compose and inspect selected preparations; M6a–M6e qualify the private mint/Git/evidence chain locally. Existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
 
 Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
 
@@ -453,3 +453,71 @@ bindings remain disabled; the production baseline migrations are unchanged. Prot
 resources/journals and the preserved stash remain intact. No push, deployment,
 remote CI qualification or real provider mutation was performed. This record
 adds documentation only; the selected Worker source remains `311886a`.
+
+## Owner selection composition and separate approval
+
+Selected source `14e7b4a72750371f6bab0bd2ec25030eed592099` adds the closed,
+separately gated `POST /work/preparations` transport and its owner UI. The owner
+chooses one registered code source and inspected context paths with an absolute
+deadline. Rust resolves current source/access revisions through the fixed
+read-only private RPC and repeats checkpoint/source guards. Operator settings
+fix destination namespace/account and planning recipient/workload identifiers;
+no caller-provided Git receipt, actor, destination or credential is accepted.
+[The composition decision](work-preparation-compose.md) records the contract.
+
+Native verification checks both SHA-256 content and actual Git blob identity.
+Rust computes the planned parentless snapshot tree/commit using the existing
+fixed snapshot recipe; independent ordinary Git materialization matches those
+names. Unicode/directory ordering, empty snapshots and collision refusal have
+pure Native vectors. These are planned object names, not stored Git objects,
+upload receipts or proof that a copy completed. No plaintext is persisted in the
+disclosure/preparation.
+
+Exact retries and competing isolates retain one preparation and reservation
+charge. An audit failure leaves at most safe disclosure metadata and rolls back
+the preparation/charge; an exact retry finishes the same selection. Deadlines
+remain within the live SSO. Changed sources/checkpoint authority refuse the
+operation. The bounded browser acknowledgement checks the exact selection digest
+and deadline before exposing a review link.
+
+The source screen supports code-only preparation and Japanese/English copy
+composition. A link opens a fresh Native preparation projection; it cannot
+approve or dispatch a copy. Actual content inspection and a fresh acknowledgement
+are required again for approval. Selection/validity changes discard the link;
+failed unchanged retries retain the absolute deadline. Hidden state, lock and
+session replacement reject late replies. Browser checks cover keyboard, 375px
+layout, accessibility, substituted/oversized replies and a committed creation
+whose response arrives after lock. Japanese/English screenshots under
+`artifacts/work-preparation-compose/` were visually inspected.
+
+The clean selected Worker and separate qualification Worker were rebuilt before
+the serial regression run. It passes **195/195**, including **14** new Native/API
+composition cases, **5** new browser cases and the prior **167**
+owner/preparation/consent/checkpoint/evidence/delegation/OP/service/enrollment/
+logout/display-lease cases plus **9** existing source-browser cases. Source SSO
+and provider mappings are synthetic local facts; Git bytes are real. This scope
+does not claim another full mint/recovery run or real Artifacts qualification.
+The existing Owner Vault browser lane passes **2/2** in a separate isolated run.
+
+Rust workspace tests pass **213/213**, including doctests. Auth all-target and
+production Wasm Clippy deny warnings. Node/Worker UI/service/source/effect/
+checkpoint types, Rustfmt, full Prettier, the **619-key** bilingual catalog,
+product-source and documentation checks pass. Baseline/Owner schema, Worker
+roster, release/reset and Agent SQL checks pass **37/37**. Existing source UI
+CI/PR jobs now build both product/qualification entries and include composition;
+`test:work-preparation-compose` provides a focused local command.
+
+The budget artifact and embedded Worker identify clean `14e7b4a`. OP Wasm is
+**6,996,534 raw / 2,424,736 gzip-estimate bytes**, within 8 MiB / 3 MiB. Served
+source JavaScript is **179,999 / 57,247** and preparation JavaScript
+**191,189 / 60,548**, within 192 KiB / 64 KiB. Vault JavaScript remains
+**302,958 / 87,015**. All existing budgets pass without adjustment; gzip figures
+are local estimates.
+
+Productive copy orchestration is next, followed by qualified issuer/launcher
+delegation. Approval still leaves the preparation reserved and creates no
+repository, credential, task, grant or run. Production flags/bindings and the
+two baseline migrations are unchanged. Protected Artifacts resources/journals
+and the preserved stash remain intact. No push, deployment, remote CI claim or
+real provider mutation is included. This record changes documentation only; the
+selected Worker source remains `14e7b4a`.
