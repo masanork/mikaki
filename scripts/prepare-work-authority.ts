@@ -13,6 +13,7 @@ import {
   authorityInventory,
   authorityPlan,
   authorityTemplates,
+  digest,
   packetFile,
   packetJson,
   verifyAuthorityPacket,
@@ -36,7 +37,7 @@ export async function prepareWorkAuthority(account: string, outputParent: string
     await mkdir(join(directory, name), { recursive: true, mode: 0o700 });
   const env = { ...process.env, GITHUB_SHA: source.commit, CARGO_NET_OFFLINE: 'true' };
   const commands = [
-    { executable: 'worker-build', args: ['--release', 'crates/worker'] },
+    { executable: 'worker-build', args: ['--release', 'crates/worker', '--locked'] },
     { executable: process.execPath, args: ['scripts/build-service-catalog.ts', '--check'] },
     { executable: process.execPath, args: ['scripts/build-op-authority.ts'] },
   ];
@@ -45,6 +46,16 @@ export async function prepareWorkAuthority(account: string, outputParent: string
       cwd: root,
       env,
       maxBuffer: 4 * 1024 * 1024,
+    }).catch(async (error: { stdout?: string; stderr?: string }) => {
+      await writeFile(
+        join(directory, `build-${index + 1}.log`),
+        `${error.stdout ?? ''}${error.stderr ?? ''}`,
+        {
+          flag: 'wx',
+          mode: 0o600,
+        },
+      );
+      throw new Error(`authority_packet_build_${index + 1}_failed`);
     });
     await writeFile(join(directory, `build-${index + 1}.log`), result.stdout + result.stderr, {
       flag: 'wx',
@@ -86,6 +97,7 @@ export async function prepareWorkAuthority(account: string, outputParent: string
     );
   for (const [name, config] of Object.entries(templates))
     await packetJson(join(directory, name, 'wrangler.template.json'), config);
+  const workerBuild = (await exec('which', ['worker-build'])).stdout.trim();
   await packetJson(join(directory, 'build.json'), {
     source,
     commands,
@@ -94,7 +106,10 @@ export async function prepareWorkAuthority(account: string, outputParent: string
     tools: {
       node: process.version,
       rustc: (await exec('rustc', ['--version'])).stdout.trim(),
-      worker_build: (await exec('worker-build', ['--version'])).stdout.trim(),
+      worker_build: {
+        executable: workerBuild,
+        ...digest(await packetFile(workerBuild, 64 * 1024 * 1024)),
+      },
       wrangler: JSON.parse(await readFile(join(root, 'node_modules/wrangler/package.json'), 'utf8'))
         .version,
       esbuild: JSON.parse(await readFile(join(root, 'node_modules/esbuild/package.json'), 'utf8'))

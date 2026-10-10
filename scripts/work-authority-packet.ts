@@ -49,9 +49,15 @@ export async function packetFile(path: string, maximum = bytesLimit): Promise<Bu
   try {
     const stat = await f.stat();
     assert.ok(stat.isFile() && stat.size <= maximum, 'authority_packet_file_denied');
-    const bytes = await f.readFile();
-    assert.equal(bytes.length, stat.size, 'authority_packet_file_changed');
-    return bytes;
+    const bytes = Buffer.alloc(stat.size + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const part = await f.read(bytes, length, bytes.length - length, null);
+      if (!part.bytesRead) break;
+      length += part.bytesRead;
+    }
+    assert.equal(length, stat.size, 'authority_packet_file_changed');
+    return bytes.subarray(0, length);
   } finally {
     await f.close();
   }
@@ -127,7 +133,7 @@ export function authorityTemplates(account: string) {
           },
         ],
       },
-      triggers: { crons: ['* * * * *', '*/10 * * * *'] },
+      triggers: { crons: [] },
     },
     checkpoint: {
       ...common,

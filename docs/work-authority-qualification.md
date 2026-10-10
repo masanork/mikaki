@@ -42,3 +42,79 @@ Preparation is a local byte/schema inventory, not a signed release attestation,
 deployment, enrolled authority, actual owner result, or remote recovery proof.
 Retain partial packets and provider intents/outcomes separately. A complete
 packet remains reviewable without granting any productive Artifacts effect.
+
+## Capability and enrollment sequence
+
+The OP receives only the named `WorkCheckpointService` capability; reserve
+`WorkCheckpointAdmin` (bootstrap, release floor, irreversible freeze) for a
+separately reviewed operator. Reserve `OpAuthorityAdmin` for the OP operator.
+Neither operator capability is bound to the OP's public facade. Cloudflare's
+[named service entrypoint documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/)
+supports this separation. Separate storage does not establish independent
+deployment/restore ownership: an actor able to replace both boundaries can
+undermine it. This same-account qualification does not claim an independent
+control-plane trust domain.
+
+1. Inventory the proposed names, allocate dedicated empty resources and retain
+   their actual IDs, versions and binding/module inventories against a reviewed
+   packet digest. Resolve templates only into a new child deployment packet.
+   No allocator, deployment materializer or remote bootstrap transport is
+   supplied by this preparer.
+2. Apply the frozen combined fourteen-file migration ledger to that empty D1.
+   Refuse populated, production, partly migrated or restored targets. The first
+   two files must match the reviewed Owner Vault digests; the subsequent twelve
+   form the opt-in Work chain. The template's `migrations_dir` points to the
+   frozen combined directory, per Cloudflare's
+   [D1 migration configuration](https://developers.cloudflare.com/d1/reference/migrations/).
+3. Keep primary writers, browser ingress and scheduled work quiescent during
+   initial checkpoint enrollment. The OP template has an empty cron list;
+   enable scheduled work only in the later reviewed environment. Choose
+   one new epoch/tip at sequence zero. Bootstrap the independent DO once, then
+   insert the exact matching primary marker once. These writes have no shared
+   transaction: journal intent/observations before each boundary and require
+   exact matching state without pending permits before enabling any writer.
+   Lost replies authorize inspection of the same identities, never a new epoch
+   or replacement bootstrap. Independent state must not be restored from D1.
+4. Review the isolated HTTPS issuer and runtime policy before opening ingress.
+   Use new signing/readiness secrets and an issuer-specific Passkey RP ID. An
+   operator-issued bootstrap invitation creates no Work owner authority: the
+   intended person must finish real Passkey enrollment, login and PRF Vault
+   opening. Keep invitation, SSO and key material private. The historical
+   enrollment note's pre-baseline migration number is not this environment's
+   migration instruction.
+5. Register small artificial code/context sources under the actual account,
+   current policy and access revision. Select a read-only registered-source
+   reader and fixed namespace/recipient/workload mapping. Registration and
+   policy activation are authority mutations, not fixture SQL seeds. Qualify
+   their remote operator transport and framed admission before composition is
+   enabled. `WORK_PREPARATION_COMPOSE_ENABLED` remains false in this packet.
+6. Exercise actual source selection, disclosure/preparation review, session-bound
+   consent and withdrawal in the UI. Record checkpoint/audit changes and absence
+   of provider/Git effects. Copy execution, effect, mint and Git-store flags
+   remain false. No Artifacts binding, provider bearer, copy Workflow, Git
+   transport or Work wrapping key is supplied.
+7. Verify revocation and refusal cases listed above. Preserve receipts and use
+   separately reviewed, predetermined cases for irreversible floor/freeze
+   tests. A stopped or frozen authority is never reset or automatically replaced.
+
+`USERINFO_CLAIMS`, OIDC clients and email delivery are outside this owner-authority
+phase and need their own isolated configuration if the environment is extended.
+The checkpoint template retains the SQLite migration configuration supported by
+the pinned Wrangler. Module loading preserves the complete Rust shim/Wasm tree;
+it does not point back to mutable workspace build files.
+
+Inventory verification checks exact member names, symlinks, both configuration
+templates, migration/schema and byte digests. It is not authenticity verification:
+preserve a reviewed manifest digest outside the packet. Rewriting bytes and their
+manifest cannot establish trusted provenance. See the
+[checkpoint contract](work-authority-checkpoint.md) and
+[implementation record](work-delegation-implementation.md).
+
+`npm run test:work-authority-packet` runs the packet/schema rejection cases in
+CI. `node scripts/qualify-work-authority-packet.ts PACKET` loads only the frozen
+product modules and checkpoint in local workerd, applies the frozen migrations
+to disposable local D1, and verifies empty authority, the actual enrollment
+page, unauthenticated owner refusal, closed fixture/admin HTTP routes and the
+uninitialized private checkpoint service. Its temporary issuer and D1 identity
+are local test settings, never deployment inputs. This smoke check enrolls no
+owner or checkpoint, and does not exercise a real person's Passkey ceremony.
