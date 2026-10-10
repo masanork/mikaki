@@ -27,7 +27,7 @@ const timestamp = z
   .max(40)
   .refine((v) => Number.isFinite(Date.parse(v)));
 const envelope = z.object({
-  success: z.boolean(),
+  success: z.boolean().optional(),
   errors: z
     .array(z.object({ code: z.number().int() }))
     .max(16)
@@ -82,7 +82,10 @@ function project(resource: AuthorityResource, value: unknown) {
 type Identity = ReturnType<typeof project>;
 function success(response: Awaited<ReturnType<AllocationAPI>>) {
   const e = envelope.parse(response.value);
-  assert.ok(response.status >= 200 && response.status < 300 && e.success, 'allocation_api_refused');
+  assert.ok(
+    response.status >= 200 && response.status < 300 && e.success !== false,
+    'allocation_api_refused',
+  );
   assert.equal(e.errors?.length ?? 0, 0, 'allocation_api_refused');
   return e;
 }
@@ -413,7 +416,7 @@ export async function runAuthorityAllocation(mode: 'inventory' | 'allocate') {
       event: 'api_status',
       method,
       path,
-      success: status.success,
+      success: status.success ?? null,
       error_codes: (status.errors ?? []).map((e) => e.code),
     });
     if (method === 'POST') {

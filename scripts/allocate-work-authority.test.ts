@@ -267,6 +267,22 @@ test('authorization and worker identity errors do not masquerade as absent worke
   );
   assert.deepEqual(p.creates, []);
 });
+test('Queues may omit success, but HTTP failure and explicit false still refuse admission', async () => {
+  const p = provider();
+  let denied = false;
+  const api: AllocationAPI = async (method, path, body) => {
+    const response = await p.api(method, path, body);
+    if (path.includes('/queues?')) {
+      const value = { ...(response.value as Record<string, unknown>) };
+      delete value.success;
+      return denied ? { status: 403, value } : { status: 200, value };
+    }
+    return response;
+  };
+  assert.deepEqual((await authorityResourceInventory(api)).resources, []);
+  denied = true;
+  await assert.rejects(authorityResourceInventory(api), /api_refused/);
+});
 test('records are private and exclusive across reopened writers', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-allocation-test-'));
   const writer = await allocationRecordWriter(directory);
