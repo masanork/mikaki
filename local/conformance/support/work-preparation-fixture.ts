@@ -759,13 +759,12 @@ export async function preparationFixture(
     productFetch: async (path: string, options: FixtureRequestOptions = {}) => {
       // Dispatch through the ingress harness (as Wrangler's test harness does),
       // preserving the browser Origin instead of hitting the Node RPC bridge.
+      const headers = new Headers(options.headers);
+      if (!headers.has('Cookie')) headers.set('Cookie', '__Host-op-sso=synthetic-delivery-session');
+      headers.set('MF-Route-Override', productCopy ? 'preparation-product' : 'preparation-owner');
       return mf.dispatchFetch('https://work.test' + path, {
         ...options,
-        headers: {
-          Cookie: '__Host-op-sso=synthetic-delivery-session',
-          ...options.headers,
-          'MF-Route-Override': productCopy ? 'preparation-product' : 'preparation-owner',
-        },
+        headers: Object.fromEntries(headers),
       });
     },
     copyPrivate: async (input: Record<string, unknown>) => {

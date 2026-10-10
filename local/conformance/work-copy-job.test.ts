@@ -59,7 +59,7 @@ test('queued outbox retries retain one identity, reject browser assertions, and 
     assert.equal((await f.product(path, 'POST', { ...body, account: 'b'.repeat(32) })).status, 400);
     assert.equal(
       (await f.product(path, 'POST', { ...body, review_digest: '0'.repeat(64) })).status,
-      409,
+      404,
     );
     assert.equal((await f.product(path + '?retry=1', 'POST', body)).status, 400);
     const rejectedOrigins: Record<string, string>[] = [
@@ -147,7 +147,7 @@ test('a lost accepted push blocks the same job and closes known credentials with
 });
 
 test('queue audit failure rolls back admission and leaves no Workflow/provider effects', async () => {
-  const f = await fixture();
+  const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
   try {
     assert.equal((await f.approve()).status, 200);
     await f.DB.exec(
@@ -156,11 +156,18 @@ test('queue audit failure rolls back admission and leaves no Workflow/provider e
     assert.equal((await f.start()).status, 503);
     assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_job').first('n'), 0);
     assert.equal((await f.remote()).counts.create ?? 0, 0);
-    // A failed covered batch freezes admission; it cannot be retried by resetting
-    // the checkpoint or substituting a new Workflow identity.
+    // Definitive audit rollback settles the same empty checkpoint slot. A fresh
+    // exact retry can queue the original preparation after the fault is removed.
     await f.DB.exec('DROP TRIGGER copy_queue_abort');
-    assert.equal((await f.start()).status, 409);
-    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_job').first('n'), 0);
+    assert.equal((await f.start()).status, 200);
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_job').first('n'), 1);
+    assert.equal(
+      await f.DB.prepare("SELECT count(*) AS n FROM work_audit WHERE action='copy.queue'").first(
+        'n',
+      ),
+      1,
+    );
+    assert.equal((await f.remote()).counts.create ?? 0, 0);
   } finally {
     await f.close();
   }
