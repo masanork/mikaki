@@ -8,6 +8,7 @@ import {
   tokenInventory,
   inspectAllocations,
   opBindingObservation,
+  inspectionReadKind,
   type ReadAPI,
 } from './inspect-work-artifacts.ts';
 import { ARTIFACTS_ACCOUNT } from './work-artifacts-git.ts';
@@ -60,6 +61,39 @@ const token = {
   created_at: timestamp,
   expires_at: timestamp,
 };
+test('HTTP target policy accepts exact v4 GET paths and refuses other resources and query shapes', () => {
+  const base = `/accounts/${ARTIFACTS_ACCOUNT}`;
+  const repos = `${base}/artifacts/namespaces/mikaki-dev/repos`;
+  const allowed = new Set([repoName]);
+  assert.equal(inspectionReadKind(`${repos}?limit=200`, allowed), 'artifacts');
+  assert.equal(
+    inspectionReadKind(`${repos}?limit=200&cursor=opaque%2Fa%3Fb`, allowed),
+    'artifacts',
+  );
+  assert.equal(inspectionReadKind(`${repos}/${repoName}`, allowed), 'artifacts');
+  assert.equal(
+    inspectionReadKind(`${repos}/${repoName}/tokens?state=all&per_page=100&page=1`, allowed),
+    'artifacts',
+  );
+  assert.equal(
+    inspectionReadKind(`${base}/workers/scripts/mikaki-auth/settings`, allowed),
+    'workers',
+  );
+  for (const path of [
+    `${repos}?limit=200&limit=200`,
+    `${repos}?limit=200&search=other`,
+    `${repos}/${repoName}/tokens?state=active&per_page=100&page=1`,
+    `${repos}/${repoName}/tokens?state=all&per_page=100&page=9`,
+    `${repos}/mikaki`,
+    `${repos}/${repoName}/../mikaki`,
+    `${repos}/${repoName}/tokens/aaaaaaaaaaaaaaaa`,
+    `${base}/artifacts/namespaces/mikaki-dev/tokens`,
+    `${base}/workers/scripts/mikaki-auth/settings?include=secret`,
+    `${repos}/${repoName}#fragment`,
+    `${base}/artifacts/namespaces/other/repos?limit=200`,
+  ])
+    assert.throws(() => inspectionReadKind(path, allowed), /inspection_target_denied/);
+});
 function allocations() {
   return Array.from({ length: 6 }, (_, index) => ({
     journal: protectedJournals[Math.floor(index / 2)].directory,

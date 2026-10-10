@@ -92,6 +92,39 @@ const allocationSchema = z.strictObject({
 type Allocation = z.infer<typeof allocationSchema>;
 export type ReadAPI = (path: string) => Promise<unknown>;
 type RecordEvent = (value: unknown) => Promise<void>;
+export function inspectionReadKind(path: string, allowedNames: ReadonlySet<string>) {
+  const url = new URL(`https://api.cloudflare.com/client/v4${path}`);
+  if (url.origin !== 'https://api.cloudflare.com' || url.hash || url.username || url.password)
+    throw new Error('inspection_target_denied');
+  if (path === `${base}/workers/scripts/mikaki-auth/settings`) return 'workers';
+  const pathname = url.pathname.slice('/client/v4'.length);
+  const keys = [...url.searchParams.keys()];
+  if (
+    pathname === repos &&
+    keys.length <= 2 &&
+    new Set(keys).size === keys.length &&
+    keys.every((key) => key === 'limit' || key === 'cursor') &&
+    url.searchParams.get('limit') === '200' &&
+    (url.searchParams.get('cursor')?.length ?? 0) <= 2048
+  )
+    return 'artifacts';
+  const parts = pathname.slice(repos.length).split('/');
+  if (pathname.startsWith(`${repos}/`) && allowedNames.has(parts[1])) {
+    if (parts.length === 2 && !url.search) return 'artifacts';
+    if (
+      parts.length === 3 &&
+      parts[2] === 'tokens' &&
+      keys.length === 3 &&
+      new Set(keys).size === 3 &&
+      keys.every((key) => ['state', 'per_page', 'page'].includes(key)) &&
+      url.searchParams.get('state') === 'all' &&
+      url.searchParams.get('per_page') === '100' &&
+      /^[1-8]$/.test(url.searchParams.get('page') ?? '')
+    )
+      return 'artifacts';
+  }
+  throw new Error('inspection_target_denied');
+}
 function result(value: unknown) {
   return envelope.parse(value);
 }
@@ -398,16 +431,7 @@ export async function inspectWorkArtifacts() {
     const allowedNames = new Set(allocations.map((a) => a.name));
     const get: ReadAPI = async (path) => {
       const url = new URL(`https://api.cloudflare.com/client/v4${path}`);
-      const suffix = url.pathname.slice(repos.length);
-      const parts = suffix.split('/');
-      const artifact =
-        url.pathname === repos ||
-        (url.pathname.startsWith(`${repos}/`) &&
-          allowedNames.has(parts[1]) &&
-          (parts.length === 2 || (parts.length === 3 && parts[2] === 'tokens')));
-      const worker = path === `${base}/workers/scripts/mikaki-auth/settings`;
-      if ((!artifact && !worker) || url.origin !== 'https://api.cloudflare.com')
-        throw new Error('inspection_target_denied');
+      const artifact = inspectionReadKind(path, allowedNames) === 'artifacts';
       const token = artifact ? artifactsToken : workersToken;
       if (!token) throw new Error('inspection_authentication_unavailable');
       await record({ event: 'read_intent', method: 'GET', path });
@@ -462,10 +486,26 @@ export async function inspectWorkArtifacts() {
       checkpoint_binding_present: op.checkpoint_binding_present,
       enrollment_qualified: false,
     };
-  } catch {
+  } catch (error) {
     await record({
       event: 'stopped',
       outcome: 'inspection_incomplete',
+      reason:
+        error instanceof z.ZodError
+          ? 'response_schema_refused'
+          : error instanceof Error &&
+              [
+                'inspection_target_denied',
+                'artifacts_oauth_unavailable',
+                'workers_api_token_unavailable',
+                'inspection_read_refused',
+                'protected_repository_mismatch',
+                'protected_repository_changed',
+                'repository_inventory_changed',
+                'protected_journal_changed',
+              ].includes(error.message)
+            ? error.message
+            : 'read_or_validation_failed',
       finished_at: new Date().toISOString(),
     });
     throw new Error(`Read-only inspection stopped; retained journal: ${directory}`);
