@@ -411,7 +411,17 @@ export async function runAuthorityAllocation(mode: 'inventory' | 'allocate') {
     });
     await writer.record({ event: 'http_status', method, path, status: response.status });
     const value: unknown = await boundedJSON(response);
-    const status = envelope.parse(value);
+    const parsed = envelope.safeParse(value);
+    if (!parsed.success) {
+      await writer.record({
+        event: 'api_shape_invalid',
+        method,
+        path,
+        fields: parsed.error.issues.map((issue) => ({ code: issue.code, path: issue.path })),
+      });
+      throw new Error('allocation_api_shape_invalid');
+    }
+    const status = parsed.data;
     await writer.record({
       event: 'api_status',
       method,
