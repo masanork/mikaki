@@ -148,6 +148,61 @@ test('an existing fixed name is never adopted and creates nothing', async () => 
   assert.equal(reserved, false);
   assert.deepEqual(p.creates, []);
 });
+test('minimal Queue create acknowledgments are retained before attachment inspection', async () => {
+  const p = provider();
+  const events: { event: string; identity?: { resource: string; id: string } }[] = [];
+  const api: AllocationAPI = async (method, path, body) => {
+    const response = await p.api(method, path, body);
+    if (method === 'POST' && path.endsWith('/queues')) {
+      const q = (response.value as { result: Record<string, unknown> }).result;
+      return ok({ queue_id: q.queue_id, queue_name: q.queue_name, created_on: q.created_on });
+    }
+    if (method === 'GET' && path.includes('/queues/') && !path.includes('?')) {
+      const q = (response.value as { result: Record<string, unknown> }).result;
+      return ok({ ...q, consumers: null, producers: null });
+    }
+    return response;
+  };
+  const report = await allocateAuthorityResources(
+    api,
+    async (v) => {
+      events.push(v as (typeof events)[number]);
+    },
+    async () => {},
+  );
+  assert.equal(report.provider_creates, 4);
+  assert.equal(events.filter((e) => e.event === 'create_observed').length, 4);
+  assert.equal(
+    events.find((e) => e.event === 'create_observed' && e.identity?.resource === 'logout_dlq')!
+      .identity!.id,
+    '3'.repeat(32),
+  );
+});
+test('missing attachment counts stop after preserving the acknowledged Queue ID', async () => {
+  const p = provider();
+  const events: { event: string; identity?: { id: string } }[] = [];
+  const api: AllocationAPI = async (method, path, body) => {
+    const response = await p.api(method, path, body);
+    if (method === 'GET' && path.includes('/queues/') && !path.includes('?')) {
+      const q = (response.value as { result: Record<string, unknown> }).result;
+      return ok({ queue_id: q.queue_id, queue_name: q.queue_name, created_on: q.created_on });
+    }
+    return response;
+  };
+  await assert.rejects(
+    allocateAuthorityResources(
+      api,
+      async (v) => {
+        events.push(v as (typeof events)[number]);
+      },
+      async () => {},
+    ),
+    /attachment_unknown/,
+  );
+  assert.deepEqual(p.creates, ['database', 'vault', 'logout_dlq']);
+  assert.equal(events.at(-1)!.event, 'create_observed');
+  assert.equal(events.at(-1)!.identity!.id, '3'.repeat(32));
+});
 test('lost create reply consumes the reservation and prevents later resources and rerun', async () => {
   const p = provider();
   p.loseReply('database');

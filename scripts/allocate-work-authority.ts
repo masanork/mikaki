@@ -46,10 +46,10 @@ const queue = z.object({
   queue_id: providerId,
   queue_name: z.string().max(128),
   created_on: timestamp,
-  consumers: z.array(z.unknown()).max(128),
-  producers: z.array(z.unknown()).max(128),
-  consumers_total_count: z.number().int().nonnegative(),
-  producers_total_count: z.number().int().nonnegative(),
+  consumers: z.array(z.unknown()).max(128).nullable().optional(),
+  producers: z.array(z.unknown()).max(128).nullable().optional(),
+  consumers_total_count: z.number().int().nonnegative().optional(),
+  producers_total_count: z.number().int().nonnegative().optional(),
 });
 export type AuthorityResource = 'database' | 'vault' | 'logout_dlq' | 'logout_queue';
 const resources: readonly AuthorityResource[] = ['database', 'vault', 'logout_dlq', 'logout_queue'];
@@ -74,10 +74,6 @@ function project(resource: AuthorityResource, value: unknown) {
   }
   const q = queue.parse(value);
   assert.equal(q.queue_name, AUTHORITY_TARGET[resource], 'allocation_identity_changed');
-  assert.equal(q.consumers_total_count, 0, 'allocation_queue_attached');
-  assert.equal(q.producers_total_count, 0, 'allocation_queue_attached');
-  assert.deepEqual(q.consumers, [], 'allocation_queue_attached');
-  assert.deepEqual(q.producers, [], 'allocation_queue_attached');
   return { resource, name: q.queue_name, id: q.queue_id, created_at: q.created_on };
 }
 type Identity = ReturnType<typeof project>;
@@ -198,8 +194,16 @@ async function observe(api: AllocationAPI, identity: Identity) {
       : identity.resource === 'vault'
         ? `${base}/r2/buckets/${identity.id}`
         : `${base}/queues/${identity.id}`;
-  const actual = project(identity.resource, success(await api('GET', path)).result);
+  const value = success(await api('GET', path)).result;
+  const actual = project(identity.resource, value);
   assert.deepEqual(actual, identity, 'allocation_identity_changed');
+  if (identity.resource === 'logout_queue' || identity.resource === 'logout_dlq') {
+    const q = queue.parse(value);
+    assert.equal(q.consumers_total_count, 0, 'allocation_queue_attachment_unknown');
+    assert.equal(q.producers_total_count, 0, 'allocation_queue_attachment_unknown');
+    assert.deepEqual(q.consumers ?? [], [], 'allocation_queue_attached');
+    assert.deepEqual(q.producers ?? [], [], 'allocation_queue_attached');
+  }
   return actual;
 }
 

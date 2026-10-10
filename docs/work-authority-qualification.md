@@ -22,7 +22,7 @@ retain unresolved D1 identity and browser origin, and are not deploy targets.
 Public workers.dev and preview URLs are disabled. Productive composition,
 copy execution, initial effects, mint and Git are disabled.
 
-Before allocation and enrollment, resolve the isolated browser origin, separate
+Before Worker deployment and enrollment, resolve the isolated browser origin, separate
 OP/checkpoint operator and recovery ownership, fresh resource identifiers and
 signing-key custody. Verify provider resource identity and an empty dedicated
 D1 against the frozen packet. Bootstrap the independent checkpoint and matching
@@ -58,8 +58,8 @@ control-plane trust domain.
 1. Inventory the proposed names, allocate dedicated empty resources and retain
    their actual IDs, versions and binding/module inventories against a reviewed
    packet digest. Resolve templates only into a new child deployment packet.
-   No allocator, deployment materializer or remote bootstrap transport is
-   supplied by this preparer.
+   The preparer supplies no deployment materializer or remote bootstrap transport.
+   Closed storage allocation uses the separate once-only operator tool below.
 2. Apply the frozen combined fourteen-file migration ledger to that empty D1.
    Refuse populated, production, partly migrated or restored targets. The first
    two files must match the reviewed Owner Vault digests; the subsequent twelve
@@ -120,6 +120,37 @@ are local test settings, never deployment inputs. This smoke check enrolls no
 owner or checkpoint, and does not exercise a real person's Passkey ceremony.
 The optional receipt is created exclusively and records the selected packet,
 qualifier source and script digest; keep it outside the immutable packet.
+
+## Once-only closed resource allocation
+
+`node scripts/allocate-work-authority.ts inventory` performs two complete bounded
+read inventories of D1, R2, Queues and the two proposed Worker identities. The
+allocator pins the separately reviewed `authority-nMECMX` manifest digest
+`5b06b4588934813995f965bf5e76da9c44d7e08c98045519192f888bdd2a02d3` and
+verifies its frozen members before network access. `allocate` creates only the
+fixed dedicated D1, R2 and logout Queue/DLQ. It deploys neither Worker, applies
+no migrations, bootstraps no checkpoint and opens no browser ingress. Storage
+may be reserved while origin/operator choices remain unresolved; those choices
+still gate deployment and enrollment.
+
+The tool requires a clean selected source. All linked Git checkouts use one
+reservation in the common repository's ignored
+`local/generated/work-authority-allocation/reservation.json`. Each provider
+create is preceded by an exclusive private intent record; both record and parent
+directory are synced before the request. Existing names are collisions, never
+adopted. A lost reply or failed identity read stops the sequence, retaining every
+record and reservation. A new checkout, absent list result or rerun cannot grant
+another create slot. Inspect the same IDs; never remove the reservation, retry
+creation, or replace the allocation. Read inventories do not reconcile an
+unknown create into an acknowledged allocation.
+
+Acknowledged resource names, IDs and creation times are read back and checked
+against stable complete inventories. Authentication remains in the process's
+`CLOUDFLARE_API_TOKEN` header; receipts contain no bearer or raw binding values.
+`npm run test:work-authority-allocation` covers collision, lost/invisible replies,
+durable journal failure, identity substitution, pagination and HTTP refusal.
+New templates and any bootstrap plan must carry these retained identities into
+a separately verified child packet, without editing the frozen parent packet.
 
 The pinned Wrangler test harness does not retain the module-root configuration
 for this unbundled generated Rust entrypoint. The local qualifier therefore uses
