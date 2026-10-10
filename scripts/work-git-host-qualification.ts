@@ -26,7 +26,10 @@ export const qualificationObservationSchema = z
     ready: z.literal(true),
     registry_sha256: digest,
     disclosure_digest: digest,
-    image: z.string().max(512),
+    image: z
+      .string()
+      .max(512)
+      .regex(/^registry\.cloudflare\.com\/[a-f0-9]{32}\/[a-z0-9_.:/-]+@sha256:[a-f0-9]{64}$/),
     started: z.boolean(),
     ordinal: z.number().int().min(1).max(3),
     elapsed_ms: z.number().int().min(0).max(300000),
@@ -61,4 +64,70 @@ export function qualificationObservation(
   )
     throw new Error('qualification_observation_denied');
   return observation;
+}
+
+export interface QualificationConnection {
+  prepare(): Promise<unknown>;
+  dispose(): Promise<void>;
+}
+// DO eviction may take 70–140s, followed by the configured 60s Container grace.
+// This wait is a probe window, not proof of inactivity; started=true still gates step 3.
+const COOLING_MS = 225000;
+/** Release the authenticated RPC session before measuring inactivity. No retries. */
+export async function runQualificationSequence(
+  target: QualificationTarget,
+  image: string,
+  runtime: {
+    connect(): Promise<QualificationConnection>;
+    record(value: unknown): Promise<void>;
+    cool(milliseconds: number): Promise<void>;
+  },
+) {
+  let connection: QualificationConnection | undefined;
+  const close = async () => {
+    const current = connection;
+    connection = undefined;
+    await current?.dispose();
+  };
+  try {
+    connection = await runtime.connect();
+    for (const [ordinal, started] of [
+      [1, true],
+      [2, false],
+      [3, true],
+    ] as const) {
+      if (ordinal === 3) {
+        await close();
+        await runtime.record({ event: 'disconnected', after_ordinal: 2 });
+        await runtime.record({ event: 'cooling', wait_ms: COOLING_MS });
+        await runtime.cool(COOLING_MS);
+        connection = await runtime.connect();
+      }
+      await runtime.record({ event: 'intent', ordinal });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let reply: unknown;
+      try {
+        reply = await Promise.race([
+          connection!.prepare(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('qualification_timeout')), 300000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+      // Retain only the closed safe response before checking selected expectations.
+      // A mismatching valid response is evidence, never a successful observation.
+      const parsed = qualificationObservationSchema.safeParse(reply);
+      if (!parsed.success) {
+        await runtime.record({ event: 'response_refused', ordinal, reason: 'invalid_shape' });
+        throw new Error('qualification_observation_denied');
+      }
+      await runtime.record({ event: 'response', expected_ordinal: ordinal, value: parsed.data });
+      const value = qualificationObservation(target, image, ordinal, started, parsed.data);
+      await runtime.record({ event: 'observed', ...value });
+    }
+  } finally {
+    await close();
+  }
 }

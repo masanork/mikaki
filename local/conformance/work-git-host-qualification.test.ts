@@ -11,6 +11,7 @@ import {
   qualificationTargetSchema,
   qualificationImage,
   qualificationObservation,
+  runQualificationSequence,
 } from '../../scripts/work-git-host-qualification.ts';
 async function fixture(directory: string, vars: Record<string, string> = {}) {
   const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -169,7 +170,7 @@ test('a registry change cannot rebind the retained qualification frame', async (
     await rm(dir, { recursive: true, force: true });
   }
 });
-test('infra observations reject substituted pins, foreign images and authority claims', () => {
+function selectedObservation() {
   const target = qualificationTargetSchema.parse({
     format_version: 1,
     account_id: 'a'.repeat(32),
@@ -198,6 +199,16 @@ test('infra observations reject substituted pins, foreign images and authority c
     internet_enabled: false,
     git_dispatches: 0,
   };
+  return { target, image, observed };
+}
+type RecordedEvent = {
+  event: string;
+  ordinal?: number;
+  expected_ordinal?: number;
+  value?: ReturnType<typeof selectedObservation>['observed'];
+};
+test('infra observations reject substituted pins, foreign images and authority claims', () => {
+  const { target, image, observed } = selectedObservation();
   assert.equal(qualificationImage(target.account_id, image), image);
   assert.deepEqual(qualificationObservation(target, image, 1, true, observed), observed);
   for (const change of [
@@ -216,4 +227,158 @@ test('infra observations reject substituted pins, foreign images and authority c
   assert.throws(() => qualificationImage('b'.repeat(32), image));
   assert.throws(() => qualificationTargetSchema.parse({ ...target, worker: 'mikaki-auth' }));
   assert.throws(() => qualificationTargetSchema.parse({ ...target, bucket: 'mikaki-auth-vault' }));
+});
+test('inactivity probe releases its RPC connection before waiting and reconnects for the third call', async () => {
+  const { target, image, observed } = selectedObservation();
+  const journal: RecordedEvent[] = [];
+  let connected = false,
+    connections = 0,
+    calls = 0,
+    cooled = false,
+    disposed = 0;
+  await runQualificationSequence(target, image, {
+    async connect() {
+      assert.equal(connected, false);
+      if (connections) assert.equal(cooled, true);
+      connections++;
+      connected = true;
+      return {
+        async prepare() {
+          assert.equal(connected, true);
+          calls++;
+          return { ...observed, ordinal: calls, started: calls !== 2 };
+        },
+        async dispose() {
+          assert.equal(connected, true);
+          connected = false;
+          disposed++;
+        },
+      };
+    },
+    async record(value) {
+      journal.push(value as RecordedEvent);
+    },
+    async cool(milliseconds) {
+      assert.equal(connected, false);
+      assert.equal(calls, 2);
+      assert.ok(milliseconds > 140000 + 60000);
+      cooled = true;
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(connections, 2);
+  assert.equal(disposed, 2);
+  assert.equal(connected, false);
+  assert.deepEqual(
+    journal.filter((value) => value.event === 'observed').map((value) => value.ordinal),
+    [1, 2, 3],
+  );
+});
+test('a warm third reply is retained as evidence and cannot qualify inactivity restart', async () => {
+  const { target, image, observed } = selectedObservation();
+  const journal: RecordedEvent[] = [];
+  let calls = 0,
+    disposed = 0;
+  await assert.rejects(
+    runQualificationSequence(target, image, {
+      async connect() {
+        return {
+          async prepare() {
+            calls++;
+            return { ...observed, ordinal: calls, started: calls === 1 };
+          },
+          async dispose() {
+            disposed++;
+          },
+        };
+      },
+      async record(value) {
+        journal.push(value as RecordedEvent);
+      },
+      async cool() {},
+    }),
+    /qualification_observation_denied/,
+  );
+  assert.equal(calls, 3);
+  assert.equal(disposed, 2);
+  assert.deepEqual(
+    journal.filter((value) => value.event === 'observed').map((value) => value.ordinal),
+    [1, 2],
+  );
+  assert.equal(journal.at(-1)!.event, 'response');
+  assert.equal(journal.at(-1)!.expected_ordinal, 3);
+  assert.equal(journal.at(-1)!.value!.started, false);
+});
+test('a missing RPC reply stops further calls and releases the connection without retry', async () => {
+  const { target, image, observed } = selectedObservation();
+  const journal: RecordedEvent[] = [];
+  let calls = 0,
+    disposed = 0;
+  await assert.rejects(
+    runQualificationSequence(target, image, {
+      async connect() {
+        return {
+          async prepare() {
+            calls++;
+            if (calls === 2) throw new Error('reply_lost');
+            return observed;
+          },
+          async dispose() {
+            disposed++;
+          },
+        };
+      },
+      async record(value) {
+        journal.push(value as RecordedEvent);
+      },
+      async cool() {
+        assert.fail('unknown calls must stop before cooling or another connection');
+      },
+    }),
+    /reply_lost/,
+  );
+  assert.equal(calls, 2);
+  assert.equal(disposed, 1);
+  assert.deepEqual(journal.at(-1), { event: 'intent', ordinal: 2 });
+});
+test('an invalid infrastructure reply is refused without persisting arbitrary strings or extra fields', async () => {
+  const { target, image, observed } = selectedObservation();
+  for (const change of [
+    { image: 'sensitive-arbitrary-value' },
+    { credential: 'sensitive-extra' },
+  ]) {
+    const journal: unknown[] = [];
+    let calls = 0,
+      disposed = 0;
+    await assert.rejects(
+      runQualificationSequence(target, image, {
+        async connect() {
+          return {
+            async prepare() {
+              calls++;
+              return { ...observed, ...change };
+            },
+            async dispose() {
+              disposed++;
+            },
+          };
+        },
+        async record(value) {
+          journal.push(value);
+        },
+        async cool() {
+          assert.fail('invalid replies must stop the sequence');
+        },
+      }),
+      /qualification_observation_denied/,
+    );
+    assert.equal(calls, 1);
+    assert.equal(disposed, 1);
+    assert.deepEqual(journal.at(-1), {
+      event: 'response_refused',
+      ordinal: 1,
+      reason: 'invalid_shape',
+    });
+    assert.equal(JSON.stringify(journal).includes('sensitive-'), false);
+  }
 });

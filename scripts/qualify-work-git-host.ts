@@ -8,7 +8,7 @@ import { boundedHostFile } from './work-git-registry.ts';
 import {
   qualificationTargetSchema,
   qualificationImage,
-  qualificationObservation,
+  runQualificationSequence,
 } from './work-git-host-qualification.ts';
 export async function qualifyGitHost(directory: string, imageRef: string) {
   const target = qualificationTargetSchema.parse(
@@ -46,49 +46,25 @@ export async function qualifyGitHost(directory: string, imageRef: string) {
     { flag: 'wx', mode: 0o600 },
   );
   const journal = await open(join(directory, 'infrastructure-run.jsonl'), 'wx', 0o600);
-  let proxy:
-    | Awaited<
-        ReturnType<typeof getPlatformProxy<{ HOST_PROVISIONER: { prepare(): Promise<unknown> } }>>
-      >
-    | undefined;
   const record = async (value: unknown) => {
     await journal.write(JSON.stringify(value) + '\n');
     await journal.sync();
   };
   try {
     await record({ event: 'selected', target, image, scope: 'infrastructure_only' });
-    proxy = await getPlatformProxy({
-      configPath: configFile,
-      envFiles: [],
-      persist: false,
-      remoteBindings: true,
+    await runQualificationSequence(target, image, {
+      async connect() {
+        const proxy = await getPlatformProxy<{
+          HOST_PROVISIONER: { prepare(): Promise<unknown> };
+        }>({ configPath: configFile, envFiles: [], persist: false, remoteBindings: true });
+        return {
+          prepare: () => proxy.env.HOST_PROVISIONER.prepare(),
+          dispose: () => proxy.dispose(),
+        };
+      },
+      record,
+      cool: (milliseconds) => new Promise<void>((r) => setTimeout(r, milliseconds)),
     });
-    for (const [ordinal, started] of [
-      [1, true],
-      [2, false],
-      [3, true],
-    ] as const) {
-      if (ordinal === 3) {
-        await record({ event: 'cooling', wait_ms: 75000 });
-        await new Promise<void>((r) => setTimeout(r, 75000));
-      }
-      await record({ event: 'intent', ordinal });
-      // No RPC retries. A missing/mismatching response stops the remaining steps.
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let reply: unknown;
-      try {
-        reply = await Promise.race([
-          proxy.env.HOST_PROVISIONER.prepare(),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error('qualification_timeout')), 300000);
-          }),
-        ]);
-      } finally {
-        clearTimeout(timer);
-      }
-      const value = qualificationObservation(target, image, ordinal, started, reply);
-      await record({ event: 'observed', ...value });
-    }
     await record({ event: 'complete', git_dispatches: 0 });
     return {
       qualified: true,
@@ -100,11 +76,7 @@ export async function qualifyGitHost(directory: string, imageRef: string) {
     await record({ event: 'stopped', outcome: 'unqualified' });
     throw new Error('qualification_unqualified');
   } finally {
-    try {
-      await proxy?.dispose();
-    } finally {
-      await journal.close();
-    }
+    await journal.close();
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
