@@ -1,21 +1,21 @@
 # Work-request UI and interaction design
 
-**Status:** M5a source inspection, M5b preparation/disclosure inspection, owner selection composition and separate explicit copy consent are integrated with current product components, 2026-10-09 JST. Productive copy orchestration, delegation and activity/result controls remain pending. The retained pre-main full work-request prototype and its earlier browser results are not current-main UI evidence.
+**Status:** M5a source inspection, M5b preparation/disclosure inspection, owner selection composition, separate explicit copy consent and copy execution/progress are locally integrated with current product components at `34f31ca`, 2026-10-10 JST. Delegation and activity/result controls remain pending. The retained pre-main full work-request prototype and its earlier browser results are not current-main UI evidence.
 
 [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) and the [designer/technical review](workload-delegation-review.md) fix responsibilities. Follow the existing [product UI](product-ui-preview.md), [quality gates](product-quality.md) and [main integration plan](work-delegation-implementation.md).
 
 ## Views and confirmations
 
-| View | Owner-visible information/action |
-| --- | --- |
-| Compose | Goal, acceptance, selected context, recipient and destination. Editing creates no permission. |
+| View              | Owner-visible information/action                                                                                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose           | Goal, acceptance, selected context, recipient and destination. Editing creates no permission.                                                                                             |
 | Disclosure review | Actual selected versions/content, separately stated reachable code history, recipient/operator, assurance, destinations, concrete operations and absolute expiry. Editing clears consent. |
-| Copy preparation | Separate confirmation before copy; durable pending/verified/cleanup state and stable preparation identity. |
-| Delegate | Confirm the exact reviewed request after current verified preparation. A repository or checkbox issues no grant. |
-| Activity | Separate confirmed execution, permission, cleanup and effect state, including uncertainty and next steps. |
-| Result review | Exact candidate/diff, original disclosure, target/head and independently sourced checks; render agent explanations as untrusted content. |
-| Adopt | Separate exact code adoption from saving a decision. Fresh owner approval can use retained results without reactivating the producer. |
-| Continue | Review adopted decisions, open questions and current versions for a new recipient with fresh run authority. |
+| Copy preparation  | Separate confirmation before copy; durable pending/verified/cleanup state and stable preparation identity.                                                                                |
+| Delegate          | Confirm the exact reviewed request after current verified preparation. A repository or checkbox issues no grant.                                                                          |
+| Activity          | Separate confirmed execution, permission, cleanup and effect state, including uncertainty and next steps.                                                                                 |
+| Result review     | Exact candidate/diff, original disclosure, target/head and independently sourced checks; render agent explanations as untrusted content.                                                  |
+| Adopt             | Separate exact code adoption from saving a decision. Fresh owner approval can use retained results without reactivating the producer.                                                     |
+| Continue          | Review adopted decisions, open questions and current versions for a new recipient with fresh run authority.                                                                               |
 
 The opt-in preparation screen now confirms only a private preparation copy. It
 shows the selected versions and contents, reachable code history, fixed task and
@@ -38,13 +38,13 @@ refreshing reads the durable outcome of any already committed confirmation.
 
 ## State and recovery
 
-| Dimension | Presentation rule |
-| --- | --- |
-| Execution | Stop requested is distinct from launcher-confirmed stopped. |
-| Delegation | Current confirmed active/expired/revoked state controls new operations. |
-| Credentials | Show expiry and qualified revocation evidence; empty inventory alone proves no revocation. |
-| Effect | Preserve operation identity across dispatching/applied/rejected/unknown, reload and reconciliation. Uncertainty permits no second dispatch. |
-| Disclosure | Revocation does not imply erasure of delivered copies. |
+| Dimension   | Presentation rule                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution   | Stop requested is distinct from launcher-confirmed stopped.                                                                                 |
+| Delegation  | Current confirmed active/expired/revoked state controls new operations.                                                                     |
+| Credentials | Show expiry and qualified revocation evidence; empty inventory alone proves no revocation.                                                  |
+| Effect      | Preserve operation identity across dispatching/applied/rejected/unknown, reload and reconciliation. Uncertainty permits no second dispatch. |
+| Disclosure  | Revocation does not imply erasure of delivered copies.                                                                                      |
 
 Changed context, policy, owner authority or target head requires fresh review. Explain refusal/service failure with safe next steps without revealing undiscoverable resources. Use summaries with expandable disclosure details; protocol claim names belong in diagnostics.
 
@@ -91,3 +91,22 @@ This lane does not rerun or substitute for M6e's full 289-case effect/readback/c
 The subsequent scoped-authority integration is `79304b04c13e91287254bcf44ffa51baceda1712`. It preserves this UI and validates the product reader against Native preparations composed from both actual local Git copies/readbacks and all six credential closures. The complete work command passes 311/311, the owner preparation/source/browser/display-lease subset 30/30 and the existing Owner Vault browser lane 2/2. The exact-source Worker passes 13 production boundary cases, 34 static schema/release/SQL cases and all served UI/Wasm budgets; OP Wasm measures 6,262,962 raw / 2,191,815 gzip-estimate bytes. Browser display-state fixtures remain explicitly synthetic. [The integration record](work-delegation-implementation.md#owner-review-and-scoped-evidence-integration) documents the checks and remaining copy/delegation and deployment gates.
 
 The opt-in product-entry source is `3cc41420fca4dcd3ba15396b05eb97a40630f06a`. Its exact-source qualification passes 134 work/OP/UI cases, 2 existing Vault browser cases and 34 baseline/release/SQL cases, with all served UI/Wasm budgets passing. Source/request lists and all record projections now refuse stale checkpoint authority, alongside the private screens and plaintext reader. Existing CI includes the enabled product-entry and preparation-browser lanes; deployment remains disabled. [The product-entry record](work-delegation-implementation.md#opt-in-product-entry-qualification) separates these results from the historical full work run and describes the remaining consent and issuer/launcher gates.
+
+## Copy execution and retained progress
+
+The separately bundled, authenticated `/work/copy-review#<preparation_id>` is
+linked from a preparation with a retained consent record when execution is
+enabled, including after consent withdrawal. Withdrawal prevents a new start
+while preserving access to existing progress and cleanup. A fresh start
+acknowledgement is required for a currently approved preparation. The owner can
+read retained queued/running, blocked/unknown or verified status, or stop the
+existing job and request known-ID credential cleanup. Refresh never submits
+another start. Hidden state and lock
+clear acknowledgement and discard late replies; reopening reads Native status.
+
+[Copy orchestration](work-copy-orchestration.md) specifies the retained Native
+job, fixed Workflow identity, safety-only recovery and deployment gates. The
+final `34f31ca` browser/API lane passes 26 cases, including five browser subcases
+and their parent. Japanese/English, keyboard, 375px layout and accessibility are
+qualified locally; screenshots under `artifacts/work-copy-job/` were visually
+inspected. Copy completion explicitly leaves work delegation unperformed.
