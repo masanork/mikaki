@@ -1,5 +1,22 @@
 # Waiting list rollout
 
+## Single-email code update
+
+After the initial rollout below, the single-email invitation flow uses the same
+`0001`–`0003` ledger and schema. Run the ordinary verified release and promotion
+workflow without applying a migration, resetting D1, reopening bootstrap or
+replacing `WAITLIST_MAIL_KEY`. Existing invitation codes and unexpired confirmation
+links remain valid. Unsent confirmation jobs are cancelled; new requests queue
+without email, and administrator approval sends the invitation link.
+
+Local qualification must cover zero mail on request, unverified requests in the
+administrator list, fresh Passkey approval, invitation-link registration, refresh,
+language changes, cancellation, expiry and replay. Production delivery of the new
+email and a recipient's actual Passkey ceremony require explicitly authorized test
+participants. Previous two-email receipt evidence does not qualify the new flow.
+
+## Initial schema activation
+
 Deploy the owner-schema bridge before activating the waiting list in PR #171.
 The bridge keeps the existing Worker ready with either the complete `0001`–`0002`
 ledger or its reviewed additive `0003_enrollment_waitlist.sql` extension. It does
@@ -36,7 +53,7 @@ fail readiness.
    failed promotion jobs so the already verified release is staged, its
    bindings inspected and its recorded Worker versions activated.
 7. Confirm the exact source/version public smoke and authenticated readiness.
-   Qualify confirmation mail, administrator approval and recipient enrollment
+   Qualify invitation mail, administrator approval and recipient enrollment
    with explicitly authorized test participants before declaring the email
    flow operational. Local simulated mail and public endpoint smoke alone do
    not prove production mail delivery or an owner's Passkey ceremony.

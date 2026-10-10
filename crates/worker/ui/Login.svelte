@@ -28,21 +28,47 @@
     locale: Locale;
   } = $props();
   let busy = $state(false);
+  let linkedToken = /^#invite=([A-Za-z0-9_-]{43})$/.exec(location.hash)?.[1];
+  const invalidFragment = !!location.hash && !linkedToken;
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   const page = new URL(location.href);
   const destination = $derived(new URL(rpUri));
   const pageProfile = weaveProfile(page.origin);
   const rpProfile = $derived(weaveProfile(destination.origin));
   let passkeyPending = $state(false);
-  let errorKind = $state<'required' | 'operation' | null>(null);
+  let errorKind = $state<'required' | 'operation' | 'link' | null>(null);
   let invitation = $state('');
+  let linkedInvitation = $state(false);
+  let checkingInvitation = $state(false);
   let registrationOpen = $state(false);
   let authentication: AbortController | null = null;
 
   onMount(() => {
     registrationOpen = enrollment;
-    if (!enrollment && typeof PublicKeyCredential !== 'undefined') void authenticate(true);
+    if (enrollment) void prepareInvitation();
+    else if (typeof PublicKeyCredential !== 'undefined') void authenticate(true);
     return () => authentication?.abort();
   });
+
+  async function prepareInvitation(): Promise<void> {
+    checkingInvitation = true;
+    try {
+      if (invalidFragment) throw new Error('Invalid invitation link');
+      const response = await fetch('/register/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tx, ...(linkedToken ? { invitation: linkedToken } : {}) }),
+      });
+      if (response.status === 204 && !linkedToken) return;
+      if (!response.ok) throw new Error('Invalid invitation link');
+      linkedInvitation = true;
+    } catch {
+      errorKind = 'link';
+    } finally {
+      linkedToken = undefined;
+      checkingInvitation = false;
+    }
+  }
 
   function decode(value: string): Uint8Array<ArrayBuffer> {
     return Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) =>
@@ -124,7 +150,7 @@
   async function register(): Promise<void> {
     if (busy) return;
     const previousFocus = document.activeElement;
-    if (!invitation.trim()) {
+    if (!linkedInvitation && !invitation.trim()) {
       errorKind = 'required';
       await restoreActionFocus(previousFocus, () => document.getElementById('invitation'));
       return;
@@ -138,7 +164,7 @@
       const started = await fetch('/register/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tx, invitation }),
+        body: JSON.stringify({ tx, ...(!linkedInvitation ? { invitation } : {}) }),
       });
       if (!started.ok) throw new Error('invalid invitation');
       const options: unknown = await started.json();
@@ -205,28 +231,32 @@
 </script>
 
 {#snippet invitationForm()}
-  <label class="invite" for="invitation"
-    >{m.invite()}
-    <input
-      id="invitation"
-      type="text"
-      autocomplete="off"
-      spellcheck="false"
-      aria-describedby={errorKind === 'required' ? 'invite-error' : undefined}
-      aria-invalid={errorKind === 'required'}
-      oninput={() => {
-        if (errorKind === 'required') errorKind = null;
-      }}
-      bind:value={invitation}
-    />
-  </label>
-  {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
-      {m.inviteRequired()}
-    </p>{/if}
-  <button class="quiet" id="register" type="button" disabled={busy} onclick={register}
-    >{busy ? m.busy() : m.register()}</button
-  >
-  <p class="recovery">{m.recovery()}</p>
+  {#if checkingInvitation}<p role="status">{m.busy()}</p>
+  {:else if errorKind !== 'link'}
+    {#if linkedInvitation}<p>{m.enrollLinkIntro()}</p>
+    {:else}<label class="invite" for="invitation"
+        >{m.invite()}
+        <input
+          id="invitation"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-describedby={errorKind === 'required' ? 'invite-error' : undefined}
+          aria-invalid={errorKind === 'required'}
+          oninput={() => {
+            if (errorKind === 'required') errorKind = null;
+          }}
+          bind:value={invitation}
+        />
+      </label>{/if}
+    {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
+        {m.inviteRequired()}
+      </p>{/if}
+    <button class="quiet" id="register" type="button" disabled={busy} onclick={register}
+      >{busy ? m.busy() : linkedInvitation ? m.enrollStart() : m.register()}</button
+    >
+    <p class="recovery">{m.recovery()}</p>
+  {/if}
 {/snippet}
 
 <div
@@ -276,6 +306,8 @@
     {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
         {m.error()}
       </p>{/if}
+    {#if errorKind === 'link'}<p class="auth-alert" role="alert">{m.enrollLinkUnavailable()}</p>
+      <a class="quiet" href={`/signin?lang=${locale}`}>{m.enrollSignIn()}</a>{/if}
   </main>
   <footer>
     {#if !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}

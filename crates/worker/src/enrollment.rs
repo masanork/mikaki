@@ -7,7 +7,7 @@ use wasm_bindgen::JsValue;
 #[serde(deny_unknown_fields)]
 struct StartInput {
     tx: String,
-    invitation: String,
+    invitation: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -188,13 +188,7 @@ pub async fn start(
         .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
     let input: StartInput = serde_json::from_str(&body)
         .map_err(|_| worker::Error::RustError("invalid_request".into()))?;
-    if !passkey_login::valid_tx(&input.tx)
-        || input.invitation.len() != 43
-        || !input
-            .invitation
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-    {
+    if !passkey_login::valid_tx(&input.tx) {
         return reject(400);
     }
     let browser_hash = passkey_login::hash(&browser);
@@ -205,7 +199,26 @@ pub async fn start(
     if login.owner_login != 0 {
         return reject(400);
     }
-    let invite_hash = passkey_login::hash(&input.invitation);
+    let invite_hash = if let Some(invitation) = &input.invitation {
+        if !passkey_login::valid_tx(invitation) {
+            return reject(400);
+        }
+        passkey_login::hash(invitation)
+    } else {
+        // A link binds its verifier to this browser transaction once. Refresh,
+        // language changes and cancelled Passkey creation need no bearer storage.
+        #[derive(Deserialize)]
+        struct BoundInvitation {
+            invite_hash: String,
+        }
+        let bound = db.prepare("SELECT invite_hash FROM registration_transaction WHERE tx_id=?1 AND browser_hash=?2")
+            .bind(&[input.tx.clone().into(),browser_hash.clone().into()])?
+            .first::<BoundInvitation>(None).await?;
+        let Some(bound) = bound else {
+            return reject(204);
+        };
+        bound.invite_hash
+    };
     let mut random = WorkersCryptoRandom;
     let challenge = passkey_login::random_secret(&mut random)?;
     let user_handle = passkey_login::random_secret(&mut random)?;
@@ -350,6 +363,10 @@ pub async fn finish(
         db.prepare("INSERT INTO passkey_credential(credential_id,public_key,user_handle,counter,backup_eligible,backup_state,revision) VALUES(?1,?2,?3,?4,?5,?6,1)")
             .bind(&[JsValue::from_str(proof.id()),JsValue::from_str(proof.public_key()),JsValue::from_str(&row.user_handle),JsValue::from_f64(proof.counter() as f64),JsValue::from_f64(f64::from(proof.backup_eligible())),JsValue::from_f64(f64::from(proof.backup_state()))])?,
     ];
+    // The invitation capability and verified Passkey are committed together.
+    // Manual invitations have no waiting-list row; existing verification is retained.
+    statements.push(db.prepare("UPDATE enrollment_waitlist SET verified_at=COALESCE(verified_at,?1) WHERE invite_hash=?2")
+        .bind(&[JsValue::from_f64(now as f64),row.invite_hash.clone().into()])?);
     if row.kind == "bootstrap" {
         statements.push(
             db.prepare("UPDATE bootstrap_state SET closed=1 WHERE id=1 AND closed=0")

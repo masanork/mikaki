@@ -157,6 +157,11 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         });
         return;
       }
+      if (url.pathname === '/register/start') {
+        // The synthetic login page has no bound invitation transaction.
+        await route.fulfill({ status: 204 });
+        return;
+      }
       if (url.pathname === '/vault') {
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
@@ -252,6 +257,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/login?enroll=1');
     await page.getByRole('heading', { name: 'アカウントを登録' }).first().waitFor();
     assert.equal(await page.locator('#passkey').count(), 0);
+    await page.getByLabel('招待コード').waitFor();
     assert.equal(await page.getByLabel('招待コード').isVisible(), true);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -298,7 +304,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     );
     assert.equal(await page.locator('.plate .origin strong').textContent(), 'mikaki.test');
     assert.equal(
-      await page.getByRole('link', { name: '招待コードで登録' }).getAttribute('href'),
+      await page.getByRole('link', { name: '招待から登録' }).getAttribute('href'),
       '/enroll?lang=ja',
     );
     const hue = await page

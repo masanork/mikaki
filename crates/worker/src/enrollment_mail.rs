@@ -87,7 +87,7 @@ pub(crate) async fn deliver(env: &worker::Env, id: &str) -> worker::Result<()> {
     let now = super::now_seconds().ok_or_else(unavailable)? as i64;
     let lease = super::passkey_login::random_secret(&mut super::WorkersCryptoRandom)?;
     // Claim only the current, unconsumed capability. Concurrent requests cannot both send.
-    let result = db.prepare("UPDATE enrollment_mail SET state='sending',lease_token=?2,lease_until=?3+120,attempts=attempts+1,last_attempt_at=?3 WHERE id=?1 AND attempts<5 AND expires_at>?3 AND next_attempt_at<=?3 AND (state IN ('pending','failed') OR (state='sending' AND lease_until<=?3)) AND EXISTS(SELECT 1 FROM enrollment_waitlist w WHERE w.id=waitlist_id AND (kind='confirmation' AND w.verified_at IS NULL AND w.confirmation_hash=token_hash OR kind='invitation' AND w.invite_hash=token_hash AND EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>?3))) RETURNING id")
+    let result = db.prepare("UPDATE enrollment_mail SET state='sending',lease_token=?2,lease_until=?3+120,attempts=attempts+1,last_attempt_at=?3 WHERE id=?1 AND kind='invitation' AND attempts<5 AND expires_at>?3 AND next_attempt_at<=?3 AND (state IN ('pending','failed') OR (state='sending' AND lease_until<=?3)) AND EXISTS(SELECT 1 FROM enrollment_waitlist w WHERE w.id=waitlist_id AND (kind='confirmation' AND w.verified_at IS NULL AND w.confirmation_hash=token_hash OR kind='invitation' AND w.invite_hash=token_hash AND EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>?3))) RETURNING id")
         .bind(&[id.into(),lease.clone().into(),JsValue::from_f64(now as f64)])?.first::<serde_json::Value>(None).await?;
     if result.is_none() {
         return Ok(());
@@ -122,59 +122,44 @@ async fn send(env: &worker::Env, row: &Mail) -> worker::Result<String> {
     let expiry: String = js_sys::Date::new(&JsValue::from_f64(row.expires_at as f64 * 1000.0))
         .to_iso_string()
         .into();
-    let link = if row.kind == "confirmation" {
-        format!(
-            "{issuer}/waitlist?lang={}#confirm={}",
-            row.locale,
-            secret.as_str()
-        )
-    } else {
-        format!("{issuer}/enroll?lang={}", row.locale)
-    };
-    let (subject, text) = if row.kind == "confirmation" {
-        if japanese {
-            (
-                "mikaki 招待希望のメール確認",
-                format!(
-                    "mikakiへの招待を希望する場合は、次のページでメールアドレスを確認してください。\n\n{link}\n\n有効期限 (UTC): {}\n心当たりがなければ、このメールは破棄してください。",
-                    expiry
-                ),
-            )
-        } else {
-            (
-                "Confirm your mikaki invitation request",
-                format!(
-                    "Confirm your email address on this page to join the mikaki waiting list:\n\n{link}\n\nExpires at (UTC) {}. If you did not request this, ignore this message.",
-                    expiry
-                ),
-            )
-        }
-    } else if japanese {
+    let link = format!(
+        "{issuer}/enroll?lang={}#invite={}",
+        row.locale,
+        secret.as_str()
+    );
+    let (subject, introduction, action, fallback) = if japanese {
         (
             "mikakiへの招待",
-            format!(
-                "mikakiへの招待が承認されました。次のページで招待コードを入力し、Passkeyを作成してください。\n\n{issuer}/enroll?lang=ja\n\n招待コード: {}\n有効期限 (UTC): {}",
-                secret.as_str(),
-                expiry
-            ),
+            "招待が承認されました。次のリンクからPasskeyを作成してmikakiを始められます。",
+            "mikakiを始める",
+            "リンクが開けない場合の招待コード",
         )
     } else {
         (
             "Your mikaki invitation",
-            format!(
-                "Your mikaki invitation is approved. Enter this invitation code and create a Passkey:\n\n{issuer}/enroll?lang=en\n\nInvitation code: {}\nExpires at (UTC) {}.",
-                secret.as_str(),
-                expiry
-            ),
+            "Your invitation is approved. Follow the link to create a Passkey and start using mikaki.",
+            "Start using mikaki",
+            "Invitation code if the link does not work",
         )
     };
+    let expiry_label = if japanese {
+        "有効期限 (UTC)"
+    } else {
+        "Expires at (UTC)"
+    };
+    let text = format!(
+        "{introduction}\n\n{link}\n\n{expiry_label}: {expiry}\n{fallback}: {}",
+        secret.as_str()
+    );
     let escaped_link = super::i18n::html_escape(&link);
     let html = format!(
-        "<div style=\"white-space:pre-wrap\">{}</div>",
-        super::i18n::html_escape(&text).replace(
-            &escaped_link,
-            &format!("<a href=\"{escaped_link}\">{escaped_link}</a>")
-        )
+        "<div style=\"font-family:system-ui,sans-serif;line-height:1.6;overflow-wrap:anywhere\"><p>{}</p><p><a href=\"{escaped_link}\" style=\"display:inline-block;padding:12px 20px;background:#1f2937;color:#fff;text-decoration:none;border-radius:6px\">{}</a></p><p>{}: {}</p><p style=\"font-size:12px\">{}: <code>{}</code></p></div>",
+        super::i18n::html_escape(introduction),
+        super::i18n::html_escape(action),
+        super::i18n::html_escape(expiry_label),
+        super::i18n::html_escape(&expiry),
+        super::i18n::html_escape(fallback),
+        secret.as_str(),
     );
     let message = js_sys::JSON::parse(&serde_json::to_string(&serde_json::json!({
         "from":{"email":from,"name":"mikaki"},"to":row.email,"subject":subject,"text":text,"html":html,
@@ -201,7 +186,7 @@ pub(crate) async fn run_due(env: &worker::Env) -> worker::Result<()> {
     }
     let db = env.d1("DB")?;
     // Obsolete jobs must not occupy the bounded retry scan ahead of current mail.
-    db.prepare("UPDATE enrollment_mail SET state='cancelled',lease_token=NULL,lease_until=0 WHERE state IN ('pending','failed','sending') AND (expires_at<=unixepoch() OR NOT EXISTS(SELECT 1 FROM enrollment_waitlist w WHERE w.id=waitlist_id AND (kind='confirmation' AND w.verified_at IS NULL AND w.confirmation_hash=token_hash OR kind='invitation' AND w.invite_hash=token_hash AND EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>unixepoch()))))")
+    db.prepare("UPDATE enrollment_mail SET state='cancelled',lease_token=NULL,lease_until=0 WHERE state IN ('pending','failed','sending') AND (kind='confirmation' OR expires_at<=unixepoch() OR NOT EXISTS(SELECT 1 FROM enrollment_waitlist w WHERE w.id=waitlist_id AND (kind='confirmation' AND w.verified_at IS NULL AND w.confirmation_hash=token_hash OR kind='invitation' AND w.invite_hash=token_hash AND EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>unixepoch()))))")
         .run().await?;
     // A Worker terminated during its final attempt must leave a manually retryable state.
     db.prepare("UPDATE enrollment_mail SET state='failed',lease_token=NULL,lease_until=0 WHERE state='sending' AND attempts>=5 AND lease_until<=unixepoch()")
@@ -210,7 +195,7 @@ pub(crate) async fn run_due(env: &worker::Env) -> worker::Result<()> {
     struct Id {
         id: String,
     }
-    let rows = db.prepare("SELECT id FROM enrollment_mail WHERE expires_at>unixepoch() AND next_attempt_at<=unixepoch() AND attempts<5 AND (state IN ('pending','failed') OR state='sending' AND lease_until<=unixepoch()) ORDER BY created_at LIMIT 20")
+    let rows = db.prepare("SELECT id FROM enrollment_mail WHERE kind='invitation' AND expires_at>unixepoch() AND next_attempt_at<=unixepoch() AND attempts<5 AND (state IN ('pending','failed') OR state='sending' AND lease_until<=unixepoch()) ORDER BY created_at LIMIT 20")
         .all().await?.results::<Id>()?;
     for row in rows {
         deliver(env, &row.id).await?;
@@ -218,7 +203,7 @@ pub(crate) async fn run_due(env: &worker::Env) -> worker::Result<()> {
     db.batch(vec![
         db.prepare("DELETE FROM enrollment_request_window WHERE window_start<unixepoch()-7200"),
         db.prepare("UPDATE enrollment_mail SET state='cancelled',lease_token=NULL,lease_until=0 WHERE expires_at<=unixepoch() AND state IN ('pending','failed','sending')"),
-        db.prepare("DELETE FROM enrollment_waitlist WHERE id IN (SELECT w.id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash WHERE w.verified_at IS NULL AND w.confirmation_sent_at<unixepoch()-2592000 OR i.consumed_at<unixepoch()-2592000 LIMIT 100)"),
+        db.prepare("DELETE FROM enrollment_waitlist WHERE id IN (SELECT w.id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash WHERE w.verified_at IS NULL AND w.invite_hash IS NULL AND CASE WHEN w.confirmation_expires_at=0 THEN w.created_at ELSE w.confirmation_sent_at END<unixepoch()-2592000 OR i.consumed_at<unixepoch()-2592000 LIMIT 100)"),
     ]).await?;
     Ok(())
 }
