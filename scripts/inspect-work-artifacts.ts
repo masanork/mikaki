@@ -38,6 +38,7 @@ const repoSchema = z
     source: z.string().max(1024).nullable(),
     read_only: z.boolean(),
     remote: z.string().max(512),
+    status: z.literal('ready').optional(),
   })
   .refine(
     (r) =>
@@ -56,6 +57,13 @@ const offsetInfo = z.strictObject({
   total_pages: z.number().int().min(0).max(8),
   count: z.number().int().min(0).max(100),
   total_count: z.number().int().min(0).max(800),
+});
+const repositoryOffsetInfo = z.strictObject({
+  page: z.number().int().min(1).max(4),
+  per_page: z.literal(200),
+  total_pages: z.number().int().min(0).max(4),
+  count: z.number().int().min(0).max(200),
+  total_count: z.number().int().min(0).max(512),
 });
 const envelope = z.object({
   success: z.literal(true),
@@ -103,9 +111,10 @@ export function inspectionReadKind(path: string, allowedNames: ReadonlySet<strin
     pathname === repos &&
     keys.length <= 2 &&
     new Set(keys).size === keys.length &&
-    keys.every((key) => key === 'limit' || key === 'cursor') &&
+    keys.every((key) => key === 'limit' || key === 'cursor' || key === 'page') &&
     url.searchParams.get('limit') === '200' &&
-    (url.searchParams.get('cursor')?.length ?? 0) <= 2048
+    (url.searchParams.get('cursor')?.length ?? 0) <= 2048 &&
+    (!url.searchParams.has('page') || /^[1-4]$/.test(url.searchParams.get('page') ?? ''))
   )
     return 'artifacts';
   const parts = pathname.slice(repos.length).split('/');
@@ -204,12 +213,15 @@ export async function repositoryInventory(get: ReadAPI) {
   const found: z.infer<typeof repoSchema>[] = [],
     cursors = new Set<string>();
   let cursor = '';
+  let mode: 'cursor' | 'offset' | undefined, total: number | undefined, pages: number | undefined;
   for (let page = 0; page < 4; page++) {
     const response = result(
-      await get(`${repos}?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
+      await get(
+        `${repos}?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : mode === 'offset' ? `&page=${page + 1}` : ''}`,
+      ),
     );
     const entries = z.array(repoSchema).max(200).parse(response.result);
-    const info = cursorInfo.parse(response.result_info);
+    const info = z.union([cursorInfo, repositoryOffsetInfo]).parse(response.result_info);
     if (info.count !== entries.length || found.length + entries.length > 512)
       throw new Error('repository_inventory_incomplete');
     for (const entry of entries) {
@@ -217,10 +229,31 @@ export async function repositoryInventory(get: ReadAPI) {
         throw new Error('repository_inventory_duplicate');
       found.push(entry);
     }
-    if (!info.cursor) return found;
-    if (cursors.has(info.cursor)) throw new Error('repository_cursor_repeated');
-    cursors.add(info.cursor);
-    cursor = info.cursor;
+    if ('cursor' in info) {
+      if (mode === 'offset') throw new Error('repository_inventory_incomplete');
+      mode = 'cursor';
+      if (!info.cursor) return found;
+      if (cursors.has(info.cursor)) throw new Error('repository_cursor_repeated');
+      cursors.add(info.cursor);
+      cursor = info.cursor;
+    } else {
+      if (
+        mode === 'cursor' ||
+        info.page !== page + 1 ||
+        Math.max(1, Math.ceil(info.total_count / 200)) !== Math.max(1, info.total_pages) ||
+        entries.length !== Math.min(200, Math.max(0, info.total_count - page * 200)) ||
+        (total !== undefined && total !== info.total_count) ||
+        (pages !== undefined && pages !== info.total_pages)
+      )
+        throw new Error('repository_inventory_incomplete');
+      mode = 'offset';
+      total = info.total_count;
+      pages = info.total_pages;
+      if (page + 1 >= pages) {
+        if (found.length !== total) throw new Error('repository_inventory_incomplete');
+        return found;
+      }
+    }
   }
   throw new Error('repository_inventory_incomplete');
 }

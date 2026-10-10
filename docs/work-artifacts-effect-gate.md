@@ -94,3 +94,11 @@ empty and every token is absent. Binding names are a configuration observation,
 not proof of remote Native/checkpoint enrollment. This inspector supplies current
 identity/inventory evidence for a later recovery/activation review; it grants no
 productive adoption or delegation authority.
+
+The deployed REST API currently returns offset repository pagination and a
+`status=ready` field, while the documentation's list example shows a cursor.
+The inspector accepts either explicitly closed pagination shape, requires stable
+offset totals and complete counts, and refuses switching shape between pages.
+Offset `page` traversal also matches the installed Wrangler 4.148.0 client's
+`fetchPagedListResult` used by `artifacts repos list`. Unexpected repository
+statuses and unknown metadata/token fields are refused rather than persisted.

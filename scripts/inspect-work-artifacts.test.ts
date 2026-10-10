@@ -66,6 +66,7 @@ test('HTTP target policy accepts exact v4 GET paths and refuses other resources 
   const repos = `${base}/artifacts/namespaces/mikaki-dev/repos`;
   const allowed = new Set([repoName]);
   assert.equal(inspectionReadKind(`${repos}?limit=200`, allowed), 'artifacts');
+  assert.equal(inspectionReadKind(`${repos}?limit=200&page=2`, allowed), 'artifacts');
   assert.equal(
     inspectionReadKind(`${repos}?limit=200&cursor=opaque%2Fa%3Fb`, allowed),
     'artifacts',
@@ -82,6 +83,7 @@ test('HTTP target policy accepts exact v4 GET paths and refuses other resources 
   for (const path of [
     `${repos}?limit=200&limit=200`,
     `${repos}?limit=200&search=other`,
+    `${repos}?limit=200&page=5`,
     `${repos}/${repoName}/tokens?state=active&per_page=100&page=1`,
     `${repos}/${repoName}/tokens?state=all&per_page=100&page=9`,
     `${repos}/mikaki`,
@@ -200,6 +202,55 @@ test('repository pagination follows only the returned encoded cursor and termina
   });
   assert.equal(found.length, 2);
   assert.ok(calls[1].endsWith('&cursor=opaque%2Fa%3Fb'));
+});
+test('observed ready metadata and offset repository pages require complete stable totals', async () => {
+  let calls = 0;
+  const offset = (result: unknown[], page: number, total: number) => ({
+    success: true,
+    errors: [],
+    messages: [],
+    result,
+    result_info: {
+      page,
+      per_page: 200,
+      total_pages: Math.ceil(total / 200),
+      count: result.length,
+      total_count: total,
+    },
+  });
+  const found = await repositoryInventory(async (path) => {
+    calls++;
+    if (calls === 1)
+      return offset(
+        Array.from({ length: 200 }, (_, i) => ({ ...repository(i), status: 'ready' })),
+        1,
+        201,
+      );
+    assert.ok(path.endsWith('&page=2'));
+    return offset([{ ...repository(200), status: 'ready' }], 2, 201);
+  });
+  assert.equal(found.length, 201);
+  assert.equal(found[0].status, 'ready');
+  await assert.rejects(
+    repositoryInventory(async () => offset([], 1, 1)),
+    /repository_inventory_incomplete/,
+  );
+  await assert.rejects(
+    repositoryInventory(async () => offset([{ ...repository(0), status: 'unknown' }], 1, 1)),
+  );
+  let pageNumber = 0;
+  await assert.rejects(
+    repositoryInventory(async () =>
+      ++pageNumber === 1
+        ? offset(
+            Array.from({ length: 200 }, (_, i) => repository(i)),
+            1,
+            201,
+          )
+        : offset([repository(200)], 2, 202),
+    ),
+    /repository_inventory_incomplete/,
+  );
 });
 test('token inventory requires all states and exact stable offset completeness', async () => {
   assert.deepEqual(await tokenInventory(async () => tokenPage([]), repoName), []);
