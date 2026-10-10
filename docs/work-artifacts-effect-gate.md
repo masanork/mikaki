@@ -57,3 +57,40 @@ remain open. See the [integration order](work-delegation-implementation.md) and
 [checkpoint scope](work-authority-checkpoint.md).
 
 [M6a one-shot mint and Native custody](work-artifacts-mint-gate.md) now provides a separately qualified local gate for the upload/readback credential slots. It does not change these initial-effect closure and maintenance boundaries.
+
+## Read-only protected allocation inspection
+
+From a clean committed checkout, run `npm run inspect:work-artifacts`. The
+[inspector](../scripts/inspect-work-artifacts.ts) pins the exact SHA-256 of each
+of the three retained `work-artifacts-effect` journals and projects their six
+original attempt IDs, names, repository IDs and states. It never imports these
+synthetic checkpoint records into an enrolled remote authority or changes a
+protected journal. The existing saved Artifacts OAuth credential supplies
+Artifacts GET requests; the environment API token separately supplies the fixed
+production OP settings read. Credential values and OP binding values are never
+returned or written to receipts.
+
+The [REST API](https://developers.cloudflare.com/artifacts/api/rest-api/)
+inspection enumerates the complete bounded namespace inventory and checks each
+protected repository by its original ID/name/remote. It reads token metadata
+with `state=all`, verifies offset pagination/counts, reads repository metadata
+again, and requires the final namespace inventory to match. Duplicate IDs/names,
+repeated cursors, missing pages, replacement identities and changing observations
+stop the inspection. Repository descriptions/source strings and secret values
+are omitted from retained projections. The fixed HTTP transport has only GET
+and allows only this namespace inventory, the six repository metadata/token
+routes and `mikaki-auth` settings; there is no Git, create, mint, revoke or delete.
+
+Each run creates a separate ignored `local/generated/work-artifacts-inspection/`
+directory. Its exclusive synchronized `inspection.jsonl` records read intents,
+HTTP statuses and validated observations. A complete run writes an exclusive
+`result.json` and rechecks the protected journal hashes. A failed read retains
+the incomplete journal without overwriting previous runs. Read-only inspection
+may be repeated; it cannot reopen productive effects or mutate their ledgers.
+
+An absent/inactive token does not independently prove revocation or bearer
+refusal. A retained `outcome_unknown` stays unknown, even if its repository is
+empty and every token is absent. Binding names are a configuration observation,
+not proof of remote Native/checkpoint enrollment. This inspector supplies current
+identity/inventory evidence for a later recovery/activation review; it grants no
+productive adoption or delegation authority.

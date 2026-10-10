@@ -101,7 +101,9 @@
     "prepare:work-git-host-qualification": "node scripts/prepare-work-git-host-qualification.ts",
     "prepare:work-git-host-restart": "node scripts/prepare-work-git-host-restart.ts",
     "qualify:work-git-host-restart": "node scripts/qualify-work-git-host-restart.ts",
-    "qualify:work-git-host": "node scripts/qualify-work-git-host.ts"
+    "qualify:work-git-host": "node scripts/qualify-work-git-host.ts",
+    "inspect:work-artifacts": "node scripts/inspect-work-artifacts.ts",
+    "test:work-artifacts-inspection": "node --test scripts/inspect-work-artifacts.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
