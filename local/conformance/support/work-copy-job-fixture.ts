@@ -1,6 +1,6 @@
 /** Actual product Rust/Wasm, Workflows, enrolled checkpoint and real loopback Git. */
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { preparationFixture } from './work-preparation-fixture.ts';
@@ -8,12 +8,18 @@ import { gitFixture } from '../../../scripts/work-git-fixture.ts';
 import { prepareGitDisclosure } from '../../../scripts/work-git-disclosure.ts';
 import { gitHttpFixture } from './work-git-http-fixture.ts';
 import { fixedGitExecutor } from '../../../scripts/work-git-executor.ts';
-export async function copyJobFixture(extra: Record<string, string> = {}, composed = false) {
+import { materializeGitRegistry } from '../../../scripts/work-git-registry.ts';
+import { gitHostBootstrap } from '../../../scripts/work-git-host-bootstrap.ts';
+export async function copyJobFixture(
+  extra: Record<string, string> = {},
+  { composed = false, sealedHost = false }: { composed?: boolean; sealedHost?: boolean } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-copy-job-'));
   let executor: ((r: Request) => Promise<Response>) | undefined;
   let hook: ((r: Request, next: () => Promise<Response>) => Promise<Response>) | undefined;
   let opResource: Awaited<ReturnType<typeof preparationFixture>> | undefined;
   let httpResource: Awaited<ReturnType<typeof gitHttpFixture>> | undefined;
+  let hostResource: Awaited<ReturnType<typeof gitHostBootstrap>> | undefined;
   try {
     const code = await gitFixture(
       directory,
@@ -164,6 +170,11 @@ export async function copyJobFixture(extra: Record<string, string> = {}, compose
     }));
     const disclosure = (await product(`/work/preparations/${p.id}`)).body.record.preparation
       .disclosure_digest;
+    const nativeDisclosure = (await product(`/work/disclosures/${disclosure}`)).body.record;
+    const sourceBindings = [
+      { source_id: 'code', source_revision: 1, access_revision: 1, gitDir: code.dir },
+      { source_id: 'personal', source_revision: 1, access_revision: 1, gitDir: personal.dir },
+    ];
     executor = fixedGitExecutor(
       {
         account: 'a'.repeat(32),
@@ -189,6 +200,46 @@ export async function copyJobFixture(extra: Record<string, string> = {}, compose
       },
       http.http,
     );
+    if (sealedHost) {
+      const sealed = await materializeGitRegistry(nativeDisclosure, sourceBindings, directory);
+      const host = (hostResource = await gitHostBootstrap(
+        {
+          account: 'a'.repeat(32),
+          namespace: 'mikaki-dev',
+          authority: 'synthetic-managed-work',
+          registrySha256: sealed.registry_sha256,
+          temporaryParent: directory,
+        },
+        http.http,
+      ));
+      await new Promise<void>((resolve) => host.server.listen(0, '127.0.0.1', resolve));
+      const address = host.server.address();
+      if (!address || typeof address === 'string') throw new Error('git_host_fixture_failed');
+      const base = `http://127.0.0.1:${address.port}`;
+      for (const [path, file] of [
+        ['registry', 'registry.json'],
+        ['task', 'task.pack'],
+        ['snapshot', 'snapshot.pack'],
+      ] as const) {
+        const r = await fetch(base + '/provision/' + path, {
+          method: 'POST',
+          body: await readFile(join(sealed.directory, file)),
+        });
+        assert.equal(r.status, 204);
+        await r.text();
+      }
+      const activated = await fetch(base + '/provision/activate', { method: 'POST' });
+      assert.equal(activated.status, 204);
+      await activated.text();
+      const hostUrl = base + '/git-execute';
+      executor = async (request) =>
+        fetch(hostUrl, {
+          method: request.method,
+          headers: request.headers,
+          body: await request.arrayBuffer(),
+          redirect: 'manual',
+        });
+    }
     const copy = () => product(`/work/preparations/${p.id}/copy`);
     const start = () =>
       product(`/work/preparations/${p.id}/copy`, 'POST', {
@@ -243,6 +294,9 @@ export async function copyJobFixture(extra: Record<string, string> = {}, compose
       remote,
       http,
       directory,
+      nativeDisclosure,
+      sourceBindings,
+      sourceObjects: { code, personal },
       setExecutionHook(value: typeof hook) {
         hook = value;
       },
@@ -260,12 +314,14 @@ export async function copyJobFixture(extra: Record<string, string> = {}, compose
         opResource = op;
       },
       async close() {
+        await hostResource?.close();
         await http.close();
         await op.close();
         await rm(directory, { recursive: true, force: true });
       },
     };
   } catch (error) {
+    await hostResource?.close();
     await httpResource?.close();
     await opResource?.close();
     await rm(directory, { recursive: true, force: true });

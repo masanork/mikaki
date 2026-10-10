@@ -58,6 +58,7 @@ jobs:
           npm run check:work-sources
           npm run check:work-checkpoint
           npm run check:work-copy
+          npm run check:work-git-host
           npm run check:work-effects
           npm run check:i18n
           npm run check:docs
@@ -141,6 +142,7 @@ jobs:
           npm run test:worker-browser
           npm run test:work-source-ui
           npm run test:work-preparation-ui
+          node --test --test-concurrency=1 local/conformance/work-git-host-image.test.ts
           npm run test:agent-integration
           npm run test:vault-transfer
           npm run test:vault-disclosure
@@ -352,6 +354,7 @@ jobs:
           npm run test:worker-browser
           npm run test:work-source-ui
           npm run test:work-preparation-ui
+          node --test --test-concurrency=1 local/conformance/work-git-host-image.test.ts
           node --test --test-concurrency=1 local/conformance/work-owner-product.test.ts
       - name: Preserve browser failure evidence
         if: failure()

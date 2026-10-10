@@ -5,8 +5,8 @@ import { test } from 'node:test';
 import { copyJobFixture as fixture } from './support/work-copy-job-fixture.ts';
 import { copyHttpPort } from '../../crates/worker/ui/work-copy-view.ts';
 
-test('public composition and explicit consent drive one Workflow through both planned Git copies', async () => {
-  const f = await fixture({}, true);
+test('public composition and explicit consent drive one Workflow through both sealed Git copies', async () => {
+  const f = await fixture({}, { composed: true, sealedHost: true });
   try {
     assert.equal((await f.remote()).repos.length, 0);
     assert.equal((await f.start()).status, 409);

@@ -16,7 +16,8 @@
     "scripts/**/*.ts",
     "local/**/*.ts",
     "design/probes/**/*.ts",
-    "crates/webauthn/testdata/*.ts"
+    "crates/webauthn/testdata/*.ts",
+    "crates/work-git-host-worker/container.ts"
   ],
   "exclude": [
     "local/ui",
