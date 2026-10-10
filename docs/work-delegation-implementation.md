@@ -1042,3 +1042,13 @@ is claimed by this increment.
 Node types, full formatting, product-source and documentation checks pass. The
 focused packet cases and the existing three budget-checker cases pass; these
 are local results rather than a new remote CI or full product regression run.
+
+An independent preparation from the same clean `4d0870a` produced
+`local/generated/work-authority-qualification/authority-Of8NYc`, also with 35
+members and the identical schema. Comparison with the selected `authority-nMECMX`
+finds only `build-1.log` different; all packaged modules, migrations, templates
+and other inputs match. Its manifest SHA-256 is
+`6aca4caae16dbf73b197cb35ea16e2a3bc9db1e831664f283fbf0cbfdb5006f7`.
+Clean qualifier `ecb3f9c` successfully repeats the frozen-module runtime check,
+with no account/checkpoint enrollment or remote operation. The additional
+receipt is `artifacts/work-authority/independent-qualification-ecb3f9c.json`.
