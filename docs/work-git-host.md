@@ -2,7 +2,9 @@
 
 Status: development implementation, with local Native/Git/R2/SQLite and Linux
 image qualification. Cloudflare deployment and real Artifacts qualification
-remain separate. This supplies the host/provisioning component required by
+remain separate. The [isolated infrastructure lane](work-git-host-qualification.md)
+checks startup/R2 supply with Internet and productive Git disabled, through a
+private operator service binding. This supplies the host/provisioning component required by
 [copy orchestration](work-copy-orchestration.md) and the
 [fixed Git gate](work-artifacts-git-gate.md).
 
