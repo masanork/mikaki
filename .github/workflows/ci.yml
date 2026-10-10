@@ -41,6 +41,7 @@ jobs:
           npm run test:sql
           npm run test:release
           node --test scripts/static-sql.test.ts
+          npm run test:work-authority-packet
           node scripts/check-upstream-pins.ts
           npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
