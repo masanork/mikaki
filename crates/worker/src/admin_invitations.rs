@@ -306,7 +306,7 @@ pub async fn finish(
             statements.push(db.prepare("UPDATE enrollment_mail SET state='pending',attempts=0,next_attempt_at=?2,last_attempt_at=?2,message_id=NULL WHERE id=?1 AND state IN ('sent','failed') AND (last_attempt_at IS NULL OR last_attempt_at<=?2-60) AND EXISTS(SELECT 1 FROM enrollment_waitlist w JOIN enrollment_invite i ON i.invite_hash=w.invite_hash WHERE w.id=?3 AND w.invite_hash=enrollment_mail.token_hash AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>?2)")
                 .bind(&[job.clone().into(),JsValue::from_f64(now as f64),id.clone().into()])?);
         } else {
-            statements.push(db.prepare("UPDATE enrollment_waitlist SET invite_hash=?1 WHERE id=?2 AND invite_hash IS ?3 AND verified_at IS NOT NULL AND (invite_hash IS NULL OR EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=enrollment_waitlist.invite_hash AND i.consumed_at IS NULL AND (i.expires_at<=?4 OR i.revoked=1)))")
+            statements.push(db.prepare("UPDATE enrollment_waitlist SET invite_hash=?1 WHERE id=?2 AND invite_hash IS ?3 AND (invite_hash IS NULL OR EXISTS(SELECT 1 FROM enrollment_invite i WHERE i.invite_hash=enrollment_waitlist.invite_hash AND i.consumed_at IS NULL AND (i.expires_at<=?4 OR i.revoked=1)))")
                 .bind(&[invite_hash.clone().into(),id.clone().into(),target.invite_hash.as_ref().map_or(JsValue::NULL,|h|h.clone().into()),JsValue::from_f64(now as f64)])?);
         }
         statements.push(db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)").bind(&[format!("{guard}-target").into()])?);
@@ -392,7 +392,7 @@ async fn target(
     id: &str,
     action: &str,
 ) -> worker::Result<Option<Target>> {
-    db.prepare("SELECT w.invite_hash,m.id AS mail_id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash LEFT JOIN enrollment_mail m ON m.token_hash=w.invite_hash AND m.kind='invitation' WHERE w.id=?1 AND w.verified_at IS NOT NULL AND (?2='invite' AND (w.invite_hash IS NULL OR i.consumed_at IS NULL AND (i.expires_at<=unixepoch() OR i.revoked=1)) OR ?2='resend' AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>unixepoch() AND m.state IN ('sent','failed') AND (m.last_attempt_at IS NULL OR m.last_attempt_at<=unixepoch()-60))")
+    db.prepare("SELECT w.invite_hash,m.id AS mail_id FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash LEFT JOIN enrollment_mail m ON m.token_hash=w.invite_hash AND m.kind='invitation' WHERE w.id=?1 AND (?2='invite' AND (w.invite_hash IS NULL OR i.consumed_at IS NULL AND (i.expires_at<=unixepoch() OR i.revoked=1)) OR ?2='resend' AND i.consumed_at IS NULL AND i.revoked=0 AND i.expires_at>unixepoch() AND m.state IN ('sent','failed') AND (m.last_attempt_at IS NULL OR m.last_attempt_at<=unixepoch()-60))")
         .bind(&[id.into(),action.into()])?.first::<Target>(None).await
 }
 

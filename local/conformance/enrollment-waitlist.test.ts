@@ -19,7 +19,7 @@ const readList = async (response: { status: number; json(): Promise<unknown> }) 
   return (await response.json()) as ListPage;
 };
 
-test('confirmed waiting list, UV-bound approval, durable retry, expiration and single-use registration', async () => {
+test('single-email requests, UV-bound approval, link registration, retry and expiration', async () => {
   const config = JSON.parse(await readFile(`${root}/crates/worker/wrangler.jsonc`, 'utf8'));
   config.main = new URL('./support/waitlist-mail-fixture.mjs', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = `${root}/crates/worker/migrations`;
@@ -75,28 +75,15 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       202,
     );
     assert.equal((await DB.prepare('SELECT count(*) AS n FROM enrollment_waitlist').first()).n, 1);
-    assert.equal((await DB.prepare('SELECT count(*) AS n FROM fixture_mail_capture').first()).n, 1);
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM fixture_mail_capture').first()).n, 0);
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM enrollment_mail').first()).n, 0);
     assert.equal((await DB.prepare('SELECT count(*) AS n FROM account_security').first()).n, 0);
     assert.equal((await worker.fetch(`${issuer}/admin/waitlist`)).status, 403);
     const contact = await DB.prepare(
-      'SELECT id,confirmation_hash,verified_at FROM enrollment_waitlist',
+      'SELECT id,created_at,confirmation_hash,confirmation_expires_at,verified_at FROM enrollment_waitlist',
     ).first();
-    const confirmation = JSON.parse(
-      (await DB.prepare('SELECT message FROM fixture_mail_capture').first()).message,
-    );
-    const confirmationUrl = new URL(confirmation.text.match(/https:\/\/\S+/)[0]);
-    const token = confirmationUrl.hash.slice('#confirm='.length);
-    assert.equal(hash(token), contact.confirmation_hash);
-    const mail = await DB.prepare(
-      "SELECT id,token_hash FROM enrollment_mail WHERE kind='confirmation'",
-    ).first();
-    assert.equal(
-      token,
-      createHmac('sha256', Buffer.from(key, 'base64url'))
-        .update(`mikaki-enrollment-mail-v1:confirmation:${mail.id}`)
-        .digest('base64url'),
-    );
-    assert.equal(JSON.stringify(mail).includes(token), false);
+    assert.equal(contact.verified_at, null);
+    assert.equal(contact.confirmation_expires_at, 0);
     assert.equal(
       (await post('/admin/waitlist/start', { waitlist_id: contact.id, action: 'invite' })).status,
       403,
@@ -106,9 +93,12 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
-    const openEnrollment = async () => {
+    const openEnrollment = async (link = new URL(`${issuer}/enroll?lang=ja`)) => {
       // Playwright does not route the second request of a fulfilled HTTP redirect.
-      const pending = await worker.fetch(`${issuer}/enroll?lang=ja`, { redirect: 'manual' });
+      const entry = new URL(link);
+      const fragment = entry.hash;
+      entry.hash = '';
+      const pending = await worker.fetch(entry.href, { redirect: 'manual' });
       assert.equal(pending.status, 302);
       const cookie = pending.headers.get('set-cookie')!.split(';')[0];
       await context.addCookies([
@@ -122,10 +112,13 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
           sameSite: 'Lax',
         },
       ]);
-      await page.goto(pending.headers.get('location')!);
+      // HTTP redirects inherit the original fragment (RFC 9110 section 10.2.2).
+      await page.goto(pending.headers.get('location')! + fragment);
     };
     evidence = await startBrowserEvidence(context, 'enrollment-waitlist');
     const errors: string[] = [];
+    const requestUrls: string[] = [];
+    const referrers: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     let lastFinish: { body: string; headers: Record<string, string> } | undefined;
     let lastFinishStatus = 0;
@@ -136,6 +129,8 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       async (route) => {
         const request = route.request();
         const headers = await request.allHeaders();
+        requestUrls.push(request.url());
+        referrers.push(headers.referer ?? '');
         if (new URL(request.url()).pathname === '/admin/invitations/finish')
           lastFinish = { body: request.postData()!, headers };
         const init = {
@@ -173,15 +168,14 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
-    await page.getByRole('button', { name: 'Send confirmation email' }).click();
+    await page.getByRole('button', { name: 'Request an invitation', exact: true }).click();
     await page.getByRole('status').waitFor();
     const unverified = await DB.prepare(
       "SELECT id,verified_at FROM enrollment_waitlist WHERE email='bob@example.test'",
     ).first();
     assert.equal(unverified.verified_at, null);
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto(confirmationUrl.href);
-    await auditAccessibility(page, 'waitlist-confirmation-ja');
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM enrollment_mail').first()).n, 0);
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
     await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -195,36 +189,18 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
         isUserVerified: true,
       },
     });
-    await page.screenshot({ path: 'artifacts/waitlist-preview/confirmation.png', fullPage: true });
-    assert.equal(new URL(page.url()).hash, '');
-    assert.equal(
-      (
-        await DB.prepare(
-          "SELECT verified_at FROM enrollment_waitlist WHERE email='alice@example.test'",
-        ).first()
-      ).verified_at,
-      null,
-    );
-    await page.getByRole('button', { name: 'メールアドレスを確認' }).click();
-    await page.getByRole('status').waitFor();
-    assert.ok(
-      (
-        await DB.prepare(
-          "SELECT verified_at FROM enrollment_waitlist WHERE email='alice@example.test'",
-        ).first()
-      ).verified_at,
-    );
     const bootstrap = await issueBootstrapInvite(DB, 'test', 'waitlist administrator');
     await openEnrollment();
     await page.getByLabel('招待コード').fill(bootstrap.invitation);
     await page.getByRole('button', { name: '招待で登録する' }).click();
     await page.getByRole('heading', { name: '登録が完了しました' }).waitFor();
     await page.goto(`${issuer}/admin?lang=ja`);
-    await page.getByRole('button', { name: '招待する', exact: true }).waitFor();
+    const applicant = page.getByRole('listitem').filter({ hasText: 'alice@example.test' });
+    await applicant.getByRole('button', { name: '招待する', exact: true }).waitFor();
     assert.equal(await page.getByText('alice@example.test', { exact: true }).count(), 1);
-    assert.equal(await page.getByText('bob@example.test', { exact: true }).count(), 0);
+    assert.equal(await page.getByText('bob@example.test', { exact: true }).count(), 1);
     await DB.prepare('UPDATE fixture_mail_control SET fail=1 WHERE id=1').run();
-    await page.getByRole('button', { name: '招待する', exact: true }).click();
+    await applicant.getByRole('button', { name: '招待する', exact: true }).click();
     await page.getByText('送信失敗', { exact: true }).waitFor();
     assert.equal(raceStatuses.filter((status) => status === 200).length, 1);
     assert.ok(raceStatuses.some((status) => status === 400 || status === 409));
@@ -250,15 +226,25 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       DB.prepare(
         "UPDATE enrollment_mail SET next_attempt_at=unixepoch()-1 WHERE kind='invitation'",
       ),
+      // A still-valid job from the former two-email flow must not be sent again.
       DB.prepare(
-        "UPDATE enrollment_mail SET state='failed',next_attempt_at=0 WHERE waitlist_id=? AND kind='confirmation'",
-      ).bind(unverified.id),
-      DB.prepare('UPDATE enrollment_waitlist SET confirmation_hash=? WHERE id=?').bind(
-        hash('superseded-confirmation'),
-        unverified.id,
-      ),
+        'UPDATE enrollment_waitlist SET confirmation_hash=?1,confirmation_expires_at=unixepoch()+3600,confirmation_sent_at=unixepoch() WHERE id=?2',
+      ).bind(hash('legacy-confirmation'), unverified.id),
+      DB.prepare(
+        "INSERT INTO enrollment_mail(id,waitlist_id,kind,token_hash,expires_at,created_at,next_attempt_at,state) VALUES(?1,?2,'confirmation',?3,unixepoch()+3600,unixepoch(),0,'failed')",
+      ).bind(hash('legacy-confirmation-job'), unverified.id, hash('legacy-confirmation')),
     ]);
+    await DB.prepare('UPDATE enrollment_waitlist SET created_at=unixepoch()-2592001 WHERE id=?')
+      .bind(contact.id)
+      .run();
     await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
+    assert.ok(
+      await DB.prepare('SELECT id FROM enrollment_waitlist WHERE id=?').bind(contact.id).first(),
+      'An invitation retains its unverified applicant even after 30 days',
+    );
+    await DB.prepare('UPDATE enrollment_waitlist SET created_at=?1 WHERE id=?2')
+      .bind(contact.created_at, contact.id)
+      .run();
     assert.equal(
       (
         await DB.prepare(
@@ -303,7 +289,7 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
           body: JSON.stringify({ waitlist_id: unverified.id, action: 'invite' }),
         })
       ).status,
-      409,
+      200,
     );
     assert.equal(
       (
@@ -342,7 +328,7 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     await page.getByRole('button', { name: '一覧を更新' }).click();
     // Revoke after the server has verified the assertion, immediately before its batch.
     await DB.prepare('UPDATE fixture_mail_control SET revoke_before_batch=1 WHERE id=1').run();
-    await page.getByRole('button', { name: '招待メールを再送' }).click();
+    await applicant.getByRole('button', { name: '招待メールを再送' }).click();
     await page.getByRole('alert').waitFor();
     assert.equal(lastFinishStatus, 403);
     assert.equal(
@@ -371,7 +357,7 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     );
     await DB.prepare("UPDATE account_role SET active=1 WHERE role='admin'").run();
     await page.getByRole('button', { name: '一覧を更新' }).click();
-    await page.getByRole('button', { name: '招待メールを再送' }).click();
+    await applicant.getByRole('button', { name: '招待メールを再送' }).click();
     await page.getByText('招待メールを送信しました。', { exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: 'artifacts/waitlist-preview/admin-mobile.png', fullPage: true });
@@ -407,7 +393,7 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       .run();
     await page.getByRole('button', { name: '一覧を更新' }).click();
     await page.getByText('期限切れ', { exact: true }).waitFor();
-    await page.getByRole('button', { name: '招待する', exact: true }).click();
+    await applicant.getByRole('button', { name: '招待する', exact: true }).click();
     await page.getByText('招待メールを送信しました。', { exact: true }).waitFor();
     assert.equal(
       (
@@ -427,9 +413,113 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
       .digest('base64url');
     assert.notEqual(newCode, invitation);
     await context.clearCookies();
-    await openEnrollment();
-    await page.getByLabel('招待コード').fill(newCode);
-    await page.getByRole('button', { name: '招待で登録する' }).click();
+    const renewedMessage = await DB.prepare(
+      'SELECT message FROM fixture_mail_capture WHERE instr(message,?1)>0',
+    )
+      .bind(newCode)
+      .first();
+    const link = new URL(JSON.parse(renewedMessage.message).text.match(/https:\/\/\S+/)[0]);
+    assert.equal(link.hash, `#invite=${newCode}`);
+    assert.match(JSON.parse(renewedMessage.message).html, /mikakiを始める<\/a>/);
+    const expiry = await DB.prepare(
+      'SELECT issued_at,expires_at FROM enrollment_invite WHERE invite_hash=?',
+    )
+      .bind(renewed.token_hash)
+      .first();
+    await DB.prepare(
+      'UPDATE enrollment_invite SET issued_at=unixepoch()-1000,expires_at=unixepoch()-1 WHERE invite_hash=?',
+    )
+      .bind(renewed.token_hash)
+      .run();
+    await openEnrollment(link);
+    await page.getByText('この招待では登録を続けられません。', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Passkeyで始める' }).count(), 0);
+    await DB.prepare('UPDATE enrollment_invite SET issued_at=?1,expires_at=?2 WHERE invite_hash=?3')
+      .bind(expiry.issued_at, expiry.expires_at, renewed.token_hash)
+      .run();
+    await context.clearCookies();
+    await openEnrollment(link);
+    await page.getByRole('button', { name: 'Passkeyで始める' }).waitFor();
+    assert.equal(await page.getByLabel('招待コード').count(), 0);
+    assert.equal(new URL(page.url()).hash, '');
+    assert.equal(
+      (
+        await DB.prepare('SELECT consumed_at FROM enrollment_invite WHERE invite_hash=?')
+          .bind(renewed.token_hash)
+          .first()
+      ).consumed_at,
+      null,
+    );
+    assert.equal(
+      (
+        await DB.prepare('SELECT verified_at FROM enrollment_waitlist WHERE id=?')
+          .bind(contact.id)
+          .first()
+      ).verified_at,
+      null,
+    );
+    await page.reload();
+    await page.getByRole('button', { name: 'Passkeyで始める' }).waitFor();
+    await page.getByLabel('言語').selectOption('en');
+    await page.getByRole('button', { name: 'Start with a Passkey' }).waitFor();
+    assert.equal(await page.getByLabel('Invitation code', { exact: true }).count(), 0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await auditAccessibility(page, 'invitation-link-en-mobile');
+    await page.screenshot({
+      path: 'artifacts/waitlist-preview/invitation-link-mobile.png',
+      fullPage: true,
+    });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await page.getByLabel('Language').selectOption('ja');
+    await page.getByRole('button', { name: 'Passkeyで始める' }).waitFor();
+    const recipientCdp = await context.newCDPSession(page);
+    await recipientCdp.send('WebAuthn.enable', { enableUI: false });
+    await recipientCdp.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        ctap2Version: 'ctap2_1',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        automaticPresenceSimulation: true,
+        isUserVerified: true,
+      },
+    });
+    await page.evaluate(() => {
+      const create = navigator.credentials.create.bind(navigator.credentials);
+      Object.defineProperty(navigator.credentials, 'create', {
+        configurable: true,
+        value: async () => {
+          Object.defineProperty(navigator.credentials, 'create', {
+            configurable: true,
+            value: create,
+          });
+          throw new DOMException('Cancelled by test user', 'NotAllowedError');
+        },
+      });
+    });
+    await page.getByRole('button', { name: 'Passkeyで始める' }).click();
+    await page.getByRole('alert').waitFor();
+    assert.equal(
+      (
+        await DB.prepare('SELECT consumed_at FROM enrollment_invite WHERE invite_hash=?')
+          .bind(renewed.token_hash)
+          .first()
+      ).consumed_at,
+      null,
+    );
+    assert.equal(
+      requestUrls.some((url) => url.includes(newCode)),
+      false,
+    );
+    assert.equal(
+      referrers.some((url) => url.includes(newCode)),
+      false,
+    );
+    await page.getByRole('button', { name: 'Passkeyで始める' }).click();
     await page.getByRole('heading', { name: '登録が完了しました' }).waitFor();
     assert.equal((await DB.prepare('SELECT count(*) AS n FROM account_security').first()).n, 2);
     assert.equal(
@@ -455,6 +545,17 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     );
     const list = await worker.fetch(`${issuer}/admin/waitlist`, { headers: adminHeaders });
     assert.equal((await readList(list)).entries[0].status, 'registered');
+    assert.ok(
+      (
+        await DB.prepare('SELECT verified_at FROM enrollment_waitlist WHERE id=?')
+          .bind(contact.id)
+          .first()
+      ).verified_at,
+    );
+    await openEnrollment(link);
+    await page.getByText('この招待では登録を続けられません。', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('link', { name: 'サインインする' }).count(), 1);
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM account_security').first()).n, 2);
     const inserts = Array.from({ length: 101 }, (_, index) => {
       const id = hash(`pagination:${index}`);
       return DB.prepare(
@@ -480,13 +581,13 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
         headers: adminHeaders,
       }),
     );
-    assert.equal(secondPage.entries.length, 2);
+    assert.equal(secondPage.entries.length, 3);
     assert.equal(secondPage.next_cursor, null);
     assert.equal(
       new Set(
         [...firstPage.entries, ...secondPage.entries].map((entry: { id: string }) => entry.id),
       ).size,
-      102,
+      103,
     );
     assert.equal(
       (await worker.fetch(`${issuer}/admin/waitlist?cursor=bad`, { headers: adminHeaders })).status,
@@ -513,6 +614,30 @@ test('confirmed waiting list, UV-bound approval, durable retry, expiration and s
     assert.equal(
       (await DB.prepare('SELECT count(*) AS n FROM enrollment_waitlist').first()).n,
       102,
+    );
+    await DB.batch(
+      [30, 20].map((days) =>
+        DB.prepare(
+          "INSERT INTO enrollment_waitlist(id,email,locale,created_at,confirmation_hash,confirmation_expires_at,confirmation_sent_at) VALUES(?1,?2,'en',unixepoch()-?3,?4,0,0)",
+        ).bind(
+          hash(`pending:${days}`),
+          `pending-${days}@example.test`,
+          days * 86400 + 1,
+          hash(`pending-verifier:${days}`),
+        ),
+      ),
+    );
+    await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
+    assert.equal(
+      await DB.prepare('SELECT id FROM enrollment_waitlist WHERE id=?')
+        .bind(hash('pending:30'))
+        .first(),
+      null,
+    );
+    assert.ok(
+      await DB.prepare('SELECT id FROM enrollment_waitlist WHERE id=?')
+        .bind(hash('pending:20'))
+        .first(),
     );
     await DB.prepare("UPDATE account_role SET active=0 WHERE role='admin'").run();
     assert.equal(
@@ -551,8 +676,7 @@ test('native email binding is simulated locally and unverified/expired requests 
       body: JSON.stringify({ email: 'local-only@example.test', locale: 'en' }),
     });
     assert.equal(response.status, 202);
-    const mail = await DB.prepare('SELECT id,state FROM enrollment_mail').first();
-    assert.equal(mail.state, 'sent');
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM enrollment_mail').first()).n, 0);
     for (let attempt = 0; attempt < 4; attempt++) {
       assert.equal(
         (
@@ -575,25 +699,66 @@ test('native email binding is simulated locally and unverified/expired requests 
       ).status,
       429,
     );
-    const token = createHmac('sha256', Buffer.from(key, 'base64url'))
-      .update(`mikaki-enrollment-mail-v1:confirmation:${mail.id}`)
-      .digest('base64url');
-    await DB.prepare('UPDATE enrollment_waitlist SET confirmation_expires_at=unixepoch()-1').run();
-    assert.equal(
-      (
-        await worker.fetch(`${issuer}/waitlist/confirm`, {
-          method: 'POST',
-          headers: { origin: issuer, 'content-type': 'application/json' },
-          body: JSON.stringify({ token }),
-        })
-      ).status,
-      400,
-    );
     assert.equal(
       (await DB.prepare('SELECT verified_at FROM enrollment_waitlist').first()).verified_at,
       null,
     );
     assert.equal((await DB.prepare('SELECT count(*) AS n FROM account_security').first()).n, 0);
+    // Previously sent confirmation links remain valid until their original expiry.
+    const token = hash('previously-sent-confirmation');
+    await DB.prepare(
+      'UPDATE enrollment_waitlist SET confirmation_hash=?1,confirmation_expires_at=unixepoch()+3600,confirmation_sent_at=unixepoch()',
+    )
+      .bind(hash(token))
+      .run();
+    const confirm = () =>
+      worker.fetch(`${issuer}/waitlist/confirm`, {
+        method: 'POST',
+        headers: { origin: issuer, 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+    await worker.fetch(`${issuer}/waitlist?lang=en#confirm=${token}`);
+    assert.equal(
+      (await DB.prepare('SELECT verified_at FROM enrollment_waitlist').first()).verified_at,
+      null,
+    );
+    await DB.prepare('UPDATE enrollment_waitlist SET confirmation_expires_at=unixepoch()-1').run();
+    assert.equal((await confirm()).status, 400);
+    await DB.prepare(
+      'UPDATE enrollment_waitlist SET confirmation_expires_at=unixepoch()+3600',
+    ).run();
+    assert.equal((await confirm()).status, 200);
+    assert.equal((await confirm()).status, 200);
+    assert.equal((await DB.prepare('SELECT count(*) AS n FROM enrollment_mail').first()).n, 0);
+    // Exercise the production send adapter against Wrangler's local native binding.
+    const job = hash('native-invitation-job');
+    const invitation = createHmac('sha256', Buffer.from(key, 'base64url'))
+      .update(`mikaki-enrollment-mail-v1:invitation:${job}`)
+      .digest('base64url');
+    const contact = await DB.prepare('SELECT id FROM enrollment_waitlist').first();
+    await DB.batch([
+      DB.prepare(
+        "INSERT INTO account_security(account_id,epoch,active) VALUES('fixture-admin',1,1)",
+      ),
+      DB.prepare(
+        "INSERT INTO account_role(account_id,role,active) VALUES('fixture-admin','admin',1)",
+      ),
+      DB.prepare(
+        "INSERT INTO enrollment_invite(invite_hash,kind,issuer_account_id,issued_at,expires_at) VALUES(?1,'normal','fixture-admin',unixepoch(),unixepoch()+3600)",
+      ).bind(hash(invitation)),
+      DB.prepare('UPDATE enrollment_waitlist SET invite_hash=?1 WHERE id=?2').bind(
+        hash(invitation),
+        contact.id,
+      ),
+      DB.prepare(
+        "INSERT INTO enrollment_mail(id,waitlist_id,kind,token_hash,expires_at,created_at,next_attempt_at) VALUES(?1,?2,'invitation',?3,unixepoch()+3600,unixepoch(),0)",
+      ).bind(job, contact.id, hash(invitation)),
+    ]);
+    await worker.scheduled({ cron: '* * * * *', scheduledTime: new Date() });
+    assert.equal(
+      (await DB.prepare('SELECT state FROM enrollment_mail WHERE id=?').bind(job).first()).state,
+      'sent',
+    );
   } finally {
     await harness.close();
   }

@@ -1,4 +1,4 @@
-//! Confirmed invitation contacts. Email verification grants no account or admin authority.
+//! Reviewed invitation requests. Email possession is checked when an invitation is used.
 use super::*;
 use wasm_bindgen::JsValue;
 
@@ -15,8 +15,6 @@ struct ConfirmInput {
 }
 #[derive(Deserialize)]
 struct Policy {
-    confirmation_ttl_seconds: u64,
-    resend_seconds: u64,
     source_per_hour: u64,
     deployment_per_hour: u64,
     maximum_entries: u64,
@@ -92,11 +90,8 @@ pub async fn request(
     if !enrollment::origin_matches(&request, &issuer)? {
         return response(serde_json::json!({"error":"denied"}), 403);
     }
-    if !enrollment_mail::ready(&context.env) {
-        return response(serde_json::json!({"error":"temporarily_unavailable"}), 503);
-    }
     let db = context.env.d1("DB")?;
-    let policy=db.prepare("SELECT confirmation_ttl_seconds,resend_seconds,source_per_hour,deployment_per_hour,maximum_entries FROM enrollment_waitlist_policy WHERE id=1").first::<Policy>(None).await?.ok_or("waitlist_policy_missing")?;
+    let policy=db.prepare("SELECT source_per_hour,deployment_per_hour,maximum_entries FROM enrollment_waitlist_policy WHERE id=1").first::<Policy>(None).await?.ok_or("waitlist_policy_missing")?;
     let now = now_seconds().ok_or("server_error")?;
     if !admit(&request, &db, &policy, now, false).await? {
         return response(serde_json::json!({"error":"try_later"}), 429);
@@ -115,20 +110,11 @@ pub async fn request(
         return response(serde_json::json!({"error":"invalid_request"}), 400);
     }
     let id = passkey_login::random_secret(&mut WorkersCryptoRandom)?;
-    let job = passkey_login::random_secret(&mut WorkersCryptoRandom)?;
-    let token = enrollment_mail::token(&context.env, "confirmation", &job).await?;
-    let hash = passkey_login::hash(&token);
-    let expiry = now + policy.confirmation_ttl_seconds;
-    let results=db.batch(vec![
-        db.prepare("INSERT INTO enrollment_waitlist(id,email,locale,created_at,confirmation_hash,confirmation_expires_at,confirmation_sent_at) SELECT ?1,?2,?3,?4,?5,?6,?4 WHERE (SELECT count(*) FROM enrollment_waitlist)<?7 OR EXISTS(SELECT 1 FROM enrollment_waitlist WHERE email=?2) ON CONFLICT(email) DO UPDATE SET confirmation_hash=excluded.confirmation_hash,confirmation_expires_at=excluded.confirmation_expires_at,confirmation_sent_at=excluded.confirmation_sent_at,locale=excluded.locale WHERE enrollment_waitlist.verified_at IS NULL AND enrollment_waitlist.confirmation_sent_at<=?4-?8 RETURNING id")
-            .bind(&[id.into(),email.into(),input.locale.into(),JsValue::from_f64(now as f64),hash.clone().into(),JsValue::from_f64(expiry as f64),JsValue::from_f64(policy.maximum_entries as f64),JsValue::from_f64(policy.resend_seconds as f64)])?,
-        db.prepare("INSERT INTO enrollment_mail(id,waitlist_id,kind,token_hash,expires_at,created_at,next_attempt_at) SELECT ?1,id,'confirmation',?2,?3,?4,?4 FROM enrollment_waitlist WHERE confirmation_hash=?2 AND verified_at IS NULL")
-            .bind(&[job.clone().into(),hash.into(),JsValue::from_f64(expiry as f64),JsValue::from_f64(now as f64)])?,
-    ]).await?;
-    if !results[0].results::<serde_json::Value>()?.is_empty() {
-        // The durable row survives a lost response or a mail-provider failure.
-        enrollment_mail::deliver(&context.env, &job).await?;
-    }
+    // Preserve the reviewed schema and previously issued confirmation links.
+    // New requests have an inert legacy verifier and never create a mail job.
+    let unused = passkey_login::random_secret(&mut WorkersCryptoRandom)?;
+    db.prepare("INSERT INTO enrollment_waitlist(id,email,locale,created_at,confirmation_hash,confirmation_expires_at,confirmation_sent_at) SELECT ?1,?2,?3,?4,?5,0,0 WHERE (SELECT count(*) FROM enrollment_waitlist)<?6 ON CONFLICT(email) DO NOTHING")
+        .bind(&[id.into(),email.into(),input.locale.into(),JsValue::from_f64(now as f64),passkey_login::hash(&unused).into(),JsValue::from_f64(policy.maximum_entries as f64)])?.run().await?;
     // Do not reveal whether an address is already waiting, invited or registered.
     response(serde_json::json!({"accepted":true}), 202)
 }
@@ -140,7 +126,7 @@ pub async fn confirm(
         return response(serde_json::json!({"error":"denied"}), 403);
     }
     let db = context.env.d1("DB")?;
-    let policy=db.prepare("SELECT confirmation_ttl_seconds,resend_seconds,source_per_hour,deployment_per_hour,maximum_entries FROM enrollment_waitlist_policy WHERE id=1").first::<Policy>(None).await?.ok_or("waitlist_policy_missing")?;
+    let policy=db.prepare("SELECT source_per_hour,deployment_per_hour,maximum_entries FROM enrollment_waitlist_policy WHERE id=1").first::<Policy>(None).await?.ok_or("waitlist_policy_missing")?;
     if !admit(
         &request,
         &db,
@@ -191,7 +177,7 @@ pub async fn list(
         }
     }
     let (time, id) = cursor.unwrap_or((0, String::new()));
-    let mut entries=db.prepare("SELECT w.id,w.email,w.created_at,w.verified_at,i.expires_at,CASE WHEN i.consumed_at IS NOT NULL THEN 'registered' WHEN w.invite_hash IS NULL THEN 'waiting' WHEN i.revoked=1 OR i.expires_at<=unixepoch() THEN 'expired' WHEN m.state='failed' THEN 'failed' WHEN m.state IN ('pending','sending') THEN 'sending' ELSE 'invited' END AS status,CASE WHEN m.last_attempt_at>unixepoch()-60 OR m.state IN ('pending','sending') THEN 0 ELSE 1 END AS can_resend FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash LEFT JOIN enrollment_mail m ON m.token_hash=w.invite_hash AND m.kind='invitation' WHERE w.verified_at IS NOT NULL AND (w.created_at>?1 OR w.created_at=?1 AND w.id>?2) ORDER BY w.created_at,w.id LIMIT 101")
+    let mut entries=db.prepare("SELECT w.id,w.email,w.created_at,w.verified_at,i.expires_at,CASE WHEN i.consumed_at IS NOT NULL THEN 'registered' WHEN w.invite_hash IS NULL THEN 'waiting' WHEN i.revoked=1 OR i.expires_at<=unixepoch() THEN 'expired' WHEN m.state='failed' THEN 'failed' WHEN m.state IN ('pending','sending') THEN 'sending' ELSE 'invited' END AS status,CASE WHEN m.last_attempt_at>unixepoch()-60 OR m.state IN ('pending','sending') THEN 0 ELSE 1 END AS can_resend FROM enrollment_waitlist w LEFT JOIN enrollment_invite i ON i.invite_hash=w.invite_hash LEFT JOIN enrollment_mail m ON m.token_hash=w.invite_hash AND m.kind='invitation' WHERE (w.created_at>?1 OR w.created_at=?1 AND w.id>?2) ORDER BY w.created_at,w.id LIMIT 101")
         .bind(&[JsValue::from_f64(time as f64),id.into()])?.all().await?.results::<serde_json::Value>()?;
     let next_cursor = if entries.len() > 100 {
         entries.truncate(100);
