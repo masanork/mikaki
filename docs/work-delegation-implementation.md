@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5a/M5b source/preparation inspection, owner selection composition, explicit copy consent, productive copy orchestration and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main` through `34f31ca`, 2026-10-10 JST. Delegation, Cloudflare Git-host deployment, source materialization/registration and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5a/M5b source/preparation inspection, owner selection composition, explicit copy consent, productive copy orchestration and M6a–M6e mint/custody, recovery, Native bearer refusal, fixed Git upload/readback and preparation evidence composition are locally integrated on `feat/work-delegation-main`. Native/UI source remains `34f31ca`; M6f adds sealed source registration, private R2 supply and the Cloudflare Containers Git-host configuration at `96b33df`, 2026-10-10 JST. Delegation, actual Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -18,14 +18,14 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 
 ## Main integration order
 
-| Increment                       | Outcome and qualification gate                                                                                                                                                                                                                                              | State                                                                                                                                                                                                                                                                                            |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| M1: Portable rules/decisions    | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass.                                                                                                                                                           | Complete locally: 35 unit cases plus one compile-fail case.                                                                                                                                                                                                                                      |
-| M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                    | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                                                                                                               |
-| M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                  |
-| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                     |
-| M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Owner composition, explicit copy approval and productive copy orchestration are integrated at `34f31ca`. The qualification below distinguishes the broad 423-case run at `f489d80` from the final 26-case copy/Workflow run. Delegation, activity/result controls and deployment remain pending. |
-| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6e mint/custody, recovery, bearer refusal, fixed Git exchange and both-role evidence composition locally implemented; missing/unobserved custody, Cloudflare Git-host deployment and release remain pending.                                                                                |
+| Increment                       | Outcome and qualification gate                                                                                                                                                                                                                                              | State                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1: Portable rules/decisions    | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass.                                                                                                                                                           | Complete locally: 35 unit cases plus one compile-fail case.                                                                                                                                                                                                                                                                                     |
+| M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                    | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                                                                                                                                                              |
+| M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
+| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
+| M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Owner composition, explicit copy approval and productive copy orchestration are integrated at `34f31ca`; the host integration at `96b33df` passes 64 focused regression cases with that unchanged product bundle. Earlier 423/26-case results retain their separate scopes. Delegation, activity/result controls and deployment remain pending. |
+| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence composition and sealed private Git-host provisioning locally. Missing/unobserved custody, actual Cloudflare Git-host deployment and release remain pending.                                                                                      |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -594,3 +594,77 @@ gates. Production flags/bindings, the two baseline migrations, protected remote
 resources/journals and preserved stash are unchanged. No push, deployment,
 remote CI execution or real provider mutation is included. This delivery record
 changes documentation only; selected product source remains `34f31ca`.
+
+## M6f: Sealed source registration and private Container Git host
+
+Selected host/provisioning source is clean
+`96b33df86dc4db254dd8685ac0ea4cb71ad38502`.
+[The host note](work-git-host.md) records the operator inputs, runtime trust,
+private R2 layout, fixed ports, resource bounds and remote qualification order.
+Native Rust, product UI, production configuration and migrations are unchanged
+from the previously qualified product source `34f31ca`.
+
+The local operator tool consumes an authenticated Native disclosure export and
+exact configured source capabilities. It checks current source/access revisions,
+code history and object inventory, selected content hashes and Native's planned
+snapshot commit/tree before registering two sealed packs. The task retains its
+reviewed reachable code history; the snapshot contains one deterministic
+parentless commit with only selected context. Source paths are operator inputs;
+an owner request cannot choose a path or URL. An exported file is data, not an
+authority token or independently signed Native attestation.
+
+The generated Linux image contains the bundled trusted program and Dockerfile
+only. Source packs stay outside image layers and enter the ephemeral Container
+from a pinned private R2 package. The Worker checks the registry digest before
+provisioning; Linux checks pack size/hash, strict Git indexing, exact reachable
+objects and full fsck before activation. Wrong pins, tampered packs, symlinks,
+extra objects and changed Native/source facts are refused. An activated process
+cannot accept another registry or expose source content through an API.
+
+The named `WorkGitHost` entrypoint is available only through the private binding;
+its public default handler stays 404. The actual Durable Object Container API
+uses a stable authority/disclosure name and immutable SQLite configuration frame.
+Four permanent role/purpose slots are synchronized before Container/provider
+I/O. Lost replies, competing delivery, fresh attempt IDs and runtime restart
+cannot resend a charged call. A per-process Linux fence also refuses duplicate
+TCP delivery. None of these records supplies Native approval, custody, copy
+verification or delegation authority.
+
+The final serial regression passes **64/64** with clean selected host source:
+
+| Check                                                 | Result and scope                                                                                                                                                                                                      |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New host/provisioning cases                           | **11/11**: exact Native materialization, selected-only packs, private bounded listener, immutable SQLite/restart admission, real local R2 provisioning, sealed-host Workflow/Git and the explicit Linux Docker image. |
+| Existing copy/Workflow/progress and OP boundary cases | **26/26**, using the unchanged product/qualification bundle built from clean `34f31ca`.                                                                                                                               |
+| Existing permanent Git gate and independent readback  | **24/24**, with real Git bytes and synthetic provider identity.                                                                                                                                                       |
+| Existing pack preflight/strict indexing               | **3/3**.                                                                                                                                                                                                              |
+
+The TAP report is
+`local/generated/work-store-main/git-host-96b33df.tap`.
+The Docker receipt in `artifacts/work-git-host/container.json` pins the bundled
+program, Dockerfile and built image; the image runs on `linux/amd64` with a
+1 GiB memory cap and one CPU. It covers cold refusal, wrong package/pack refusal,
+exact activation and absence of rebinding/source routes. This is not a capacity
+or Cloudflare cold-start latency claim.
+
+Node and Git-host Worker type checks, generated binding types, full Prettier,
+product-source, documentation and diff checks pass. Wrangler 4.148.0 packages
+the clean host Worker with `deploy --dry-run --containers-rollout none`:
+**782.06 KiB raw / 123.33 KiB gzip**. This checks Worker/configuration packaging;
+the separate Docker lane qualifies the Linux image locally. Neither checks
+remote R2 resources or actual Cloudflare Container scheduling/TCP routing.
+CI/PR preparation lanes include the host/R2/restart cases and explicit Docker
+lane. No remote CI result is claimed.
+
+This run reuses the exact unchanged `34f31ca` Native/UI bundle and does not claim
+a new Rust workspace, full 423-case or Owner Vault/budget qualification. Their
+earlier results and selected sources remain recorded above. Runtime host code
+is bundled from `96b33df` during these tests.
+
+Next: qualify private ingress, cold provisioning and operation latency in an
+isolated Cloudflare environment using owner-authorized non-sensitive sources;
+then reconcile the original protected development allocations before a real
+Artifacts trial. The six protected repositories/journals and preserved stash
+remain intact. No push, remote deployment, provider create/mint or production
+activation is included. This delivery record changes documentation only;
+selected host source remains `96b33df` and Native/UI source remains `34f31ca`.
