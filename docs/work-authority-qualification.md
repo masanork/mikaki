@@ -111,10 +111,20 @@ manifest cannot establish trusted provenance. See the
 [implementation record](work-delegation-implementation.md).
 
 `npm run test:work-authority-packet` runs the packet/schema rejection cases in
-CI. `node scripts/qualify-work-authority-packet.ts PACKET` loads only the frozen
+CI. `node scripts/qualify-work-authority-packet.ts PACKET [NEW_RECEIPT_FILE]` loads only the frozen
 product modules and checkpoint in local workerd, applies the frozen migrations
 to disposable local D1, and verifies empty authority, the actual enrollment
 page, unauthenticated owner refusal, closed fixture/admin HTTP routes and the
 uninitialized private checkpoint service. Its temporary issuer and D1 identity
 are local test settings, never deployment inputs. This smoke check enrolls no
 owner or checkpoint, and does not exercise a real person's Passkey ceremony.
+The optional receipt is created exclusively and records the selected packet,
+qualifier source and script digest; keep it outside the immutable packet.
+
+The pinned Wrangler test harness does not retain the module-root configuration
+for this unbundled generated Rust entrypoint. The local qualifier therefore uses
+Miniflare's explicit module-root/module list, matching the frozen upload files.
+Actual Wrangler `deploy --dry-run --env-file /dev/null` verifies additional
+module discovery without uploading or changing remote bindings. A manual
+same-origin enrollment redirect stays inside local workerd rather than being
+followed by Node's network fetch.

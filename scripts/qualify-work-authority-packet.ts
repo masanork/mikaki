@@ -1,50 +1,73 @@
 /** Load only frozen product/checkpoint modules in local workerd. No remote enrollment. */
 import assert from 'node:assert/strict';
-import { join, resolve } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createTestHarness } from 'wrangler';
+import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
+import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { releaseSource } from './release-inventory.ts';
 import {
   AUTHORITY_TARGET,
   authorityTemplates,
   packetFile,
   digest,
   verifyAuthorityPacket,
+  packetJson,
 } from './work-authority-packet.ts';
 
 export async function qualifyAuthorityPacket(directory: string) {
   const manifest = await verifyAuthorityPacket(directory);
   const templates = authorityTemplates(manifest.account_id);
-  const opConfig = {
-    ...templates.op,
-    main: join(directory, 'op/build/worker/service.mjs'),
-    base_dir: join(directory, 'op/build'),
-    vars: { ...templates.op.vars, MIKAKI_ISSUER: 'https://authority.test' },
-    secrets: undefined,
-    triggers: undefined,
-    queues: undefined,
-    d1_databases: [
-      {
-        binding: 'DB',
-        database_name: 'authority-packet-local',
-        database_id: '00000000-0000-4000-8000-000000000001',
-        migrations_dir: join(directory, 'migrations'),
-        remote: false,
-      },
-    ],
-  };
-  const harness = createTestHarness({
-    root: fileURLToPath(new URL('../', import.meta.url)),
-    workers: [
-      { config: opConfig },
-      { config: { ...templates.checkpoint, main: join(directory, 'checkpoint/worker.mjs') } },
-    ],
-  });
+  const modulesRoot = join(directory, 'op/build');
+  const mf = new Miniflare(
+    convertV4MiniflareOptions({
+      workers: [
+        {
+          name: AUTHORITY_TARGET.op,
+          modulesRoot,
+          modules: [
+            ...['worker/service.mjs', 'worker/shim.mjs', 'index.js'].map((path) => ({
+              type: 'ESModule' as const,
+              path: join(modulesRoot, path),
+            })),
+            { type: 'CompiledWasm', path: join(modulesRoot, 'index_bg.wasm') },
+          ],
+          compatibilityDate: templates.op.compatibility_date,
+          bindings: { ...templates.op.vars, MIKAKI_ISSUER: 'https://authority.test' },
+          d1Databases: { DB: 'authority-packet-local' },
+          r2Buckets: { VAULT_BLOBS: 'authority-packet-local-vault' },
+          serviceBindings: {
+            WORK_AUTHORITY_CHECKPOINT: {
+              name: AUTHORITY_TARGET.checkpoint,
+              entrypoint: 'WorkCheckpointService',
+            },
+          },
+        },
+        {
+          name: AUTHORITY_TARGET.checkpoint,
+          modules: true,
+          scriptPath: join(directory, 'checkpoint/worker.mjs'),
+          compatibilityDate: templates.checkpoint.compatibility_date,
+          bindings: templates.checkpoint.vars,
+          durableObjects: { CHECKPOINTS: { className: 'WorkCheckpoint', useSQLite: true } },
+        },
+      ],
+    }),
+  );
   try {
-    await harness.listen();
-    const op = harness.getWorker(AUTHORITY_TARGET.op);
-    const checkpoint = harness.getWorker(AUTHORITY_TARGET.checkpoint);
-    await op.applyD1Migrations('DB');
-    const env = await op.getEnv();
+    const op = await mf.getWorker(AUTHORITY_TARGET.op);
+    const checkpoint = await mf.getWorker(AUTHORITY_TARGET.checkpoint);
+    const DB = await mf.getD1Database('DB');
+    const env = await mf.getBindings(AUTHORITY_TARGET.op);
+    const checkpointService = env.WORK_AUTHORITY_CHECKPOINT as {
+      fetch(input: string, init: RequestInit): Promise<{ status: number }>;
+    };
+    for (const name of (await readdir(join(directory, 'migrations'))).sort()) {
+      const statements = splitSqlQuery(
+        (await packetFile(join(directory, 'migrations', name))).toString('utf8'),
+      );
+      await DB.batch(statements.map((sql) => DB.prepare(sql)));
+    }
     for (const table of [
       'account_security',
       'credential',
@@ -54,7 +77,7 @@ export async function qualifyAuthorityPacket(directory: string) {
       'work_copy_consent',
       'work_copy_job',
     ])
-      assert.equal(await env.DB.prepare(`SELECT count(*) AS n FROM ${table}`).first('n'), 0, table);
+      assert.equal(await DB.prepare(`SELECT count(*) AS n FROM ${table}`).first('n'), 0, table);
     for (const path of [
       '/fixture',
       '/checkpoint-fixture',
@@ -66,12 +89,34 @@ export async function qualifyAuthorityPacket(directory: string) {
       '/copy-job',
     ])
       assert.equal(
-        (await op.fetch(`https://authority.test${path}`, { method: 'POST', body: '{}' })).status,
+        (
+          await op.fetch(`https://authority.test${path}`, {
+            method: 'POST',
+            body: '{}',
+            redirect: 'manual',
+          })
+        ).status,
         404,
         path,
       );
-    assert.equal((await op.fetch('https://authority.test/enroll')).status, 200);
-    assert.equal((await op.fetch('https://authority.test/work/session')).status, 401);
+    const enrollment = await op.fetch('https://authority.test/enroll', { redirect: 'manual' });
+    assert.equal(enrollment.status, 302);
+    const login = new URL(enrollment.headers.get('Location')!);
+    assert.equal(login.origin, 'https://authority.test');
+    assert.equal(login.pathname, '/login');
+    assert.equal(
+      (
+        await op.fetch(login.toString(), {
+          redirect: 'manual',
+          headers: { Cookie: enrollment.headers.get('Set-Cookie')!.split(';')[0]! },
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await op.fetch('https://authority.test/work/session', { redirect: 'manual' })).status,
+      401,
+    );
     assert.equal(
       (
         await checkpoint.fetch('https://private.invalid/checkpoint', {
@@ -83,7 +128,7 @@ export async function qualifyAuthorityPacket(directory: string) {
     );
     assert.equal(
       (
-        await env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint', {
+        await checkpointService.fetch('https://private.invalid/checkpoint', {
           method: 'POST',
           body: JSON.stringify({ action: 'status', release: 1 }),
         })
@@ -92,24 +137,26 @@ export async function qualifyAuthorityPacket(directory: string) {
     );
     assert.equal(
       (
-        await env.WORK_AUTHORITY_CHECKPOINT.fetch('https://private.invalid/checkpoint', {
+        await checkpointService.fetch('https://private.invalid/checkpoint', {
           method: 'POST',
           body: JSON.stringify({ action: 'bootstrap', release: 1 }),
         })
       ).status,
       400,
     );
-    assert.equal((await env.DB.prepare('PRAGMA foreign_key_check').all()).results.length, 0);
+    assert.equal((await DB.prepare('PRAGMA foreign_key_check').all()).results.length, 0);
     await verifyAuthorityPacket(directory);
     return {
       format_version: 1,
       source: manifest.source,
+      qualifier_source: releaseSource(fileURLToPath(new URL('../', import.meta.url))),
+      qualifier_sha256: digest(await packetFile(fileURLToPath(import.meta.url))).sha256,
       manifest_sha256: digest(await packetFile(join(directory, 'manifest.json'))).sha256,
       runtime: 'local-workerd-frozen-product-and-checkpoint',
       migrations: 14,
       empty_authority: true,
       public_fixture_admin_routes: 'refused',
-      actual_enrollment_page: 'served',
+      actual_enrollment_page: 'same-origin-redirect-and-login-served',
       owner_session_without_login: 'refused',
       checkpoint_default_http: 'refused',
       checkpoint_service_uninitialized: 'refused',
@@ -118,14 +165,23 @@ export async function qualifyAuthorityPacket(directory: string) {
       actual_owner_enrollment: false,
     };
   } finally {
-    await harness.close();
+    await mf.dispose();
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [directory, ...rest] = process.argv.slice(2);
+  const [directory, receipt, ...rest] = process.argv.slice(2);
   assert.ok(
     directory && !rest.length,
-    'Usage: node scripts/qualify-work-authority-packet.ts PACKET',
+    'Usage: node scripts/qualify-work-authority-packet.ts PACKET [NEW_RECEIPT_FILE]',
   );
-  console.log(JSON.stringify(await qualifyAuthorityPacket(resolve(directory)), null, 2));
+  if (receipt) {
+    const path = relative(resolve(directory), resolve(receipt));
+    assert.ok(
+      path.startsWith('..') || isAbsolute(path),
+      'Receipt must stay outside the frozen packet',
+    );
+  }
+  const result = await qualifyAuthorityPacket(resolve(directory));
+  if (receipt) await packetJson(resolve(receipt), result);
+  console.log(JSON.stringify(result, null, 2));
 }
