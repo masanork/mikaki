@@ -333,6 +333,8 @@ function oauth() {
             '--json',
             '--config',
             'crates/worker/wrangler.production.jsonc',
+            '--env-file',
+            '/dev/null',
           ],
           {
             cwd: root,
