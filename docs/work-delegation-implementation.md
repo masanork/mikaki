@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Selected source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines the qualified Workflow and Git-host work with public composition, session-bound approval and partial-progress authority checks, 2026-10-10 JST. Delegation, actual Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` was deployed on Cloudflare with verified private cold/warm readiness and R2 supply, 2026-10-10 JST. Inactivity restart, enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -25,7 +25,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
 | M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Integrated source `5cf4616` passes 43 copy/Workflow/host/API/browser cases, including public composition through sealed-host verification and partial-progress authority loss. The 400-case broad regression and 2 Vault browser cases have their separate scopes below. Delegation, activity/result controls and deployment remain pending. |
-| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence composition and sealed private Git-host provisioning locally. Missing/unobserved custody, actual Cloudflare Git-host deployment and release remain pending.                                                                                      |
+| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence and sealed provisioning locally. Isolated Cloudflare cold/warm startup and R2 supply pass. Inactivity restart, enrolled remote authority, productive Git, missing custody and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -727,3 +727,92 @@ deployment, provider create/mint, production binding/migration change or remote
 CI claim is included. Protected journals/resources, old branches and the
 preserved stash remain intact. This delivery record changes documentation and
 a test action only; selected product source remains `5cf4616`.
+
+## Isolated Cloudflare host: verified startup and retained restart gap
+
+Selected infrastructure source is clean
+`0b47be3a58cc705701848c18cce6bff33b362a1d`. It adds an infrastructure-only Worker
+sharing the productive host's startup, private-port readiness and R2 provisioning
+code. Its private RPC accepts no arguments, disables Internet/Git and permanently
+charges at most three attempts before I/O. The SQLite frame fixes the selected
+account, namespace, artificial authority, disclosure and registry. No copy grant,
+Artifacts create/mint/Git, run or delegation authority is supplied by this probe.
+
+The actual Native, OP and qualification fixture bundles were rebuilt from clean
+`0b47be3` before final qualification and packet materialization. Native production
+Rust/UI are identical to integrated `5cf4616`; the older `34f31ca` build was not
+used for the final selected results. The final serial regression passes **76/76**:
+
+| Check | Result and selected scope |
+| --- | --- |
+| Host, Linux, provisioning and infrastructure RPC/retention | **16/16**, including actual qualification classes and real local R2; local Container capabilities remain synthetic where identified. |
+| Integrated copy/Workflow/progress and OP boundary cases | **33/33** against the rebuilt integrated product, including the public composition/consent flow and partial-progress authority loss. |
+| Permanent Git gate and independent readback | **24/24** with real Git bytes and synthetic provider identity. |
+| Pack preflight and strict indexing | **3/3**. |
+
+The TAP report is `local/generated/work-store-main/git-host-0b47be3-rebuilt.tap`.
+This run does not claim another full 445-case, Rust workspace or Owner Vault
+qualification. Their earlier selected-source results remain recorded separately.
+The Linux Docker receipt pins its actual bundled program and Dockerfile; the
+separately published Cloudflare image has its own immutable digest below.
+
+The existing environment API token supports this lane. The installed CLI's saved
+Artifacts OAuth scope check was bypassed by selecting the dedicated qualification
+profile, not by changing the token or adding an OAuth grant. Fresh inventory
+confirmed the selected Worker/Container names and R2 bucket were absent before
+creation. Only the separate qualification resources were allocated:
+
+| Selected resource | Provider observation |
+| --- | --- |
+| Account | `4b749427a0c80c547e726a42aff4b6fc` |
+| Worker and Container application name | `mikaki-work-git-host-qualification` |
+| Worker version | `0e787e82-1ad5-49a1-86be-aedb9d2fadc1` |
+| Container application / SQLite namespace | `7ce0a33510eb45379d20361d84b7f350` |
+| Private R2 bucket | `mikaki-work-git-host-qualification`, APAC / Standard; R2.dev disabled, no custom domains. |
+| Registry digest | `bd7b5c0ab282aefb7babaef312cd34ae724e1da95cd9c2ca90b3c31ceabef911` |
+| Artificial disclosure digest | `5fea0f22bce6a743ebcc60944599b64a9a32d61c0b24eec7e324558cb51f968f` |
+| Cold readiness | **8,236 ms**, ordinal 1, new start, exact image/registry/disclosure. |
+| Warm readiness | **19 ms**, ordinal 2, existing process, same pins. |
+
+The published image is
+`registry.cloudflare.com/4b749427a0c80c547e726a42aff4b6fc/mikaki-work-git-host-qualification-githostqualificationcontainer-host@sha256:2e34ccaed798efe7da7072ee4ea46619cab2b254f0c008fa52c995c468595afa`.
+The frozen packet is
+`local/generated/work-git-host-qualification/git-registry-g1ACm0`.
+Its three R2 objects—814-byte registry, 480-byte task pack and 327-byte snapshot
+pack—were uploaded once and independently read back with exact byte equality.
+Provider metadata verified the private service binding, fixed image and bucket,
+with `WORK_GIT_HOST_ENABLED=false` and `WORK_GIT_PROVISION_ENABLED=true`.
+Workers.dev and previews are disabled; no public route was deployed.
+Worker packaging measures **809.72 KiB raw / 125.05 KiB gzip**. These measurements
+cover a small artificial Native disclosure and do not qualify remote enrollment,
+personal content, production capacity or Git egress.
+
+The original third call followed a 75-second wait with the authenticated proxy
+still open. Its intent is retained, but qualification stopped before saving its
+reply. The cause and remote admission/outcome cannot be reconstructed from the
+journal. Later read-only inspection at `2026-10-10T05:27:20.226Z` found the same
+named DO and no active instance; scoped telemetry returned no events. This later
+inactive state does **not** prove the third call restarted successfully. No fourth
+call, replacement packet, new authority, slot reset or resource deletion followed.
+
+Client source `40ad040074f710a20e92005935a8c19a70a44a38` corrects the probe: release
+the proxy after warm readiness, wait 225 seconds, reconnect for the third call,
+and retain closed responses before checking selected expectations. Arbitrary
+fields/strings are refused without being persisted. The Container's 60-second
+grace follows DO inactivity; waiting 75 seconds from the last call was not a valid
+stop assumption. A longer wait is still not proof of stop, so a warm third reply
+continues to fail. The **8/8** focused tests at that clean client source verify
+actual RPC/SQLite retention, connection release, mismatching response evidence,
+missing-reply stop and invalid-response redaction. Their report is
+`local/generated/work-store-main/git-host-qualification-40ad040.tap`.
+This client correction was not rerun against the retained remote sequence and
+does not change the deployed Worker/image or the three-slot contract.
+
+Node and Git-host Worker type checks, full Prettier, product-source, documentation
+and diff checks pass. Retain all selected packet metadata and original journals.
+Next is retained inspection/outcome handling and an independently bounded restart
+measurement against the existing qualification, preserving the original attempts.
+Enrolled Native authority and reconciliation of the six protected development
+allocations precede productive Artifacts exchange. No Git push, production binding
+or migration change, remote CI claim or productive activation is included. The
+preserved stash and protected Artifacts resources/journals remain intact.

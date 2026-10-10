@@ -1,10 +1,11 @@
 # Private Git host and sealed source registration
 
 Status: development implementation, with local Native/Git/R2/SQLite and Linux
-image qualification. Cloudflare deployment and real Artifacts qualification
-remain separate. The [isolated infrastructure lane](work-git-host-qualification.md)
-checks startup/R2 supply with Internet and productive Git disabled, through a
-private operator service binding. This supplies the host/provisioning component required by
+image qualification. Isolated Cloudflare deployment, private cold/warm readiness
+and R2 supply are verified; inactivity restart and productive Artifacts exchange
+remain separate gates. The [isolated infrastructure lane](work-git-host-qualification.md)
+uses a private operator service binding with Internet and productive Git disabled.
+This supplies the host/provisioning component required by
 [copy orchestration](work-copy-orchestration.md) and the
 [fixed Git gate](work-artifacts-git-gate.md).
 

@@ -1,7 +1,9 @@
 # Isolated Git-host infrastructure qualification
 
-Status: private qualification implementation; selected remote execution and
-resource results are recorded in the implementation ledger. This precedes productive
+Status: isolated Cloudflare deployment, cold/warm readiness and private R2 supply
+verified on 2026-10-10. Inactivity restart remains unqualified; the original third
+intent and resources are retained. Selected remote execution and resource results
+are recorded in the implementation ledger. This precedes productive
 [Git-host activation](work-git-host.md). It checks Container startup, private
 ports, sealed R2 supply and inactivity restart, independently of copy authority.
 
@@ -123,12 +125,27 @@ npm run qualify:work-git-host -- <packet> registry.cloudflare.com/4b749427a0c80c
 ```
 
 An exclusive, synchronized `infrastructure-run.jsonl` retains selection, intent,
-observations and final outcome. Calls have no retry and a five-minute client
-deadline. The exact three-step sequence is cold start, warm readiness, then
-readiness after 75 seconds of inactivity. The returned pin/image/ordinal must
-match; the third call must report a new start. An unexpected response, missing
-reply or retained previous invocation stops qualification. Never reset slots,
-change authority names or generate replacement packets to retry an uncertain call.
+closed responses, validated observations and final outcome. Calls have no retry
+and a five-minute client deadline. The three-step sequence is cold start, warm
+readiness, then readiness after disconnecting the authenticated proxy and waiting
+225 seconds. A fresh proxy carries the third call. The returned pin/image/ordinal
+must match; the third call must report a new start. A valid but mismatching closed
+response is retained before expectation checks. Invalid shapes are recorded only
+as refusal metadata, without persisting arbitrary fields or strings. An unexpected
+response, missing reply or retained previous invocation stops qualification.
+Never reset slots, change authority names or generate replacement packets to
+retry an uncertain call.
+
+The configured 60-second
+[Container inactivity timeout](https://developers.cloudflare.com/containers/api/durable-object-container/#setinactivitytimeout)
+starts after its Durable Object becomes inactive, not after the last RPC.
+[DO lifecycle](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/)
+documents 70–140 seconds before eviction for an idle, non-hibernateable object;
+pending I/O can extend its lifetime. The 225-second window covers that documented
+idle interval plus the Container grace with a margin, but it does **not** establish
+that the Container has stopped. A warm third response still fails qualification.
+Disconnecting removes this client's live session from the measurement; it does
+not independently prove that the session caused the original failure.
 
 Results include elapsed time, actual startup image, Internet-disabled status and
 zero Git dispatches. They do not establish source erasure, real Git egress,
@@ -142,3 +159,38 @@ startup tests use real local R2 and Linux bootstrap with an explicitly synthetic
 Container capability. The Docker lane runs the Linux entry. These local results
 do not establish remote scheduling/private service routing; final selected
 source and counts belong in the [implementation ledger](work-delegation-implementation.md).
+
+## First retained remote run
+
+The packet `local/generated/work-git-host-qualification/git-registry-g1ACm0`
+identifies clean source `0b47be3a58cc705701848c18cce6bff33b362a1d`. Its actual Native
+and OP fixture bundles were rebuilt from that source before the final local
+qualification and materialization; production Native/UI match integrated `5cf4616`.
+Three private R2 objects were uploaded once and independently downloaded with
+byte-for-byte equality. The deployed Worker has no public targets. Provider
+metadata verified the exact account, namespace, Container image and private R2
+binding, with Internet and productive Git disabled.
+
+The private RPC run measured cold readiness at **8,236 ms** and warm readiness at
+**19 ms**, with matching registry, disclosure, image and attempt ordinal. These are
+two observations of a small artificial fixture, not performance percentiles.
+The original client waited 75 seconds with its proxy still open. Its third intent
+is retained, followed by an unqualified outcome. The original client validated
+before journaling the response, so the third result and failure cause cannot be
+reconstructed from that journal. No third success is claimed or inferred.
+
+Read-only provider inspection at `2026-10-10T05:27:20.226Z` found the same named
+Durable Object and no active Container instance. A scoped telemetry query returned
+no events. This establishes the later inactive state, not a successful stop/start
+cycle during the third call. No fourth RPC, replacement packet, slot reset or
+resource deletion was used. Keep `infrastructure-run.jsonl`, `remote-resources.json`,
+`r2-readback.json`, `provider-metadata.json` and `runtime-diagnostic.json` together.
+
+Client follow-up `40ad040074f710a20e92005935a8c19a70a44a38` adds connection release,
+the corrected wait window and closed response-before-validation journaling.
+Its **8/8** focused cases pass; it has not been rerun against the spent/uncertain
+remote sequence and was not deployed as a replacement Worker. Before another
+remote restart measurement, add retained inspection/outcome handling for the
+existing qualification and define an independently bounded measurement that
+preserves the original attempts. Productive activation also still requires the
+enrolled Native authority and protected Artifacts allocation reconciliation.
