@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { copyJobFixture as fixture } from './support/work-copy-job-fixture.ts';
 import { copyHttpPort } from '../../crates/worker/ui/work-copy-view.ts';
-import { createHash } from 'node:crypto';
 
 test('public composition and explicit consent drive one Workflow through both planned Git copies', async () => {
   const f = await fixture({}, true);
@@ -37,7 +36,10 @@ test('public composition and explicit consent drive one Workflow through both pl
 
 for (const change of ['withdraw', 'floor', 'account', 'key', 'expiry'] as const)
   test('a partially completed job fences its next effect after ' + change, async () => {
-    const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+    const f = await fixture({
+      LOCAL_COPY_TRIGGER_DISABLED: 'true',
+      ...(change === 'expiry' ? { LOCAL_COPY_SESSION_SECONDS: '20' } : {}),
+    });
     try {
       assert.equal((await f.approve()).status, 200);
       assert.equal((await f.start()).status, 200);
@@ -60,10 +62,13 @@ for (const change of ['withdraw', 'floor', 'account', 'key', 'expiry'] as const)
         await r.text();
       } else if (change === 'account') await f.restart({ WORK_ARTIFACTS_ACCOUNT: 'b'.repeat(32) });
       else if (change === 'key') await f.restart({ WORK_CREDENTIAL_KEY_V1: '' });
-      else
-        await f.DB.prepare(
-          "UPDATE sso_session SET expires_at=unixepoch() WHERE id='delivery-sso'",
-        ).run();
+      else {
+        const expiresAt = await f.DB.prepare(
+          "SELECT expires_at FROM sso_session WHERE sso_id='delivery-sso'",
+        ).first<number>('expires_at');
+        assert.ok(expiresAt);
+        await new Promise((resolve) => setTimeout(resolve, (expiresAt + 1) * 1000 - Date.now()));
+      }
       const next = await f.advance(1);
       if (change === 'key') {
         assert.equal(next.status, 200);
@@ -88,19 +93,6 @@ test('a replacement login cannot adopt the original session-bound queued consent
     assert.equal((await f.start()).status, 200);
     await f.restart();
     const secret = 'synthetic-replacement-copy-session';
-    await f.DB.batch([
-      f.DB.prepare('INSERT INTO sso_session VALUES(?,?,?,0,?,0)').bind(
-        'copy-replacement-sso',
-        f.account,
-        'delivery-credential',
-        Math.floor(Date.now() / 1000) + 3600,
-      ),
-      f.DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(
-        'copy-replacement-sso',
-        createHash('sha256').update(secret).digest('base64url'),
-        Math.floor(Date.now() / 1000),
-      ),
-    ]);
     const r = await f.productFetch('/work/preparations/' + f.p.id + '/copy', {
       method: 'POST',
       headers: {

@@ -645,6 +645,8 @@ export async function preparationFixture(
       { actor: 'delivery-probe', reason: 'synthetic local qualification' },
     );
     const now = Math.floor(Date.now() / 1000);
+    const sessionSeconds =
+      copyEnabled && productCopy ? Number(bindings.LOCAL_COPY_SESSION_SECONDS ?? 3600) : 3600;
     await DB.batch([
       DB.prepare('INSERT INTO account_security VALUES(?,0,1)').bind(account),
       DB.prepare('INSERT INTO credential VALUES(?,?,1)').bind('delivery-credential', account),
@@ -652,9 +654,24 @@ export async function preparationFixture(
         'delivery-sso',
         account,
         'delivery-credential',
-        now + 3600,
+        now + sessionSeconds,
       ),
       DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind('delivery-sso', session, now),
+      ...(copyEnabled && productCopy
+        ? [
+            DB.prepare('INSERT INTO sso_session VALUES(?,?,?,0,?,0)').bind(
+              'copy-replacement-sso',
+              account,
+              'delivery-credential',
+              now + 7200,
+            ),
+            DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(
+              'copy-replacement-sso',
+              createHash('sha256').update('synthetic-replacement-copy-session').digest('base64url'),
+              now,
+            ),
+          ]
+        : []),
     ]);
     if (checkpointEnabled) {
       const checkpoint = {
@@ -726,7 +743,11 @@ export async function preparationFixture(
         ),
       ]);
     }
-    const d = await call({ action: 'disclosure', disclosure: input, expires_at: now + 3600 });
+    const d = await call({
+      action: 'disclosure',
+      disclosure: input,
+      expires_at: now + sessionSeconds,
+    });
     return call({
       action: 'reserve-preparation',
       digest: d.digest,
