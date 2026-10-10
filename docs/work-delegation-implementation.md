@@ -1149,3 +1149,22 @@ OP/checkpoint deployment/recovery ownership remain unresolved; real Passkey/PRF
 owner completion still requires the intended person. The new bootstrap library
 is local qualification and must use a newly reviewed packet, not replacement
 bytes inside the preserved parent packet.
+
+While those remote gates remain unresolved, clean source
+`be76c028b2d9862cae02f89bcb53994155e6ecc2` prepares a new frozen packet at
+`local/generated/work-authority-bootstrap-qualification/authority-zFCHDp`.
+It contains the new private bootstrap entrypoint, 35 members and the identical
+449-object schema; the original packet and partial allocation are preserved.
+Its manifest SHA-256 is
+`101e4405e6eb3dfd40e50e46a1bdeaf6d8b886ec294f735b913864a943d53849`.
+The frozen product/checkpoint local workerd qualifier passes all existing
+empty-authority, fourteen-migration and public/service refusal checks, with
+zero remote operations and no owner enrollment. Its receipt
+`local/generated/work-authority-bootstrap-qualification/runtime-be76c02.json`
+has SHA-256
+`e16e2f1d6e91af1a78b01cd319445ed1b6decb7b7f116c58140afbad2c63f52c`.
+The saved bootstrap source independently repeats **10/10** local D1/SQLite DO
+cases without RPC disposal warnings. Node types, full formatting, product
+sources and documentation checks pass. This is an offline preparation and
+local runtime check, not a child deployment, remote enrollment, full current-
+HEAD product budget/regression result or remote CI result.
