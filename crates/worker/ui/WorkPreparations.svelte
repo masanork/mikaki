@@ -372,7 +372,7 @@
             >
           {:else}<p role="status">{m.preparation_copy_withdrawn()}</p>{/if}
           <p>{m.preparation_copy_withdraw_boundary()}</p>
-          {#if executionEnabled && copy.status === 'approved'}<a
+          {#if executionEnabled && copy.status !== 'unconfirmed'}<a
               href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
               >{m.copy_open()}</a
             >{/if}

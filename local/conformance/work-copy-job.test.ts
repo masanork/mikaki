@@ -265,6 +265,60 @@ test('scheduled drain recovers an unnotified queue through the same Workflow ide
   }
 });
 
+test('a terminal Workflow with a retained queue is stopped through Native safety without restart', async () => {
+  const f = await fixture({ LOCAL_COPY_TRIGGER_UNAVAILABLE: 'true' });
+  try {
+    assert.equal((await f.approve()).status, 200);
+    assert.equal((await f.start()).status, 200);
+    await f.createFailedCopyWorkflow(f.p.id);
+    const drain = await f.drainCopies();
+    assert.equal(drain.status, 200);
+    await drain.text();
+    const end = await f.settled();
+    assert.equal(end.job.state, 'blocked');
+    assert.equal(end.job.next_step, 0);
+    assert.equal(end.cleanup_pending, false);
+    assert.equal(end.can_start, false);
+    assert.equal((await f.remote()).counts.create ?? 0, 0);
+    assert.equal((await f.advance(0)).body.state, 'blocked');
+    const again = await f.drainCopies();
+    assert.equal(again.status, 200);
+    await again.text();
+    assert.equal((await f.remote()).counts.create ?? 0, 0);
+    assert.equal(
+      await f.DB.prepare("SELECT count(*) AS n FROM work_audit WHERE action='copy.block'").first(
+        'n',
+      ),
+      1,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('a Workflow under a different ID cannot advance an approved queue', async () => {
+  const f = await fixture({ LOCAL_COPY_TRIGGER_UNAVAILABLE: 'true' });
+  try {
+    assert.equal((await f.approve()).status, 200);
+    assert.equal((await f.start()).status, 200);
+    await f.createFailedCopyWorkflow(f.p.id, true);
+    assert.equal((await f.copy()).body.record.job.state, 'queued');
+    assert.equal((await f.remote()).counts.create ?? 0, 0);
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_credential_attempt').first('n'),
+      0,
+    );
+    const drain = await f.drainCopies();
+    assert.equal(drain.status, 200);
+    await drain.text();
+    assert.equal((await f.settled()).job.state, 'verified');
+    assert.equal((await f.remote()).counts.create, 2);
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_grant').first('n'), 0);
+  } finally {
+    await f.close();
+  }
+});
+
 test('a lost accepted push blocks the same job and closes known credentials without resending Git', async () => {
   const f = await fixture();
   try {

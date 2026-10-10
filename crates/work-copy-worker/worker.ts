@@ -54,7 +54,13 @@ async function start(env: CopyWorkflowEnv, p: Params) {
   } catch {
     const existing = await env.COPY_WORKFLOW.get(id);
     if (existing.id !== id) throw new Error('copy_identity');
-    await existing.status();
+    const status = await existing.status();
+    if (['complete', 'errored', 'terminated'].includes(status.status)) {
+      // A terminal Workflow may have left a queued Native outbox while the OP
+      // was unavailable. Reconcile the retained job through safety only; never
+      // restart the instance or keep a terminal queue ahead of other jobs.
+      await op(env, { action: 'cancel', preparation_id: p.preparation_id });
+    }
   }
   return { preparation_id: p.preparation_id, workflow_id: id };
 }
@@ -81,6 +87,7 @@ export class WorkCopyStarter extends WorkerEntrypoint<CopyWorkflowEnv> {
 export class WorkCopyWorkflow extends WorkflowEntrypoint<CopyWorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep) {
     const p = input(event.payload);
+    if (event.instanceId !== 'copy-' + p.preparation_id) throw new Error('copy_identity');
     if (String(this.env.WORK_COPY_WORKFLOW_ENABLED) !== 'true') throw new Error('copy_disabled');
     try {
       for (let ordinal = 0; ordinal < 19; ordinal++) {
