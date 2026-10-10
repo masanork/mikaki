@@ -1097,3 +1097,55 @@ bootstrap increment performs no remote migration, checkpoint enrollment,
 owner ingress opening or Artifacts/Git effect. Next connect the bounded remote
 operator to verified retained resource identities, then qualify framed source
 registration and actual Passkey/PRF owner enrollment under those gates.
+
+## Partial closed authority resource allocation, 2026-10-11 JST
+
+The once-only allocator pins the original `authority-nMECMX` manifest and shares
+one exclusive account/lane reservation across linked checkouts. Private numbered
+records and their parent directory are synchronized before each provider create.
+Complete inventories are read twice; existing names refuse allocation rather
+than being adopted. Twelve local rejection/acknowledgment cases and the eight
+frozen-packet cases pass. The allocator is registered in CI; no remote CI result
+is claimed.
+
+Clean source `9f106f66d26d6f7ab0cf0ee0092df1d664520c18` sent exactly three
+create requests in `local/generated/work-authority-allocation/allocate-kHIGYa`.
+The dedicated D1 `mikaki-work-authority-qualification`, ID
+`b2d340cd-bcc2-4a96-94a2-83edb93ff627`, and R2
+`mikaki-work-vault-qualification` were acknowledged and their identities read
+back exactly. The DLQ create returned HTTP 200 and API success, but the original
+parser required optional attachment metadata before retaining its identity.
+That parse failure consumed the DLQ slot as `create_outcome_unknown` and stopped
+the sequence. The main logout Queue has no create intent and remains unattempted.
+This was a tool error; it did not authorize a retry or replacement allocation.
+
+The parser now retains the minimal acknowledged Queue name/ID/time first and
+checks attachment counts in a separate read. Additional tests cover sparse
+create responses and failure after preserving the acknowledged ID. The old
+partial run and reservation remain unchanged. A later complete stable read
+observes the DLQ name at ID `4f95485d3880458b9a14a8168b836498`; that list fact is
+not adopted as its lost original acknowledgment. The audit API query for the
+original request interval succeeded but yielded no matching evidence. The DLQ
+create outcome remains unresolved and no further create was issued.
+
+The original 236 records are inventoried in the private
+`local/generated/work-authority-allocation/partial-allocation.json`, SHA-256
+`496e39a4d6abf9970890ae1a63ee00c0fa4aa3b1c040400bb6a2f0bbc702ea4f`.
+The retained reservation SHA-256 is
+`5da004865d86681838b5935c3fb26b07466bbfa3f3c65cd6fbe2c777a9ca673a`.
+Read report `inventory-sHCJeq/0043.json` SHA-256 is
+`b5faaa57f321e680b8c746b911dddb391916dd6ab392e93b2f31464d379df88a`;
+the audit receipt SHA-256 is
+`a0eaf2368ab157cb36e4b03c4495a3d662a1152db3d159ab544d4af27ec910ff`.
+All three protected Artifacts journal hashes still match their original pins.
+No Artifacts/Git or production mutation was issued. Neither authority Worker
+exists; no remote migration, checkpoint bootstrap or actual owner enrollment
+has occurred.
+
+Resolve the same DLQ admission with positive provider/operator evidence before
+completing the remaining allocation or binding it into a child deployment.
+Do not remove the reservation or reissue any consumed create. HTTPS origin and
+OP/checkpoint deployment/recovery ownership remain unresolved; real Passkey/PRF
+owner completion still requires the intended person. The new bootstrap library
+is local qualification and must use a newly reviewed packet, not replacement
+bytes inside the preserved parent packet.
