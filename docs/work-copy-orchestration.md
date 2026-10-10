@@ -20,6 +20,11 @@ leave a queued outbox. An exact owner retry or the bounded scheduled drain
 notifies the same instance. The starter never restarts an instance or allocates
 a replacement identity. The example includes a minute cron, with execution
 disabled by default. A queued response acknowledges storage, not execution.
+If that instance is already complete, errored or terminated while a queue
+remains, the notifier calls Native safety cleanup instead of restarting it.
+The Workflow validates its own instance ID against the preparation ID before
+calling Native. The [Workers API](https://developers.cloudflare.com/workflows/build/workers-api/)
+defines those instance states; only Native can confirm copy completion.
 
 The TypeScript Workflow contains transport and scheduling only. It cannot
 choose a provider account, destination, token, repository, credential role or

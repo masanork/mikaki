@@ -793,6 +793,22 @@ export async function preparationFixture(
       mf.dispatchFetch('https://work.test/cdn-cgi/local/scheduled?format=json&cron=*+*+*+*+*', {
         headers: { 'MF-Route-Override': 'work-copy' },
       }),
+    createFailedCopyWorkflow: async (id: string, mismatchedIdentity = false) => {
+      const env = await mf.getBindings('work-copy');
+      const workflow = env.COPY_WORKFLOW as import('@cloudflare/workers-types').Workflow<{
+        preparation_id: string;
+      }>;
+      const instance = await workflow.create({
+        id: (mismatchedIdentity ? 'other-' : 'copy-') + id,
+        params: { preparation_id: mismatchedIdentity ? id : 'invalid' },
+      });
+      for (let n = 0; n < 100; n++) {
+        const status = await instance.status();
+        if (status.status === 'errored') return;
+        await new Promise<void>((r) => setTimeout(r, 50));
+      }
+      throw new Error('failed_copy_workflow_not_terminal');
+    },
     account,
     session,
     fixtureFetch,
