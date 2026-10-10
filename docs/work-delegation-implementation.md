@@ -1168,3 +1168,45 @@ cases without RPC disposal warnings. Node types, full formatting, product
 sources and documentation checks pass. This is an offline preparation and
 local runtime check, not a child deployment, remote enrollment, full current-
 HEAD product budget/regression result or remote CI result.
+
+## Offline authority deployment child gate, 2026-10-11 JST
+
+The [child packet materializer](work-authority-qualification.md#offline-child-deployment-packet)
+now derives closed Worker and local bootstrap-operator configurations from a
+pinned parent, complete once-only allocation evidence and an externally pinned
+origin/ownership/signing-custody review. It copies the frozen product, checkpoint
+and migration members unchanged; parent and child manifests are retained
+separately. Verification needs only the child and its externally reviewed digest.
+Even a rewritten child inventory cannot substitute frozen parent bytes or add
+the bootstrap capability to the OP. Both public routes and previews remain
+closed, crons stay empty and productive execution flags stay disabled.
+
+The journal reader follows the common-repository reservation, verifies consecutive
+record membership and a stable read, and retains acknowledgments separately from
+exact readbacks. Unknown or absent acknowledgments consume their original slot;
+later reads, reports and replacement create intents cannot grant completion.
+The current CLI cannot adopt the observed DLQ or reinterpret the stopped original
+run. Positive recovery evidence and a separately reviewed append-only reconciler
+remain necessary before completing that allocation.
+
+Local inspection reads the original **236** records and verifies the fresh
+`authority-zFCHDp` parent. It reports D1/R2 acknowledged and verified, DLQ unknown,
+main Queue unattempted, and **no child materialized / zero remote calls**. The
+private receipt is
+`local/generated/work-authority-deployment/inspection-20261011/gate.json`;
+its allocation evidence digest is
+`e23cdb9bc1be812f11d7c5200ba6f9f56ef6feebadd49a002ed369487fb8f0dd`.
+This digest inventories the original reservation and numbered record bytes in
+the new evidence format; it does not replace the retained partial-allocation seal
+or provider acknowledgment. No Worker deployment, remote migration, bootstrap,
+owner enrollment, ingress or Artifacts/Git effect occurred.
+
+The new **6/6** local materialization/rejection cases pass, together with **20/20**
+existing allocation/frozen-packet cases and **10/10** actual local D1/SQLite DO
+bootstrap cases. Node types, formatting, product-source and documentation checks
+pass. The new suite is registered in CI; no remote CI, deployment/binding
+qualification or full current-HEAD product budget/regression result is claimed.
+Next resolve the same DLQ admission with positive evidence, then qualify the
+remaining allocation and remote version/config observations under the retained
+reservation. Shared bootstrap reservation and the bounded remote executor remain
+separate outstanding gates.

@@ -58,8 +58,10 @@ control-plane trust domain.
 1. Inventory the proposed names, allocate dedicated empty resources and retain
    their actual IDs, versions and binding/module inventories against a reviewed
    packet digest. Resolve templates only into a new child deployment packet.
-   The preparer supplies no deployment materializer or remote bootstrap transport.
-   Closed storage allocation uses the separate once-only operator tool below.
+   The preparer supplies no remote bootstrap transport. The offline child
+   materializer below requires complete acknowledged allocation and reviewed
+   origin, ownership and signing custody. Closed storage allocation uses the
+   separate once-only operator tool below.
 2. Apply the frozen combined fourteen-file migration ledger to that empty D1.
    Refuse populated, production, partly migrated or restored targets. The first
    two files must match the reviewed Owner Vault digests; the subsequent twelve
@@ -159,6 +161,71 @@ Actual Wrangler `deploy --dry-run --env-file /dev/null` verifies additional
 module discovery without uploading or changing remote bindings. A manual
 same-origin enrollment redirect stays inside local workerd rather than being
 followed by Node's network fetch.
+
+## Offline child deployment packet
+
+`node scripts/work-authority-deployment.ts inspect [NEW_RECEIPT]` verifies the
+fresh frozen bootstrap packet and reads the original common-repository allocation
+reservation and consecutive numbered journal. It makes no provider calls. The
+optional receipt is created exclusively under ignored `local/generated`, with
+the inspector digest and an explicit retained-journal provenance label. This is
+not a fresh provider inventory or an authorization to deploy.
+
+The CLI pins the new `authority-zFCHDp` parent manifest
+`101e4405e6eb3dfd40e50e46a1bdeaf6d8b886ec294f735b913864a943d53849`.
+The allocator's older `authority-nMECMX` review and original reservation remain
+unchanged. Creation intents, acknowledgments and exact identity readbacks must
+occur once in the fixed D1/R2/DLQ/Queue order, ending with a complete allocation
+and matching final report. Missing or lost acknowledgments remain consumed;
+neither subsequent readback nor a final report upgrades them. An acknowledged
+resource whose readback did not finish is retained as unverified. A stopped or
+partial journal cannot produce a deployment child.
+
+`prepare REVIEW REVIEW_SHA256 OUTPUT_PARENT` requires an externally retained
+SHA-256 of a closed JSON review. The review pins the parent, complete allocation
+evidence and reservation; names a canonical isolated HTTPS issuer; identifies
+the OP/checkpoint operators and recovery owners; and references ownership and
+signing-custody review digests. Cross-boundary operator/recovery identities must
+be distinct. These identifiers are reviewed claims, not proof of separate
+control-plane ownership; the same-account limitation is explicit. No secret,
+private JWK, bearer, readiness token or owner material belongs in this review.
+The exported `deploymentReviewSchema` defines its exact fields.
+
+Preparation copies all parent members byte for byte into a new exclusive child,
+then adds resolved `op/wrangler.json`, `checkpoint/wrangler.json`, and the local
+`operator/wrangler.json`. Only the dedicated D1 ID, reviewed issuer and checkpoint
+bootstrap packet pin are resolved. OP retains only `WorkCheckpointService`.
+The operator connection has only dedicated D1 and `WorkCheckpointBootstrap`
+remote bindings; it has no HTTP implementation or deployment command. Both
+Worker configurations have empty routes, disabled workers.dev/preview URLs,
+and the OP retains empty crons and all productive execution flags disabled.
+The configuration fields follow the pinned schema and
+[Wrangler configuration contract](https://developers.cloudflare.com/workers/wrangler/configuration/).
+
+The child retains the original parent manifest, review bytes and complete private
+journal evidence, plus its own manifest. `verify CHILD CHILD_SHA256` uses an
+external child digest, checks exact membership/configurations and frozen parent
+bytes, and works without the original parent directory. A rewritten child
+inventory cannot substitute reviewed parent bytes. Completed and partial child
+directories are never amended or reused. Qualification fixtures can pass an
+explicit synthetic parent pin to the offline library; the CLI's pin is fixed.
+
+Preparation deploys neither Worker, applies no migration, registers no Queue
+consumer, installs no secret and grants no bootstrap/owner authority. Namespace,
+version and object IDs and the bootstrap plan remain unresolved until verified
+deployment observations exist. Before any remote write, the executor still needs
+fresh resource/config/version observations, quiescence evidence and a shared
+account/authority bootstrap reservation. The per-child bootstrap journal is not
+that global reservation.
+
+The retained DLQ unknown admission currently refuses this gate. Supporting its
+eventual positive provider/operator reconciliation requires a separately reviewed
+append-only protocol; this materializer does not rewrite or reinterpret the
+stopped original journal. `npm run test:work-authority-deployment` covers six
+local cases, including unknown replies, substitution, private capability
+separation, review/origin/ownership refusal, exclusive immutable children,
+portable verification, symlinks and journal membership. Synthetic fixture
+receipts are not provider allocation or real owner evidence.
 
 ## Bounded initial operator protocol
 

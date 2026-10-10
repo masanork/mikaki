@@ -380,9 +380,21 @@ export async function bootstrapAuthorityJournal(
 /** Private local operator connection only; this is not a deployed HTTP Worker. */
 export function bootstrapOperatorConfig(plan: BootstrapPlan) {
   validateIsolatedBootstrapPlan(plan);
+  return authorityBootstrapOperatorConfig(plan.database_id);
+}
+
+/** Prepare the private connection before deployed DO/version identities exist. */
+export function authorityBootstrapOperatorConfig(databaseId: string) {
+  assert.match(databaseId, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+  assert.ok(
+    !['d0258938-0d27-4110-8aa9-c82e20f3885b', '00000000-0000-0000-0000-000000000000'].includes(
+      databaseId,
+    ),
+    'authority_bootstrap_database_denied',
+  );
   return {
     name: 'mikaki-work-authority-local-bootstrap',
-    account_id: plan.account_id,
+    account_id: AUTHORITY_ACCOUNT,
     // UTC runtime date; JST is already October 11. The pinned runtime rejects future dates.
     compatibility_date: '2026-10-10',
     workers_dev: false,
@@ -391,7 +403,7 @@ export function bootstrapOperatorConfig(plan: BootstrapPlan) {
       {
         binding: 'DB',
         database_name: AUTHORITY_TARGET.database,
-        database_id: plan.database_id,
+        database_id: databaseId,
         remote: true,
       },
     ],
