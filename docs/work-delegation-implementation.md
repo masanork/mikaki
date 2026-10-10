@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` was deployed on Cloudflare with verified private cold/warm readiness and R2 supply, 2026-10-10 JST. Inactivity restart, enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
+**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` verifies private cold/warm readiness and R2 supply on Cloudflare; extension `1e0ef8e` verifies an independent stopped-state restart, natural shutdown and retained results, 2026-10-10 JST. The original third outcome remains unknown. Enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -25,7 +25,7 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
 | M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
 | M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Integrated source `5cf4616` passes 43 copy/Workflow/host/API/browser cases, including public composition through sealed-host verification and partial-progress authority loss. The 400-case broad regression and 2 Vault browser cases have their separate scopes below. Delegation, activity/result controls and deployment remain pending. |
-| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence and sealed provisioning locally. Isolated Cloudflare cold/warm startup and R2 supply pass. Inactivity restart, enrolled remote authority, productive Git, missing custody and release remain pending. |
+| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence and sealed provisioning locally. Isolated Cloudflare cold/warm startup, R2 supply, independent stopped-state restart, natural shutdown and result retention pass. Enrolled remote authority, productive Git, missing custody and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -791,9 +791,10 @@ The original third call followed a 75-second wait with the authenticated proxy
 still open. Its intent is retained, but qualification stopped before saving its
 reply. The cause and remote admission/outcome cannot be reconstructed from the
 journal. Later read-only inspection at `2026-10-10T05:27:20.226Z` found the same
-named DO and no active instance; scoped telemetry returned no events. This later
-inactive state does **not** prove the third call restarted successfully. No fourth
-call, replacement packet, new authority, slot reset or resource deletion followed.
+named DO without an instance mapping in the legacy dashboard listing; scoped
+telemetry returned no events. These observations prove neither native Container
+stop nor successful restart during the third call. No fourth `prepare()` call,
+replacement packet, new authority, slot reset or resource deletion followed.
 
 Client source `40ad040074f710a20e92005935a8c19a70a44a38` corrects the probe: release
 the proxy after warm readiness, wait 225 seconds, reconnect for the third call,
@@ -810,9 +811,86 @@ does not change the deployed Worker/image or the three-slot contract.
 
 Node and Git-host Worker type checks, full Prettier, product-source, documentation
 and diff checks pass. Retain all selected packet metadata and original journals.
-Next is retained inspection/outcome handling and an independently bounded restart
-measurement against the existing qualification, preserving the original attempts.
+The extension below implements retained inspection/outcome handling and an
+independently bounded restart against the existing qualification, preserving the
+original attempts.
 Enrolled Native authority and reconciliation of the six protected development
 allocations precede productive Artifacts exchange. No Git push, production binding
 or migration change, remote CI claim or productive activation is included. The
 preserved stash and protected Artifacts resources/journals remain intact.
+
+## Isolated Cloudflare host: retained outcomes and independent restart
+
+Clean source `1e0ef8ee4fd0d00513558d62118a87186ab799d7` extends only the
+infrastructure qualification Worker and client. The original immutable frame and
+three `prepare()` slots stay unchanged. New immutable outcomes are synchronized
+before replying; older missing outcomes remain `null`. Private `status()` reads
+the frame, admissions, outcomes and Container running attribute without startup,
+TCP, Linux/R2 access or a probe charge. Its constructor creates additive schema.
+
+A separate, fixed `inactive_restart_v1` slot requires the retained frame, all
+three original admissions and an available Container reporting `running=false`.
+Its admission is synchronized before I/O; ready/failure results are synchronized
+before the reply. Unknown or failed outcomes cannot rearm the slot. The client
+retains a closed reply before validation, checks it against a read-after-result,
+and preserves the original attempt rows. Read-only inspection can reconcile a
+retained success without replaying startup. This grants no productive authority.
+
+The final selected-source serial suite passes **17/17** in **6,118.84 ms**:
+15 qualification RPC/SQLite/retention and client cases, plus two shared startup/R2
+cases (parent and subtest). It executes the actual qualification classes through
+workerd/RPC/SQLite, with explicitly synthetic Container capabilities locally;
+shared provisioning uses real local R2 and Linux bootstrap. Its report is
+`local/generated/work-store-main/git-host-restart-1e0ef8e.tap`. Node and Git-host
+Worker type checks, full Prettier, product-source, documentation and diff checks
+pass. This does not claim a new full 76/445-case, Native/UI or Rust workspace run.
+Shared productive startup/Linux/source code remain identical to `0b47be3`, whose
+Native/UI match integrated `5cf4616`.
+
+The frozen revision is the original packet's exclusive `restart-qualification`
+child. It pins the original hashes, existing resources/image, new clean source
+and Worker bundle. Fresh provider reads verified the selected authentication,
+exact account/resource IDs, private bindings and disabled R2 public access.
+Only the qualification Worker was deployed; no new resource identity, source
+pack upload or Linux image build/push occurred:
+
+| Observation | Verified result |
+| --- | --- |
+| Worker version | `2c713309-af9b-4c86-9232-61a5212e64e0`, replacing `0e787e82-1ad5-49a1-86be-aedb9d2fadc1`. |
+| Worker bundle SHA-256 | `dc9a522ff12d512e471d1ce0d4dede07bf6b75ba7284ce532f1a925174523bd0` |
+| Worker package/startup | **815.29 KiB raw / 125.95 KiB gzip**, **14 ms** provider startup. |
+| Namespace / Container application | Unchanged `7ce0a33510eb45379d20361d84b7f350`; same DO name and immutable image above. |
+| Before restart | Actual private RPC returned `running=false`, three original admissions and no restart admission. |
+| Independent restart | Exactly one RPC; ready in **2,127 ms**, `started=true`, exact image/registry/disclosure. |
+| Result retention | Read-after-result matches the immutable ready reply; all original attempt rows unchanged. |
+| Natural stop | Native instance metadata: start `2026-10-10T11:37:58.036Z`, stop `2026-10-10T11:40:15.463Z`. |
+| After stop | Actual private `status()` returns `running=false` with the same retained ready result and original rows. |
+
+The client disconnected after its read-after-result. Subsequent lifecycle reads
+used the provider API without calling or stopping the DO. The native running
+interval was **137,427 ms**; it is a fixture observation, not an idle-timeout or
+performance guarantee. The original stored outcomes remain `null`, and this
+separate success does **not** qualify the original third attempt.
+
+The legacy `/containers/dash/applications/<application>/instances` endpoint and
+installed Wrangler 4.148.0 instance listing omit native mappings even while the
+Container runs. An initial observer inferred stop from that absence; a private
+status read contradicted it. The observation and correction are retained, and
+absence was rejected as shutdown proof. The correct native endpoint is
+`GET /accounts/<account>/containers/applications/<application>/instances`:
+verify the exact DO ID/name, image, `status.state` and transition timestamps.
+Native stopped metadata and the later private `running=false` result independently
+agree. The latter read can wake the DO but does not start the Container.
+
+The exclusive child retains deployment/provider receipts, `restart-run.jsonl`,
+inspection files, native runtime/lifecycle observations, the legacy correction
+and a hash-linked `qualification-outcome.json`. The original frozen packet and
+journal are unchanged. Internet remains disabled, Git dispatches remain zero,
+and no Artifacts create/mint/Git, production activation, remote CI qualification
+or protected-allocation change is included.
+
+Next are enrolled remote Native/checkpoint authority and read-only reconciliation
+of the six protected development allocations before a productive Artifacts copy
+trial. The stash and protected repositories/journals remain intact. The
+[qualification protocol](work-git-host-qualification.md) records the fixed
+admission, inspection and lifecycle procedure.

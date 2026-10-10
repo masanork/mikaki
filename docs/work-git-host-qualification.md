@@ -1,8 +1,9 @@
 # Isolated Git-host infrastructure qualification
 
-Status: isolated Cloudflare deployment, cold/warm readiness and private R2 supply
-verified on 2026-10-10. Inactivity restart remains unqualified; the original third
-intent and resources are retained. Selected remote execution and resource results
+Status: isolated Cloudflare deployment, cold/warm readiness, private R2 supply,
+an independent stopped-state restart, natural shutdown and result retention
+verified on 2026-10-10. The original third outcome remains unknown and its intent
+and resources are retained. Selected remote execution and resource results
 are recorded in the implementation ledger. This precedes productive
 [Git-host activation](work-git-host.md). It checks Container startup, private
 ports, sealed R2 supply and inactivity restart, independently of copy authority.
@@ -180,20 +181,21 @@ before journaling the response, so the third result and failure cause cannot be
 reconstructed from that journal. No third success is claimed or inferred.
 
 Read-only provider inspection at `2026-10-10T05:27:20.226Z` found the same named
-Durable Object and no active Container instance. A scoped telemetry query returned
-no events. This establishes the later inactive state, not a successful stop/start
-cycle during the third call. No fourth RPC, replacement packet, slot reset or
+Durable Object with no instance mapping in the legacy dashboard listing. A scoped
+telemetry query returned no events. Neither observation establishes the native
+Container's stopped state or a successful stop/start cycle during the third call.
+No fourth `prepare()` RPC, replacement packet, slot reset or
 resource deletion was used. Keep `infrastructure-run.jsonl`, `remote-resources.json`,
 `r2-readback.json`, `provider-metadata.json` and `runtime-diagnostic.json` together.
 
 Client follow-up `40ad040074f710a20e92005935a8c19a70a44a38` adds connection release,
 the corrected wait window and closed response-before-validation journaling.
 Its **8/8** focused cases pass; it has not been rerun against the spent/uncertain
-remote sequence and was not deployed as a replacement Worker. Before another
-remote restart measurement, add retained inspection/outcome handling for the
-existing qualification and define an independently bounded measurement that
-preserves the original attempts. Productive activation also still requires the
-enrolled Native authority and protected Artifacts allocation reconciliation.
+remote sequence and was not deployed as a replacement Worker. The subsequent
+extension below adds retained inspection/outcome handling and an independently
+bounded measurement while preserving the original attempts. Productive activation
+still requires the enrolled Native authority and protected Artifacts allocation
+reconciliation.
 
 ## Retained inspection and independent restart measurement
 
@@ -257,8 +259,54 @@ be reconciled without another call; unknown/failed results cannot retry. Invalid
 responses or lost replies stop the client. Repeating the restart command cannot
 replace its local journal; use `inspect` to read a retained or uncertain outcome.
 
-After disconnecting the client, use provider Container instance reads to observe
-natural inactivity shutdown. Calling the DO repeatedly can alter its inactivity
-window. Provider inactivity is a lifecycle observation, not proof of erasure or
-productive Git/credential behavior. The enrolled-authority and protected-resource
-gates still apply.
+After disconnecting the client, read the native Container instance endpoint
+`GET /accounts/<account>/containers/applications/<application>/instances` without
+calling the DO. Verify the exact DO ID/name and image, then inspect
+`status.state` and its transition timestamps. The legacy
+`/containers/dash/applications/<application>/instances` endpoint and installed
+Wrangler 4.148.0's instance listing can omit a native instance mapping even while
+the Container runs; an empty mapping or displayed `inactive` is not stop proof.
+Once native metadata reports stopped, a private `status()` read can independently
+confirm `running=false` and unchanged retained results. That read can wake the DO;
+repeated DO calls can alter its inactivity window. This lifecycle observation
+does not establish erasure or productive Git/credential behavior. The
+enrolled-authority and protected-resource gates still apply.
+
+## Selected restart and shutdown result
+
+Clean source `1e0ef8ee4fd0d00513558d62118a87186ab799d7` was packaged into the
+original packet's exclusive `restart-qualification` child. Only the existing
+qualification Worker was updated, to version
+`2c713309-af9b-4c86-9232-61a5212e64e0`. The account, SQLite namespace/Container
+application, DO name, private R2 objects and immutable image stayed fixed. Shared
+productive startup, Linux and source code match the original `0b47be3` source;
+no source pack or Linux image was rebuilt or uploaded. The new Worker bundle
+measures **815.29 KiB raw / 125.95 KiB gzip**, with **14 ms** provider startup.
+
+The actual private RPC first confirmed `running=false`, all three original
+attempt rows and no restart admission. Exactly one `inactive_restart_v1` call
+then returned ready in **2,127 ms**, with `started=true` and the selected
+image/registry/disclosure pins. A second read matched the immutable retained
+result and unchanged original rows before the client disconnected.
+
+Native provider metadata records a start at `2026-10-10T11:37:58.036Z` and a
+natural stop at `2026-10-10T11:40:15.463Z`, a **137,427 ms** running interval.
+A later private inspection independently returned `running=false` with the same
+retained ready result. These are observations of this fixture, not a guaranteed
+idle timeout or performance distribution. An earlier legacy-listing inference
+of stop contradicted `status()` and was retained but rejected as evidence.
+
+The exclusive child retains `target.json`, deployment/provider receipts,
+`restart-run.jsonl`, `inspection-*.json`, native runtime/lifecycle observations,
+the legacy-observation correction and a hash-linked `qualification-outcome.json`.
+The original packet/journal are unchanged. Its old stored outcomes remain
+`null`; the new experiment does not qualify the original third attempt.
+
+Final local qualification at this clean source passes **17/17**: 15 actual
+qualification RPC/SQLite and client cases plus two shared startup/R2 cases
+(parent and subtest). Local Container capabilities are synthetic; the separate
+remote results above establish actual Container behavior. The selected TAP is
+`local/generated/work-store-main/git-host-restart-1e0ef8e.tap`. Full regression,
+Native/UI and Rust workspace results retain their earlier scopes. Internet and
+productive Git remain disabled, and no Artifacts operation or production
+activation is included. See the [implementation ledger](work-delegation-implementation.md).
