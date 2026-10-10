@@ -275,6 +275,7 @@ test('Queues may omit success, but HTTP failure and explicit false still refuse 
     if (path.includes('/queues?')) {
       const value = { ...(response.value as Record<string, unknown>) };
       delete value.success;
+      value.errors = null;
       return denied ? { status: 403, value } : { status: 200, value };
     }
     return response;

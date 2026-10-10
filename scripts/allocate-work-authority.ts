@@ -31,6 +31,7 @@ const envelope = z.object({
   errors: z
     .array(z.object({ code: z.number().int() }))
     .max(16)
+    .nullable()
     .optional(),
   result: z.unknown().optional(),
   result_info: z.unknown().optional(),
