@@ -62,11 +62,12 @@ test('queued outbox retries retain one identity, reject browser assertions, and 
       409,
     );
     assert.equal((await f.product(path + '?retry=1', 'POST', body)).status, 400);
-    for (const headers of [
+    const rejectedOrigins: Record<string, string>[] = [
       { Origin: 'https://evil.test' },
       { Origin: 'null' },
       { 'Sec-Fetch-Site': 'cross-site' },
-    ]) {
+    ];
+    for (const headers of rejectedOrigins) {
       const r = await f.productFetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },

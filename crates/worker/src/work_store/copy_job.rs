@@ -227,14 +227,17 @@ impl WorkStore {
     async fn execute_copy_phase(&self, env: &Env, id: &str, step: u64) -> Result<()> {
         let (role, purpose, phase) = phase(step)?;
         if matches!(phase, Phase::Verify) {
-            gate(
+            let reply = gate(
                 env,
                 "WORK_COPY_VERIFIER",
                 "/verify-preparation",
                 json!({"preparation_id":id}),
             )
             .await?;
-            if self.preparation(id).await?.state() != PreparationState::Verified {
+            if reply["id"] != id
+                || reply["state"] != "verified"
+                || self.preparation(id).await?.state() != PreparationState::Verified
+            {
                 return Err(Denied::BindingMismatch.into());
             }
             return Ok(());
@@ -267,7 +270,11 @@ impl WorkStore {
                     && reply["op_synchronized"] == true
                     && current.state == "closed"
             }
-            Phase::Mint => reply["state"] == "custodied" && current.state == "captured",
+            Phase::Mint => {
+                reply["state"] == "custodied"
+                    && reply["op_synchronized"] == true
+                    && current.state == "captured"
+            }
             Phase::Git => reply["state"] == "completed",
             Phase::Reconcile => {
                 reply["op_synchronized"] == true && current.state == "revocation_pending"
