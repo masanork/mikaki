@@ -7,5 +7,11 @@ license.workspace = true
 [dependencies]
 mikaki-webauthn = { path = "../webauthn" }
 serde.workspace = true
+sha2.workspace = true
+serde_json.workspace = true
+aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
+base64.workspace = true
+zeroize = "=1.9.1"
+subtle.workspace = true
 [lints]
 workspace = true
