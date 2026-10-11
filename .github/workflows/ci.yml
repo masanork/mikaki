@@ -53,10 +53,14 @@ jobs:
           npm run test:sql
           npm run test:release
           node --test scripts/static-sql.test.ts
+          npm run test:work-authority-packet
+          npm run test:work-authority-allocation
+          npm run test:work-authority-deployment
           node scripts/check-upstream-pins.ts
           npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
+          npm run test:work-artifacts-inspection
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown

@@ -1,0 +1,42 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mikaki-work-git-host-qualification",
+  "main": "qualification.ts",
+  "compatibility_date": "2026-10-10",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "WORK_GIT_HOST_ENABLED": "false",
+    "WORK_GIT_PROVISION_ENABLED": "false",
+    "WORK_ARTIFACTS_ACCOUNT": "SELECT_ACCOUNT",
+    "WORK_ARTIFACTS_NAMESPACE": "mikaki-dev",
+    "WORK_AUTHORITY_ID": "mikaki-git-host-qualification-v1",
+    "WORK_GIT_DISCLOSURE_DIGEST": "SELECT_NATIVE_DISCLOSURE_DIGEST",
+    "WORK_GIT_REGISTRY_SHA256": "SELECT_SEALED_REGISTRY_SHA256",
+  },
+  "containers": [
+    {
+      "name": "mikaki-work-git-host-qualification",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "host": {
+          "dockerfile": "SELECT_GENERATED_IMAGE/Dockerfile",
+          "build_context": "SELECT_GENERATED_IMAGE",
+        },
+      },
+      "observability": { "enabled": true, "logs": { "enabled": true } },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "GIT_HOST", "class_name": "GitHostQualificationContainer" }],
+  },
+  "r2_buckets": [{ "binding": "GIT_SOURCES", "bucket_name": "mikaki-work-git-host-qualification" }],
+  "exports": {
+    "GitHostQualificationContainer": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "mikaki-work-git-host-qualification",
+    },
+  },
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+}

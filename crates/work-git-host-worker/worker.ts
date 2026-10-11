@@ -132,62 +132,7 @@ export class GitHostContainer extends DurableObject<GitHostEnv> {
   }
   /** Only readiness GETs retry. The productive port POST is called exactly once. */
   async #exchange(authorization: string, p: GitPlan) {
-    const c = this.ctx.container;
-    if (!c || !c.images.host) throw new Error('git_host_unavailable');
-    if (c.running) {
-      if ((await c.inspect())?.image !== c.images.host) throw new Error('git_host_old_image');
-    } else {
-      c.start({
-        image: c.images.host,
-        instance: 'standard-1',
-        enableInternet: true,
-        env: {
-          WORK_ARTIFACTS_ACCOUNT: this.env.WORK_ARTIFACTS_ACCOUNT,
-          WORK_ARTIFACTS_NAMESPACE: this.env.WORK_ARTIFACTS_NAMESPACE,
-          WORK_AUTHORITY_ID: this.env.WORK_AUTHORITY_ID,
-          WORK_GIT_REGISTRY_SHA256: this.env.WORK_GIT_REGISTRY_SHA256,
-        },
-      });
-    }
-    await c.setInactivityTimeout(60000);
-    const port = c.getTcpPort(8080),
-      deadline = Date.now() + 20000;
-    for (;;) {
-      let ready: Response | undefined;
-      try {
-        ready = await port.fetch('http://localhost/health', { signal: AbortSignal.timeout(2000) });
-      } catch {
-        /* connection not ready */
-      }
-      if (ready?.status === 200) {
-        await ready.body?.cancel();
-        break;
-      }
-      await ready?.body?.cancel();
-      if (Date.now() >= deadline) throw new Error('git_host_not_ready');
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
-    }
-    let ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
-    if (ready.status === 503) {
-      await ready.body?.cancel();
-      await provisionGitHost(this.env, port);
-      ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
-    }
-    if (ready.status !== 200) {
-      await ready.body?.cancel();
-      throw new Error('git_host_not_ready');
-    }
-    const value: unknown = await jsonBody(ready);
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Object.keys(value).sort().join(',') !== 'disclosure_digest,registry_sha256' ||
-      !('registry_sha256' in value) ||
-      !('disclosure_digest' in value) ||
-      value.registry_sha256 !== this.env.WORK_GIT_REGISTRY_SHA256 ||
-      value.disclosure_digest !== this.env.WORK_GIT_DISCLOSURE_DIGEST
-    )
-      throw new Error('git_host_readiness_mismatch');
+    const { port } = await readyGitHost(this.env, this.ctx.container);
     return port.fetch('http://localhost/git-execute', {
       method: 'POST',
       headers: {
@@ -199,6 +144,70 @@ export class GitHostContainer extends DurableObject<GitHostEnv> {
       signal: AbortSignal.timeout(60000),
     });
   }
+}
+/** Trusted host startup only: no Git POST, bearer, source selector or authority claim. */
+export async function readyGitHost(
+  env: Omit<GitHostEnv, 'GIT_HOST' | 'WORK_GIT_HOST_ENABLED'>,
+  c: Container | undefined,
+  enableInternet = true,
+) {
+  const started = !c?.running;
+  if (!c || !c.images.host) throw new Error('git_host_unavailable');
+  if (c.running) {
+    if ((await c.inspect())?.image !== c.images.host) throw new Error('git_host_old_image');
+  } else {
+    c.start({
+      image: c.images.host,
+      instance: 'standard-1',
+      enableInternet,
+      env: {
+        WORK_ARTIFACTS_ACCOUNT: env.WORK_ARTIFACTS_ACCOUNT,
+        WORK_ARTIFACTS_NAMESPACE: env.WORK_ARTIFACTS_NAMESPACE,
+        WORK_AUTHORITY_ID: env.WORK_AUTHORITY_ID,
+        WORK_GIT_REGISTRY_SHA256: env.WORK_GIT_REGISTRY_SHA256,
+      },
+    });
+  }
+  await c.setInactivityTimeout(60000);
+  const port = c.getTcpPort(8080),
+    deadline = Date.now() + 20000;
+  for (;;) {
+    let ready: Response | undefined;
+    try {
+      ready = await port.fetch('http://localhost/health', { signal: AbortSignal.timeout(2000) });
+    } catch {
+      /* connection not ready */
+    }
+    if (ready?.status === 200) {
+      await ready.body?.cancel();
+      break;
+    }
+    await ready?.body?.cancel();
+    if (Date.now() >= deadline) throw new Error('git_host_not_ready');
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+  }
+  let ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
+  if (ready.status === 503) {
+    await ready.body?.cancel();
+    await provisionGitHost(env, port);
+    ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
+  }
+  if (ready.status !== 200) {
+    await ready.body?.cancel();
+    throw new Error('git_host_not_ready');
+  }
+  const value: unknown = await jsonBody(ready);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Object.keys(value).sort().join(',') !== 'disclosure_digest,registry_sha256' ||
+    !('registry_sha256' in value) ||
+    !('disclosure_digest' in value) ||
+    value.registry_sha256 !== env.WORK_GIT_REGISTRY_SHA256 ||
+    value.disclosure_digest !== env.WORK_GIT_DISCLOSURE_DIGEST
+  )
+    throw new Error('git_host_readiness_mismatch');
+  return { port, image: c.images.host, started };
 }
 export async function provisionGitHost(
   env: Pick<GitHostEnv, 'GIT_SOURCES' | 'WORK_GIT_REGISTRY_SHA256' | 'WORK_GIT_DISCLOSURE_DIGEST'>,

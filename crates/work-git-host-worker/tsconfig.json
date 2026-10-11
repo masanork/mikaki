@@ -3,6 +3,8 @@
   "include": [
     "worker.ts",
     "registry.ts",
+    "qualification.ts",
+    "qualification-configuration.d.ts",
     "worker-configuration.d.ts",
     "../../node_modules/@cloudflare/workers-types/index.d.ts"
   ]
