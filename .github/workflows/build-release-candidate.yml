@@ -1,0 +1,103 @@
+name: release-candidate-build
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-rust-cache
+        with:
+          workspaces: |
+            .
+            design/probes/native-identity-http
+      - run: npm ci
+      - name: Build bilingual Docs RP
+        run: npm run build:docs
+      - name: Prepare source-bound Docs RP bundle
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: npm run prepare:docs-release
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: release
+      - name: Install pinned BOM validator
+        run: |
+          curl -fsSL -o /tmp/cyclonedx https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.33.1/cyclonedx-linux-x64
+          echo 'bfc8b2538da86fe239bc53658bbb63c1c8c510a293c1e6891aa5bea5d3c58746  /tmp/cyclonedx' | sha256sum -c -
+          chmod 755 /tmp/cyclonedx
+      - name: Build Worker and run passkey preflight
+        run: |
+          npm run build:policy
+          worker-build --release crates/worker
+          npm run build:op-authority
+          worker-build --release crates/userinfo-claim-worker
+          worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
+          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
+          npx playwright install --with-deps chromium
+          cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport
+          npm run test:worker-contracts
+          npm run test:release
+          npm run check:worker-budgets
+          cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"
+          npm run test:frontend-coverage
+      - name: Verify product journeys and Worker screens in Chromium
+        run: |
+          npm run test:worker-browser
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate-browser-failures-${{ github.sha }}
+          path: artifacts/browser-failures/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Generate and validate BOMs
+        run: |
+          mkdir -p artifacts/supply-chain
+          cargo cyclonedx --manifest-path crates/worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename worker-rust.cdx
+          cp crates/worker/worker-rust.cdx.json artifacts/supply-chain/worker-rust.cdx.json
+          cargo cyclonedx --manifest-path crates/userinfo-claim-worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename userinfo-claim-rust.cdx
+          cp crates/userinfo-claim-worker/userinfo-claim-rust.cdx.json artifacts/supply-chain/userinfo-claim-rust.cdx.json
+          npm sbom --sbom-format=cyclonedx --sbom-type=application > artifacts/supply-chain/npm-build.cdx.json
+          node scripts/build_cbom.ts > artifacts/supply-chain/worker-crypto.cdx.json
+          node scripts/build_cbom.ts --component userinfo-claim-worker > artifacts/supply-chain/userinfo-claim-crypto.cdx.json
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-rust.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-rust.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/npm-build.cdx.json --input-version v1_5 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-crypto.cdx.json --input-version v1_7 --fail-on-errors
+          /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-crypto.cdx.json --input-version v1_7 --fail-on-errors
+      - name: Archive the built Worker
+        run: |
+          tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
+          tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+          tar -C . -czf artifacts/mikaki-docs-rp.tar.gz artifacts/docs-promotion apps/mikaki-docs/dist
+      - name: Bind release bytes and migrations to the clean source revision
+        run: |
+          npm run release:inventory
+          npm run release:verify
+          node scripts/export-login-assets.ts
+      - name: Prepare reviewed upload bundles
+        id: promotion
+        run: npm run release:prepare-upload
+      - name: Recheck upload inputs
+        env:
+          PROMOTION_DIR: ${{ steps.promotion.outputs.promotion_dir }}
+        run: npm run release:verify-upload -- "$PROMOTION_DIR"
+      - name: Upload Worker and inventories
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30

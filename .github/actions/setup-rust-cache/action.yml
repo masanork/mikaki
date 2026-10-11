@@ -1,0 +1,16 @@
+name: Rust dependency cache
+description: Cache registry and compiled dependencies; rebuild all workspace crates for the current source
+inputs:
+  workspaces:
+    description: Cargo workspace roots to cache
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        workspaces: ${{ inputs.workspaces }}
+        cache-bin: 'false'
+        cache-workspace-crates: 'false'
+        save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

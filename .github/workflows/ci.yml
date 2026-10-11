@@ -5,18 +5,25 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_release_candidate:
+        description: Build and test unsigned production artifacts without signing or deploying
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: authentication-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  verify:
+  core:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
       CI: true
       WRANGLER_SEND_METRICS: false
+    outputs:
+      artifact_id: ${{ steps.measurements.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,6 +35,11 @@ jobs:
       - name: Install pinned build tools
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-rust-cache
+        with:
+          workspaces: |
+            .
+            design/probes/pqc
       - uses: ./.github/actions/setup-cargo-tools
         with:
           profile: verify
@@ -98,6 +110,65 @@ jobs:
           MIKAKI_UI_COVERAGE: '1'
         run: |
           npm run build
+      - name: Check Node TypeScript sources
+        run: |
+          npm run check:node
+          npm run check:helpdesk
+      - name: Frontend TypeScript coverage and selected-module regression gate
+        run: npm run test:frontend-coverage
+      - name: Native client UI lifecycle
+        run: npm run test:mobile-ui
+      - name: Browser PQC interoperability
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
+          npx playwright install --with-deps chromium
+          node design/probes/pqc/browser.ts
+      - name: Project size, coverage, and dependency trends
+        run: node scripts/metrics.ts --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
+      - name: Summarize native coverage and browser Wasm sizes
+        run: |
+          npm run health
+          cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"
+      - id: measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: authentication-core-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  worker-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    outputs:
+      artifact_id: ${{ steps.measurements.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-rust-cache
+        with:
+          workspaces: |
+            .
+            design/probes/native-identity-http
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: worker
+      - run: npm ci
+      - name: Build instrumented Worker and Claim profiles
+        env:
+          MIKAKI_UI_COVERAGE: '1'
+        run: |
+          npm run build:policy
           worker-build --release crates/worker
           worker-build --release crates/userinfo-claim-worker
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
@@ -105,47 +176,69 @@ jobs:
         run: |
           npm run check:worker-budgets
           cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Check Node TypeScript sources
-        run: |
-          npm run check:node
-          npm run check:helpdesk
-      - name: Frontend TypeScript coverage and selected-module regression gate
-        run: npm run test:frontend-coverage
       - name: Product Worker contracts
         run: |
           cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
-      - name: Native client UI lifecycle
-        run: npm run test:mobile-ui
       - name: Identity presentation, attester, consent and device-preflight regressions
         run: npm run test:identity-contracts
       - name: MDS durable operation regressions
         run: node --test local/conformance/mds-operation.test.ts
-      - name: Project size, coverage, and dependency trends
-        run: node scripts/metrics.ts --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
-      - name: Wasm and browser integration
-        env:
-          MIKAKI_BROWSER_SOURCE_COVERAGE: '1'
-        run: |
-          node design/probes/pqc/browser.ts
-          npm ci --prefix design/probes/vault-search
-          npm run test:vault-thread-search
-          npm run test:worker-browser
-          npm run test:agent-integration
-          npm run test:vault-transfer
-          npm run test:vault-disclosure
-          npm run test:vault-notes
-          npm run test:attribute-commit
-          npm run test:e2e
-          npm run test:docs-rp
-          npm run health
-          cat artifacts/health.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - id: measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: authentication-measurements
+          name: authentication-worker-contracts-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    needs: [core, worker-contracts, worker-browser]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      artifact_id: ${{ steps.measurements.outputs.artifact-id }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() && needs.core.outputs.artifact_id != '' }}
+        with:
+          artifact-ids: ${{ needs.core.outputs.artifact_id }}
+          merge-multiple: true
+          path: artifacts/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() && needs.worker-contracts.outputs.artifact_id != '' }}
+        with:
+          artifact-ids: ${{ needs.worker-contracts.outputs.artifact_id }}
+          merge-multiple: true
+          path: artifacts/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() && needs.worker-browser.outputs.artifact_id != '' }}
+        with:
+          artifact-ids: ${{ needs.worker-browser.outputs.artifact_id }}
+          merge-multiple: true
+          path: artifacts/
+      - name: Require every verification lane to succeed
+        if: always()
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          const results = JSON.parse(process.env.RESULTS);
+          assert.deepEqual(Object.keys(results).sort(), ['core', 'worker-browser', 'worker-contracts']);
+          for (const [name, job] of Object.entries(results)) {
+            assert.equal(job.result, 'success', `${name}: ${job.result}`);
+          }
+          JS
+      - id: measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: authentication-measurements-${{ github.run_attempt }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
@@ -158,6 +251,9 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install 1.98.1 --profile minimal
+      - uses: ./.github/actions/setup-rust-cache
+        with:
+          workspaces: apps/mikaki-client/src-tauri
       - name: Native client library regressions
         run: cargo test --locked --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib
 
@@ -174,6 +270,11 @@ jobs:
           cache: npm
           cache-dependency-path: design/probes/package-lock.json
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-rust-cache
+        with:
+          workspaces: |
+            design/probes/jose
+            design/probes/jose-custom
       - uses: ./.github/actions/setup-cargo-tools
         with:
           profile: probe
@@ -311,12 +412,14 @@ jobs:
           npm sbom --sbom-format=cyclonedx --sbom-type=application > /dev/null
 
   worker-browser:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       CI: true
       WRANGLER_SEND_METRICS: false
+      MIKAKI_BROWSER_SOURCE_COVERAGE: '1'
+    outputs:
+      artifact_id: ${{ steps.measurements.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -326,28 +429,45 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
-      - run: npm ci
+      - uses: ./.github/actions/setup-rust-cache
       - uses: ./.github/actions/setup-cargo-tools
         with:
-          profile: worker
-      - name: Build Worker and run passkey preflight
+          profile: verify
+      - run: npm ci
+      - name: Build instrumented Worker and Claim profiles
+        env:
+          MIKAKI_UI_COVERAGE: '1'
         run: |
           npm run build:policy
           worker-build --release crates/worker
-          MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
-      - name: Verify Worker Svelte screens in Chromium
+          worker-build --release crates/userinfo-claim-worker
+          worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
+      - name: Build browser Wasm, local UI and Docs RP
+        run: |
+          npm run build
+          npm run build:docs
+      - name: Passkey preflight
+        run: MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
+      - name: Worker screens and browser integration
         run: |
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm ci --prefix design/probes/vault-search
           npm run test:vault-thread-search
           npm run test:worker-browser
-      - name: Preserve browser failure evidence
-        if: failure()
+          npm run test:agent-integration
+          npm run test:vault-transfer
+          npm run test:vault-disclosure
+          npm run test:vault-notes
+          npm run test:attribute-commit
+          npm run test:e2e
+          npm run test:docs-rp
+      - id: measurements
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
-          name: worker-browser-failures
-          path: artifacts/browser-failures/
+          name: authentication-browser-${{ github.run_attempt }}
+          path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -367,17 +487,32 @@ jobs:
           node-version-file: .node-version
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: authentication-measurements
+          artifact-ids: ${{ needs.verify.outputs.artifact_id }}
+          merge-multiple: true
           path: artifacts/
       - name: Record project metrics and refresh charts
         run: node scripts/metrics.ts --record --snapshot-file artifacts/metrics/current.json --output-dir artifacts/metrics
       - name: Commit updated history and charts
         run: bash scripts/publish-metrics.sh
 
+  release-candidate:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.build_release_candidate)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-release-candidate.yml
+
   supply-chain:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
-      [verify, dependency-advisories, native-client, jose-probes, android-client, android-verifier]
+      [
+        verify,
+        release-candidate,
+        dependency-advisories,
+        native-client,
+        jose-probes,
+        android-client,
+        android-verifier,
+      ]
     permissions:
       contents: read
       id-token: write
