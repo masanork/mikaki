@@ -74,6 +74,41 @@ pub(crate) fn owner_id_shape(value: &str) -> bool {
 }
 
 impl WorkStore {
+    /// Bounded history, not a list of delegable repositories. Restore each public
+    /// projection from its current row; authenticate again after checkpoint I/O.
+    pub async fn owner_preparations(
+        &self,
+        session_hash: &str,
+        after: Option<&str>,
+    ) -> Result<Value> {
+        if after.is_some_and(|id| !owner_id_shape(id)) {
+            return Err(Denied::InvalidInput.into());
+        }
+        self.require_current_authority().await?;
+        let sql = format!(
+            "SELECT {OWNER_PREPARATION_FIELDS} FROM work_preparation p \
+             JOIN authenticated_owner a ON a.account_id=p.owner_id \
+             WHERE p.operation_id>?2 ORDER BY p.operation_id LIMIT 21"
+        );
+        let mut rows = self
+            .owner_statement(session_hash, &sql, after.unwrap_or(""))?
+            .all()
+            .await?
+            .results::<OwnerPreparationRow>()?;
+        let more = rows.len() > 20;
+        rows.truncate(20);
+        let preparations = rows
+            .into_iter()
+            .map(OwnerPreparationRow::project)
+            .collect::<Result<Vec<_>>>()?;
+        let next = if more {
+            preparations.last().and_then(|p| p["id"].as_str())
+        } else {
+            None
+        };
+        Ok(json!({"preparations":preparations,"next_after":next}))
+    }
+
     pub(super) fn owner_statement(
         &self,
         session_hash: &str,
@@ -98,6 +133,7 @@ impl WorkStore {
         if after.is_some_and(|id| !owner_id_shape(id)) {
             return Err(Denied::InvalidInput.into());
         }
+        self.require_current_authority().await?;
         let mut rows = self.owner_statement(session_hash,
             "SELECT h.request_id,h.digest,h.revision,w.expires_at FROM work_request_head h \
              JOIN authenticated_owner a ON a.account_id=h.owner_id JOIN work_request w ON w.digest=h.digest \
@@ -126,6 +162,7 @@ impl WorkStore {
         if !owner_id_shape(id) {
             return Err(Denied::InvalidInput.into());
         }
+        self.require_current_authority().await?;
         if matches!(kind, OwnerRecordKind::Preparation) {
             let sql = format!(
                 "SELECT {OWNER_PREPARATION_FIELDS} FROM work_preparation p JOIN authenticated_owner a ON a.account_id=p.owner_id WHERE p.operation_id=?2"
@@ -144,7 +181,7 @@ impl WorkStore {
         let sql = match kind {
             OwnerRecordKind::Preparation => unreachable!(),
             OwnerRecordKind::Disclosure => {
-                "SELECT d.body,1 AS revision,NULL AS state,NULL AS receipt FROM work_disclosure d \
+                "SELECT d.body,1 AS revision,EXISTS(SELECT 1 FROM work_disclosure_source_current c WHERE c.digest=d.digest) AS is_current,NULL AS state,NULL AS receipt FROM work_disclosure d \
                 JOIN authenticated_owner a ON a.account_id=d.owner_id WHERE d.digest=?2"
             }
             OwnerRecordKind::Request => {
@@ -176,7 +213,7 @@ impl WorkStore {
                 if d.digest().to_hex() != id {
                     return Err(Denied::BindingMismatch.into());
                 }
-                json!({"kind":"disclosure","digest":d.digest(),"manifest":d.review()})
+                json!({"kind":"disclosure","digest":d.digest(),"manifest":d.review(),"current_sources":row.is_current==1})
             }
             OwnerRecordKind::Request => {
                 let request = WorkRequest::restore_authority_record(&row.body)?;

@@ -9,6 +9,28 @@ import {
 } from '../../crates/worker/ui/vault-lifecycle.ts';
 
 const identity = { account_id: 'owner', credential_id: 'credential', session_tag: 's'.repeat(43) };
+test('source review checks its fixed native display lease and detects replacement sessions on resume', async () => {
+  const requests: string[] = [],
+    reasons: LockReason[] = [];
+  let replacement = false;
+  const scope = new VaultScope(
+    (reason) => reasons.push(reason),
+    () => 0,
+    () => 0,
+    async (input) => {
+      requests.push(String(input));
+      return Response.json(replacement ? { ...identity, session_tag: 't'.repeat(43) } : identity);
+    },
+    '/work/session',
+  );
+  await scope.verify();
+  assert.deepEqual(scope.identity, identity);
+  replacement = true;
+  await scope.verify();
+  assert.deepEqual(requests, ['/work/session', '/work/session']);
+  assert.deepEqual(reasons, ['session']);
+  await assert.rejects(scope.request('/work/sources/read', { method: 'POST' }), /locked/);
+});
 test('Vault deadlines use both clocks, expire at the boundary, and never renew absolute expiry', () => {
   let wall = 0,
     mono = 0;

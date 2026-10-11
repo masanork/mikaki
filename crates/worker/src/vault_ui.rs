@@ -49,9 +49,25 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     // Presentation only; every data operation still verifies live owner authority.
     let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
     let mut html = include_str!("../ui/vault.html").to_owned();
+    let source_review = ["WORK_OWNER_API_ENABLED", "WORK_SOURCE_API_ENABLED"]
+        .iter()
+        .all(|key| context.env.var(key).is_ok_and(|v| v.to_string() == "true"));
+    let preparation_review = source_review
+        && context
+            .env
+            .var("WORK_PREPARATION_REVIEW_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true");
     let replacements = [
         ("{{locale}}", strings.locale),
         ("{{title}}", strings.message("vaultTitle")),
+        (
+            "{{work_preparation_review}}",
+            if preparation_review { "true" } else { "false" },
+        ),
+        (
+            "{{work_source_review}}",
+            if source_review { "true" } else { "false" },
+        ),
     ];
     for (key, value) in replacements {
         html = html.replace(key, &crate::i18n::html_escape(value));

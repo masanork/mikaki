@@ -407,15 +407,19 @@ test('release floor, irreversible freeze, absent binding and one-time enrollment
   const f = await fixture();
   try {
     const initial = await f.current();
+    const cookie = { Cookie: '__Host-op-sso=synthetic-delivery-session' };
+    assert.equal((await f.http('/work/session', { headers: cookie })).status, 200);
     await f.checkpoint(
       { action: 'bootstrap', checkpoint: { ...initial, sequence: 0 }, floor: 1 },
       409,
     );
     await f.restart(false);
+    assert.equal((await f.http('/work/session', { headers: cookie })).status, 409);
     await f.call({ action: 'dispatch-preparation', id: f.p.id }, 409);
     await f.restart(true);
     assert.deepEqual(await f.current(), initial);
     await f.checkpoint({ action: 'raise-floor', floor: 2 });
+    assert.equal((await f.http('/work/session', { headers: cookie })).status, 409);
     await f.checkpoint({ action: 'raise-floor', floor: 1 }, 409);
     await f.native({ action: 'checkpoint-current' }, 409);
     await f.call({ action: 'dispatch-preparation', id: f.p.id }, 409);

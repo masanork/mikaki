@@ -8,7 +8,7 @@ type Repo = {
   blobs: Record<string, string>;
   paths: Record<string, string>;
 };
-type Bindings = { DB: D1Database; GIT_FIXTURE: string };
+type Bindings = { DB: D1Database; GIT_FIXTURE: string; WORK_AUTHORITY_CHECKPOINT?: Fetcher };
 export class FixtureSourceReader extends WorkerEntrypoint<Bindings> {
   async readRegisteredSource(input: string): Promise<string> {
     const i = JSON.parse(input) as { source_id: string; repo_name: string };
@@ -51,6 +51,24 @@ export class FixtureSourceReader extends WorkerEntrypoint<Bindings> {
       await this.env.DB.prepare(
         'UPDATE runtime_policy_active SET generation=generation+1 WHERE id=1',
       ).run();
+    if (fault?.mode === 'checkpoint-pending') {
+      const expected = await this.env.DB.prepare(
+        'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+      ).first();
+      const r = await this.env.WORK_AUTHORITY_CHECKPOINT?.fetch(
+        'https://private.invalid/checkpoint',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'begin',
+            release: 1,
+            expected,
+            operation: 'source-reader-pending',
+          }),
+        },
+      );
+      if (!r?.ok) throw new Error('fixture_checkpoint_pending_failed');
+    }
     const repos = JSON.parse(this.env.GIT_FIXTURE) as Record<string, Repo>;
     const artifacts: ReadableArtifacts = {
       async get(name) {

@@ -16,6 +16,26 @@ fn registered(v: Value) -> Result<RegisteredSource, Denied> {
     RegisteredSource::from_verified_git(serde_json::from_value(v).unwrap())
 }
 #[test]
+fn opaque_copy_selection_requires_both_sha256_content_and_actual_git_blob_identity() {
+    let s = registered(source()).unwrap();
+    assert!(s.verify_reply(&read(), &reply().to_string()).is_ok());
+    denied(
+        s.verify_selection(&read(), &reply().to_string()),
+        Denied::BindingMismatch,
+    );
+    let mut v = source();
+    v["files"][0]["blob"] = json!("34b417333d03571a5b9bfeabfdd89a472817191d");
+    let mut r = reply();
+    r["files"][0]["blob"] = v["files"][0]["blob"].clone();
+    let s = registered(v).unwrap();
+    assert!(s.verify_selection(&read(), &r.to_string()).is_ok());
+    r["files"][0]["content"] = json!("別の内容。\n");
+    denied(
+        s.verify_selection(&read(), &r.to_string()),
+        Denied::BindingMismatch,
+    );
+}
+#[test]
 fn source_receipt_is_closed_bounded_metadata_without_owner_or_plaintext() {
     let s = registered(source()).unwrap();
     let body = s.authority_record().unwrap();

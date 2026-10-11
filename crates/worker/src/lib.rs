@@ -19,9 +19,13 @@ pub mod op_authority;
 #[cfg(target_arch = "wasm32")]
 mod token;
 #[cfg(target_arch = "wasm32")]
+pub mod work_copy;
+#[cfg(target_arch = "wasm32")]
 pub mod work_effect;
 #[cfg(target_arch = "wasm32")]
 pub mod work_owner;
+#[cfg(target_arch = "wasm32")]
+mod work_preparations;
 #[cfg(target_arch = "wasm32")]
 mod work_sources;
 #[cfg(target_arch = "wasm32")]
@@ -2171,7 +2175,9 @@ pub async fn main(
         return auth_resources::limited();
     }
     let logout_context = std::rc::Rc::new(ctx);
-    worker::Router::with_data(())
+    // The owner transport closes before touching work schema when disabled.
+    // Keep it behind the native callback-host guard and its own ingress budget.
+    work_owner::routes(worker::Router::with_data(()))
         .get_async("/", home::get)
         .get_async("/signin", passkey_login::web_signin)
         .get_async("/favicon.svg", branding::get)

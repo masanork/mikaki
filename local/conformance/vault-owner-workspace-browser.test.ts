@@ -257,6 +257,9 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     assert.equal(ceremonies, 0);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toBeEnabled();
+    await expect(page.getByRole('link', { name: 'Review source files', exact: true })).toHaveCount(
+      0,
+    );
     await expect(page.locator('#name')).toBeFocused();
     assert.equal(ceremonies, 1);
     await page.evaluate(() =>

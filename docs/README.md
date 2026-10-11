@@ -45,7 +45,7 @@ Start with [architecture](architecture.md) for responsibilities and trust bounda
 | Typed attribute proposals | [Explicit capability, exact review and domain authority](vault-attribute-proposals.md), [ADR 0013](adr/0013-agent-proposal-authority.md) |
 | Typed owner data | [Encrypted note schema, validation, import/export and provenance](vault-typed-attributes.md) |
 | Move saved data to another Passkey | [Owner passkey addition and Vault transfer](vault-passkey-transfer.md) |
-| Delegate repository work | [ADR 0016](adr/0016-personal-context-and-workload-delegation.md), [domain profile](workload-profile-v1.md), [AuthZEN/ABAC contract](workload-authorization.md), [UI design](work-request-ui.md), [checkpoint](work-authority-checkpoint.md), [initial effects](work-artifacts-effect-gate.md), [original M2 checkpoint](work-store-main-integration.md), and [main integration](work-delegation-implementation.md) |
+| Delegate repository work | [ADR 0016](adr/0016-personal-context-and-workload-delegation.md), [domain profile](workload-profile-v1.md), [AuthZEN/ABAC contract](workload-authorization.md), [UI design](work-request-ui.md), [checkpoint](work-authority-checkpoint.md), [initial effects](work-artifacts-effect-gate.md), [mint/custody](work-artifacts-mint-gate.md), [mint recovery](work-artifacts-mint-recovery.md), [Git copy core](work-git-copy.md), [private Git broker](work-artifacts-git-gate.md), [original M2 checkpoint](work-store-main-integration.md), and [main integration](work-delegation-implementation.md) |
 
 ## Planned work and earlier design
 

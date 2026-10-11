@@ -47,7 +47,7 @@ export async function jsonBody(response: Request | Response): Promise<unknown> {
     new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes),
   ) as unknown;
 }
-async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unknown>) {
+export async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unknown>) {
   const response = await env.OP_EFFECT_STORE.fetch('https://private.invalid/effect', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -57,15 +57,23 @@ async function op(env: Pick<Env, 'OP_EFFECT_STORE'>, input: Record<string, unkno
 }
 export function scope(
   env: Pick<Env, 'WORK_ARTIFACTS_ACCOUNT' | 'WORK_ARTIFACTS_NAMESPACE' | 'WORK_AUTHORITY_ID'>,
-  p: InitialPlan,
+  p: Pick<InitialPlan, 'namespace' | 'name' | 'checkpoint' | 'artifacts_account'>,
 ) {
   if (
     !/^[a-f0-9]{32}$/.test(env.WORK_ARTIFACTS_ACCOUNT) ||
+    (p.artifacts_account !== undefined && p.artifacts_account !== env.WORK_ARTIFACTS_ACCOUNT) ||
     p.namespace !== env.WORK_ARTIFACTS_NAMESPACE ||
     p.checkpoint.authority !== env.WORK_AUTHORITY_ID
   )
     throw new Error('effect_scope');
   return `https://${env.WORK_ARTIFACTS_ACCOUNT}.artifacts.cloudflare.net/git/${p.namespace}/${p.name}.git`;
+}
+export function productiveScope(
+  env: Pick<Env, 'WORK_ARTIFACTS_ACCOUNT' | 'WORK_ARTIFACTS_NAMESPACE' | 'WORK_AUTHORITY_ID'>,
+  p: InitialPlan | import('./protocol').MintPlan | import('./protocol').GitPlan,
+) {
+  if (p.artifacts_account === undefined) throw new Error('effect_scope');
+  return scope(env, p);
 }
 function tokenInfo(value: ArtifactsTokenListResult): ArtifactsTokenInfo {
   if (!value || !Array.isArray(value.tokens) || value.total !== 1 || value.tokens.length !== 1)
@@ -148,7 +156,7 @@ export class WorkEffectGate extends WorkerEntrypoint<Env> {
     const plan = await op(env, { action: 'initial-plan', attempt_id: attempt });
     initialPlan(plan);
     if (plan.attempt_id !== attempt) throw new Error('effect_invalid');
-    const remote = scope(env, plan),
+    const remote = productiveScope(env, plan),
       branch = plan.role === 'task' ? 'work' : 'snapshot';
     const claim = await env.EFFECT_CHECKPOINT.claim(plan);
     if (!claim.started) {

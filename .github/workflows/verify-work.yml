@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Require a fixed local qualification suite
         run: |
-          case "$WORK_SUITE" in authority|effects) ;; *) exit 2 ;; esac
+          case "$WORK_SUITE" in authority|effects|product) ;; *) exit 2 ;; esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -43,6 +43,15 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.129 --locked --root "$RUNNER_TEMP/work-bindgen"
           echo "MIKAKI_WORK_BINDGEN=$RUNNER_TEMP/work-bindgen/bin/wasm-bindgen" >> "$GITHUB_ENV"
       - run: npm ci
+      - uses: ./.github/actions/setup-cargo-tools
+        if: inputs.suite == 'product'
+        with:
+          profile: worker
+      - name: Install the product browser runtime
+        if: inputs.suite == 'product'
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
+          npx playwright install --with-deps chromium
       - name: Qualify current Work contracts on the local runtime
         run: |
           npm run build:policy

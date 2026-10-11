@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { Request as MiniflareRequest, Response as MiniflareResponse } from 'miniflare';
 import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import type { V4WorkerOptions } from 'miniflare';
 import type { Artifacts } from '@cloudflare/workers-types';
@@ -25,6 +26,8 @@ export async function preparationFixture(
     bindings: Pick<V4WorkerOptions, 'artifacts'>;
     loseCreate?: boolean;
   },
+  gitExecutor?: (request: Request) => Promise<Response>,
+  productCopy = false,
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -43,6 +46,9 @@ export async function preparationFixture(
     compatibilityDate: '2026-09-30',
     bindings: {
       MIKAKI_ISSUER: 'https://work.test',
+      ...(effectEnabled && !remote ? { WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32) } : {}),
+      ...(effectEnabled && !remote ? { WORK_GIT_EXECUTION_ENABLED: 'true' } : {}),
+      ...(effectEnabled && !remote ? { WORK_PREPARATION_VERIFY_ENABLED: 'true' } : {}),
       ...bindings,
       LOCAL_WORK_QUALIFICATION: 'true',
       WORK_OWNER_API_ENABLED: 'true',
@@ -50,19 +56,107 @@ export async function preparationFixture(
     d1Databases: { DB: 'preparation-probe' },
     r2Buckets: { WORK_GIT_PAYLOADS: 'private-work-candidate-payloads' },
   };
+  const copyEnabled = bindings.WORK_COPY_EXECUTION_ENABLED === 'true';
+  const copyBindings: NonNullable<V4WorkerOptions['serviceBindings']> = copyEnabled
+    ? {
+        WORK_COPY_STARTER:
+          bindings.LOCAL_COPY_TRIGGER_UNAVAILABLE === 'true'
+            ? async () => new MiniflareResponse(null, { status: 409 })
+            : { name: 'work-copy', entrypoint: 'WorkCopyStarter' },
+        WORK_COPY_INITIAL: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
+        WORK_COPY_INITIAL_RECONCILER: {
+          name: 'work-reconcile',
+          entrypoint: 'WorkEffectReconciler',
+        },
+        WORK_COPY_MINT: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+        WORK_COPY_GIT: { name: 'work-git', entrypoint: 'WorkGitGate' },
+        WORK_COPY_RECONCILER: { name: 'mint-reconcile', entrypoint: 'WorkMintReconciler' },
+        WORK_COPY_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
+        WORK_COPY_VERIFIER: { name: 'work-preparation', entrypoint: 'WorkPreparationGate' },
+      }
+    : {};
   const mf = new Miniflare(
     convertV4MiniflareOptions({
+      unsafeTriggerHandlers: copyEnabled,
       workers: [
         {
           ...ownerWorker,
           serviceBindings: {
+            ...copyBindings,
             OP_PUBLIC: 'preparation-owner',
             OP_AUTHORITY_ADMIN: { name: 'preparation-owner', entrypoint: 'OpAuthorityAdmin' },
             ...(effectEnabled
               ? {
                   OP_EFFECT_STORE: { name: 'preparation-owner', entrypoint: 'WorkEffectStore' },
+                  OP_MINT_STORE: { name: 'preparation-owner', entrypoint: 'WorkMintStore' },
+                  OP_GIT_STORE: { name: 'preparation-owner', entrypoint: 'WorkGitStore' },
                   EFFECT_GATE: { name: 'work-effect', entrypoint: 'WorkEffectGate' },
                   EFFECT_PUBLIC: 'work-effect',
+                  ...(!remote
+                    ? {
+                        MINT_GATE: { name: 'work-mint', entrypoint: 'WorkMintGate' },
+                        GIT_GATE: { name: 'work-git', entrypoint: 'WorkGitGate' },
+                        GIT_PUBLIC: 'work-git',
+                        PREPARATION_GATE: {
+                          name: 'work-preparation',
+                          entrypoint: 'WorkPreparationGate',
+                        },
+                        PREPARATION_PUBLIC: 'work-preparation',
+                        WORK_PREPARATION_EVIDENCE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixturePreparationEvidence',
+                        },
+                        PREPARATION_EVIDENCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkPreparationEvidence',
+                        },
+                        GIT_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitCheckpoint',
+                        },
+                        WORK_GIT_EXECUTION_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitExecutionCheckpoint',
+                        },
+                        GIT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkGitCheckpoint' },
+                        GIT_EXECUTION_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkGitExecutionCheckpoint',
+                        },
+                        WORK_GIT_TRANSPORT: {
+                          name: 'work-git-transport',
+                          entrypoint: 'WorkGitTransport',
+                        },
+                        MINT_PUBLIC: 'work-mint',
+                        MINT_LEDGER: { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        MINT_MAINTENANCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintMaintenance',
+                        },
+                        MINT_RECONCILER: {
+                          name: 'mint-reconcile',
+                          entrypoint: 'WorkMintReconciler',
+                        },
+                        MINT_RECONCILE_PUBLIC: 'mint-reconcile',
+                        MINT_ARTIFACTS_MAINTENANCE: {
+                          name: 'mint-maintenance',
+                          entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        MINT_MAINTENANCE_PUBLIC: 'mint-maintenance',
+                        MINT_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
+                        MINT_CLOSURE_PUBLIC: 'mint-closure',
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintRefusalCheckpoint',
+                        },
+                        WORK_MINT_REFUSAL_TRANSPORT: {
+                          name: 'mint-refusal-transport',
+                          entrypoint: 'WorkMintRefusalTransport',
+                        },
+                        MINT_REFUSAL_TRANSPORT_PUBLIC: 'mint-refusal-transport',
+                      }
+                    : {}),
                   EFFECT_RECONCILER: { name: 'work-reconcile', entrypoint: 'WorkEffectReconciler' },
                   RECONCILE_PUBLIC: 'work-reconcile',
                   ARTIFACTS_MAINTENANCE: {
@@ -99,6 +193,72 @@ export async function preparationFixture(
               : {}),
           },
         },
+        ...(productCopy
+          ? [
+              {
+                name: 'preparation-product',
+                modulesRoot: join(root, 'crates/worker/build'),
+                modules: [
+                  {
+                    type: 'ESModule' as const,
+                    path: join(root, 'crates/worker/build/worker/service.mjs'),
+                  },
+                  {
+                    type: 'ESModule' as const,
+                    path: join(root, 'crates/worker/build/worker/shim.mjs'),
+                  },
+                  { type: 'ESModule' as const, path: join(root, 'crates/worker/build/index.js') },
+                  {
+                    type: 'CompiledWasm' as const,
+                    path: join(root, 'crates/worker/build/index_bg.wasm'),
+                  },
+                ],
+                compatibilityDate: '2026-10-06',
+                versionMetadata: 'CF_VERSION_METADATA',
+                bindings: ownerWorker.bindings,
+                d1Databases: ownerWorker.d1Databases,
+                r2Buckets: ownerWorker.r2Buckets,
+                serviceBindings: {
+                  ...copyBindings,
+                  ...(bindings.LOCAL_CHECKPOINT_SOURCE_REPLY
+                    ? {
+                        WORK_SOURCE_READER: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureCheckpointSourceReader',
+                        },
+                      }
+                    : {}),
+                  WORK_AUTHORITY_CHECKPOINT: {
+                    name: 'work-checkpoint',
+                    entrypoint: 'WorkCheckpointService',
+                  },
+                },
+              },
+            ]
+          : []),
+        ...(copyEnabled
+          ? [
+              {
+                name: 'work-copy',
+                modules: true,
+                scriptPath: join(modulesRoot, 'copy-workflow.mjs'),
+                compatibilityDate: '2026-10-10',
+                bindings: {
+                  WORK_COPY_WORKFLOW_ENABLED:
+                    bindings.LOCAL_COPY_TRIGGER_DISABLED === 'true' ? 'false' : 'true',
+                },
+                workflows: {
+                  COPY_WORKFLOW: { name: 'synthetic-copy', className: 'WorkCopyWorkflow' },
+                },
+                serviceBindings: {
+                  OP_COPY_STORE: {
+                    name: productCopy ? 'preparation-product' : 'preparation-owner',
+                    entrypoint: 'WorkCopyStore',
+                  },
+                },
+              },
+            ]
+          : []),
         ...(checkpointEnabled
           ? [
               {
@@ -153,6 +313,210 @@ export async function preparationFixture(
                       : {}),
                 },
               },
+              ...(!remote
+                ? [
+                    {
+                      name: 'work-git',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: { WORK_GIT_GATE_ENABLED: bindings.WORK_GIT_GATE_ENABLED ?? 'true' },
+                      serviceBindings: {
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        OP_GIT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        GIT_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureGitLedger',
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-preparation',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'preparation.mjs'),
+                      // Installed Miniflare rejects 2026-10-09 as future; this
+                      // disposable fixture uses its latest supported date.
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_PREPARATION_GATE_ENABLED:
+                          bindings.WORK_PREPARATION_GATE_ENABLED ?? 'true',
+                      },
+                      serviceBindings: {
+                        OP_GIT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-git-transport',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'git-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_GIT_TRANSPORT_ENABLED: bindings.WORK_GIT_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        GIT_DISPATCH: { name: 'work-checkpoint', entrypoint: 'WorkGitDispatch' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                        GIT_EXECUTOR: async (request: MiniflareRequest) => {
+                          if (!gitExecutor) return new MiniflareResponse(null, { status: 409 });
+                          const response = await gitExecutor(
+                            new Request(request.url, {
+                              method: request.method,
+                              headers: [...request.headers],
+                              body: request.body
+                                ? new Uint8Array(await request.arrayBuffer())
+                                : undefined,
+                            }),
+                          );
+                          return new MiniflareResponse(
+                            new Uint8Array(await response.arrayBuffer()),
+                            {
+                              status: response.status,
+                              headers: [...response.headers],
+                            },
+                          );
+                        },
+                      },
+                    },
+                    {
+                      name: 'work-mint',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint.mjs'),
+                      compatibilityDate: '2026-09-30',
+                      outboundService: 'synthetic-artifacts',
+                      bindings: {
+                        WORK_MINT_GATE_ENABLED: bindings.WORK_MINT_GATE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                        MINT_CHECKPOINT: Boolean(bindings.LOCAL_MINT_LEDGER_LOST)
+                          ? { name: 'preparation-owner', entrypoint: 'FixtureMintLedger' }
+                          : { name: 'work-checkpoint', entrypoint: 'WorkMintCheckpoint' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                  ]
+                : []),
+              ...(!remote
+                ? [
+                    {
+                      name: 'mint-maintenance',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-maintenance.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_MAINTENANCE_ENABLED:
+                          bindings.WORK_MINT_MAINTENANCE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE:
+                          bindings.WORK_MINT_MAINTENANCE_NAMESPACE ??
+                          bindings.WORK_ARTIFACTS_NAMESPACE ??
+                          'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-reconcile',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-reconcile.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_RECONCILE_ENABLED: bindings.WORK_MINT_RECONCILE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_MAINTENANCE: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkMintMaintenance',
+                        },
+                        MINT_ARTIFACTS_MAINTENANCE: {
+                          name: 'mint-maintenance',
+                          entrypoint: 'WorkMintArtifactsMaintenance',
+                        },
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-refusal-transport',
+                      outboundService: 'synthetic-artifacts',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-refusal-transport.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_REFUSAL_TRANSPORT_ENABLED:
+                          bindings.WORK_MINT_REFUSAL_TRANSPORT_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_LOOKUP: { name: 'work-checkpoint', entrypoint: 'WorkMintLookup' },
+                        ARTIFACTS: {
+                          name: 'synthetic-artifacts',
+                          entrypoint: 'SyntheticArtifacts',
+                        },
+                      },
+                    },
+                    {
+                      name: 'mint-closure',
+                      modules: true,
+                      scriptPath: join(modulesRoot, 'mint-closure.mjs'),
+                      compatibilityDate: '2026-10-08',
+                      bindings: {
+                        WORK_MINT_CLOSURE_ENABLED: bindings.WORK_MINT_CLOSURE_ENABLED ?? 'true',
+                        WORK_AUTHORITY_ID: 'synthetic-managed-work',
+                        WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
+                        WORK_ARTIFACTS_NAMESPACE: bindings.WORK_ARTIFACTS_NAMESPACE ?? 'mikaki-dev',
+                      },
+                      serviceBindings: {
+                        MINT_REFUSAL_CHECKPOINT: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureMintRefusalLedger',
+                        },
+                        OP_MINT_STORE: {
+                          name: 'preparation-owner',
+                          entrypoint: 'FixtureEffectBridge',
+                        },
+                      },
+                    },
+                  ]
+                : []),
               {
                 name: 'work-reconcile',
                 modules: true,
@@ -281,6 +645,8 @@ export async function preparationFixture(
       { actor: 'delivery-probe', reason: 'synthetic local qualification' },
     );
     const now = Math.floor(Date.now() / 1000);
+    const sessionSeconds =
+      copyEnabled && productCopy ? Number(bindings.LOCAL_COPY_SESSION_SECONDS ?? 3600) : 3600;
     await DB.batch([
       DB.prepare('INSERT INTO account_security VALUES(?,0,1)').bind(account),
       DB.prepare('INSERT INTO credential VALUES(?,?,1)').bind('delivery-credential', account),
@@ -288,9 +654,24 @@ export async function preparationFixture(
         'delivery-sso',
         account,
         'delivery-credential',
-        now + 3600,
+        now + sessionSeconds,
       ),
       DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind('delivery-sso', session, now),
+      ...(copyEnabled && productCopy
+        ? [
+            DB.prepare('INSERT INTO sso_session VALUES(?,?,?,0,?,0)').bind(
+              'copy-replacement-sso',
+              account,
+              'delivery-credential',
+              now + 7200,
+            ),
+            DB.prepare('INSERT INTO sso_context VALUES(?,?,?)').bind(
+              'copy-replacement-sso',
+              createHash('sha256').update('synthetic-replacement-copy-session').digest('base64url'),
+              now,
+            ),
+          ]
+        : []),
     ]);
     if (checkpointEnabled) {
       const checkpoint = {
@@ -362,7 +743,11 @@ export async function preparationFixture(
         ),
       ]);
     }
-    const d = await call({ action: 'disclosure', disclosure: input, expires_at: now + 3600 });
+    const d = await call({
+      action: 'disclosure',
+      disclosure: input,
+      expires_at: now + sessionSeconds,
+    });
     return call({
       action: 'reserve-preparation',
       digest: d.digest,
@@ -405,6 +790,54 @@ export async function preparationFixture(
     call,
     initialize,
     ownerRead,
+    productFetch: async (path: string, options: FixtureRequestOptions = {}) => {
+      // Dispatch through the ingress harness (as Wrangler's test harness does),
+      // preserving the browser Origin instead of hitting the Node RPC bridge.
+      const headers = new Headers(options.headers);
+      if (!headers.has('Cookie')) headers.set('Cookie', '__Host-op-sso=synthetic-delivery-session');
+      headers.set('MF-Route-Override', productCopy ? 'preparation-product' : 'preparation-owner');
+      return mf.dispatchFetch('https://work.test' + path, {
+        ...options,
+        headers: Object.fromEntries(headers),
+      });
+    },
+    copyPrivate: async (input: Record<string, unknown>) => {
+      // Retrieve the actual private facade from the workflow's bindings.
+      const workflowEnv = await mf.getBindings('work-copy');
+      const copy = workflowEnv.OP_COPY_STORE as import('@cloudflare/workers-types').Fetcher;
+      return copy.fetch('https://private.invalid/copy-job', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    triggerCopy: async (id: string) => {
+      const env = await mf.getBindings(productCopy ? 'preparation-product' : 'preparation-owner');
+      const starter = env.WORK_COPY_STARTER as import('@cloudflare/workers-types').Fetcher;
+      return starter.fetch('https://private.invalid/start', {
+        method: 'POST',
+        body: JSON.stringify({ preparation_id: id }),
+      });
+    },
+    drainCopies: () =>
+      mf.dispatchFetch('https://work.test/cdn-cgi/local/scheduled?format=json&cron=*+*+*+*+*', {
+        headers: { 'MF-Route-Override': 'work-copy' },
+      }),
+    createFailedCopyWorkflow: async (id: string, mismatchedIdentity = false) => {
+      const env = await mf.getBindings('work-copy');
+      const workflow = env.COPY_WORKFLOW as import('@cloudflare/workers-types').Workflow<{
+        preparation_id: string;
+      }>;
+      const instance = await workflow.create({
+        id: (mismatchedIdentity ? 'other-' : 'copy-') + id,
+        params: { preparation_id: mismatchedIdentity ? id : 'invalid' },
+      });
+      for (let n = 0; n < 100; n++) {
+        const status = await instance.status();
+        if (status.status === 'errored') return;
+        await new Promise<void>((r) => setTimeout(r, 50));
+      }
+      throw new Error('failed_copy_workflow_not_terminal');
+    },
     account,
     session,
     fixtureFetch,

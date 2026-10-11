@@ -51,7 +51,7 @@ function checkInfo(
     remote,
   };
 }
-function inventory(v: ArtifactsTokenListResult): ArtifactsTokenListResult {
+export function inventory(v: ArtifactsTokenListResult): ArtifactsTokenListResult {
   if (
     !v ||
     !Array.isArray(v.tokens) ||

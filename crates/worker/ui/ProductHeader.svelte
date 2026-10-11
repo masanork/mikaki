@@ -14,6 +14,7 @@
     material = false,
     paused = false,
     vaultHref,
+    lockLabel = m.vaultSessionLockAction(),
   }: {
     locale: Locale;
     contentId?: string;
@@ -22,6 +23,7 @@
     material?: boolean;
     paused?: boolean;
     vaultHref?: string;
+    lockLabel?: string;
   } = $props();
   const page = new URL(location.href);
   let header: HTMLElement;
@@ -93,7 +95,7 @@
         </select>
       </label>
       {#if onlock}<button class="product-signout product-lock-button" type="button" onclick={onlock}
-          >{m.vaultSessionLockAction()}</button
+          >{lockLabel}</button
         >{/if}
       {#if session}<a class="product-signout" href="/logout?lang={locale}"
           >{m.logoutTitle()} <span aria-hidden="true">↗</span></a

@@ -51,7 +51,9 @@ The six previously recorded empty development repositories and their protected
 journals remain untouched, including unresolved allocations. Do not replace
 them with new creates/remints or infer closure from an empty repository. A real
 remote recovery/trial must resume those same identities with a complete
-resource/token inventory. Productive upload/readback, new credential mint and
+resource/token inventory. Productive upload/readback and credential
 release, signed deployment/recovery provenance and complete IdP release coverage
 remain open. See the [integration order](work-delegation-implementation.md) and
 [checkpoint scope](work-authority-checkpoint.md).
+
+[M6a one-shot mint and Native custody](work-artifacts-mint-gate.md) now provides a separately qualified local gate for the upload/readback credential slots. It does not change these initial-effect closure and maintenance boundaries.
