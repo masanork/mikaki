@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
 import { activateWorkerPolicy, validateWorkerPolicyProjection } from './worker-policy-store.ts';
+import type { AuthorityAdministrator } from './worker-policy-store.ts';
 
 const options: Record<string, string> = {};
 for (let index = 2; index < process.argv.length; index += 2) {
@@ -57,7 +58,7 @@ if (options['--apply'] !== 'yes') {
   process.exit(0);
 }
 
-const platform = await getPlatformProxy({
+const platform = await getPlatformProxy<{ DB: any; OP_AUTHORITY_ADMIN?: AuthorityAdministrator }>({
   configPath,
   remoteBindings: remote,
   persist: remote ? false : { path: join(dirname(configPath), '.wrangler', 'state', 'v3') },
@@ -67,6 +68,7 @@ try {
     expectedRevision,
     actor: options['--actor'],
     reason: options['--reason'],
+    administrator: platform.env.OP_AUTHORITY_ADMIN,
   });
   console.log(`Activated generation ${result.generation}: ${result.projectionRevision}`);
 } finally {

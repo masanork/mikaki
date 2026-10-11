@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** Main integration checkpoint, 2026-10-08 JST. The reviewed ADR and portable core are restored on a topic branch based on current main. Earlier D1, Worker, UI and Artifacts work is preserved for integration with main's fresh schema. No production activation is included.
+**Status:** M1–M4 locally qualified on current main, 2026-10-08 JST. Fresh-schema WorkStore, owner/source transport, independent checkpoint/OP framing and initial-effect maintenance are integrated. Product review screens, productive upload/readback and remote activation retain the next gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -13,7 +13,8 @@ from `c17bd4b`; then private infrastructure qualification and offline authority
 preparation through `6a7dc99`. Storage and independent admission are combined
 because their failure and recovery contracts must be qualified together.
 
-The first increment is composed with main `a429bee`, including its parallel CI
+The first increment was composed with main `a429bee` and integrated in
+[PR #178](https://github.com/masanork/mikaki/pull/178), including its parallel CI
 and current dependency locks. It exports portable rules and adds no Worker
 route, production binding, migration or external operation. The later increments
 remain on the retained Work branch until their composed revisions pass current
@@ -21,6 +22,24 @@ checks. The historical local qualification below does not qualify these new
 compositions. Preserve frozen packets, provider journals, unknown outcomes and
 their original source identities throughout delivery; source integration does
 not authorize a new allocation, mint, enrollment or feature activation.
+
+The second composition preserves the current single-email invitation transaction
+and frames its complete guarded batch through the independent OP authority.
+The opt-in migration rehearsal now also retains waiting-list rows and policy over
+the complete current production baseline. Work adapter types and real
+Wasm/D1/R2/checkpoint/effect qualification run in separate authority and effect CI
+lanes; the common `verify` gate requires both as well as core, Worker contracts and
+browser verification. The original main-only candidate signing and deployment
+gates remain intact. This source delivery provisions no Work resource or binding.
+
+Current composed local qualification passes all **162** retained backend/Git
+cases, the production Worker public/raw-RPC/unenrolled refusal case, and the
+extended current-baseline waiting-list retention case. Production Wasm build and
+Clippy with warnings denied, Node/service/adapter types, formatting, source checks,
+documentation and all **46** release regressions pass. The full backend run takes
+about eight minutes locally; CI partitions its test files between authority and
+effects without dropping or duplicating a file. Remote CI and the normal main
+release must qualify the committed composition before this increment is complete.
 
 ## Preserved work and main baseline
 
@@ -39,9 +58,9 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | Increment | Outcome and qualification gate | State |
 | --- | --- | --- |
 | M1: Portable rules/decisions | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass. | Complete locally: 35 unit cases plus one compile-fail case. |
-| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Pending. |
-| M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Pending; required before new productive effects. |
-| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Pending on main. |
+| M2: Fresh-schema authority | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2. | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases. |
+| M3: Checkpoint/OP framing | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation. | Complete locally: 16 checkpoint cases; activation gates remain. |
+| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates. | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending. |
 | M5: Source/product review | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity. | Pending on main. |
 | M6: Upload/readback | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint once before provider I/O; unknown outcomes cannot remint. Capture plaintext only into qualified encrypted service custody. Successful mint alone permits no workload release. | Next new effect increment after M2–M4. |
 
@@ -50,6 +69,10 @@ Preserved pre-main qualification passed 160 combined delegation cases, including
 Record selected source, implementation, checks and remaining gates for each increment. Commit reviewable units, then refresh Artifacts from a selected qualified commit. Old CI/release inventory or workspace overlays do not qualify new source.
 
 M1 qualification passes `cargo test --workspace --offline --locked` (**209 cases**, including doctests), the auth Wasm target check, auth all-target Clippy with warnings denied, workspace formatting, product-source and documentation checks. Native workspace tests do not exercise the unported work HTTP/D1/Artifacts paths or production Workers. No prior Worker/browser qualification is counted as a current check.
+
+M2 is integrated on `feat/work-authority-main-integration`, isolated from concurrent edits in the root checkout, after merging main through `1f0dd3c` (owner-selected v2 records for local Codex). Selected WorkStore, SQL, owner/source transport, credential custody and candidate archive code came from the preserved stash. Main's dependencies and the two production baseline migrations are retained. The [separate work migration ledger](../crates/worker/work-migrations/README.md) applies eight additive migrations explicitly in local fixtures; migration qualification verifies existing OP/Owner Vault records remain intact. Product review screens and production bindings are not activated.
+
+Current M2 qualification: `npm run test:work-delegation` passes **94 cases**, including real Rust/Wasm/workerd/D1/R2 restart, concurrent single admission, exact retries, current session/source/policy checks, audit rollback, credential-key floors and independently checked Git archives. Node and source-Worker type checks, product-source and documentation checks pass. This is local evidence with synthetic workload-verifier facts. The pure owner projection module is included for the prepared-authority contract; the owner screens remain M5. Independent checkpoint/OP framing and new external effects remain M3/M4 gates.
 
 ## Product delivery backlog
 
@@ -81,3 +104,19 @@ Owner-enrolled clients, managed execution identity, Token Exchange, SPIFFE and A
 | CI-04 | Trusted provenance, recovery fencing, compatible rollback and one authoritative write direction before canonical migration. |
 
 CI-01 can proceed separately once its exact source/resources are selected. Deployment credentials stay in the publisher boundary; a Workflow event, identity token or successful test does not grant production promotion.
+
+M3 qualification passes **16 checkpoint cases** and **13 current OP regression cases** (production service/RPC boundary, bootstrap enrollment, ingress/retention and Queue logout). Production Worker build and OP authority packaging, Node/service/checkpoint-Worker type checks and production Wasm Clippy with warnings denied pass. Six pre-existing Worker Wasm style warnings exposed by the current dependency/toolchain were fixed in a separate commit. The [checkpoint note](work-authority-checkpoint.md) records the covered paths and remaining recovery/operator/release gates. The local fixture uses main's Queue-aware logout handler, with its actual event context.
+
+The current production Chromium enrollment regression also passes: real virtual Passkey enrollment, additional credential/invitation flow, login retries and Owner Vault PRF behavior remain compatible without the opt-in work schema.
+
+M4 qualification passes the complete **160-case** delegation suite (M2 94 + M3 16 + M4 50), using actual Rust/Wasm/workerd/D1/R2/RPC/DO and synthetic Artifacts/Git. Current production shim/facade, enrollment, Chromium Passkey/Vault, Queue and ingress/retention regressions pass (14 cases across selected files). The initial final regression run and a single-file repeat encountered a connection reset while the pre-existing fixture seeded 1200 SQL statements in one D1 RPC. Bounded seed calls now retain and assert the same 1200-row GC backlog, and the case passes. Product GC code and its convergence assertions remain intact.
+
+Final validation also passes native workspace tests (**209 cases**), workspace all-target Clippy and production Wasm Clippy with warnings denied, Worker build/OP packaging, Node/service/source/checkpoint/effect type checks and full formatting. The OP Wasm is within its existing byte budgets (5,854,173 raw bytes; 2,077,741 gzip estimate). CI includes the new Worker type checks, the full delegation suite and production RPC boundary case. The [initial-effect note](work-artifacts-effect-gate.md) records the capability and recovery limits. These are local results; no remote CI result or production/Artifacts activation is claimed.
+
+Next: M5 integrates owner source/copy review with current product screens. M6 then qualifies productive upload/readback and fresh one-time mint/release; existing protected remote journals must be reconciled against their original identities before another real Artifacts trial.
+
+Parallel M2 commit `ed7535d` is reconciled into this history. Its portable WorkStore/SQL matches the selected current implementation; current checkpoint, owner/source, effect and fixture changes extend it. The unified opt-in ledger preserves the root branch's numbering: work `0003`–`0010`, checkpoint `0011`, OP frames `0012`. Production baseline `0001`/`0002` and production configuration remain intact. Duplicate migration chains are removed; compatibility fixture names use the same tested implementation. The original [M2 checkpoint note](work-store-main-integration.md) is retained as historical evidence.
+
+The reconciled current suite passes **162/162 cases** (M2 96 + M3 16 + M4 50). It preserves both parallel M2 ingress/enrollment boundary cases and checks the entire additive chain against existing schema definitions and Owner Vault rows. Node/Worker types, full formatting and documentation checks pass after reconciliation; the production-baseline/Owner-schema/release-inventory subset passes **11/11**. The fixture output is consistently `local/generated/work-store-main/`; pre-main `work-store/` output and protected remote journals are not rewritten.
+
+A final main-ref read found `f03d656583f934ffe290bd45c81f73fa927a06a4`: one automatic metrics-only commit after `1f0dd3c`. Its three metrics files are included; it changes no application source, dependency or migration.

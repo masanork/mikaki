@@ -76,10 +76,10 @@ fn policy(ctx: &RouteContext<()>, client: &str) -> worker::Result<Policy> {
     if public == PublicJwk::from_key(super::signing(ctx)?.0.verifying_key()) {
         return Err(server_error());
     }
-    if let Some(encryption) = encryption_key(ctx)? {
-        if public == encryption.public().public().map_err(|_| server_error())? {
-            return Err(server_error());
-        }
+    if let Some(encryption) = encryption_key(ctx)?
+        && public == encryption.public().public().map_err(|_| server_error())?
+    {
+        return Err(server_error());
     }
     mikaki_identity::certificate::validate_attester_roots(&signing.trust_anchors)
         .map_err(|_| server_error())?;

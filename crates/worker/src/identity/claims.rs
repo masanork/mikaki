@@ -72,10 +72,10 @@ pub(crate) async fn userinfo(
     }) {
         return Ok(None);
     }
-    if let Some(date) = a.expiry_date.as_deref() {
-        if mikaki_identity::evidence::date_end(date).ok_or_else(server_error)? <= time {
-            return Ok(None);
-        }
+    if let Some(date) = a.expiry_date.as_deref()
+        && mikaki_identity::evidence::date_end(date).ok_or_else(server_error)? <= time
+    {
+        return Ok(None);
     }
 
     let mut attributes = serde_json::Map::new();
@@ -257,8 +257,7 @@ pub(crate) async fn release_post(
         || client.len() > 128
         || revision < 0
         || grant < 0
-        || version < 0
-        || version > 9007199254740990
+        || !(0..=9007199254740990).contains(&version)
         || revision > 9007199254740991
         || grant > 9007199254740991
     {

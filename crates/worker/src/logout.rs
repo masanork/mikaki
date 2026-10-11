@@ -338,8 +338,9 @@ async fn confirm(
         )
         .bind(&values[..4])
     };
-    let result = db
-        .batch(vec![
+    let result = crate::op_authority::batch(
+        &context.env,
+        vec![
             db.prepare(
                 "DELETE FROM logout_transaction WHERE csrf_hash=?1 AND cookie_hash=?2 \
                  AND sso_id=?3 AND expires_at>?5",
@@ -376,8 +377,9 @@ async fn confirm(
                 .bind(&values[..4])?,
             db.prepare("UPDATE client_session SET revoked=1 WHERE sso_id=?3 AND revoked=0")
                 .bind(&values[..3])?,
-        ])
-        .await;
+        ],
+    )
+    .await;
     if result.is_err() {
         return invalid(&request);
     }

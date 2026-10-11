@@ -2,7 +2,7 @@
 
 **Status:** Proposal and applicability review, 2026-10-06, supporting [ADR 0016](adr/0016-personal-context-and-workload-delegation.md). No new PDP, policy engine or workload endpoint is implemented here.
 
-The first [domain contract](workload-profile-v1.md) implements typed rules for bounded proposal submission and exact human code adoption. Current main integration qualifies the portable Rust rules. OP-owned D1 conditional transitions, atomic approval consumption, audit rollback and concurrent dispatch were exercised in the retained pre-main Worker fixture and must be requalified against main's fresh schema under the [integration plan](work-delegation-implementation.md). AuthZEN HTTP, cryptographic actor verification, product ingress and the remaining actions are separate integration gates.
+The first [domain contract](workload-profile-v1.md) implements typed rules for bounded proposal submission and exact human code adoption. Current main integration qualifies portable Rust rules and [OP-owned D1 conditional transitions](work-store-main-integration.md), including atomic approval consumption, audit rollback, registered-source freshness and concurrent dispatch on the fresh schema. Checkpoint/OP framing and local initial-effect maintenance are also qualified. Independent operator/recovery provisioning, AuthZEN HTTP, cryptographic actor verification, product screens and the remaining actions retain separate gates in the [integration plan](work-delegation-implementation.md).
 
 ## Recommendation and existing fit
 

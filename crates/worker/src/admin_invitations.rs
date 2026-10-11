@@ -330,7 +330,7 @@ pub async fn finish(
                 .bind(&[format!("{guard}{suffix}").into()])?,
         );
     }
-    if let Err(error) = db.batch(statements).await {
+    if let Err(error) = crate::op_authority::batch(&context.env, statements).await {
         if !authenticated(&db, &browser_hash).await? {
             return reject(403);
         }

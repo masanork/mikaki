@@ -25,6 +25,17 @@ pub(super) async fn admit(request: &worker::Request, env: &worker::Env) -> worke
     ) {
         return Ok(true);
     }
+    admit_budget(request, env).await
+}
+
+pub(super) async fn admit_work(
+    request: &worker::Request,
+    env: &worker::Env,
+) -> worker::Result<bool> {
+    admit_budget(request, env).await
+}
+
+async fn admit_budget(request: &worker::Request, env: &worker::Env) -> worker::Result<bool> {
     let db = env.d1("DB")?;
     let policy = db
         .prepare(
@@ -77,7 +88,7 @@ pub(super) async fn collect(env: &worker::Env) -> worker::Result<()> {
         .filter(|sql| !sql.trim().is_empty())
         .map(|sql| db.prepare(sql))
         .collect();
-    let results = db.batch(statements).await?;
+    let results = crate::op_authority::batch(env, statements).await?;
     let reclaimed: f64 = results
         .iter()
         .filter_map(|r| r.meta().ok().flatten())

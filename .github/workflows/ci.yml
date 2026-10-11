@@ -67,6 +67,9 @@ jobs:
           npm run check:agent-worker
           npm run check:product-sources
           npm run check:service-authority
+          npm run check:work-sources
+          npm run check:work-checkpoint
+          npm run check:work-effects
           npm run check:i18n
           npm run check:docs
           npm run build:docs
@@ -195,8 +198,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  work-authority:
+    uses: ./.github/workflows/verify-work.yml
+    with:
+      suite: authority
+
+  work-effects:
+    uses: ./.github/workflows/verify-work.yml
+    with:
+      suite: effects
+
   verify:
-    needs: [core, worker-contracts, worker-browser]
+    needs: [core, worker-contracts, worker-browser, work-authority, work-effects]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -221,6 +234,18 @@ jobs:
           artifact-ids: ${{ needs.worker-browser.outputs.artifact_id }}
           merge-multiple: true
           path: artifacts/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() && needs.work-authority.outputs.artifact_id != '' }}
+        with:
+          artifact-ids: ${{ needs.work-authority.outputs.artifact_id }}
+          merge-multiple: true
+          path: artifacts/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ always() && needs.work-effects.outputs.artifact_id != '' }}
+        with:
+          artifact-ids: ${{ needs.work-effects.outputs.artifact_id }}
+          merge-multiple: true
+          path: artifacts/
       - name: Require every verification lane to succeed
         if: always()
         env:
@@ -229,7 +254,7 @@ jobs:
           node --input-type=module - <<'JS'
           import assert from 'node:assert/strict';
           const results = JSON.parse(process.env.RESULTS);
-          assert.deepEqual(Object.keys(results).sort(), ['core', 'worker-browser', 'worker-contracts']);
+          assert.deepEqual(Object.keys(results).sort(), ['core', 'work-authority', 'work-effects', 'worker-browser', 'worker-contracts']);
           for (const [name, job] of Object.entries(results)) {
             assert.equal(job.result, 'success', `${name}: ${job.result}`);
           }
