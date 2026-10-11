@@ -1,6 +1,6 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Selected source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines the qualified Workflow and Git-host work with public composition, session-bound approval and partial-progress authority checks, 2026-10-10 JST. Delegation, actual Cloudflare Git-host deployment and remote activation retain the next gates. No production activation is included.
+**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` verifies private cold/warm readiness and R2 supply on Cloudflare; extension `1e0ef8e` verifies an independent stopped-state restart, natural shutdown and retained results. Source `c8f26a1` verifies the original IDs and all-state token inventories of the six protected Artifacts allocations, 2026-10-10 JST. The original third host outcome and three initial-effect outcomes remain unknown. Current remote OP has no Work/checkpoint bindings. Enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -64,6 +64,33 @@ run. UI, Node and adapter types, formatting, source and documentation checks pas
 Full PR CI and the normal main release qualify the committed composition; these
 local results do not replace those gates or the retained activation evidence.
 
+The third increment is reviewable in
+[PR #181](https://github.com/masanork/mikaki/pull/181); the list-order regression
+is fixed by [PR #180](https://github.com/masanork/mikaki/pull/180), whose local
+single-email invitation/browser flow passes both cases.
+
+The fourth composition preserves all retained history through `6a7dc99` and adds
+private-host readiness/restart qualification, read-only provider inspection,
+offline packet/deployment preparation and once-only bootstrap/allocation
+contracts. These tools retain their original frozen packet identities and
+unknown acknowledgments. No live operator command is executed by integration.
+Current packet preparation includes the complete fifteen-file production/Work
+chain. Verification separately retains the original fourteen-file chain and
+plan; neither can silently acquire or lose the waiting-list migration.
+
+Local qualification passes **39** packet/allocation/deployment/inspection cases,
+including exact retained/current inventory and immutable-byte refusals; **10**
+actual D1/SQLite DO bootstrap/recovery cases; and **17** host provisioning,
+readiness and restart cases. Types, full formatting, source/docs checks and
+actionlint pass. CI keeps packet/operator unit contracts in core, moves actual
+bootstrap runtime cases into the authority lane and adds the host qualification
+file to product. The authority/effect partition covers all nineteen backend
+files exactly once, and product covers all eighteen selected files exactly once.
+Original unknown provider outcomes and independent operator/origin/signing,
+real owner enrollment and productive-effect qualification remain activation
+gates after source integration. Complete CI and the normal main release still
+qualify each committed composition before delivery is complete.
+
 ## Preserved work and main baseline
 
 The old `feat/agent-vault-oidc-qualification` branch at `d441ce0a4583ebcf1ae54627e2ca3df29e2f20a9` had no commits outside main and was 156 commits behind at the initial catch-up. Replaying its committed history adds no work.
@@ -83,9 +110,9 @@ Ignored `local/generated/work-*` evidence/state remains in place. Initial-effect
 | M1: Portable rules/decisions    | Restore ADR/AuthZEN/ABAC choices and Rust rules with main's dependencies. Native tests and Wasm compilation pass.                                                                                                                                                           | Complete locally: 35 unit cases plus one compile-fail case.                                                                                                                                                                                                                                                                                     |
 | M2: Fresh-schema authority      | Port WorkStore/SQL, bounded budgets and custody onto the fresh baseline; exercise current owner/session/source checks, exact retry, audit rollback and concurrency in actual Wasm/D1/R2.                                                                                    | Complete locally: 96 current-main qualification cases, including the reconciled M2 boundary cases.                                                                                                                                                                                                                                              |
 | M3: Checkpoint/OP framing       | Port independent release floors and admission for current OP mutations; rehearse D1 restore and key/account/session/policy revocation while preserving safety reconciliation.                                                                                               | Complete locally: 16 checkpoint cases; activation gates remain.                                                                                                                                                                                                                                                                                 |
-| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases; remote journal reconciliation remains pending.                                                                                                                                                                                                                                                    |
+| M4: Initial effects/maintenance | Reconnect initial-create gate, read-only lookup and attenuating broker; requalify one-time admission, lost replies, immutable IDs, refusal and runtime RPC/binding limits. Resume protected remote journals without replacement creates.                                    | Complete locally: 50 effect/capability cases. Read-only remote identity/token inventory of all six protected allocations passes; three unknown outcomes remain charged and retained. Enrolled remote effects remain pending. |
 | M5: Source/product review       | Integrate source selection, separate copy/delegation consent and owner projections into current product components; requalify Japanese/English UI and stable operation identity.                                                                                            | Integrated source `5cf4616` passes 43 copy/Workflow/host/API/browser cases, including public composition through sealed-host verification and partial-progress authority loss. The 400-case broad regression and 2 Vault browser cases have their separate scopes below. Delegation, activity/result controls and deployment remain pending. |
-| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence composition and sealed private Git-host provisioning locally. Missing/unobserved custody, actual Cloudflare Git-host deployment and release remain pending.                                                                                      |
+| M6: Upload/readback             | Native authority fixes repository, scope, expiry and operation digest. Independently admit each mint and Git exchange once before I/O; unknown outcomes cannot replay. Capture plaintext only into encrypted custody. Independent full readback checks the actual Git copy. | M6a–M6f include mint/custody, recovery, bearer refusal, fixed Git exchange, both-role evidence and sealed provisioning locally. Isolated Cloudflare cold/warm startup, R2 supply, independent stopped-state restart, natural shutdown and result retention pass. Enrolled remote authority, productive Git, missing custody and release remain pending. |
 
 Preserved pre-main qualification passed 160 combined delegation cases, including 50 initial-effect/reconciliation/capability cases. Earlier UI qualification had 22 cases. Actual Artifacts initial creation, lost-create safety reconciliation and process restart were exercised using protected journals. These identify reusable work; they are **not current-main or production qualification**. The exact prior notes/fixtures remain in the stash.
 
@@ -787,3 +814,486 @@ deployment, provider create/mint, production binding/migration change or remote
 CI claim is included. Protected journals/resources, old branches and the
 preserved stash remain intact. This delivery record changes documentation and
 a test action only; selected product source remains `5cf4616`.
+
+## Isolated Cloudflare host: verified startup and retained restart gap
+
+Selected infrastructure source is clean
+`0b47be3a58cc705701848c18cce6bff33b362a1d`. It adds an infrastructure-only Worker
+sharing the productive host's startup, private-port readiness and R2 provisioning
+code. Its private RPC accepts no arguments, disables Internet/Git and permanently
+charges at most three attempts before I/O. The SQLite frame fixes the selected
+account, namespace, artificial authority, disclosure and registry. No copy grant,
+Artifacts create/mint/Git, run or delegation authority is supplied by this probe.
+
+The actual Native, OP and qualification fixture bundles were rebuilt from clean
+`0b47be3` before final qualification and packet materialization. Native production
+Rust/UI are identical to integrated `5cf4616`; the older `34f31ca` build was not
+used for the final selected results. The final serial regression passes **76/76**:
+
+| Check | Result and selected scope |
+| --- | --- |
+| Host, Linux, provisioning and infrastructure RPC/retention | **16/16**, including actual qualification classes and real local R2; local Container capabilities remain synthetic where identified. |
+| Integrated copy/Workflow/progress and OP boundary cases | **33/33** against the rebuilt integrated product, including the public composition/consent flow and partial-progress authority loss. |
+| Permanent Git gate and independent readback | **24/24** with real Git bytes and synthetic provider identity. |
+| Pack preflight and strict indexing | **3/3**. |
+
+The TAP report is `local/generated/work-store-main/git-host-0b47be3-rebuilt.tap`.
+This run does not claim another full 445-case, Rust workspace or Owner Vault
+qualification. Their earlier selected-source results remain recorded separately.
+The Linux Docker receipt pins its actual bundled program and Dockerfile; the
+separately published Cloudflare image has its own immutable digest below.
+
+The existing environment API token supports this lane. The installed CLI's saved
+Artifacts OAuth scope check was bypassed by selecting the dedicated qualification
+profile, not by changing the token or adding an OAuth grant. Fresh inventory
+confirmed the selected Worker/Container names and R2 bucket were absent before
+creation. Only the separate qualification resources were allocated:
+
+| Selected resource | Provider observation |
+| --- | --- |
+| Account | `4b749427a0c80c547e726a42aff4b6fc` |
+| Worker and Container application name | `mikaki-work-git-host-qualification` |
+| Worker version | `0e787e82-1ad5-49a1-86be-aedb9d2fadc1` |
+| Container application / SQLite namespace | `7ce0a33510eb45379d20361d84b7f350` |
+| Private R2 bucket | `mikaki-work-git-host-qualification`, APAC / Standard; R2.dev disabled, no custom domains. |
+| Registry digest | `bd7b5c0ab282aefb7babaef312cd34ae724e1da95cd9c2ca90b3c31ceabef911` |
+| Artificial disclosure digest | `5fea0f22bce6a743ebcc60944599b64a9a32d61c0b24eec7e324558cb51f968f` |
+| Cold readiness | **8,236 ms**, ordinal 1, new start, exact image/registry/disclosure. |
+| Warm readiness | **19 ms**, ordinal 2, existing process, same pins. |
+
+The published image is
+`registry.cloudflare.com/4b749427a0c80c547e726a42aff4b6fc/mikaki-work-git-host-qualification-githostqualificationcontainer-host@sha256:2e34ccaed798efe7da7072ee4ea46619cab2b254f0c008fa52c995c468595afa`.
+The frozen packet is
+`local/generated/work-git-host-qualification/git-registry-g1ACm0`.
+Its three R2 objects—814-byte registry, 480-byte task pack and 327-byte snapshot
+pack—were uploaded once and independently read back with exact byte equality.
+Provider metadata verified the private service binding, fixed image and bucket,
+with `WORK_GIT_HOST_ENABLED=false` and `WORK_GIT_PROVISION_ENABLED=true`.
+Workers.dev and previews are disabled; no public route was deployed.
+Worker packaging measures **809.72 KiB raw / 125.05 KiB gzip**. These measurements
+cover a small artificial Native disclosure and do not qualify remote enrollment,
+personal content, production capacity or Git egress.
+
+The original third call followed a 75-second wait with the authenticated proxy
+still open. Its intent is retained, but qualification stopped before saving its
+reply. The cause and remote admission/outcome cannot be reconstructed from the
+journal. Later read-only inspection at `2026-10-10T05:27:20.226Z` found the same
+named DO without an instance mapping in the legacy dashboard listing; scoped
+telemetry returned no events. These observations prove neither native Container
+stop nor successful restart during the third call. No fourth `prepare()` call,
+replacement packet, new authority, slot reset or resource deletion followed.
+
+Client source `40ad040074f710a20e92005935a8c19a70a44a38` corrects the probe: release
+the proxy after warm readiness, wait 225 seconds, reconnect for the third call,
+and retain closed responses before checking selected expectations. Arbitrary
+fields/strings are refused without being persisted. The Container's 60-second
+grace follows DO inactivity; waiting 75 seconds from the last call was not a valid
+stop assumption. A longer wait is still not proof of stop, so a warm third reply
+continues to fail. The **8/8** focused tests at that clean client source verify
+actual RPC/SQLite retention, connection release, mismatching response evidence,
+missing-reply stop and invalid-response redaction. Their report is
+`local/generated/work-store-main/git-host-qualification-40ad040.tap`.
+This client correction was not rerun against the retained remote sequence and
+does not change the deployed Worker/image or the three-slot contract.
+
+Node and Git-host Worker type checks, full Prettier, product-source, documentation
+and diff checks pass. Retain all selected packet metadata and original journals.
+The extension below implements retained inspection/outcome handling and an
+independently bounded restart against the existing qualification, preserving the
+original attempts.
+Enrolled Native authority and reconciliation of the six protected development
+allocations precede productive Artifacts exchange. No Git push, production binding
+or migration change, remote CI claim or productive activation is included. The
+preserved stash and protected Artifacts resources/journals remain intact.
+
+## Isolated Cloudflare host: retained outcomes and independent restart
+
+Clean source `1e0ef8ee4fd0d00513558d62118a87186ab799d7` extends only the
+infrastructure qualification Worker and client. The original immutable frame and
+three `prepare()` slots stay unchanged. New immutable outcomes are synchronized
+before replying; older missing outcomes remain `null`. Private `status()` reads
+the frame, admissions, outcomes and Container running attribute without startup,
+TCP, Linux/R2 access or a probe charge. Its constructor creates additive schema.
+
+A separate, fixed `inactive_restart_v1` slot requires the retained frame, all
+three original admissions and an available Container reporting `running=false`.
+Its admission is synchronized before I/O; ready/failure results are synchronized
+before the reply. Unknown or failed outcomes cannot rearm the slot. The client
+retains a closed reply before validation, checks it against a read-after-result,
+and preserves the original attempt rows. Read-only inspection can reconcile a
+retained success without replaying startup. This grants no productive authority.
+
+The final selected-source serial suite passes **17/17** in **6,118.84 ms**:
+15 qualification RPC/SQLite/retention and client cases, plus two shared startup/R2
+cases (parent and subtest). It executes the actual qualification classes through
+workerd/RPC/SQLite, with explicitly synthetic Container capabilities locally;
+shared provisioning uses real local R2 and Linux bootstrap. Its report is
+`local/generated/work-store-main/git-host-restart-1e0ef8e.tap`. Node and Git-host
+Worker type checks, full Prettier, product-source, documentation and diff checks
+pass. This does not claim a new full 76/445-case, Native/UI or Rust workspace run.
+Shared productive startup/Linux/source code remain identical to `0b47be3`, whose
+Native/UI match integrated `5cf4616`.
+
+The frozen revision is the original packet's exclusive `restart-qualification`
+child. It pins the original hashes, existing resources/image, new clean source
+and Worker bundle. Fresh provider reads verified the selected authentication,
+exact account/resource IDs, private bindings and disabled R2 public access.
+Only the qualification Worker was deployed; no new resource identity, source
+pack upload or Linux image build/push occurred:
+
+| Observation | Verified result |
+| --- | --- |
+| Worker version | `2c713309-af9b-4c86-9232-61a5212e64e0`, replacing `0e787e82-1ad5-49a1-86be-aedb9d2fadc1`. |
+| Worker bundle SHA-256 | `dc9a522ff12d512e471d1ce0d4dede07bf6b75ba7284ce532f1a925174523bd0` |
+| Worker package/startup | **815.29 KiB raw / 125.95 KiB gzip**, **14 ms** provider startup. |
+| Namespace / Container application | Unchanged `7ce0a33510eb45379d20361d84b7f350`; same DO name and immutable image above. |
+| Before restart | Actual private RPC returned `running=false`, three original admissions and no restart admission. |
+| Independent restart | Exactly one RPC; ready in **2,127 ms**, `started=true`, exact image/registry/disclosure. |
+| Result retention | Read-after-result matches the immutable ready reply; all original attempt rows unchanged. |
+| Natural stop | Native instance metadata: start `2026-10-10T11:37:58.036Z`, stop `2026-10-10T11:40:15.463Z`. |
+| After stop | Actual private `status()` returns `running=false` with the same retained ready result and original rows. |
+
+The client disconnected after its read-after-result. Subsequent lifecycle reads
+used the provider API without calling or stopping the DO. The native running
+interval was **137,427 ms**; it is a fixture observation, not an idle-timeout or
+performance guarantee. The original stored outcomes remain `null`, and this
+separate success does **not** qualify the original third attempt.
+
+The legacy `/containers/dash/applications/<application>/instances` endpoint and
+installed Wrangler 4.148.0 instance listing omit native mappings even while the
+Container runs. An initial observer inferred stop from that absence; a private
+status read contradicted it. The observation and correction are retained, and
+absence was rejected as shutdown proof. The correct native endpoint is
+`GET /accounts/<account>/containers/applications/<application>/instances`:
+verify the exact DO ID/name, image, `status.state` and transition timestamps.
+Native stopped metadata and the later private `running=false` result independently
+agree. The latter read can wake the DO but does not start the Container.
+
+The exclusive child retains deployment/provider receipts, `restart-run.jsonl`,
+inspection files, native runtime/lifecycle observations, the legacy correction
+and a hash-linked `qualification-outcome.json`. The original frozen packet and
+journal are unchanged. Internet remains disabled, Git dispatches remain zero,
+and no Artifacts create/mint/Git, production activation, remote CI qualification
+or protected-allocation change is included.
+
+Next are enrolled remote Native/checkpoint authority and read-only reconciliation
+of the six protected development allocations before a productive Artifacts copy
+trial. The stash and protected repositories/journals remain intact. The
+[qualification protocol](work-git-host-qualification.md) records the fixed
+admission, inspection and lifecycle procedure.
+
+A subsequent independent read-only status RPC again returned `running=false`,
+the identical **2,127 ms** retained restart result and all three original
+admissions with their outcomes still `null`. The original packet hashes and
+hash-linked restart evidence also match. The additional check performs no
+startup or productive Git call; its receipts are
+`artifacts/work-git-host/restart-independent-verification.json` and
+`artifacts/work-git-host/restart-final-status.log`.
+
+## Protected Artifacts allocations: current read-only inspection
+
+Clean selected source `c8f26a1fcf375d4d8dd09533136f0f5700e81159` adds an operator
+inspector for the six existing allocations. It pins the exact bytes of the three
+original journals, checks plan/result/ledger identities, and projects only the
+original attempt/repository IDs, names, state and token observations. There is no
+ledger import, state settlement, productive adoption or new checkpoint identity.
+The [effect note](work-artifacts-effect-gate.md#read-only-protected-allocation-inspection)
+records the fixed GET routes, bounded pagination, secret omission and receipts.
+
+The actual remote run completed from `2026-10-10T14:25:53.410Z` to
+`2026-10-10T14:26:00.246Z`. Its **21 GET requests** comprise the OP settings read,
+initial/final complete namespace inventories and metadata/token/metadata for
+each protected allocation. The namespace contains seven repositories: the six
+protected allocations and the historical `mikaki` bootstrap copy. No bootstrap
+token or Git endpoint was accessed. All six selected repositories matched their
+original ID/name/remote, reported `status=ready`, and had stable metadata before
+and after the all-state token read. The final namespace inventory matched.
+
+| Original journal / role | Original repository ID | Current token inventory | Retained state |
+| --- | --- | --- | --- |
+| `probe-09Ae4P` / task | `b0vt3pbxrvm0bram` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-09Ae4P` / snapshot | `tmtcnyg5hmrc19o7` | One write token, revoked; retained token ID matches. | `outcome_unknown` |
+| `probe-jYdl3a` / task | `qv9hbgpm7dastf4y` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-jYdl3a` / snapshot | `2g2ai4k3xhztc2g9` | One write token, revoked; original journal had no token observation. | `outcome_unknown` |
+| `probe-zgwc8e` / task | `ou3gvryxvx1vlpzg` | One write token, revoked; retained token ID matches. | `closed` |
+| `probe-zgwc8e` / snapshot | `aop5yrrfwwyzb1um` | One write token, revoked; retained token ID matches. | `outcome_unknown` |
+
+There are **zero active tokens** among the six protected repositories. The newly
+observed `probe-jYdl3a` snapshot token ID is retained only in the new inspection;
+the original journal is unchanged. All six report `last_push_at=null`, but this
+is metadata, not independent Git content/readback evidence. Revoked-token
+metadata does not reconstruct a lost create reply or qualify fresh bearer
+refusal. All three unknown initial-effect outcomes remain unknown and charged;
+historical closure records are neither downgraded nor newly certified.
+
+The existing environment API token successfully reads current `mikaki-auth`
+settings; the separate saved Artifacts OAuth credential successfully reads
+Artifacts. A diagnostic Artifacts GET with the environment token returned 401,
+so it is not used for that control plane. No OAuth consent, grant or token
+configuration changed. Only binding names/types are retained from OP settings,
+with no values. Current OP has **no `WORK_` bindings**, including no
+`WORK_AUTHORITY_CHECKPOINT`; no Native/checkpoint authority RPC or remote D1
+operation was invoked. This establishes the missing connection, not enrollment
+or a broader production authority audit.
+
+Final focused qualification at this clean source passes **11/11** in
+**437.73 ms**. It covers fixed v4 GET target selection, both cursor and observed
+offset pagination, stable counts, duplicate/replacement/changing identities,
+secret omission and preservation of unknown journal states using synthetic
+HTTP/provider responses. Actual GET receipts separately establish the selected
+remote observations. The report is
+`local/generated/work-artifacts-inspection/inspection-c8f26a1.tap`. Node types,
+formatting, product-source, documentation and diff checks pass; the new focused
+test is registered in CI, without claiming a new remote CI or full product run.
+
+The complete receipt directory is
+`local/generated/work-artifacts-inspection/inspection-loAfNJ`. Its exclusive
+`result.json` has SHA-256
+`52e129ea44f0909400f3acc35b6f3209a2fc10d29e80de370a3cd9ebd7eeb298`;
+the synchronized `inspection.jsonl` has SHA-256
+`ad97795e772b67a751774da98f135226ae6ece31b4659f14864a56a2e66b9b27`.
+Earlier incomplete read-only attempts remain separately retained. A v4-path
+admission error was corrected, and the deployed REST API's additional ready
+status/offset pagination were explicitly qualified. No failed observation was
+treated as a complete inventory. The original three journal hashes are unchanged.
+
+Next prepare an isolated Native/OP and independent checkpoint connection with
+dedicated D1/R2 identities, a reviewed clean source/schema/binding inventory and
+actual owner enrollment/consent. Verify source registration, current owner/session
+authority and revocation refusal before productive Artifacts mint/Git. The old
+synthetic checkpoints and unknown admissions must not be imported as authority
+for this new environment. Existing OP production configuration, migrations,
+Git-host resources, repositories, tokens, journals and stash remain unchanged.
+
+## Isolated authority preparation and frozen-module qualification, 2026-10-11 JST
+
+The [isolated authority note](work-authority-qualification.md) fixes the proposed
+dedicated Native/OP, D1, Owner Vault R2, logout Queue/DLQ and independent SQLite
+checkpoint. The OP receives only `WorkCheckpointService`; operator bootstrap,
+floor/freeze and OP authority administration are separate unresolved transports.
+Resource IDs, HTTPS origin, owner, source reader and initial marker remain
+unresolved. Templates disable public Workers URLs, cron writers, composition,
+copy, initial effects, mint and Git. There is no production-resource fallback,
+provider bearer, Artifacts binding or imported authority.
+
+Clean selected source `4d0870acfe5d3a99ed1178c1f0c275f88fdd1890` generated
+`local/generated/work-authority-qualification/authority-nMECMX` using locked,
+offline production Rust, current OP service packaging and the checkpoint bundle.
+The complete **35-member** packet contains fourteen frozen migrations: the exact
+two-file Owner Vault baseline plus Work `0003`–`0014`. In-memory SQLite verifies
+foreign keys, **449 schema objects** and empty authority tables. The schema digest
+is `8b8b09afbc7454ac8da1dfd62db08e687e280e6b0cdab7588786ac1c16c4b1b1`.
+The manifest digest is
+`5b06b4588934813995f965bf5e76da9c44d7e08c98045519192f888bdd2a02d3`.
+Wasm is **7,336,255 bytes**, with a **2,518,660-byte gzip estimate**, and contains
+the selected commit. This is a local byte/build inventory, not signed provenance.
+The selected frozen OP Wasm passes its existing **8 MiB raw / 3 MiB gzip**
+budgets using the shared measurement function; its receipt is
+`local/generated/work-authority-qualification/wasm-budget-4d0870a.json`.
+The full current-HEAD budget command refused the older selected build's source
+identity after qualifier-only commits. No full current-HEAD UI/claim budget run
+is claimed from that refusal or the focused frozen-Wasm measurement.
+
+Packet/schema rejection tests pass **8/8** and are registered in CI. They cover
+baseline changes, silently enrolled migrations, missing files, unexpected files,
+bundle/schema substitution, source mismatch, production D1 substitution,
+symlinks and file bounds. Actual Wrangler 4.148.0 dry-run discovers the complete
+generated ESM/Wasm module tree and reports **8,037.70 KiB total / 2,599.67 KiB
+gzip**; it uploads nothing. The unbundled test-harness path initially omitted the
+Rust shim. The qualifier now uses explicit Miniflare module roots/list matching
+the frozen upload and manually follows the same-origin enrollment redirect.
+
+Clean qualifier `5573245f7aefd44769527260db11453dfc9a14e5` loads these frozen
+modules in actual local workerd with disposable D1/SQLite DO. It applies the
+packaged fourteen migrations, observes no owner/checkpoint authority, serves
+`/enroll`'s 302 and its actual login page, refuses unauthenticated `/work/session`
+with 401, refuses fixture/admin HTTP routes and checkpoint default HTTP with
+404, observes 409 for the uninitialized checkpoint service, and refuses bootstrap
+through that OP service with 400. No account or checkpoint is enrolled.
+The exclusive receipt is
+`local/generated/work-authority-qualification/runtime-4d0870a.json`, SHA-256
+`13fce28e6826c44dee5725534e0d6833873b39358fb56e42c8207de0bb961899`.
+
+Next qualify bounded operator allocation/materialization and one-time authority
+bootstrap, plus framed source registration, before opening actual owner ingress.
+Separate deployment/restore ownership, fresh signing-key custody, real Passkey/
+PRF completion, current source/policy mapping, owner consent and revocation remain
+remote gates. Primary D1 and independent enrollment have no distributed atomic
+commit; bootstrap keeps all writers quiescent until exact matching state is
+observed. Unknown replies never authorize another epoch, reset or replacement.
+The original three protected journal digests still match their retained pins;
+unknown admissions remain unknown and charged. No remote allocation, migration,
+deployment, provider/Git effect, production activation or new remote CI result
+is claimed by this increment.
+
+Node types, full formatting, product-source and documentation checks pass. The
+focused packet cases and the existing three budget-checker cases pass; these
+are local results rather than a new remote CI or full product regression run.
+
+An independent preparation from the same clean `4d0870a` produced
+`local/generated/work-authority-qualification/authority-Of8NYc`, also with 35
+members and the identical schema. Comparison with the selected `authority-nMECMX`
+finds only `build-1.log` different; all packaged modules, migrations, templates
+and other inputs match. Its manifest SHA-256 is
+`6aca4caae16dbf73b197cb35ea16e2a3bc9db1e831664f283fbf0cbfdb5006f7`.
+Clean qualifier `ecb3f9c` successfully repeats the frozen-module runtime check,
+with no account/checkpoint enrollment or remote operation. The additional
+receipt is `artifacts/work-authority/independent-qualification-ecb3f9c.json`.
+
+## Bounded initial authority enrollment, 2026-10-11 JST
+
+The [isolated authority sequence](work-authority-qualification.md#bounded-initial-operator-protocol)
+now has a narrow `WorkCheckpointBootstrap` capability and a bounded operator
+library. The new capability accepts one closed reviewed-packet/resource plan,
+checks the deployment's packet pin and exact object, and retains that plan with
+the initial marker in one synchronized SQLite transaction. Its two RPC methods
+return JSON data strings; default/named HTTP and framing, effects, floor/freeze
+or reset calls are unavailable through this capability. Legacy state cannot be
+adopted as a new packet enrollment. OP retains only `WorkCheckpointService`.
+
+The primary operator derives schema and all seed rows from the frozen fourteen
+migrations. It checks the complete ordered migration ledger, schema, foreign
+keys and every application table; marker insertion repeats schema/ledger/row
+guards in one D1 batch. The first local attempt exposed the pinned runtime's
+expression-depth limit; balanced predicates now permit the complete guard to
+execute. The private operator configuration fixes account, dedicated D1 and
+named checkpoint binding, with Workers public/preview URLs disabled.
+
+An exclusive child journal is synchronized before each independent write.
+Unknown replies consume that run; read-only inspection never resumes either
+write, substitutes an epoch or resets authority. Exact initial agreement can
+be observed after a lost primary reply, while pending, frozen, raised-floor,
+legacy or changed-primary state cannot complete. Completion enables no writers.
+The remote executor still needs a shared account/authority reservation across
+child packets and linked checkouts, retained provider/module/config/version
+observations and independently reviewed deployment/recovery ownership. Plan
+IDs and review digests alone do not establish those facts or quiescence.
+
+Actual local workerd/D1/SQLite DO tests pass **10/10**, covering both lost replies,
+restart, exact initial agreement, one-time concurrent admission, private method
+refusal, legacy state, primary changes between preflight and insertion, and
+pending/floor/freeze refusal. The existing Rust OP/checkpoint regression passes
+**16/16**, including D1 restore refusal and framed revocations. Frozen packet
+tests remain **8/8**. The new suite is registered in CI; these are local results,
+not a new remote CI or actual owner-enrollment result.
+
+The old reviewed `authority-nMECMX` packet is preserved. Its checkpoint bundle
+does not contain the new entrypoint/pin, so a new clean packet and a provider-
+verified child deployment must be reviewed before remote enrollment. The
+bootstrap increment performs no remote migration, checkpoint enrollment,
+owner ingress opening or Artifacts/Git effect. Next connect the bounded remote
+operator to verified retained resource identities, then qualify framed source
+registration and actual Passkey/PRF owner enrollment under those gates.
+
+## Partial closed authority resource allocation, 2026-10-11 JST
+
+The once-only allocator pins the original `authority-nMECMX` manifest and shares
+one exclusive account/lane reservation across linked checkouts. Private numbered
+records and their parent directory are synchronized before each provider create.
+Complete inventories are read twice; existing names refuse allocation rather
+than being adopted. Twelve local rejection/acknowledgment cases and the eight
+frozen-packet cases pass. The allocator is registered in CI; no remote CI result
+is claimed.
+
+Clean source `9f106f66d26d6f7ab0cf0ee0092df1d664520c18` sent exactly three
+create requests in `local/generated/work-authority-allocation/allocate-kHIGYa`.
+The dedicated D1 `mikaki-work-authority-qualification`, ID
+`b2d340cd-bcc2-4a96-94a2-83edb93ff627`, and R2
+`mikaki-work-vault-qualification` were acknowledged and their identities read
+back exactly. The DLQ create returned HTTP 200 and API success, but the original
+parser required optional attachment metadata before retaining its identity.
+That parse failure consumed the DLQ slot as `create_outcome_unknown` and stopped
+the sequence. The main logout Queue has no create intent and remains unattempted.
+This was a tool error; it did not authorize a retry or replacement allocation.
+
+The parser now retains the minimal acknowledged Queue name/ID/time first and
+checks attachment counts in a separate read. Additional tests cover sparse
+create responses and failure after preserving the acknowledged ID. The old
+partial run and reservation remain unchanged. A later complete stable read
+observes the DLQ name at ID `4f95485d3880458b9a14a8168b836498`; that list fact is
+not adopted as its lost original acknowledgment. The audit API query for the
+original request interval succeeded but yielded no matching evidence. The DLQ
+create outcome remains unresolved and no further create was issued.
+
+The original 236 records are inventoried in the private
+`local/generated/work-authority-allocation/partial-allocation.json`, SHA-256
+`496e39a4d6abf9970890ae1a63ee00c0fa4aa3b1c040400bb6a2f0bbc702ea4f`.
+The retained reservation SHA-256 is
+`5da004865d86681838b5935c3fb26b07466bbfa3f3c65cd6fbe2c777a9ca673a`.
+Read report `inventory-sHCJeq/0043.json` SHA-256 is
+`b5faaa57f321e680b8c746b911dddb391916dd6ab392e93b2f31464d379df88a`;
+the audit receipt SHA-256 is
+`a0eaf2368ab157cb36e4b03c4495a3d662a1152db3d159ab544d4af27ec910ff`.
+All three protected Artifacts journal hashes still match their original pins.
+No Artifacts/Git or production mutation was issued. Neither authority Worker
+exists; no remote migration, checkpoint bootstrap or actual owner enrollment
+has occurred.
+
+Resolve the same DLQ admission with positive provider/operator evidence before
+completing the remaining allocation or binding it into a child deployment.
+Do not remove the reservation or reissue any consumed create. HTTPS origin and
+OP/checkpoint deployment/recovery ownership remain unresolved; real Passkey/PRF
+owner completion still requires the intended person. The new bootstrap library
+is local qualification and must use a newly reviewed packet, not replacement
+bytes inside the preserved parent packet.
+
+While those remote gates remain unresolved, clean source
+`be76c028b2d9862cae02f89bcb53994155e6ecc2` prepares a new frozen packet at
+`local/generated/work-authority-bootstrap-qualification/authority-zFCHDp`.
+It contains the new private bootstrap entrypoint, 35 members and the identical
+449-object schema; the original packet and partial allocation are preserved.
+Its manifest SHA-256 is
+`101e4405e6eb3dfd40e50e46a1bdeaf6d8b886ec294f735b913864a943d53849`.
+The frozen product/checkpoint local workerd qualifier passes all existing
+empty-authority, fourteen-migration and public/service refusal checks, with
+zero remote operations and no owner enrollment. Its receipt
+`local/generated/work-authority-bootstrap-qualification/runtime-be76c02.json`
+has SHA-256
+`e16e2f1d6e91af1a78b01cd319445ed1b6decb7b7f116c58140afbad2c63f52c`.
+The saved bootstrap source independently repeats **10/10** local D1/SQLite DO
+cases without RPC disposal warnings. Node types, full formatting, product
+sources and documentation checks pass. This is an offline preparation and
+local runtime check, not a child deployment, remote enrollment, full current-
+HEAD product budget/regression result or remote CI result.
+
+## Offline authority deployment child gate, 2026-10-11 JST
+
+The [child packet materializer](work-authority-qualification.md#offline-child-deployment-packet)
+now derives closed Worker and local bootstrap-operator configurations from a
+pinned parent, complete once-only allocation evidence and an externally pinned
+origin/ownership/signing-custody review. It copies the frozen product, checkpoint
+and migration members unchanged; parent and child manifests are retained
+separately. Verification needs only the child and its externally reviewed digest.
+Even a rewritten child inventory cannot substitute frozen parent bytes or add
+the bootstrap capability to the OP. Both public routes and previews remain
+closed, crons stay empty and productive execution flags stay disabled.
+
+The journal reader follows the common-repository reservation, verifies consecutive
+record membership and a stable read, and retains acknowledgments separately from
+exact readbacks. Unknown or absent acknowledgments consume their original slot;
+later reads, reports and replacement create intents cannot grant completion.
+The current CLI cannot adopt the observed DLQ or reinterpret the stopped original
+run. Positive recovery evidence and a separately reviewed append-only reconciler
+remain necessary before completing that allocation.
+
+Local inspection reads the original **236** records and verifies the fresh
+`authority-zFCHDp` parent. It reports D1/R2 acknowledged and verified, DLQ unknown,
+main Queue unattempted, and **no child materialized / zero remote calls**. The
+private receipt is
+`local/generated/work-authority-deployment/inspection-20261011/gate.json`;
+its allocation evidence digest is
+`e23cdb9bc1be812f11d7c5200ba6f9f56ef6feebadd49a002ed369487fb8f0dd`.
+This digest inventories the original reservation and numbered record bytes in
+the new evidence format; it does not replace the retained partial-allocation seal
+or provider acknowledgment. No Worker deployment, remote migration, bootstrap,
+owner enrollment, ingress or Artifacts/Git effect occurred.
+
+The new **6/6** local materialization/rejection cases pass, together with **20/20**
+existing allocation/frozen-packet cases and **10/10** actual local D1/SQLite DO
+bootstrap cases. Node types, formatting, product-source and documentation checks
+pass. The new suite is registered in CI; no remote CI, deployment/binding
+qualification or full current-HEAD product budget/regression result is claimed.
+Next resolve the same DLQ admission with positive evidence, then qualify the
+remaining allocation and remote version/config observations under the retained
+reservation. Shared bootstrap reservation and the bounded remote executor remain
+separate outstanding gates.
