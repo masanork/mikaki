@@ -1,6 +1,6 @@
 # Managed-work domain profile v1
 
-**Status:** Portable Rust core integrated with main baseline `8d48ba93fef64f4802627939ec63235eeef6aa68`, 2026-10-08 JST. D1/Worker/UI integration remains pending; no endpoint, issuer or external effect is activated.
+**Status:** Portable Rust core plus [fresh-schema D1/custody foundation](work-store-main-integration.md) locally qualified, 2026-10-08 JST, including main through `1f0dd3c`. Independent checkpoint/OP framing, owner/source transport and initial-effect maintenance are locally qualified. Product screens, productive upload/readback and remote activation remain pending; no endpoint, issuer or external effect is activated.
 
 This narrows [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) and the [authorization contract](workload-authorization.md). The [integration plan](work-delegation-implementation.md) distinguishes current qualification from preserved pre-main evidence.
 
@@ -9,8 +9,8 @@ This narrows [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) an
 | Concern | Authority |
 | --- | --- |
 | Request, grant, run, candidate and exact approval | Portable [mikaki-auth::work](../crates/auth/src/work/mod.rs), under [ADR 0009](adr/0009-rust-oidc-and-worker-stack.md). |
-| Durable transitions, current owner/source state and audit | Rust OP adapter, pending integration of retained WorkStore with main's fresh schema. |
-| Checkpoint and external-effect admission | Independent durable authority plus fixed-operation adapters, pending main integration. Preserve [ADR 0015](adr/0015-service-data-ownership.md); downstream services receive bounded capabilities. |
+| Durable transitions, current owner/source state and audit | [Rust WorkStore](../crates/worker/src/work_store/mod.rs), locally qualified on main's fresh schema with an opt-in additive profile. |
+| Checkpoint and external-effect admission | Locally qualified [independent checkpoint](work-authority-checkpoint.md) and [initial-effect adapters](work-artifacts-effect-gate.md); remote provisioning and productive release remain gated. Preserve [ADR 0015](adr/0015-service-data-ownership.md); downstream services receive bounded capabilities. |
 | Frontend | [Work-request UI contract](work-request-ui.md); display durable confirmed state and bind each confirmation to the reviewed operation. |
 
 `from_authority`, `from_verified_session` and `from_verified_request` are trusted adapter inputs, not authentication mechanisms. Production adapters must obtain current verified principals and authoritative facts; a submitted issuer/client/run/key claim is not trusted by construction.

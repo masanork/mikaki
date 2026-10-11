@@ -617,7 +617,7 @@ pub(super) async fn finish(
     } else {
         ""
     };
-    db.batch(vec![
+    crate::op_authority::batch(&context.env, vec![
         db.prepare(format!("UPDATE {login_table} SET consumed=1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>?3{live_request}"))
             .bind(&[JsValue::from_str(&input.tx),JsValue::from_str(&browser_hash),JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")

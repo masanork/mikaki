@@ -1,0 +1,58 @@
+name: verify-work
+on:
+  workflow_call:
+    inputs:
+      suite:
+        required: true
+        type: string
+    outputs:
+      artifact_id:
+        value: ${{ jobs.qualification.outputs.artifact_id }}
+permissions:
+  contents: read
+jobs:
+  qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+      WORK_SUITE: ${{ inputs.suite }}
+    outputs:
+      artifact_id: ${{ steps.measurements.outputs.artifact-id }}
+    steps:
+      - name: Require a fixed local qualification suite
+        run: |
+          case "$WORK_SUITE" in authority|effects) ;; *) exit 2 ;; esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-rust-cache
+      - name: Cache the pinned qualification Wasm tool
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/work-bindgen
+          key: ${{ runner.os }}-${{ runner.arch }}-work-bindgen-0.2.129-${{ hashFiles('rust-toolchain.toml') }}
+      - name: Install the locked qualification Wasm tool
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked --root "$RUNNER_TEMP/work-bindgen"
+          echo "MIKAKI_WORK_BINDGEN=$RUNNER_TEMP/work-bindgen/bin/wasm-bindgen" >> "$GITHUB_ENV"
+      - run: npm ci
+      - name: Qualify current Work contracts on the local runtime
+        run: |
+          npm run build:policy
+          mkdir -p artifacts
+          npm run "test:work-$WORK_SUITE" | tee "artifacts/work-$WORK_SUITE.tap"
+      - id: measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: authentication-work-${{ inputs.suite }}-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

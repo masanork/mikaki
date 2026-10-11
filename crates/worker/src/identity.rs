@@ -301,7 +301,7 @@ pub async fn approve_get(req: Request, ctx: RouteContext<()>) -> worker::Result<
         return error(404, "not_found");
     }
     let row = db
-        .prepare(&format!(
+        .prepare(format!(
             "SELECT {COLUMNS} FROM identity_transaction WHERE tx_id=?1 AND session_hash=?2"
         ))
         .bind(&[js(&tx), js(&owner.secret_hash)])?
@@ -422,7 +422,7 @@ pub async fn poll(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Res
         return error(400, "invalid_request");
     }
     let db = ctx.env.d1("DB")?;
-    let row=db.prepare(&format!("SELECT {COLUMNS} FROM identity_transaction WHERE tx_id=?1 AND poll_hash=?2 AND expires_at>unixepoch()"))
+    let row=db.prepare(format!("SELECT {COLUMNS} FROM identity_transaction WHERE tx_id=?1 AND poll_hash=?2 AND expires_at>unixepoch()"))
         .bind(&[js(&body.transaction_id),js(&hash(&body.poll_secret))])?.first::<Row>(None).await?;
     let Some(row) = row else {
         return error(404, "transaction_unavailable");
@@ -741,7 +741,7 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         None
     };
     let db = ctx.env.d1("DB")?;
-    let row=db.prepare(&format!("SELECT {COLUMNS} FROM identity_transaction WHERE access_hash=?1 AND state='token' AND token_expires_at>unixepoch()"))
+    let row=db.prepare(format!("SELECT {COLUMNS} FROM identity_transaction WHERE access_hash=?1 AND state='token' AND token_expires_at>unixepoch()"))
         .bind(&[js(&hash(&access))])?.first::<Row>(None).await?;
     let row = match row {
         Some(row) => Some(row),

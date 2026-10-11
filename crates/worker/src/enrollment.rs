@@ -309,7 +309,7 @@ pub async fn finish(
     let Some(row) = row else { return reject(400) };
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let registration_rp_id = rp_id(&issuer)?;
-    let context = mikaki_webauthn::Context {
+    let verification_context = mikaki_webauthn::Context {
         challenge: row.challenge,
         origin: issuer,
         rp_id: registration_rp_id,
@@ -327,7 +327,7 @@ pub async fn finish(
         expires_at: row.expires_at as u64,
         failures: row.failures,
         consumed: false,
-        context,
+        context: verification_context,
     }
     .register(&browser_hash, now, 5, input.response);
     let proof = match proof {
@@ -399,7 +399,7 @@ pub async fn finish(
                 .bind(&[JsValue::from_str(&guard("bootstrap"))])?,
         );
     }
-    if let Err(error) = db.batch(statements).await {
+    if let Err(error) = crate::op_authority::batch(&context.env, statements).await {
         // A concurrent finish can consume the registration after our initial read.
         // Only classify the failed batch as a replay when the committed state confirms it.
         let completed = db

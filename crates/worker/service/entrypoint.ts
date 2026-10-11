@@ -2,6 +2,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { z } from 'zod';
 import op from '../build/worker/shim.mjs';
+import { authorityFacades } from './authority-admin-facade';
 import { agentQueries } from './agent-catalog';
 import activeRecord from '../../userinfo-claim-worker/src/active_name_record_release.sql';
 import auditRecord from '../../userinfo-claim-worker/src/audit_name_record_release.sql';
@@ -167,4 +168,6 @@ export class ClaimStore extends WorkerEntrypoint<Env> {
     }
   }
 }
-export default op;
+const { Admin, Effect, Public } = authorityFacades(op);
+export { Admin as OpAuthorityAdmin, Effect as WorkEffectStore };
+export default Public;

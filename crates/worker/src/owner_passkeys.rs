@@ -123,7 +123,7 @@ pub async fn finish(
     };
     // A retry must still verify the same registration response before acknowledgement.
     let issuer = enrollment::issuer(&context)?;
-    let context = mikaki_webauthn::Context {
+    let verification_context = mikaki_webauthn::Context {
         challenge: row.challenge,
         origin: issuer.clone(),
         rp_id: enrollment::rp_id(&issuer)?,
@@ -141,7 +141,7 @@ pub async fn finish(
         expires_at: row.expires_at,
         failures: row.failures,
         consumed: false,
-        context,
+        context: verification_context,
     }
     .register(&owner.secret_hash, now, 5, input.response);
     let proof = match proof {
@@ -152,6 +152,7 @@ pub async fn finish(
             return error(401, "invalid_registration");
         }
     };
+    crate::op_authority::require_current(&context.env).await?;
     if row.consumed != 0 {
         return if row.credential_id.as_deref() == Some(proof.id())
             && row.request_hash.as_deref() == Some(&hash)
@@ -174,7 +175,10 @@ pub async fn finish(
         .bind(&[JsValue::from_str(proof.id()),JsValue::from_str(proof.public_key()),JsValue::from_str(&row.user_handle),JsValue::from_f64(proof.counter() as f64),JsValue::from_f64(f64::from(proof.backup_eligible())),JsValue::from_f64(f64::from(proof.backup_state()))])?,
       db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1").bind(&[JsValue::from_str(&guard)])?,
     ];
-    if db.batch(statements).await.is_err() {
+    if crate::op_authority::batch(&context.env, statements)
+        .await
+        .is_err()
+    {
         return error(409, "registration_conflict");
     }
     result(proof.id())
