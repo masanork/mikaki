@@ -27,7 +27,7 @@ refuses affected work and source plaintext release.
 The [private Worker](../crates/work-checkpoint-worker/worker.ts) has a fixed
 authority scope and named service/operator entrypoints. Its default HTTP
 handler returns 404. The OP receives only the service capability. Bootstrap,
-release-floor raising and irreversible freeze belong to a separate operator;
+release-floor raising and irreversible freeze belong to a private operator capability;
 there is no reset, unfreeze or automatic rebase API.
 
 The [OP adapter](../crates/worker/src/op_authority.rs) frames current-main
@@ -54,7 +54,10 @@ This is managed-work protection for the covered mutation/release paths, not an
 IdP-wide rollback guarantee. Other OIDC issuance, Agent/Vault/Wallet release,
 control-plane mutation, privileged SQL and partial schema restoration still need
 their own coverage. Protecting the checkpoint's own restore/deployment path,
-independent operator identity, release provenance and schema/key/payload
-inventories remains an activation gate. A checkpoint observation is not a
+release provenance and schema/key/payload inventories remains an activation gate.
+Separate human and control-plane ownership is an [optional administration policy](adr/0017-work-administration-policy.md).
+Single-operator mode retains storage/capability separation and primary rollback
+detection; privileged changes to both stores remain outside its guarantee.
+A checkpoint observation is not a
 reusable permission to mint credentials or mutate Git; M4/M6 admission remains
 separate. See the [integration plan](work-delegation-implementation.md).

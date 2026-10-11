@@ -14,8 +14,11 @@ import {
   quiescentPrimaryStore,
   type PrimarySnapshot,
   type BootstrapRow,
+  inspectBootstrapForScope,
+  type BootstrapIO,
 } from './work-authority-bootstrap.ts';
 import type { SchemaRow } from './production-baseline.ts';
+import { workAdoptionFences } from './production-work-fence.ts';
 
 export const PRODUCTION_WORK_TARGET = {
   account: '4b749427a0c80c547e726a42aff4b6fc',
@@ -41,17 +44,44 @@ export async function captureProductionWorkSnapshot(
   DB: D1Database,
   owner: SqlMigration[],
   work: SqlMigration[],
+  options: { fenced?: boolean } = {},
+): Promise<PrimarySnapshot> {
+  return captureProductionSnapshot(DB, owner, work, options);
+}
+
+/** Size/shape preflight before closing production writers, with no Work schema required. */
+export async function captureProductionOwnerSnapshot(DB: D1Database, owner: SqlMigration[]) {
+  return captureProductionSnapshot(DB, owner);
+}
+async function captureProductionSnapshot(
+  DB: D1Database,
+  owner: SqlMigration[],
+  work?: SqlMigration[],
+  options: { fenced?: boolean } = {},
 ): Promise<PrimarySnapshot> {
   const schema = (await DB.prepare(BOOTSTRAP_SCHEMA_QUERY).all<SchemaRow>()).results;
   const ledger = (
     await DB.prepare('SELECT name FROM d1_migrations ORDER BY id').all<{ name: string }>()
   ).results;
-  const workRows = (
-    await DB.prepare(
-      'SELECT id,name,sha256 FROM work_schema_migrations ORDER BY id',
-    ).all<WorkLedgerRow>()
-  ).results;
-  assertProductionOwnerSchema(owner, ledger, schema, { migrations: work, ledger: workRows });
+  const workRows = work
+    ? (
+        await DB.prepare(
+          'SELECT id,name,sha256 FROM work_schema_migrations ORDER BY id',
+        ).all<WorkLedgerRow>()
+      ).results
+    : undefined;
+  assertProductionOwnerSchema(
+    owner,
+    ledger,
+    schema,
+    work
+      ? {
+          migrations: work,
+          ledger: workRows!,
+          adoptionFence: options.fenced,
+        }
+      : undefined,
+  );
   assert.equal(
     (await DB.prepare('PRAGMA foreign_key_check').all()).results.length,
     0,
@@ -140,12 +170,13 @@ export function validateProductionBootstrapPlan(
   );
 }
 
-/** No remote executor: verified quiescence and independent operator ownership remain required. */
+/** Operator policy is separate; populated enrollment still requires verified quiescence. */
 export function productionBootstrapStore(
   DB: D1Database,
   snapshot: PrimarySnapshot,
   owner: SqlMigration[],
   work: SqlMigration[],
+  options: { fenced?: boolean } = {},
 ) {
   const expected = structuredClone(snapshot);
   const ledger = expected.tables.find(({ name }) => name === 'work_schema_migrations')?.rows;
@@ -154,7 +185,7 @@ export function productionBootstrapStore(
     owner,
     expected.migrations.map((name) => ({ name })),
     expected.schema,
-    { migrations: work, ledger: ledger as WorkLedgerRow[] },
+    { migrations: work, ledger: ledger as WorkLedgerRow[], adoptionFence: options.fenced },
   );
   assert.deepEqual(
     expected.tables.map(({ name }) => name),
@@ -177,4 +208,41 @@ export function productionBootstrapStore(
   const validate = (value: unknown): asserts value is BootstrapPlan =>
     validateProductionBootstrapPlan(value, expected);
   return quiescentPrimaryStore(DB, expected, validate);
+}
+
+/** Open the same fenced primary only after an acknowledged matching initial enrollment. */
+export async function releaseProductionWorkFence(
+  DB: D1Database,
+  snapshot: PrimarySnapshot,
+  plan: BootstrapPlan,
+  owner: SqlMigration[],
+  work: SqlMigration[],
+  checkpoint: BootstrapIO['checkpoint'],
+) {
+  const store = productionBootstrapStore(DB, snapshot, owner, work, { fenced: true });
+  const validate = (value: unknown): asserts value is BootstrapPlan =>
+    validateProductionBootstrapPlan(value, snapshot);
+  const matched = await inspectBootstrapForScope(plan, { checkpoint, primary: store }, validate);
+  assert.ok(matched.matching_initial, 'production_work_fence_checkpoint_not_matched');
+  const observed = await store.inspect(plan);
+  assert.ok(observed.initial_only && observed.marker, 'production_work_fence_not_enrolled');
+  assert.deepEqual(observed.marker, plan.initial, 'production_work_fence_marker_changed');
+  const schemaQuery = BOOTSTRAP_SCHEMA_QUERY.replace(/ ORDER BY type,name$/, '');
+  const expected =
+    "SELECT json_extract(value,'$.type'),json_extract(value,'$.name'),json_extract(value,'$.tbl_name'),json_extract(value,'$.sql') FROM json_each(?1)";
+  // The initial marker is rechecked inside the same transaction as all trigger drops.
+  const guard = `INSERT INTO atomic_guard(operation_id,passed) VALUES('production-work-fence-open-v1',CASE WHEN
+    NOT EXISTS(${schemaQuery} EXCEPT ${expected}) AND NOT EXISTS(${expected} EXCEPT ${schemaQuery})
+    AND EXISTS(SELECT 1 FROM work_authority_checkpoint WHERE authority=?2 AND epoch=?3 AND sequence=0 AND tip=?4)
+    THEN 1 ELSE 0 END)`;
+  await DB.batch([
+    DB.prepare(guard).bind(
+      JSON.stringify(snapshot.schema),
+      plan.initial.authority,
+      plan.initial.epoch,
+      plan.initial.tip,
+    ),
+    ...workAdoptionFences(snapshot.schema).map(({ drop }) => DB.prepare(drop)),
+    DB.prepare("DELETE FROM atomic_guard WHERE operation_id='production-work-fence-open-v1'"),
+  ]);
 }

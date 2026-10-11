@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           inventories=(artifacts/promotion-*/upload-manifest.json)
           [[ ${#inventories[@]} == 1 && -f "${inventories[0]}" ]]
-          for subject in artifacts/release-manifest.json artifacts/login-assets.json artifacts/mikaki-worker.tar.gz artifacts/mikaki-userinfo-claim-worker.tar.gz "${inventories[0]}"; do
+          for subject in artifacts/release-manifest.json artifacts/login-assets.json artifacts/mikaki-worker.tar.gz artifacts/mikaki-userinfo-claim-worker.tar.gz artifacts/mikaki-work-checkpoint.tar.gz "${inventories[0]}"; do
             gh attestation verify "$subject" -R "$GITHUB_REPOSITORY" \
               --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml \
               --source-digest "$GITHUB_SHA" --source-ref refs/heads/main --deny-self-hosted-runners

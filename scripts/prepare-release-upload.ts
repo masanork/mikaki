@@ -27,6 +27,12 @@ const workers = [
     entry: 'shim',
     config: 'crates/userinfo-claim-worker/wrangler.production.jsonc',
   },
+  {
+    archive: 'mikaki-work-checkpoint.tar.gz',
+    directory: 'checkpoint',
+    entry: 'checkpoint',
+    config: 'crates/work-checkpoint-worker/wrangler.production.jsonc',
+  },
 ] as const;
 
 function digest(bytes: Uint8Array) {
@@ -117,7 +123,10 @@ export async function prepareReleaseUpload(
         bundleFiles.push({ name, digest: digest(await boundedFile(join(output, name))) });
       }
       assert.ok(bundleFiles.some((file) => file.name === `${worker.entry}.js`));
-      assert.equal(bundleFiles.filter((file) => file.name.endsWith('.wasm')).length, 1);
+      assert.equal(
+        bundleFiles.filter((file) => file.name.endsWith('.wasm')).length,
+        worker.directory === 'checkpoint' ? 0 : 1,
+      );
       prepared.push({
         worker: worker.directory,
         archive: worker.archive,
@@ -173,12 +182,12 @@ export async function verifyPreparedUpload(
     assert.deepEqual(record.archive_digest, archive.digest);
     assert.equal(record.config_sha256, digest(await boundedFile(join(root, worker.config))).sha256);
     const input = join(destination, worker.directory, 'input');
-    assert.deepEqual((await readdir(input)).sort(), [
-      'index.js',
-      'index_bg.wasm',
-      'package.json',
-      'worker',
-    ]);
+    assert.deepEqual(
+      (await readdir(input)).sort(),
+      worker.directory === 'checkpoint'
+        ? ['worker']
+        : ['index.js', 'index_bg.wasm', 'package.json', 'worker'],
+    );
     assert.deepEqual(
       (await readdir(join(input, 'worker'))).sort(),
       archive.members
@@ -195,7 +204,10 @@ export async function verifyPreparedUpload(
       record.bundle_files.map((file) => file.name).sort(),
     );
     assert.ok(record.bundle_files.some((file) => file.name === `${worker.entry}.js`));
-    assert.equal(record.bundle_files.filter((file) => file.name.endsWith('.wasm')).length, 1);
+    assert.equal(
+      record.bundle_files.filter((file) => file.name.endsWith('.wasm')).length,
+      worker.directory === 'checkpoint' ? 0 : 1,
+    );
     for (const file of record.bundle_files) {
       assert.match(file.name, /^[a-zA-Z0-9_.-]+$/);
       assert.deepEqual(digest(await boundedFile(join(output, file.name))), file.digest);

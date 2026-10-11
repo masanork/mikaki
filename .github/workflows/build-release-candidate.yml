@@ -41,6 +41,8 @@ jobs:
           npm run build:policy
           worker-build --release crates/worker
           npm run build:op-authority
+          mkdir -p artifacts/checkpoint/worker
+          npx esbuild crates/work-checkpoint-worker/worker.ts --bundle --format=esm --platform=neutral --external:cloudflare:workers --outfile=artifacts/checkpoint/worker/checkpoint.mjs
           worker-build --release crates/userinfo-claim-worker
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
@@ -81,6 +83,7 @@ jobs:
         run: |
           tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
+          tar -C artifacts/checkpoint -czf artifacts/mikaki-work-checkpoint.tar.gz worker/checkpoint.mjs
           tar -C . -czf artifacts/mikaki-docs-rp.tar.gz artifacts/docs-promotion apps/mikaki-docs/dist
       - name: Bind release bytes and migrations to the clean source revision
         run: |

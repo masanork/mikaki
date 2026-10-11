@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { BASELINE_SCHEMA_QUERY, canonicalSchema, type SchemaRow } from './production-baseline.ts';
+import { workAdoptionFences } from './production-work-fence.ts';
 import {
   assertWorkMigrationFiles,
   assertWorkLedger,
@@ -30,7 +31,7 @@ export function assertProductionOwnerSchema(
   migrations: { name: string; sql: string }[],
   ledger: { name: string }[],
   schema: SchemaRow[],
-  work?: { migrations: SqlMigration[]; ledger: WorkLedgerRow[] },
+  work?: { migrations: SqlMigration[]; ledger: WorkLedgerRow[]; adoptionFence?: boolean },
 ) {
   const names = OWNER_MIGRATIONS.map(({ name }) => name);
   assert.deepEqual(
@@ -59,6 +60,11 @@ export function assertProductionOwnerSchema(
       assertWorkLedger(work.ledger);
       db.exec(WORK_LEDGER_SQL);
       for (const migration of work.migrations) db.exec(migration.sql);
+      if (work.adoptionFence)
+        for (const fence of workAdoptionFences(
+          db.prepare(BASELINE_SCHEMA_QUERY).all() as SchemaRow[],
+        ))
+          db.exec(fence.create);
     }
     assert.deepEqual(
       db.prepare('PRAGMA foreign_key_check').all(),

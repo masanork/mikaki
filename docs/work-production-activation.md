@@ -54,17 +54,23 @@ replacement resource allocation or Work effect admission.
 
 ## Remaining activation sequence
 
-1. Resolve the independent checkpoint deployment/restore operator required by
-   [the checkpoint contract](work-authority-checkpoint.md). Record actual
-   resource, module, version and custody inventory; review digests alone do not
-   establish independent ownership. The current token's roles are not readable
-   from the available inspection and are not claimed to be independent.
-2. Qualify a bounded migration executor and the exact staged production
-   configuration. Apply the fixed additive chain with its own ledger, preserving
-   existing Owner data. Verify the complete schema before enrolling anything.
-3. Qualify and verify quiescence for public and named OP entrypoints, scheduled
-   mail/GC writers and Queue delivery; an observed lack of requests is not a
-   quiescence mechanism. Capture the actual populated snapshot under that fence.
+1. The [administration policy](adr/0017-work-administration-policy.md) now permits
+   a single operator. Record actual resource, module, version and custody
+   inventory without claiming independent control-plane ownership. Required
+   separation remains a configurable deployment policy; checkpoint validation
+   and private capability boundaries remain mandatory.
+2. Qualify the [bounded migration executor](../scripts/production-work-migration.ts)
+   and staged production configuration. `WORK_SCHEMA_ADOPTION=true` accepts only
+   the exact Owner schema, complete Work schema, or complete temporarily fenced
+   Work schema, with all owner/effect capabilities disabled. The final selection
+   uses `WORK_SCHEMA_ENABLED=true` and the service-only checkpoint binding.
+3. The additive D1 batch adds the fixed Work chain, separate ledger and exact
+   temporary triggers that reject INSERT/UPDATE/DELETE on application tables.
+   Already running public/named/cron/Queue SQL cannot bypass that fence.
+   `atomic_guard` and the initial checkpoint marker remain available solely for
+   the operator's guarded transactions. Provider metadata and privileged DDL or
+   direct operator SQL remain outside this fence's guarantee. Capture the actual
+   populated snapshot under that fence, after the pre-migration size preflight.
 4. Run the private, recorded one-shot independent/primary enrollment using the
    fixed snapshot and provider identities. Keep writers closed until matching
    initial markers are observed. Lost replies require inspection of the same
@@ -78,6 +84,19 @@ replacement resource allocation or Work effect admission.
    capabilities, credential custody and sealed host qualification. Actual owner
    consent remains a product action. Synthetic conformance facts do not replace
    remote source or productive Artifacts qualification.
+
+The [fixed-target operator](../scripts/adopt-work-production.ts) requires the
+exact clean successful main source and verifies the downloaded checkpoint
+archive's GitHub workflow/source attestation. The checkpoint bundle travels in
+the same signed release as OP/Claim. Deployment checks retain its namespace;
+an enrolled OP additionally pins that namespace in its reviewed configuration.
+The operator creates one fixed private reservation and fsynced journal outside
+individual checkouts. Populated snapshots and review inventories are private
+files; they are never printed or published. `inspect` observes current state
+without replay. `open-unenrolled` can remove the temporary fence only when the
+retained journal contains no checkpoint write intent and the same checkpoint
+and primary both positively remain unenrolled. It cannot recover an unknown
+checkpoint enrollment by treating absence as permission to repeat a write.
 
 After enrollment, an OP version missing the checkpoint binding cannot be a
 functional rollback target. Schema alone never authorizes copying. Historical
