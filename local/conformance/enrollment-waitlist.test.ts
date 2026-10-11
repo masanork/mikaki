@@ -544,7 +544,10 @@ test('single-email requests, UV-bound approval, link registration, retry and exp
       403,
     );
     const list = await worker.fetch(`${issuer}/admin/waitlist`, { headers: adminHeaders });
-    assert.equal((await readList(list)).entries[0].status, 'registered');
+    assert.equal(
+      (await readList(list)).entries.find((entry) => entry.id === contact.id)?.status,
+      'registered',
+    );
     assert.ok(
       (
         await DB.prepare('SELECT verified_at FROM enrollment_waitlist WHERE id=?')
