@@ -2,6 +2,42 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { assertWaitlistMailKey, checkBindings, sourceIsCurrent } from './deploy-production.ts';
+import { productionWorkPacketDigest } from './production-work-packet.ts';
+
+test('private production checkpoint config pins scope and verifies its concrete SQLite namespace', () => {
+  const config = JSON.parse(
+    readFileSync('crates/work-checkpoint-worker/wrangler.production.jsonc', 'utf8'),
+  );
+  assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
+  assert.equal(config.vars.WORK_BOOTSTRAP_PACKET_SHA256, productionWorkPacketDigest());
+  assert.deepEqual(config.migrations, [
+    { tag: 'production-checkpoint-v1', new_sqlite_classes: ['WorkCheckpoint'] },
+  ]);
+  const version = {
+    resources: {
+      script_runtime: { compatibility_date: config.compatibility_date },
+      bindings: [
+        ...Object.entries(config.vars).map(([name, text]) => ({ name, type: 'plain_text', text })),
+        {
+          name: 'CHECKPOINTS',
+          type: 'durable_object_namespace',
+          class_name: 'WorkCheckpoint',
+          namespace_id: '1'.repeat(32),
+        },
+      ],
+    },
+  };
+  checkBindings(version, config);
+  const changed = structuredClone(version);
+  Object.assign(changed.resources.bindings.at(-1)!, { namespace_id: '0'.repeat(32) });
+  assert.throws(() => checkBindings(changed, config));
+  Object.assign(changed.resources.bindings.at(-1)!, {
+    namespace_id: '1'.repeat(32),
+    class_name: 'OtherCheckpoint',
+  });
+  assert.throws(() => checkBindings(changed, config));
+});
 
 test('mail provisioning rejects malformed or noncanonical keys without exposing their value', () => {
   assertWaitlistMailKey(Buffer.alloc(32, 7).toString('base64url'));

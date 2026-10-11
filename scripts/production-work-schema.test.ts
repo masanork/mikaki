@@ -160,6 +160,16 @@ test('deployment refuses Work capabilities without explicit schema adoption', ()
   assert.equal(productionWorkSchema({}), false);
   assert.equal(productionWorkSchema({ WORK_SCHEMA_ENABLED: 'false' }), false);
   assert.equal(productionWorkSchema({ WORK_SCHEMA_ENABLED: 'true' }), true);
+  assert.equal(productionWorkSchema({ WORK_SCHEMA_ADOPTION: 'true' }), false);
+  assert.throws(
+    () => productionWorkSchema({ WORK_SCHEMA_ADOPTION: 'true', WORK_SCHEMA_ENABLED: 'true' }),
+    /finish/,
+  );
+  assert.throws(() => productionWorkSchema({ WORK_SCHEMA_ADOPTION: 'yes' }), /Invalid/);
+  assert.throws(
+    () => productionWorkSchema({ WORK_SCHEMA_ADOPTION: 'true', WORK_OWNER_API_ENABLED: 'true' }),
+    /require/,
+  );
   assert.equal(
     productionWorkSchema({ WORK_SCHEMA_ENABLED: 'true', WORK_OWNER_API_ENABLED: 'true' }),
     true,

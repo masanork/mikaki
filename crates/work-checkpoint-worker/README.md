@@ -9,7 +9,7 @@ Run `npm run check:work-checkpoint` and `npm run test:work-checkpoint` from the 
 six retained closed-effect/Git records; it exposes none of the checkpoint,
 effect-admission or maintenance mutations.
 
-Before integration, assign independent storage/operator/recovery ownership and one fixed scope per D1 authority. Bind `WorkCheckpointService` to the trusted OP and reserve `WorkCheckpointAdmin` for the separate operator boundary. Complete external effect/release enforcement, coverage of other OP authority mutations and signed release/recovery provenance. Never reinitialize or restore the checkpoint from stale D1 data.
+Keep checkpoint storage outside the primary D1 restore domain, with one fixed scope per D1 authority. Bind `WorkCheckpointService` to the trusted OP and reserve `WorkCheckpointAdmin` for the private operator capability. Separate human/control-plane ownership follows the [administration policy](../../docs/adr/0017-work-administration-policy.md); production permits a single operator without claiming protection against privileged changes to both stores. Complete external effect/release enforcement, coverage of other OP authority mutations and signed release/recovery provenance. Never reinitialize or restore the checkpoint from stale D1 data.
 
 `WorkCheckpointBootstrap` narrows initial operator access to `inspect()` and
 `enroll(plan)`. It exposes no framing, floor, freeze, effects or reset methods;

@@ -330,7 +330,14 @@ export async function inspectBootstrap(
   plan: BootstrapPlan,
   io: Pick<BootstrapIO, 'checkpoint' | 'primary'>,
 ) {
-  validateIsolatedBootstrapPlan(plan);
+  return inspectBootstrapForScope(plan, io, validateIsolatedBootstrapPlan);
+}
+export async function inspectBootstrapForScope(
+  plan: BootstrapPlan,
+  io: Pick<BootstrapIO, 'checkpoint' | 'primary'>,
+  validate: (value: unknown) => asserts value is BootstrapPlan,
+) {
+  validate(plan);
   const cp = inspection(await bootstrapRpcData(io.checkpoint.inspect()), plan);
   const primary = await io.primary.inspect(plan);
   return {
@@ -342,11 +349,19 @@ export async function inspectBootstrap(
 }
 /** Fresh one-shot sequence. Caller must own one exclusive journal tied to this plan. */
 export async function bootstrapAuthority(plan: BootstrapPlan, io: BootstrapIO) {
-  validateIsolatedBootstrapPlan(plan);
+  return bootstrapAuthorityForScope(plan, io, validateIsolatedBootstrapPlan);
+}
+/** Shared protocol; public isolated adapters retain their fixed production refusal. */
+export async function bootstrapAuthorityForScope(
+  plan: BootstrapPlan,
+  io: BootstrapIO,
+  validate: (value: unknown) => asserts value is BootstrapPlan,
+) {
+  validate(plan);
   let phase = 'preflight';
   await io.record({ event: 'selected', plan });
   try {
-    const before = await inspectBootstrap(plan, io);
+    const before = await inspectBootstrapForScope(plan, io, validate);
     assert.ok(
       before.checkpoint.enrollment === null &&
         before.checkpoint.state === null &&
@@ -364,7 +379,7 @@ export async function bootstrapAuthority(plan: BootstrapPlan, io: BootstrapIO) {
     const ack = inspection(await bootstrapRpcData(io.checkpoint.enroll(plan)), plan);
     assert.ok(initialized(ack, plan), 'authority_bootstrap_checkpoint_ack_invalid');
     await io.record({ event: 'checkpoint-acknowledged' });
-    const between = await inspectBootstrap(plan, io);
+    const between = await inspectBootstrapForScope(plan, io, validate);
     assert.ok(
       initialized(between.checkpoint, plan) && between.primary.pristine,
       'authority_bootstrap_intermediate_mismatch',
@@ -374,7 +389,7 @@ export async function bootstrapAuthority(plan: BootstrapPlan, io: BootstrapIO) {
     await io.primary.insert(plan);
     await io.record({ event: 'primary-acknowledged' });
     phase = 'verification-incomplete';
-    const after = await inspectBootstrap(plan, io);
+    const after = await inspectBootstrapForScope(plan, io, validate);
     assert.ok(after.matching_initial, 'authority_bootstrap_final_mismatch');
     await io.record({ event: 'complete', matching_initial: true, writers_enabled: false });
     return after;

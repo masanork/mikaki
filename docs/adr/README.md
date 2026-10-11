@@ -19,5 +19,6 @@ ADRs record accepted choices and their rationale. They do not certify that a fea
 | [0014](0014-agent-oauth-authority.md) | Bounded isolated delegated-agent OAuth authority; public-client token issuance selects existing grants and remains separate from Rust OIDC/owner storage. |
 | [0015](0015-service-data-ownership.md) | OP-owned durable storage, bounded Agent/recipient service capabilities and ordered rollout/rollback. |
 | [0016](0016-personal-context-and-workload-delegation.md) | Repository-based personal context, bounded workload delegation, separate code/decision adoption and qualified Artifacts integration. |
+| [0017](0017-work-administration-policy.md) | Keep checkpoint storage and capabilities separate; make human/control-plane operator separation an optional deployment policy with explicit guarantee limits. |
 
 There is no ADR 0010 in the repository. The numbering is not renumbered to hide that gap.

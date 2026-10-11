@@ -1,0 +1,34 @@
+{
+  "name": "mikaki-auth-work-checkpoint",
+  "main": "worker.ts",
+  "account_id": "4b749427a0c80c547e726a42aff4b6fc",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "WORK_AUTHORITY_ID": "mikaki-auth-work-v1",
+    "WORK_BOOTSTRAP_PACKET_SHA256": "db2752d150159e64a321318e9e52160a231a725ae4932a9806cef7e43594fe92"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHECKPOINTS",
+        "class_name": "WorkCheckpoint"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "production-checkpoint-v1",
+      "new_sqlite_classes": [
+        "WorkCheckpoint"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  }
+}

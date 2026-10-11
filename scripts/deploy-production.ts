@@ -10,6 +10,10 @@ import { readdirSync } from 'node:fs';
 import { BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
 import { assertProductionOwnerSchema } from './production-owner-schema.ts';
 import type { WorkLedgerRow } from './production-work-schema.ts';
+import { assertProductionWorkRolloutSchema } from './production-work-migration.ts';
+import { productionWorkPacketDigest } from './production-work-packet.ts';
+import { cloudflareMetadataGet } from './production-worker-inventory.ts';
+import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -23,6 +27,7 @@ type Config = {
   secrets?: { required: string[] };
   send_email?: { name: string; allowed_sender_addresses?: string[] }[];
   version_metadata?: { binding: string };
+  durable_objects?: { bindings: { name: string; class_name: string }[] };
   secrets_store_secrets?: { binding: string; store_id: string; secret_name: string }[];
   assets?: { binding: string };
   ratelimits?: { name: string; namespace_id: string; simple: { limit: number; period: number } }[];
@@ -97,6 +102,8 @@ export function checkBindings(
     });
   if (config.version_metadata)
     expect(config.version_metadata.binding, { type: 'version_metadata' });
+  for (const item of config.durable_objects?.bindings ?? [])
+    expect(item.name, { type: 'durable_object_namespace', class_name: item.class_name });
   for (const item of config.secrets_store_secrets ?? [])
     expect(item.binding, {
       type: 'secrets_store_secret',
@@ -119,6 +126,10 @@ export function checkBindings(
     const name = binding.name as string;
     const approved = expected.get(name);
     assert.ok(approved, `Unexpected binding ${name}`);
+    if (binding.type === 'durable_object_namespace') {
+      assert.match(String(binding.namespace_id), /^[a-f0-9]{32}$/);
+      assert.notEqual(binding.namespace_id, '0'.repeat(32));
+    }
     for (const [key, value] of Object.entries(approved))
       // Cloudflare exposes rate-limit namespace IDs as either strings or numbers.
       assert.deepEqual(
@@ -181,6 +192,13 @@ export function productionWorkSchema(vars: Record<string, string>) {
     'Invalid production Work schema selection',
   );
   const enabled = vars.WORK_SCHEMA_ENABLED === 'true';
+  assert.ok(
+    vars.WORK_SCHEMA_ADOPTION === undefined ||
+      ['true', 'false'].includes(vars.WORK_SCHEMA_ADOPTION),
+    'Invalid production Work schema adoption',
+  );
+  const adopting = vars.WORK_SCHEMA_ADOPTION === 'true';
+  assert.ok(!adopting || !enabled, 'Schema adoption must finish before Work activation');
   for (const [name, value] of Object.entries(vars))
     if (name.startsWith('WORK_') && name.endsWith('_ENABLED') && name !== 'WORK_SCHEMA_ENABLED') {
       assert.ok(['true', 'false'].includes(value), 'Invalid production Work capability selection');
@@ -223,8 +241,23 @@ async function main() {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   const opConfig = 'crates/worker/wrangler.production.jsonc';
-  const workSchemaEnabled = productionWorkSchema(
-    JSON.parse(readFileSync(join(root, opConfig), 'utf8')).vars,
+  const reviewedOp = JSON.parse(readFileSync(join(root, opConfig), 'utf8')) as Config;
+  const workSchemaEnabled = productionWorkSchema(reviewedOp.vars);
+  const adopting = reviewedOp.vars.WORK_SCHEMA_ADOPTION === 'true';
+  const checkpointBindings =
+    reviewedOp.services?.filter((item) => item.service === PRODUCTION_WORK_TARGET.checkpoint) ?? [];
+  assert.deepEqual(
+    checkpointBindings,
+    workSchemaEnabled
+      ? [
+          {
+            binding: 'WORK_AUTHORITY_CHECKPOINT',
+            service: PRODUCTION_WORK_TARGET.checkpoint,
+            entrypoint: 'WorkCheckpointService',
+          },
+        ]
+      : [],
+    'OP receives only its checkpoint service after schema adoption',
   );
   const migrations = wrangler(['d1', 'migrations', 'list', 'DB', '--remote', '--config', opConfig]);
   assert.ok(
@@ -248,7 +281,11 @@ async function main() {
   assert.ok(schemaProbe.every((result: { success: boolean }) => result.success === true));
   const migrationDirectory = join(root, 'crates/worker/migrations');
   let workSchema;
-  if (workSchemaEnabled) {
+  if (
+    workSchemaEnabled ||
+    (adopting &&
+      schemaProbe[1].results.some((row: { name: string }) => row.name === 'work_schema_migrations'))
+  ) {
     const directory = join(root, 'crates/worker/work-migrations');
     const probe = JSON.parse(
       wrangler([
@@ -273,14 +310,44 @@ async function main() {
       ledger: probe[0].results as WorkLedgerRow[],
     };
   }
-  assertProductionOwnerSchema(
-    readdirSync(migrationDirectory)
-      .sort()
-      .map((name) => ({ name, sql: readFileSync(join(migrationDirectory, name), 'utf8') })),
-    schemaProbe[0].results,
-    schemaProbe[1].results,
-    workSchema,
-  );
+  const ownerFiles = readdirSync(migrationDirectory)
+    .sort()
+    .map((name) => ({ name, sql: readFileSync(join(migrationDirectory, name), 'utf8') }));
+  if (adopting) {
+    assertProductionWorkRolloutSchema(
+      ownerFiles,
+      workSchema?.migrations ?? [],
+      schemaProbe[0].results,
+      schemaProbe[1].results,
+      workSchema?.ledger ?? null,
+    );
+    if (workSchema) {
+      const marker = JSON.parse(
+        wrangler([
+          'd1',
+          'execute',
+          'DB',
+          '--remote',
+          '--config',
+          opConfig,
+          '--command',
+          'SELECT count(*) AS n FROM work_authority_checkpoint',
+          '--json',
+        ]),
+      );
+      assert.equal(
+        marker[0].results[0].n,
+        0,
+        'Enrolled production requires its reviewed checkpoint binding; finish adoption before promotion',
+      );
+    }
+  } else
+    assertProductionOwnerSchema(
+      ownerFiles,
+      schemaProbe[0].results,
+      schemaProbe[1].results,
+      workSchema,
+    );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
   assert.ok(
     process.env.OP_PRIVATE_JWK && process.env.MIKAKI_READY_TOKEN && process.env.WAITLIST_MAIL_KEY,
@@ -300,6 +367,73 @@ async function main() {
     workers: {},
   };
   const evidence = join(root, 'artifacts/production-deployment.json');
+  // A fresh SQLite namespace requires deploy, rather than versions upload.
+  // It receives only the attested bundle; the fixed migration tag retains the
+  // namespace on later deployments. Enrollment remains a separate operation.
+  const checkpointConfigPath = 'crates/work-checkpoint-worker/wrangler.production.jsonc';
+  const checkpointConfig = JSON.parse(
+    readFileSync(join(root, checkpointConfigPath), 'utf8'),
+  ) as Config;
+  assert.equal(checkpointConfig.vars.WORK_BOOTSTRAP_PACKET_SHA256, productionWorkPacketDigest());
+  const metadataGet = cloudflareMetadataGet(
+    PRODUCTION_WORK_TARGET.account,
+    process.env.CLOUDFLARE_API_TOKEN!,
+  );
+  const roster = (await metadataGet(
+    `/accounts/${PRODUCTION_WORK_TARGET.account}/workers/scripts`,
+  )) as { result: { id: string }[] };
+  assert.ok(
+    Array.isArray(roster.result) && roster.result.length <= 100,
+    'Bounded checkpoint resource inventory required',
+  );
+  const checkpointPath = `/accounts/${PRODUCTION_WORK_TARGET.account}/workers/scripts/${PRODUCTION_WORK_TARGET.checkpoint}`;
+  let priorNamespace: string | null = null;
+  if (roster.result.some(({ id }) => id === PRODUCTION_WORK_TARGET.checkpoint)) {
+    const settings = (await metadataGet(checkpointPath + '/settings')) as {
+      result: { bindings: Binding[] };
+    };
+    priorNamespace = settings.result.bindings.find((binding) => binding.name === 'CHECKPOINTS')
+      ?.namespace_id as string;
+    assert.match(
+      priorNamespace,
+      /^[a-f0-9]{32}$/,
+      'An existing checkpoint must retain its namespace',
+    );
+  }
+  if (workSchemaEnabled) {
+    assert.match(reviewedOp.vars.WORK_CHECKPOINT_NAMESPACE_ID!, /^[a-f0-9]{32}$/);
+    assert.equal(
+      priorNamespace,
+      reviewedOp.vars.WORK_CHECKPOINT_NAMESPACE_ID,
+      'Enrolled production checkpoint namespace changed or absent',
+    );
+  }
+  const uploadCheckpoint = wrangler([
+    'deploy',
+    join(destination, 'checkpoint/bundle/checkpoint.js'),
+    '--no-bundle',
+    '--config',
+    checkpointConfigPath,
+  ]);
+  const checkpointId = uploadCheckpoint.match(/Current Version ID:\s*([a-f0-9-]{36})/)?.[1];
+  assert.ok(checkpointId, 'Wrangler did not return the checkpoint version identity');
+  const checkpointVersion = JSON.parse(
+    wrangler(['versions', 'view', checkpointId, '--config', checkpointConfigPath, '--json']),
+  );
+  checkBindings(checkpointVersion, checkpointConfig);
+  const namespace = checkpointVersion.resources.bindings.find(
+    (binding: Binding) => binding.name === 'CHECKPOINTS',
+  ).namespace_id;
+  assert.ok(
+    priorNamespace === null || namespace === priorNamespace,
+    'Checkpoint deployment must retain its existing namespace',
+  );
+  record.workers.checkpoint = {
+    version_id: checkpointId,
+    namespace_id: namespace,
+    activated: true,
+  };
+  writeFileSync(evidence, `${JSON.stringify(record, null, 2)}\n`);
   // Stage both versions and inspect bindings before changing any traffic.
   const staged = [];
   for (const [worker, configPath] of [

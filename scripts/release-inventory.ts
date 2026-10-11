@@ -8,7 +8,11 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const members = ['index.js', 'index_bg.wasm', 'package.json', 'worker/shim.mjs'];
-const archives = ['mikaki-worker.tar.gz', 'mikaki-userinfo-claim-worker.tar.gz'];
+const archives = [
+  'mikaki-worker.tar.gz',
+  'mikaki-userinfo-claim-worker.tar.gz',
+  'mikaki-work-checkpoint.tar.gz',
+];
 const limit = 64 * 1024 * 1024;
 export type ReleaseSource = { commit: string; clean: boolean };
 type Digest = { bytes: number; sha256: string };
@@ -56,7 +60,11 @@ export async function collectRelease(
   const releases: ReleaseInventory['archives'] = [];
   for (const name of archives) {
     const requiredMembers =
-      name === 'mikaki-worker.tar.gz' ? [...members, 'worker/service.mjs'] : members;
+      name === 'mikaki-worker.tar.gz'
+        ? [...members, 'worker/service.mjs']
+        : name === 'mikaki-work-checkpoint.tar.gz'
+          ? ['worker/checkpoint.mjs']
+          : members;
     const path = join(root, 'artifacts', name);
     const bytes = await regularFile(path);
     const names = tar(bytes, ['-tz']).toString('utf8').trimEnd().split('\n');

@@ -16,6 +16,12 @@ async function fixture() {
   await mkdir(join(root, 'artifacts'));
   await mkdir(join(root, 'crates/worker/migrations'), { recursive: true });
   await mkdir(join(root, 'crates/userinfo-claim-worker'), { recursive: true });
+  await mkdir(join(root, 'crates/work-checkpoint-worker'), { recursive: true });
+  await writeFile(
+    join(root, 'crates/work-checkpoint-worker/wrangler.production.jsonc'),
+    '{"name":"checkpoint"}',
+  );
+  await writeFile(join(root, 'build/worker/checkpoint.mjs'), 'fixture:worker/checkpoint.mjs');
   await writeFile(join(root, 'crates/worker/wrangler.production.jsonc'), '{"name":"op"}');
   await writeFile(
     join(root, 'crates/userinfo-claim-worker/wrangler.production.jsonc'),
@@ -37,6 +43,13 @@ async function fixture() {
         ...names,
         ...(name === 'mikaki-worker' ? ['worker/service.mjs'] : []),
       ]);
+    execFileSync('tar', [
+      '-C',
+      join(root, 'build'),
+      '-czf',
+      join(root, 'artifacts/mikaki-work-checkpoint.tar.gz'),
+      'worker/checkpoint.mjs',
+    ]);
   };
   archive();
   return { root, archive };
@@ -62,17 +75,29 @@ test('upload preparation stages only verified archive members and records Wrangl
     const fakeBundle = (entry: string, _config: string, output: string) => {
       assert.equal(
         execFileSync('cat', [entry], { encoding: 'utf8' }),
-        entry.endsWith('service.mjs') ? 'fixture:worker/service.mjs' : 'fixture:worker/shim.mjs',
+        entry.endsWith('service.mjs')
+          ? 'fixture:worker/service.mjs'
+          : entry.endsWith('checkpoint.mjs')
+            ? 'fixture:worker/checkpoint.mjs'
+            : 'fixture:worker/shim.mjs',
       );
       writeFileSync(
-        join(output, entry.endsWith('service.mjs') ? 'service.js' : 'shim.js'),
+        join(
+          output,
+          entry.endsWith('service.mjs')
+            ? 'service.js'
+            : entry.endsWith('checkpoint.mjs')
+              ? 'checkpoint.js'
+              : 'shim.js',
+        ),
         'bundled entry',
       );
-      writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
+      if (!entry.endsWith('checkpoint.mjs'))
+        writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
     };
     const prepared = await prepareReleaseUpload(root, inventory, source, false, fakeBundle);
     assert.equal(prepared.result.promotion_ready, true);
-    assert.equal(prepared.result.workers.length, 2);
+    assert.equal(prepared.result.workers.length, 3);
     assert.equal(prepared.result.workers[0]?.bundle_files.length, 2);
     assert.equal(
       (await readFile(join(prepared.destination, 'op/input/index_bg.wasm'))).toString(),
