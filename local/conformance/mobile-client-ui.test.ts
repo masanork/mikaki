@@ -9,7 +9,10 @@ import {
 
 test('native mobile UI keeps authentication and navigation consistent', async (t) => {
   const server = await startNativeUiServer();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true }).catch(async (error: unknown) => {
+    await server.close();
+    throw error;
+  });
   try {
     await t.test(
       'login returns to a home with no diagnostic operations; back and theme persist',

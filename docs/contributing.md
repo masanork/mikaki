@@ -29,3 +29,11 @@ The intended dependency direction is Worker → OIDC → auth → WebAuthn. Keep
 For vulnerabilities, use the private route in [SECURITY.md](../SECURITY.md) instead of a public issue. External test data and dependency licenses remain subject to their own terms.
 
 For frontend changes, use the shared `auth.css`/`product.css` styles and `ProductHeader.svelte`, preserve server authorization and exact mutation retries, and review mobile/keyboard/loading/error states. [Product quality](product-quality.md) distinguishes automated checks from manual and production gates. `npm run preview:product-ui` refreshes synthetic screenshots after a Worker build; it does not deploy or inspect real user data.
+
+## Integration increments
+
+For work spanning portable rules, storage/HTTP, owner UI and an external provider, define a separately reviewable increment for each boundary. Each increment must state the active behavior, denial behavior and tests that qualify it. Combine boundaries when their safety contract cannot be exercised independently.
+
+An inactive feature may be integrated after its source checks, isolation/denial contracts and current product regressions pass. Record actual-device, external-provider and production activation requirements separately; local integration does not complete those requirements. Preserve the original source-bound evidence and provider journals when a later increment changes the source, and qualify the composed revision before enabling it.
+
+Run relevant local checks while editing, then use the parallel PR lanes for complete pre-merge feedback. The shared `verify` result includes every lane; a skipped or cancelled lane does not qualify a change. See [release and recovery](release-and-recovery.md#automatic-production-deployment) for unsigned candidate rehearsal and the gated signing path.
