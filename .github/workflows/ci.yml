@@ -116,13 +116,15 @@ jobs:
           npm run check:helpdesk
       - name: Frontend TypeScript coverage and selected-module regression gate
         run: npm run test:frontend-coverage
-      - name: Native client UI lifecycle
-        run: npm run test:mobile-ui
       - name: Browser PQC interoperability
         run: |
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           node design/probes/pqc/browser.ts
+      - name: Native client UI lifecycle
+        run: npm run test:mobile-ui
+      - name: MDS durable operation regressions
+        run: node --test local/conformance/mds-operation.test.ts
       - name: Project size, coverage, and dependency trends
         run: node scripts/metrics.ts --coverage artifacts/native-coverage.json --output-dir artifacts/metrics
       - name: Summarize native coverage and browser Wasm sizes
@@ -184,8 +186,6 @@ jobs:
           npm run test:worker-contracts
       - name: Identity presentation, attester, consent and device-preflight regressions
         run: npm run test:identity-contracts
-      - name: MDS durable operation regressions
-        run: node --test local/conformance/mds-operation.test.ts
       - id: measurements
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
