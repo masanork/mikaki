@@ -13,6 +13,14 @@ type RemoteRepo = {
   description: string | null;
   token: string;
   state: 'active' | 'revoked';
+  minted?: {
+    id: string;
+    plaintext: string;
+    scope: 'read' | 'write';
+    state: 'active' | 'revoked' | 'expired';
+    expiresAt: string;
+    createdAt: string;
+  }[];
 };
 type State = { mode: string; repos: RemoteRepo[]; counts: Record<string, number> };
 export class SyntheticRemote extends DurableObject<Env> {
@@ -26,7 +34,7 @@ export class SyntheticRemote extends DurableObject<Env> {
       JSON.stringify({
         mode: 'normal',
         repos: [],
-        counts: { create: 0, get: 0, info: 0, list: 0, revoke: 0 },
+        counts: { create: 0, get: 0, info: 0, list: 0, revoke: 0, mint: 0 },
       }),
     );
   }
@@ -52,7 +60,14 @@ export class SyntheticRemote extends DurableObject<Env> {
   async inspect() {
     const s = this.#state();
     await this.ctx.storage.sync();
-    return { mode: s.mode, counts: s.counts, repos: s.repos.map(({ token, ...r }) => r) };
+    return {
+      mode: s.mode,
+      counts: s.counts,
+      repos: s.repos.map(({ token, minted, ...r }) => ({
+        ...r,
+        tokens: (minted ?? []).map(({ plaintext, ...t }) => t),
+      })),
+    };
   }
   async create(name: string, options: CreateOptions) {
     const s = this.#state();
@@ -113,6 +128,8 @@ export class SyntheticRemote extends DurableObject<Env> {
     this.#save(s);
     await this.ctx.storage.sync();
     if (s.mode === 'list-lost') throw new Error('synthetic_lost_reply');
+    if (s.mode === 'mint-list-after-revoke-lost' && r.minted?.some((t) => t.state === 'revoked'))
+      throw new Error('synthetic_lost_reply');
     const token = {
       id: s.mode === 'replaced-token' ? 'replacement' : `token-${r.id}`,
       scope: 'write' as const,
@@ -132,17 +149,68 @@ export class SyntheticRemote extends DurableObject<Env> {
         tokens: [token, { ...token, id: 'unexpected', state: 'active' as const }],
         total: 2,
       };
-    return { tokens: [token], total: s.mode === 'incomplete-inventory' ? 2 : 1 };
+    const minted = (r.minted ?? []).map(({ plaintext, ...t }) => t);
+    if (s.mode === 'mint-missing-token' && minted.length) minted.pop();
+    if (s.mode === 'mint-remove-revoked' || s.mode === 'mint-revoke-lost-remove') {
+      for (let i = minted.length - 1; i >= 0; i--)
+        if (minted[i]!.state === 'revoked') minted.splice(i, 1);
+    }
+    if (s.mode === 'mint-expired' && minted.length) minted[0]!.state = 'expired';
+    if (s.mode === 'mint-substitute-scope' && minted.length)
+      minted[0]!.scope = minted[0]!.scope === 'read' ? 'write' : 'read';
+    if (s.mode === 'mint-substitute-expiry' && minted.length)
+      minted[0]!.expiresAt = '2030-01-01T00:00:00.125Z';
+    if (s.mode === 'mint-wrong-token' && minted.length) minted[0]!.id = 'substituted';
+    return {
+      tokens: [token, ...minted],
+      total:
+        s.mode === 'incomplete-inventory' || (s.mode === 'mint-incomplete' && minted.length)
+          ? 99
+          : 1 + minted.length,
+    };
+  }
+  async mint(name: string, scope: 'read' | 'write', ttl: number) {
+    const s = this.#state(),
+      r = this.#repo(s, name);
+    s.counts.mint = (s.counts.mint ?? 0) + 1;
+    const t = {
+      id: `mint-${s.counts.mint}`,
+      plaintext: `SYNTHETIC_MINT_SECRET_${s.counts.mint}`,
+      scope: s.mode === 'mint-wrong-scope' ? (scope === 'read' ? 'write' : 'read') : scope,
+      state: 'active' as const,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(
+        s.mode === 'mint-overlong' ? Date.now() + 4000000 : Date.now() + ttl * 1000,
+      ).toISOString(),
+    };
+    (r.minted ??= []).push(t);
+    this.#save(s);
+    await this.ctx.storage.sync();
+    if (s.mode === 'mint-lost') throw new Error('synthetic_lost_reply');
+    if (s.mode === 'freeze-during-mint') await this.env.CHECKPOINT_ADMIN.freeze();
+    return { id: t.id, plaintext: t.plaintext, scope: t.scope, expiresAt: t.expiresAt };
   }
   async revoke(name: string, token: string) {
     const s = this.#state();
     s.counts.revoke++;
     const r = this.#repo(s, name);
-    const accepted = r.token === token || `token-${r.id}` === token;
-    if (accepted) r.state = 'revoked';
+    const minted = (r.minted ?? []).find((t) => t.plaintext === token || t.id === token);
+    const accepted = Boolean(minted) || r.token === token || `token-${r.id}` === token;
+    if (minted && s.mode === 'mint-revoke-failed') {
+      this.#save(s);
+      await this.ctx.storage.sync();
+      return false;
+    }
+    if (minted) minted.state = 'revoked';
+    if (accepted && !minted) r.state = 'revoked';
     this.#save(s);
     await this.ctx.storage.sync();
-    if (s.mode === 'revoke-lost' || s.mode === 'revoke-lost-remove')
+    if (
+      s.mode === 'revoke-lost' ||
+      s.mode === 'revoke-lost-remove' ||
+      s.mode === 'mint-revoke-lost' ||
+      s.mode === 'mint-revoke-lost-remove'
+    )
       throw new Error('synthetic_lost_reply');
     return accepted;
   }
@@ -155,7 +223,14 @@ export class SyntheticRemote extends DurableObject<Env> {
     if (s.mode === 'git-unavailable') return 503;
     if (s.mode === 'git-redirect') return 302;
     if (s.mode === 'git-active') return 200;
-    return token === `Bearer ${r.token}` && r.state === 'active' ? 200 : 403;
+    const minted = r.minted?.find((t) => token === `Bearer ${t.plaintext}`);
+    return minted
+      ? minted.state === 'active'
+        ? 200
+        : 403
+      : token === `Bearer ${r.token}` && r.state === 'active'
+        ? 200
+        : 403;
   }
   async note() {
     const s = this.#state();
@@ -177,6 +252,9 @@ class SyntheticRepo extends RpcTarget {
   }
   listTokens() {
     return this.#stub.list(this.#name);
+  }
+  createToken(scope: 'read' | 'write' = 'write', ttl = 86400) {
+    return this.#stub.mint(this.#name, scope, ttl);
   }
   revokeToken(token: string) {
     return this.#stub.revoke(this.#name, token);

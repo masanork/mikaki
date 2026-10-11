@@ -20,6 +20,12 @@ pub struct OwnerSource {
     owner_epoch: u64,
 }
 impl OwnerSource {
+    pub(super) fn registered(&self) -> &RegisteredSource {
+        &self.source
+    }
+    pub(super) fn access_revision(&self) -> u64 {
+        self.access_revision
+    }
     pub(super) fn disclosure_fact(&self) -> (&RegisteredSource, u64) {
         (&self.source, self.access_revision)
     }
@@ -46,6 +52,7 @@ impl WorkStore {
         if after.is_some_and(|s| !owner_id_shape(s)) {
             return Err(Denied::InvalidInput.into());
         }
+        self.require_current_authority().await?;
         let sql = format!(
             "SELECT v.body,x.access_revision,p.generation,p.projection_revision,a.account_id,a.epoch {JOIN} AND x.source_id>?2 ORDER BY x.source_id LIMIT 11"
         );

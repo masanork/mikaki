@@ -110,11 +110,13 @@ impl WorkStore {
     }
     async fn primary_checkpoint(&self) -> Result<AuthorityCheckpoint> {
         let c: AuthorityCheckpoint = self
-            .first(
+            .statement(
                 "SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1",
                 &[],
-            )
-            .await?;
+            )?
+            .first(None)
+            .await?
+            .ok_or(Denied::StaleAuthority)?;
         c.validate()?;
         Ok(c)
     }

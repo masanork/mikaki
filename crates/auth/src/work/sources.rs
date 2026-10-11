@@ -43,7 +43,7 @@ pub struct RegisteredSource {
 struct Stored {
     data: SourceInput,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceReadInput {
     pub format_version: u8,
@@ -51,6 +51,13 @@ pub struct SourceReadInput {
     pub source_revision: u64,
     pub access_revision: u64,
     pub paths: Vec<String>,
+}
+/// Constructed only after Native verification of the exact registered reply.
+/// It carries selected metadata, never plaintext or an owner allow decision.
+pub struct VerifiedSourceSelection<'a> {
+    pub(super) source: &'a RegisteredSource,
+    pub(super) access_revision: u64,
+    pub(super) files: Vec<&'a SourceFile>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,6 +103,9 @@ impl RegisteredSource {
     }
     pub fn revision(&self) -> u64 {
         self.data.source_revision
+    }
+    pub fn role(&self) -> &str {
+        &self.data.role
     }
     pub(super) fn facts(&self) -> &SourceInput {
         &self.data
@@ -178,6 +188,26 @@ impl RegisteredSource {
             );
         }
         Ok(json!({"source":self.metadata(),"access_revision":i.access_revision,"files":files}))
+    }
+    pub fn verify_selection<'a>(
+        &'a self,
+        i: &SourceReadInput,
+        body: &str,
+    ) -> Result<VerifiedSourceSelection<'a>, Denied> {
+        let verified = self.verify_reply(i, body)?;
+        for file in verified["files"].as_array().ok_or(Denied::InvalidInput)? {
+            let content = file["content"].as_str().ok_or(Denied::InvalidInput)?;
+            let oid =
+                selected_snapshot::hex(&selected_snapshot::object("blob", content.as_bytes()));
+            if file["blob"] != oid {
+                return Err(Denied::BindingMismatch);
+            }
+        }
+        Ok(VerifiedSourceSelection {
+            source: self,
+            access_revision: i.access_revision,
+            files: self.selected(i)?,
+        })
     }
 }
 impl SourceInput {

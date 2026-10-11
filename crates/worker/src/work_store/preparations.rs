@@ -150,6 +150,7 @@ impl WorkStore {
         if p.state() != PreparationState::Reserved {
             return Ok(PreparationDispatch::Existing(p));
         }
+        self.require_copy_consent(id, None).await?;
         let account = self.account(p.owner_id()).await?;
         p.dispatch(&account.environment())?;
         let result = self

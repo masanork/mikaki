@@ -8,6 +8,12 @@ All production promotions and the source/version-matched public smoke passed.
 The [2026-10-05 cutover record](production-reset-2026-10-05.md) gives exact Worker
 versions, fresh database ledgers, empty-data checks and retired resources.
 
+On 2026-10-10, local Work delegation development connects owner preparation
+composition and explicit copy approval to the retained Native job, Workflow
+and sealed private Git host. Both copies and all six credential closures are
+verified locally; delegation and production activation remain pending. See the
+[selected sources, checks and next gates](work-delegation-implementation.md#integrated-composition-consent-workflow-and-sealed-host).
+
 PRs #125–#129 retired legacy browser/API, native Vault OAuth and Agent v1
 authority, consolidated the fresh Owner Vault baseline and deployed the Docs RP.
 The old production accounts, credentials, sessions and ciphertext were deleted;

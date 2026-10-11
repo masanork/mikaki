@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile, readdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { gzipSync } from 'node:zlib';
 import { createSourceFixture } from './support/work-source-fixture.ts';
 
 test('owner source access and real Git bytes through native OP/D1/private RPC', async (t) => {
@@ -12,6 +13,57 @@ test('owner source access and real Git bytes through native OP/D1/private RPC', 
   const calls = async () =>
     Number(await f.DB.prepare('SELECT count(*) AS n FROM source_reader_calls').first('n'));
   try {
+    await t.test(
+      'review page, assets and display lease require live owner and opt-in source transport',
+      async () => {
+        for (const path of [
+          '/work/source-review',
+          '/work/source-review.js',
+          '/work/source-review.css',
+        ]) {
+          assert.equal((await f.http(path, f.first, {}, f.disabled)).status, 404);
+          const response = await f.http(path);
+          assert.equal(response.status, 200);
+          assert.equal(response.headers.get('Cache-Control'), 'no-store');
+          assert.equal(response.headers.get('Vary'), 'Cookie, Origin');
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (path.endsWith('.js')) {
+            assert.ok(bytes.length <= 196608, 'Source review JavaScript exceeds 192 KiB');
+            assert.ok(
+              gzipSync(bytes).length <= 65536,
+              'Source review gzip estimate exceeds 64 KiB',
+            );
+            assert.match(response.headers.get('Content-Type')!, /^text\/javascript/);
+          } else if (path.endsWith('.css')) {
+            assert.ok(bytes.length <= 48128, 'Source review CSS exceeds the product CSS budget');
+            assert.match(response.headers.get('Content-Type')!, /^text\/css/);
+          }
+          assert.equal(
+            (await f.http(path, f.first, { headers: { Origin: 'https://foreign.test' } })).status,
+            403,
+          );
+          assert.equal((await f.worker.fetch(`https://work.test${path}`)).status, 401);
+        }
+        const lease = await f.http('/work/session');
+        const identity = (await lease.json()) as {
+          account_id: string;
+          credential_id: string;
+          session_tag: string;
+        };
+        assert.equal(identity.account_id, f.first.account);
+        assert.match(identity.session_tag, /^[A-Za-z0-9_-]{43}$/);
+        assert.equal(lease.headers.get('Cache-Control'), 'no-store');
+        assert.equal(JSON.stringify(identity).includes(f.first.hash), false);
+        assert.equal((await f.worker.fetch('https://work.test/work/session')).status, 401);
+        assert.equal((await f.http('/work/session?after=personal')).status, 400);
+        assert.equal((await f.http('/work/source-review?lang=other')).status, 400);
+        assert.equal(
+          (await f.http('/work/source-review', f.first, { method: 'POST', body: '{}' })).status,
+          404,
+        );
+        assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_grant').first('n'), 0);
+      },
+    );
     await t.test('disabled and public/private-reader HTTP never expose a capability', async () => {
       assert.equal((await f.http('/work/sources', f.first, {}, f.disabled)).status, 404);
       assert.equal(

@@ -121,6 +121,17 @@ pub struct ResolvedDisclosure {
     data: Data,
     digest: Digest,
 }
+/// Trusted Native adapter inputs, including opaque verified selections.
+pub struct RegisteredDisclosureInput<'a> {
+    pub code: &'a RegisteredSource,
+    pub code_access_revision: u64,
+    pub contexts: &'a [VerifiedSourceSelection<'a>],
+    pub snapshot_repository: &'a str,
+    pub recipient: &'a str,
+    pub workload: &'a str,
+    pub expires_at: u64,
+    pub policy_projection: Digest,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Stored {
@@ -147,6 +158,117 @@ fn oid(value: &str, length: usize) -> Result<(), Denied> {
     Ok(())
 }
 impl ResolvedDisclosure {
+    /// Native selected-source capability only. Code history comes from the
+    /// trusted registration; context content has been rehashed by verify_selection.
+    /// No owner DTO supplies Git facts, history, snapshot IDs or destinations.
+    pub fn from_registered_selection(
+        input: RegisteredDisclosureInput<'_>,
+        session: &OwnerSession,
+        environment: &Environment<'_>,
+    ) -> Result<Self, Denied> {
+        let RegisteredDisclosureInput {
+            code,
+            code_access_revision,
+            contexts,
+            snapshot_repository,
+            recipient,
+            workload,
+            expires_at,
+            policy_projection,
+        } = input;
+        session.check(environment)?;
+        deadline(environment.now, expires_at, MAX_WORK_SECONDS)?;
+        if expires_at > session.expires_at || contexts.len() > 4 {
+            return Err(Denied::InvalidInput);
+        }
+        let c = code.facts();
+        let history = c.code.as_ref().ok_or(Denied::BindingMismatch)?;
+        if c.role != "code" {
+            return Err(Denied::BindingMismatch);
+        }
+        stored_number(code_access_revision, false)?;
+        let mut registered = vec![SourceBinding {
+            source_id: Id::parse(code.id())?,
+            source_revision: code.revision(),
+            access_revision: code_access_revision,
+            role: "code".into(),
+        }];
+        let mut selected = Vec::new();
+        let mut snapshot_files = Vec::new();
+        let mut selected_bytes = 0;
+        let mut names = vec![c.repo_name.as_str()];
+        for (index, context) in contexts.iter().enumerate() {
+            let s = context.source.facts();
+            if !matches!(s.role.as_str(), "personal" | "project")
+                || names.contains(&s.repo_name.as_str())
+            {
+                return Err(Denied::BindingMismatch);
+            }
+            names.push(&s.repo_name);
+            let mut files = Vec::new();
+            for f in &context.files {
+                let snapshot_path = format!("context/{index:02}/{}", f.path);
+                snapshot_files.push((snapshot_path.clone(), f.blob.clone()));
+                selected_bytes += f.bytes;
+                files.push(File {
+                    path: f.path.clone(),
+                    snapshot_path,
+                    blob: f.blob.clone(),
+                    mode: f.mode.clone(),
+                    bytes: f.bytes,
+                    sha256: f.sha256,
+                });
+            }
+            selected.push(Context {
+                repository: Id::parse(context.source.id())?,
+                commit: s.commit.clone(),
+                tree: s.tree.clone(),
+                files,
+            });
+            registered.push(SourceBinding {
+                source_id: Id::parse(context.source.id())?,
+                source_revision: context.source.revision(),
+                access_revision: context.access_revision,
+                role: s.role.clone(),
+            });
+        }
+        let (commit, tree) = selected_snapshot::snapshot(&snapshot_files)?;
+        let data = Data {
+            format_version: 2,
+            owner: session.id.clone(),
+            owner_epoch: session.epoch,
+            policy_revision: environment.policy_revision,
+            policy_projection: Some(policy_projection),
+            recipient: Id::parse(recipient)?,
+            workload: Id::parse(workload)?,
+            expires_at,
+            code: Code {
+                repository: Id::parse(code.id())?,
+                commit: c.commit.clone(),
+                tree: c.tree.clone(),
+                commits: history.commits,
+                history_digest: history.history_digest,
+                objects: history.objects,
+                object_bytes: history.object_bytes,
+                head_files: history.head_files,
+            },
+            contexts: selected,
+            snapshot: Snapshot {
+                repository: Id::parse(snapshot_repository)?,
+                commit,
+                tree,
+            },
+            selected_bytes,
+            registered_sources: registered,
+        };
+        data.validate()?;
+        let disclosure = Self {
+            digest: data.digest(),
+            data,
+        };
+        disclosure.authority_record()?;
+        Ok(disclosure)
+    }
     pub(super) fn preparation_binding(&self) -> Result<preparation::Binding, Denied> {
         self.require_registered_sources()?;
         Ok(preparation::Binding {

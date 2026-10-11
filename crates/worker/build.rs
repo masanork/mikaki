@@ -13,7 +13,31 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault.html");
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/VaultSession.svelte");
+    println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
+    for source in [
+        "work-sources.ts",
+        "work-sources.html",
+        "work-source-view.ts",
+        "work-compose-view.ts",
+        "work-copy.ts",
+        "work-copy.html",
+        "work-copy-view.ts",
+        "WorkCopy.svelte",
+        "WorkCopySession.svelte",
+        "WorkCopyWorkspace.svelte",
+        "WorkSources.svelte",
+        "WorkSourceWorkspace.svelte",
+        "WorkSourceSession.svelte",
+        "work-preparations.ts",
+        "work-preparations.html",
+        "work-preparation-view.ts",
+        "WorkPreparations.svelte",
+        "WorkPreparationWorkspace.svelte",
+        "WorkPreparationSession.svelte",
+    ] {
+        println!("cargo:rerun-if-changed=ui/{source}");
+    }
     println!("cargo:rerun-if-changed=ui/OwnerPasskeys.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerNameSharing.svelte");
     println!("cargo:rerun-if-changed=ui/vault-owner-name-sharing.ts");
@@ -182,7 +206,17 @@ fn main() {
         .status()
         .expect("esbuild is required; run npm ci");
     assert!(status.success(), "Search Worker build failed");
-    for entry in ["login", "vault", "admin", "complete", "logout", "waitlist"] {
+    for entry in [
+        "login",
+        "vault",
+        "admin",
+        "complete",
+        "logout",
+        "waitlist",
+        "work-sources",
+        "work-preparations",
+        "work-copy",
+    ] {
         let status = Command::new(&vite)
             .arg("build")
             .arg("--config")

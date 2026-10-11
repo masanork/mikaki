@@ -22,15 +22,15 @@ extern "C" {
     ) -> std::result::Result<js_sys::Promise, JsValue>;
 }
 
-async fn read(
+pub(crate) async fn read_registered(
     store: &WorkStore,
     env: &Env,
     session: &str,
-    i: SourceReadInput,
-) -> Result<serde_json::Value, StoreError> {
+    i: &SourceReadInput,
+) -> Result<(crate::work_store::OwnerSource, String), StoreError> {
     let source = store.owner_source(session, &i.source_id).await?;
     store.require_current_authority().await?;
-    let input = source.service_request(&i)?;
+    let input = source.service_request(i)?;
     let binding: SourceReader = env.service("WORK_SOURCE_READER")?.into_rpc();
     // One named RPC takes/returns bounded closed JSON. Never forward arbitrary
     // method names, SQL, owner/session facts or caller-supplied repository names.
@@ -51,12 +51,22 @@ async fn read(
         }
     };
     let body = value.as_string().ok_or(Denied::InvalidInput)?;
-    let verified = source.verify_reply(&i, &body)?;
+    source.verify_reply(i, &body)?;
     store
         .confirm_source_read(session, &i.source_id, &source)
         .await?;
     store.require_current_authority().await?;
-    Ok(verified)
+    Ok((source, body))
+}
+
+async fn read(
+    store: &WorkStore,
+    env: &Env,
+    session: &str,
+    i: SourceReadInput,
+) -> Result<serde_json::Value, StoreError> {
+    let (source, body) = read_registered(store, env, session, &i).await?;
+    source.verify_reply(&i, &body)
 }
 
 pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> {
@@ -107,9 +117,59 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         Ok(None) => return error(401, "authentication_required"),
         Err(_) => return unavailable(),
     };
-    // Product review screens follow the qualified authority/effect increments.
     if page || static_asset {
-        return error(404, "not_found");
+        let store = WorkStore::from_env(&env)
+            .map_err(|_| worker::Error::RustError("work_storage_unavailable".into()))?;
+        if let Err(error) = store.require_current_authority().await {
+            return match error {
+                StoreError::Denied(_) => crate::work_owner::error(409, "stale_authority"),
+                StoreError::Storage(_) => unavailable(),
+            };
+        }
+        if page {
+            let strings = crate::i18n::catalog(crate::i18n::select(&request, None)?);
+            let html = include_str!("../ui/work-sources.html")
+                .replace("{{locale}}", strings.locale)
+                .replace(
+                    "{{compose}}",
+                    if env
+                        .var("WORK_PREPARATION_COMPOSE_ENABLED")
+                        .is_ok_and(|v| v.to_string() == "true")
+                    {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                )
+                .replace(
+                    "{{title}}",
+                    &crate::i18n::html_escape(strings.message("source_title")),
+                );
+            return Response::builder()
+                .with_header("Cache-Control", "no-store")?
+                .with_header("Vary", "Cookie, Origin")?
+                .with_header("Referrer-Policy", "no-referrer")?
+                .with_header("X-Content-Type-Options", "nosniff")?
+                .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
+                .from_html(html);
+        }
+        let (body, mime) = if url.path().ends_with(".js") {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-sources.js")),
+                "text/javascript; charset=utf-8",
+            )
+        } else {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-sources.css")),
+                "text/css; charset=utf-8",
+            )
+        };
+        return Ok(Response::builder()
+            .with_header("Cache-Control", "no-store")?
+            .with_header("Vary", "Cookie, Origin")?
+            .with_header("X-Content-Type-Options", "nosniff")?
+            .with_header("Content-Type", mime)?
+            .fixed(body.as_bytes().to_vec()));
     }
     let store = WorkStore::from_env(&env)
         .map_err(|_| worker::Error::RustError("work_storage_unavailable".into()))?;
