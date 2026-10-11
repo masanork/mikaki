@@ -31,7 +31,9 @@ production config flag, migration command or remote write.
 
 The [populated-primary adapter](../scripts/production-work-adoption.ts) captures
 the complete verified application schema and rows, with a maximum of 64 rows per
-table and 1 MiB total. BLOBs retain their storage type. The initial checkpoint
+table and 1 MiB total. SQL byte estimates bound row download before values are
+read, with conservative allowance for JSON escaping and BLOB encoding. BLOBs
+retain their storage type. The initial checkpoint
 tip binds this snapshot. Its plan fixes the current production account, D1 and
 authority, and requires non-placeholder checkpoint identities. The adapter
 clones the snapshot, requires every application table and the complete separate

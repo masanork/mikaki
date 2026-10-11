@@ -58,8 +58,25 @@ export async function captureProductionWorkSnapshot(
     'production_work_foreign_keys',
   );
   const tables: PrimarySnapshot['tables'] = [];
+  let bytes = Buffer.byteLength(JSON.stringify({ schema, migrations: ledger }));
   for (const { name, type } of schema) {
     if (type !== 'table') continue;
+    // Bound value download before reading rows; control characters can expand
+    // sixfold in JSON, and BLOBs are represented by hexadecimal text.
+    const columns = (
+      await DB.prepare(`PRAGMA table_info(${identifier(name)})`).all<{ name: string }>()
+    ).results;
+    assert.ok(columns.length > 0 && columns.length <= 100, 'production_work_columns_denied');
+    const terms = columns.map(
+      ({ name }) =>
+        `(coalesce(length(CAST(${identifier(name)} AS BLOB)),0)*6+${name.length * 6 + 20})`,
+    );
+    const size = await DB.prepare(
+      `SELECT count(*) AS n,coalesce(sum(bytes),0) AS bytes FROM
+      (SELECT ${terms.join(' + ')} AS bytes FROM ${identifier(name)} LIMIT 65)`,
+    ).first<{ n: number; bytes: number }>();
+    assert.ok(size && size.n <= 64, 'production_work_snapshot_row_bound');
+    assert.ok(size.bytes + bytes < 1_000_000, 'production_work_snapshot_byte_bound');
     const rows = (
       await DB.prepare(`SELECT * FROM ${identifier(name)} LIMIT 65`).all<Record<string, unknown>>()
     ).results.map(bootstrapRow);
@@ -72,6 +89,8 @@ export async function captureProductionWorkSnapshot(
     if (name === 'work_authority_checkpoint')
       assert.equal(rows.length, 0, 'production_work_already_enrolled');
     tables.push({ name, rows });
+    bytes += Buffer.byteLength(JSON.stringify({ name, rows }));
+    assert.ok(bytes < 1_000_000, 'production_work_snapshot_byte_bound');
   }
   const snapshot = { schema, tables, migrations: ledger.map(({ name }) => name) };
   assert.ok(

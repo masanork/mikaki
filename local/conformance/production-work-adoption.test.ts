@@ -279,3 +279,28 @@ test('oversized SQL guards are refused before any independent or primary write c
     await f.close();
   }
 });
+
+test('byte preflight refuses large primary values before downloading their rows', async () => {
+  const f = await fixture();
+  try {
+    await f.DB.batch(
+      Array.from({ length: 64 }, (_, i) =>
+        f.DB.prepare('INSERT INTO runtime_policy_version VALUES(?,?,?,1)').bind(
+          i.toString(16).padStart(64, '0'),
+          'f'.repeat(64),
+          'x'.repeat(16000),
+        ),
+      ),
+    );
+    await assert.rejects(
+      captureProductionWorkSnapshot(f.db, f.owner, f.work),
+      /snapshot_byte_bound/,
+    );
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_authority_checkpoint').first('n'),
+      0,
+    );
+  } finally {
+    await f.close();
+  }
+});
