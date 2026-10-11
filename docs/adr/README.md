@@ -18,5 +18,6 @@ ADRs record accepted choices and their rationale. They do not certify that a fea
 | [0013](0013-agent-proposal-authority.md) | One isolated agent proposal authority for HTTP/MCP; an explicit TypeScript exception leaves Rust owner storage and the encrypted commit boundary separate. |
 | [0014](0014-agent-oauth-authority.md) | Bounded isolated delegated-agent OAuth authority; public-client token issuance selects existing grants and remains separate from Rust OIDC/owner storage. |
 | [0015](0015-service-data-ownership.md) | OP-owned durable storage, bounded Agent/recipient service capabilities and ordered rollout/rollback. |
+| [0016](0016-personal-context-and-workload-delegation.md) | Repository-based personal context, bounded workload delegation, separate code/decision adoption and qualified Artifacts integration. |
 
 There is no ADR 0010 in the repository. The numbering is not renumbered to hide that gap.
