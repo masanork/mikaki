@@ -333,7 +333,7 @@ test('roster identities use id, never the opaque tag, and reject any pagination 
 });
 
 test('recognized non-D1 binding types never bypass agent or extra-consumer guards', async () => {
-  for (const type of ['worker_loader', 'vectorize', 'workflow'])
+  for (const type of ['worker_loader', 'vectorize', 'workflow', 'artifacts'])
     for (const endpoint of ['/settings', '/versions/' + version]) {
       await assert.rejects(
         inspectWorkerInventory(
@@ -589,6 +589,29 @@ test('unknown binding types still require review', () => {
     () => projectBindings([{ name: 'UNKNOWN', type: 'future_binding' }]),
     /Unknown Worker binding type/,
   );
+});
+
+test('documented Artifacts bindings on unrelated Workers omit namespace and capability values', async () => {
+  const inventory = await inspectWorkerInventory(
+    fixture([target.op, target.claim, 'other'], (path, value) => {
+      if (
+        path.includes('/scripts/other/') &&
+        (path.endsWith('/settings') || path.includes('/versions/'))
+      )
+        (path.endsWith('/settings') ? value.result : value.result.resources).bindings.push({
+          name: 'ARTIFACTS',
+          type: 'artifacts',
+          get namespace() {
+            throw new Error('Namespace value must not be copied');
+          },
+        });
+      return value;
+    }),
+    target,
+  );
+  const other = inventory.workers.find(({ name }) => name === 'other')!;
+  assert.deepEqual(other.settings.databases, []);
+  assert.ok(!JSON.stringify(other).includes('Namespace'));
 });
 
 test('transport allows only the unfiltered full roster endpoint', async () => {

@@ -17,6 +17,8 @@ const bindingTypes = new Set([
   'durable_object_namespace',
   'assets',
   'analytics_engine',
+  // https://developers.cloudflare.com/artifacts/api/workers-binding/
+  'artifacts',
   'queue',
   'ratelimit',
   'ai',
