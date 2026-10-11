@@ -2133,15 +2133,15 @@
   },
   {
     "date": "2026-10-11",
-    "commit": "eceef60",
+    "commit": "9bbe587",
     "code": {
-      "implementationLines": 78077,
+      "implementationLines": 78548,
       "testLines": 12297,
-      "implementationFiles": 271,
+      "implementationFiles": 274,
       "testFiles": 36,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 35479,
+          "implementationLines": 35950,
           "testLines": 2738
         },
         "rust": {
