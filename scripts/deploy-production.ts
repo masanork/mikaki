@@ -9,6 +9,7 @@ import { verifyPreparedUpload } from './prepare-release-upload.ts';
 import { readdirSync } from 'node:fs';
 import { BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
 import { assertProductionOwnerSchema } from './production-owner-schema.ts';
+import type { WorkLedgerRow } from './production-work-schema.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -173,6 +174,21 @@ export function assertWaitlistMailKey(value: unknown): asserts value is string {
   }
 }
 
+/** Explicit schema adoption is distinct from enabling any owner/effect capability. */
+export function productionWorkSchema(vars: Record<string, string>) {
+  assert.ok(
+    vars.WORK_SCHEMA_ENABLED === undefined || ['true', 'false'].includes(vars.WORK_SCHEMA_ENABLED),
+    'Invalid production Work schema selection',
+  );
+  const enabled = vars.WORK_SCHEMA_ENABLED === 'true';
+  for (const [name, value] of Object.entries(vars))
+    if (name.startsWith('WORK_') && name.endsWith('_ENABLED') && name !== 'WORK_SCHEMA_ENABLED') {
+      assert.ok(['true', 'false'].includes(value), 'Invalid production Work capability selection');
+      assert.ok(value !== 'true' || enabled, 'Work capabilities require the reviewed Work schema');
+    }
+  return enabled;
+}
+
 async function main() {
   const root = fileURLToPath(new URL('../', import.meta.url));
   assert.equal(process.argv.length, 3, 'Usage: deploy-production.ts <promotion-directory>');
@@ -207,6 +223,9 @@ async function main() {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   const opConfig = 'crates/worker/wrangler.production.jsonc';
+  const workSchemaEnabled = productionWorkSchema(
+    JSON.parse(readFileSync(join(root, opConfig), 'utf8')).vars,
+  );
   const migrations = wrangler(['d1', 'migrations', 'list', 'DB', '--remote', '--config', opConfig]);
   assert.ok(
     migrations.includes('No migrations to apply'),
@@ -228,12 +247,39 @@ async function main() {
   assert.equal(schemaProbe.length, 2, 'Expected ledger and schema results');
   assert.ok(schemaProbe.every((result: { success: boolean }) => result.success === true));
   const migrationDirectory = join(root, 'crates/worker/migrations');
+  let workSchema;
+  if (workSchemaEnabled) {
+    const directory = join(root, 'crates/worker/work-migrations');
+    const probe = JSON.parse(
+      wrangler([
+        'd1',
+        'execute',
+        'DB',
+        '--remote',
+        '--config',
+        opConfig,
+        '--command',
+        'SELECT id,name,sha256 FROM work_schema_migrations ORDER BY id',
+        '--json',
+      ]),
+    );
+    assert.equal(probe.length, 1, 'Expected the separate Work ledger');
+    assert.equal(probe[0].success, true);
+    workSchema = {
+      migrations: readdirSync(directory)
+        .filter((name) => name.endsWith('.sql'))
+        .sort()
+        .map((name) => ({ name, sql: readFileSync(join(directory, name), 'utf8') })),
+      ledger: probe[0].results as WorkLedgerRow[],
+    };
+  }
   assertProductionOwnerSchema(
     readdirSync(migrationDirectory)
       .sort()
       .map((name) => ({ name, sql: readFileSync(join(migrationDirectory, name), 'utf8') })),
     schemaProbe[0].results,
     schemaProbe[1].results,
+    workSchema,
   );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
   assert.ok(

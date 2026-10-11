@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { BASELINE_SCHEMA_QUERY, canonicalSchema, type SchemaRow } from './production-baseline.ts';
+import {
+  assertWorkMigrationFiles,
+  assertWorkLedger,
+  WORK_LEDGER_SQL,
+  type SqlMigration,
+  type WorkLedgerRow,
+} from './production-work-schema.ts';
 
 export const OWNER_MIGRATIONS = [
   {
@@ -23,6 +30,7 @@ export function assertProductionOwnerSchema(
   migrations: { name: string; sql: string }[],
   ledger: { name: string }[],
   schema: SchemaRow[],
+  work?: { migrations: SqlMigration[]; ledger: WorkLedgerRow[] },
 ) {
   const names = OWNER_MIGRATIONS.map(({ name }) => name);
   assert.deepEqual(
@@ -45,6 +53,12 @@ export function assertProductionOwnerSchema(
         'Owner migration bytes differ',
       );
       db.exec(migration.sql);
+    }
+    if (work) {
+      assertWorkMigrationFiles(work.migrations);
+      assertWorkLedger(work.ledger);
+      db.exec(WORK_LEDGER_SQL);
+      for (const migration of work.migrations) db.exec(migration.sql);
     }
     assert.deepEqual(
       db.prepare('PRAGMA foreign_key_check').all(),

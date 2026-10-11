@@ -25,10 +25,11 @@ import {
   digest,
 } from './work-authority-packet.ts';
 
-type Row = Record<string, string | number | null>;
+export type BootstrapRow = Record<string, string | number | null | { blob_hex: string }>;
+type Row = BootstrapRow;
 // The pinned D1 runtime supplies this additional private metadata table.
 // Exclude only known runtime objects, never arbitrary _cf_* application objects.
-const BOOTSTRAP_SCHEMA_QUERY = BASELINE_SCHEMA_QUERY.replace(
+export const BOOTSTRAP_SCHEMA_QUERY = BASELINE_SCHEMA_QUERY.replace(
   'ORDER BY type,name',
   "AND name != '_cf_METADATA' AND tbl_name != '_cf_METADATA' ORDER BY type,name",
 );
@@ -77,11 +78,65 @@ const sortedRows = (rows: Row[]) =>
     )
     .sort();
 const same = isDeepStrictEqual;
+/** D1 projects BLOBs as byte arrays; keep their storage type distinct from text. */
+export function bootstrapRow(row: Record<string, unknown>): Row {
+  return Object.fromEntries(
+    Object.entries(row).map(([name, value]) => {
+      if (Array.isArray(value) || value instanceof Uint8Array) {
+        assert.ok(
+          Array.from(value).every((v) => Number.isInteger(v) && v >= 0 && v <= 255),
+          'authority_bootstrap_blob_invalid',
+        );
+        return [name, { blob_hex: Buffer.from(value).toString('hex').toUpperCase() }];
+      }
+      assert.ok(
+        value === null ||
+          typeof value === 'string' ||
+          (typeof value === 'number' &&
+            Number.isFinite(value) &&
+            (!Number.isInteger(value) || Number.isSafeInteger(value))),
+        'authority_bootstrap_value_invalid',
+      );
+      return [name, value];
+    }),
+  );
+}
 // D1 limits expression depth to 100. A flat AND chain is left-deep in SQLite.
 function conjunction(parts: string[]): string {
   if (parts.length === 1) return parts[0]!;
   const middle = Math.floor(parts.length / 2);
   return `(${conjunction(parts.slice(0, middle))} AND ${conjunction(parts.slice(middle))})`;
+}
+
+function primaryInsertQuery(expected: PrimarySnapshot) {
+  const schemaQuery = BOOTSTRAP_SCHEMA_QUERY.replace(/ ORDER BY type,name$/, '');
+  const observedSchema =
+    "SELECT json_extract(value,'$.type'),json_extract(value,'$.name'),json_extract(value,'$.tbl_name'),json_extract(value,'$.sql') FROM json_each(?5,'$.schema')";
+  const conditions = [
+    `NOT EXISTS(${schemaQuery} EXCEPT ${observedSchema})`,
+    `NOT EXISTS(${observedSchema} EXCEPT ${schemaQuery})`,
+    `(SELECT json_group_array(name) FROM (SELECT name FROM d1_migrations ORDER BY id)) IS json_extract(?5,'$.migrations')`,
+  ];
+  for (const [index, table] of expected.tables.entries()) {
+    conditions.push(`(SELECT count(*) FROM ${quote(table.name)})=${table.rows.length}`);
+    // All fields participate; IS preserves NULL and hex retains BLOB storage type.
+    for (const [rowIndex, row] of table.rows.entries())
+      conditions.push(
+        `EXISTS(SELECT 1 FROM ${quote(table.name)} WHERE ${Object.keys(row)
+          .map((column) =>
+            typeof row[column] === 'object' && row[column] !== null
+              ? `(typeof(${quote(column)})='blob' AND hex(${quote(column)}) IS json_extract(?5,'$.tables[${index}].rows[${rowIndex}].${column}.blob_hex'))`
+              : `${quote(column)} IS json_extract(?5,'$.tables[${index}].rows[${rowIndex}].${column}')`,
+          )
+          .join(' AND ')})`,
+      );
+  }
+  const sql = `INSERT INTO work_authority_checkpoint(id,authority,epoch,sequence,tip) SELECT 1,?1,?2,?3,?4 WHERE ${conjunction(conditions)}`;
+  assert.ok(
+    Buffer.byteLength(sql) < 100_000 && Buffer.byteLength(JSON.stringify(expected)) < 1_000_000,
+    'authority_bootstrap_query_too_large',
+  );
+  return sql;
 }
 
 /** Derive all initial seed values from the frozen SQL, never from operator-supplied SQL. */
@@ -97,7 +152,10 @@ export async function primaryBootstrapSnapshot(migrations: string): Promise<Prim
       .filter((r) => r.type === 'table')
       .map(({ name }) => ({
         name,
-        rows: db.prepare(`SELECT * FROM ${quote(name)}`).all() as Row[],
+        rows: db
+          .prepare(`SELECT * FROM ${quote(name)}`)
+          .all()
+          .map(bootstrapRow),
       }));
     assert.ok(tables.every((t) => t.rows.length <= 16));
     return { schema, tables, migrations: names };
@@ -108,10 +166,21 @@ export async function primaryBootstrapSnapshot(migrations: string): Promise<Prim
 
 /** Exact ledger/schema/seed checks. The insertion repeats guards atomically in D1. */
 export function primaryBootstrapStore(DB: D1Database, expected: PrimarySnapshot) {
+  return quiescentPrimaryStore(DB, expected, validateIsolatedBootstrapPlan);
+}
+
+/** Shared SQL guard; callers must supply a closed, fixed-target scope validator. */
+export function quiescentPrimaryStore(
+  DB: D1Database,
+  expected: PrimarySnapshot,
+  validatePlan: (value: unknown) => asserts value is BootstrapPlan,
+) {
+  // Refuse oversized guards before the independent enrollment can be attempted.
+  const sql = primaryInsertQuery(expected);
   let schemaObservation: SchemaRow[] | null = null;
   let attempted = false;
   async function inspect(plan: BootstrapPlan): Promise<PrimaryInspection> {
-    validateIsolatedBootstrapPlan(plan);
+    validatePlan(plan);
     const schema = (await DB.prepare(BOOTSTRAP_SCHEMA_QUERY).all<SchemaRow>()).results;
     assert.deepEqual(
       canonicalSchema(schema),
@@ -140,7 +209,7 @@ export function primaryBootstrapStore(DB: D1Database, expected: PrimarySnapshot)
         await DB.prepare(
           `SELECT * FROM ${quote(table.name)} LIMIT ${table.rows.length + 2}`,
         ).all<Row>()
-      ).results;
+      ).results.map(bootstrapRow);
       if (table.name === 'work_authority_checkpoint') {
         assert.ok(rows.length <= 1, 'authority_bootstrap_marker_invalid');
         if (rows.length) {
@@ -162,11 +231,11 @@ export function primaryBootstrapStore(DB: D1Database, expected: PrimarySnapshot)
         initialOnly = false;
       }
     }
-    schemaObservation = schema;
+    schemaObservation = pristine ? schema : null;
     return { marker, pristine, initial_only: initialOnly && marker !== null };
   }
   async function insert(plan: BootstrapPlan) {
-    validateIsolatedBootstrapPlan(plan);
+    validatePlan(plan);
     assert.ok(schemaObservation && !attempted, 'authority_bootstrap_primary_not_admitted');
     attempted = true; // Consumption precedes the SQL call, including a lost reply.
     const snapshot = JSON.stringify({
@@ -174,32 +243,7 @@ export function primaryBootstrapStore(DB: D1Database, expected: PrimarySnapshot)
       tables: expected.tables,
       migrations: expected.migrations,
     });
-    const schemaQuery = BOOTSTRAP_SCHEMA_QUERY.replace(/ ORDER BY type,name$/, '');
-    const observedSchema =
-      "SELECT json_extract(value,'$.type'),json_extract(value,'$.name'),json_extract(value,'$.tbl_name'),json_extract(value,'$.sql') FROM json_each(?5,'$.schema')";
-    const conditions = [
-      `NOT EXISTS(${schemaQuery} EXCEPT ${observedSchema})`,
-      `NOT EXISTS(${observedSchema} EXCEPT ${schemaQuery})`,
-      `(SELECT json_group_array(name) FROM (SELECT name FROM d1_migrations ORDER BY id)) IS json_extract(?5,'$.migrations')`,
-    ];
-    for (const [index, table] of expected.tables.entries()) {
-      conditions.push(`(SELECT count(*) FROM ${quote(table.name)})=${table.rows.length}`);
-      // Seeded rows have stable keys. IS preserves NULL rather than treating it as unknown.
-      for (const [rowIndex, row] of table.rows.entries())
-        conditions.push(
-          `EXISTS(SELECT 1 FROM ${quote(table.name)} WHERE ${Object.keys(row)
-            .map(
-              (column) =>
-                `${quote(column)} IS json_extract(?5,'$.tables[${index}].rows[${rowIndex}].${column}')`,
-            )
-            .join(' AND ')})`,
-        );
-    }
-    const sql = `INSERT INTO work_authority_checkpoint(id,authority,epoch,sequence,tip) SELECT 1,?1,?2,?3,?4 WHERE ${conjunction(conditions)}`;
-    assert.ok(
-      Buffer.byteLength(sql) < 100_000 && Buffer.byteLength(snapshot) < 1_000_000,
-      'authority_bootstrap_query_too_large',
-    );
+    assert.ok(Buffer.byteLength(snapshot) < 1_000_000, 'authority_bootstrap_query_too_large');
     const guard = `bootstrap:${digest(Buffer.from(JSON.stringify(plan))).sha256}`;
     await DB.batch([
       DB.prepare(sql).bind(
