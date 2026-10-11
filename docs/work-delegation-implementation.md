@@ -1297,3 +1297,43 @@ Next resolve the same DLQ admission with positive evidence, then qualify the
 remaining allocation and remote version/config observations under the retained
 reservation. Shared bootstrap reservation and the bounded remote executor remain
 separate outstanding gates.
+
+## Positive DLQ creation recheck, 2026-10-12 JST
+
+A read-only recheck identifies the original DLQ create in Cloudflare's legacy
+[`audit_logs` API](https://developers.cloudflare.com/api/resources/audit_logs/methods/list/).
+The earlier inspection used only the v2 audit endpoint and missed this record.
+Both endpoints were queried over `2026-10-10T21:50:00Z` through
+`2026-10-10T22:10:00Z`: v2 returns one unrelated create, while v1 returns the
+DLQ `create_queue` with `action.result=true`. Direct lookup of audit ID
+`bee80ee1-8440-46c3-b762-eff0a6d5f0e1` repeats the same single record.
+
+The provider record matches account `4b749427a0c80c547e726a42aff4b6fc`, Queue
+ID `4f95485d3880458b9a14a8168b836498`, and the metadata name
+`mikaki-work-logout-qualification-dlq`. Its event time
+`2026-10-10T21:57:50.458616Z` falls between the retained original DLQ create
+intent (`21:57:49.291Z`) and its HTTP 200 observation (`21:57:50.515Z`).
+The Queue creation time (`21:57:49.42237Z`) also falls inside that original
+request interval. This is positive provider creation evidence for the same
+allocation, rather than an inference from a later name listing.
+
+Queue details read before and after the audit queries agree exactly. Producer
+and consumer counts and their returned lists are all zero; the provider's
+modification time still equals its original creation time. The original 236
+records, reservation digest, partial seal and three protected Artifacts journal
+digests remain unchanged. No provider write, retry, replacement, deployment or
+bootstrap was issued.
+
+The private receipt is
+`local/generated/work-authority-allocation/recheck-wn8aMy/result.json`, SHA-256
+`ef7bad9ee257da2641587a5f7e9b7d4da1b73ff3b2e4e8fdf93110d74df22c52`.
+Its source is preserved beside it as `source.mjs`, SHA-256
+`145392500eae3da7e15cf0c53c8be5a06c2d085a2ef2aa8e8ed941030cebdc30`.
+The receipt contains the direct audit match and request-time checks without
+actor identity, bearer or unrelated raw audit payloads.
+
+The DLQ creation fact is now confirmed. The original journal still retains its
+historical `create_outcome_unknown`; the deployment gate is not silently
+rewritten or bypassed. A reviewed append-only reconciler can consume this
+positive evidence before the unattempted main Queue allocation and child
+deployment proceed. No new DLQ create is needed or authorized by this recheck.
