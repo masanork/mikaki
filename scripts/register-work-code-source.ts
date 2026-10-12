@@ -16,6 +16,14 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const opName = 'mikaki-auth';
 const journal =
   '/Users/masanork/repo/mikaki/local/generated/work-production-source-registration-v1';
+
+export function assertQualifiedSourceVersion(value: unknown, id: string, commit: string) {
+  assert.ok(value && typeof value === 'object');
+  const version = value as { id?: unknown; annotations?: Record<string, unknown> };
+  assert.equal(version.id, id, 'Read back the exact active OP version');
+  assert.equal(version.annotations?.['workers/message'], `main CI ${commit}`);
+  assert.equal(version.annotations?.['workers/tag'], commit.slice(0, 12));
+}
 async function deadline<T>(call: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -95,7 +103,8 @@ async function main() {
   assert.ok(active?.length === 1 && active[0]!.percentage === 100);
   const version = (await get(`${path}/versions/${active[0]!.version_id}`)) as {
     result: {
-      metadata: { annotations: Record<string, string> };
+      id: string;
+      annotations: Record<string, string>;
       resources: {
         bindings: {
           name: string;
@@ -108,7 +117,7 @@ async function main() {
       };
     };
   };
-  assert.equal(version.result.metadata.annotations['workers/message'], `main CI ${run.head_sha}`);
+  assertQualifiedSourceVersion(version.result, active[0]!.version_id, run.head_sha);
   const bindings = version.result.resources.bindings;
   assert.ok(
     bindings.some(
@@ -281,9 +290,10 @@ async function main() {
     await rm(temporary, { recursive: true, force: true });
   }
 }
-main().catch(() => {
-  console.error(
-    'Source operation stopped. Inspect retained metadata; do not recreate or replay registration.',
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main().catch(() => {
+    console.error(
+      'Source operation stopped. Inspect retained metadata; do not recreate or replay registration.',
+    );
+    process.exitCode = 1;
+  });
