@@ -2278,19 +2278,19 @@
   },
   {
     "date": "2026-10-12",
-    "commit": "3789e19",
+    "commit": "6dc2a73",
     "code": {
-      "implementationLines": 80081,
+      "implementationLines": 80218,
       "testLines": 12297,
       "implementationFiles": 280,
       "testFiles": 36,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 36832,
+          "implementationLines": 36840,
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 36580,
+          "implementationLines": 36709,
           "testLines": 9559
         },
         "svelte": {
