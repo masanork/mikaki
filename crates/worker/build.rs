@@ -15,6 +15,9 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/VaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
+    println!("cargo:rerun-if-changed=ui/VaultWebMcp.svelte");
+    println!("cargo:rerun-if-changed=ui/vault-webmcp.ts");
+    println!("cargo:rerun-if-changed=ui/webmcp.ts");
     for source in [
         "work-sources.ts",
         "work-sources.html",
