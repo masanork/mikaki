@@ -260,8 +260,21 @@ test('source and consent screens share WebMCP actions while retaining exact sele
           started = resolve;
         });
         held = true;
-        const pending = api.call('mikaki_read_work_file', { file_index: 0 });
+        const denied = api.call('mikaki_read_work_file', { file_index: 0 });
         await waiting;
+        await page.locator('#work-assistant-content').uncheck();
+        release?.();
+        release = undefined;
+        const deniedResult = await denied;
+        assert.equal(deniedResult.ok, false);
+        assert(!JSON.stringify(deniedResult).includes('結論'));
+        await page.locator('#work-assistant-content').check();
+        const hiddenWaiting = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        held = true;
+        const pending = api.call('mikaki_read_work_file', { file_index: 0 });
+        await hiddenWaiting;
         await page.evaluate(() => (window as unknown as { hideWorkTools(): void }).hideWorkTools());
         release?.();
         release = undefined;

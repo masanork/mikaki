@@ -12,8 +12,7 @@
     visible = $state(document.visibilityState === 'visible'),
     status = $state('');
   const selection = $derived(host.snapshot().selection),
-    files = $derived(host.snapshot().files.length),
-    busy = $derived(host.snapshot().busy);
+    files = $derived(host.snapshot().files.length);
   function clear() {
     enabled = false;
     sharedSelection = null;
@@ -67,14 +66,13 @@
 
 {#if modelContext}
   <section id="work-browser-assistant" aria-labelledby="work-browser-assistant-heading">
-    <h2 id="work-browser-assistant-heading">{m.workAssistantHeading()}</h2>
-    <p>{m.workAssistantExplanation()}</p>
+    <h2 id="work-browser-assistant-heading">{m.webmcpHeading()}</h2>
     <label
       ><input
         id="work-assistant-enabled"
         type="checkbox"
         bind:checked={enabled}
-        disabled={busy || !visible}
+        disabled={!visible}
         onchange={() => {
           sharedSelection = null;
         }}
@@ -86,7 +84,7 @@
           id="work-assistant-content"
           type="checkbox"
           checked={sharedSelection !== null}
-          disabled={busy || !files}
+          disabled={!files}
           onchange={(event) => {
             sharedSelection = event.currentTarget.checked ? selection : null;
           }}

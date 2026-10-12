@@ -1,9 +1,7 @@
 {
-  "workAssistantHeading": "Browser assistant",
-  "workAssistantExplanation": "Let your browser assistant use this Work screen. Copy approval and execution keep their existing review steps.",
-  "workAssistantEnable": "Allow Work selection, inspection and preparation tools",
-  "workAssistantContent": "Share file contents for this exact selection with the assistant",
-  "workAssistantSession": "Content may be sent to your assistant's AI provider. Changing the selection clears content permission. Hiding or locking this screen clears all tool permissions.",
+  "workAssistantEnable": "Allow assistant tools on this screen",
+  "workAssistantContent": "Share selected file contents",
+  "workAssistantSession": "Shared content may go to your AI provider. Selection changes clear content permission; hiding or locking clears tools. Confirm copy actions here.",
   "waitlistTitle": "Request a mikaki invitation",
   "waitlistHeading": "Request an invitation",
   "waitlistIntro": "An administrator will review your request and email you an invitation if approved.",
