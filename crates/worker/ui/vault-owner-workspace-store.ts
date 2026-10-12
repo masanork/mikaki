@@ -25,7 +25,10 @@ function revision(value: unknown): value is number {
 // Collection discovery for the archive UI; all record crypto, root fences and exact
 // mutation retries use the canonical store shared with the name/note preview.
 export class OwnerWorkspaceStore {
-  constructor(private readonly owner: OwnerVaultController) {}
+  private readonly owner: OwnerVaultController;
+  constructor(owner: OwnerVaultController) {
+    this.owner = owner;
+  }
   private check(value: unknown, collection: string): Record<string, unknown> {
     const v = object(value),
       root = this.owner.lease().stored,

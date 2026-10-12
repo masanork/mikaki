@@ -16,6 +16,8 @@
     ownerNoteInputError,
   } from './vault-note.ts';
   import * as m from './paraglide/messages.js';
+  import { WebMcpFailure } from './webmcp.ts';
+  import type { WebMcpDraft } from './vault-webmcp.ts';
   let {
     target,
     disabled = false,
@@ -49,6 +51,24 @@
   let observedRefreshEpoch = untrack(() => refreshEpoch);
   const edited = $derived(JSON.stringify([title, value]));
   const dirty = $derived(pending !== null || (loaded && edited !== original));
+  export function prepareAssistantDraft(
+    nextTitle: string,
+    nextText: string,
+    revision: number,
+    signal: AbortSignal,
+  ): Promise<WebMcpDraft> {
+    signal.throwIfAborted();
+    owner.checkpoint();
+    if (!note || !mounted || disabled || busy || !loaded || !head || head.revision !== revision)
+      throw new WebMcpFailure('record_changed');
+    if (dirty) throw new WebMcpFailure('unsaved_changes');
+    if (ownerNoteInputError(nextTitle, nextText)) throw new WebMcpFailure('invalid_input');
+    title = nextTitle;
+    value = nextText;
+    invalid = null;
+    status = m.productUnsavedChanges();
+    return Promise.resolve({ revision, status: 'review_required' });
+  }
   function assertCurrent(epoch: number, token: number): void {
     owner.assertCurrent(token);
     if (!mounted || epoch !== requestEpoch) throw new DOMException('Stale editor', 'AbortError');

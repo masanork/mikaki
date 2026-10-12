@@ -6,6 +6,46 @@ Current source status (2026-10-05, follow-up branch `feat/issue-121-agent-v1-ret
 
 The subsequent [Vault protocol review](vault-protocol-review.md) places MCP at the AI adapter boundary. Storage/revisions, credential presentation, FileNode synchronization, and OAuth delegation have separate contracts. The current generic `mikaki_execute` creates a private draft outside Vault; it is not a generic encrypted Vault write API. Future adapters must reuse authoritative domain operations rather than establish transport-specific grant or revision state machines. Local owner-selected `owner_note` exports are implemented alongside saved-name exports; remote v2 snapshot grants can select one `name` or `owner_note` record.
 
+## Browser WebMCP
+
+The Owner Vault has an optional browser adapter using native `document.modelContext`.
+On a browser that exposes this API, open **Browser assistant**, enable tools, and
+select the saved name, note, or up to 16 conversations. Unselected text is not
+returned. The permissions apply to the current tab and clear when tools are
+disabled, the tab becomes hidden, or the Vault is locked. Returned plaintext can
+be sent to the assistant's AI provider; removing permission cannot recall a prior
+result. This is separate from downloaded exports and remote MCP grants.
+These selections restrict WebMCP result data. They do not restrict an assistant's
+existing permission to inspect the page, screenshots, or DOM; see the
+[browser-agent security boundary](https://developer.chrome.com/docs/ai/webmcp/secure-tools).
+
+The adapter registers `mikaki_get_vault_state`, `mikaki_list_selected`,
+`mikaki_search_selected`, `mikaki_read_selected`, `mikaki_open_selected_thread`,
+`mikaki_prepare_name_edit`, `mikaki_prepare_note_edit`, and
+`mikaki_review_vault_action`. Reads check live owner/key authority before and after
+the operation and require the selected saved revision. Search uses the existing
+SQLite Worker with selected snapshots; results contain at most ten excerpts.
+Record reads have bounded text and return at most five conversation messages.
+Draft tools preserve existing unsaved changes and create no stored mutation.
+Save, delete, sharing, grants, exports, Passkey management and unlock remain
+user-reviewed controls: the review tool opens or focuses the corresponding UI,
+without executing the action or returning tokens or keys. Idle/absolute Vault
+deadlines are not renewed by tool calls.
+
+No polyfill, remote bridge, cross-origin exposure, or extra OAuth service is
+installed. Unsupported browsers keep the normal UI. For local testing, use a
+compatible Chromium with the [WebMCP testing flag](https://developer.chrome.com/docs/ai/webmcp).
+WebMCP remains experimental; production use needs compatible browser/agent
+support or an applicable origin trial.
+
+`npm run test:vault-webmcp` tests selected-data permissions, exact revisions,
+draft conflicts and cancellation, and exercises the real Vault UI and native
+Chromium registration/discovery/execution. PRF uses synthetic test credentials;
+this does not qualify a physical authenticator or a particular external agent.
+Run `worker-build --release crates/worker` before the browser tests after UI changes.
+The native adapter and consent UI add served JavaScript; the Vault gzip budget is
+90 KiB (a 1 KiB increase), while its existing raw-byte budget remains unchanged.
+
 ## Work browser WebMCP
 
 The source, preparation and copy-progress screens expose native browser WebMCP
