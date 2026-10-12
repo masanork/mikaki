@@ -44,7 +44,7 @@ jobs:
           echo "MIKAKI_WORK_BINDGEN=$RUNNER_TEMP/work-bindgen/bin/wasm-bindgen" >> "$GITHUB_ENV"
       - run: npm ci
       - uses: ./.github/actions/setup-cargo-tools
-        if: inputs.suite == 'product'
+        if: inputs.suite == 'product' || inputs.suite == 'authority'
         with:
           profile: worker
       - name: Install the product browser runtime
