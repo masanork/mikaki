@@ -56,6 +56,8 @@ export async function preparationFixture(
     d1Databases: { DB: 'preparation-probe' },
     r2Buckets: { WORK_GIT_PAYLOADS: 'private-work-candidate-payloads' },
   };
+  const productBindings: Record<string, string> = { ...ownerWorker.bindings };
+  delete productBindings.LOCAL_WORK_QUALIFICATION;
   const copyEnabled = bindings.WORK_COPY_EXECUTION_ENABLED === 'true';
   const copyBindings: NonNullable<V4WorkerOptions['serviceBindings']> = copyEnabled
     ? {
@@ -215,7 +217,7 @@ export async function preparationFixture(
                 ],
                 compatibilityDate: '2026-10-06',
                 versionMetadata: 'CF_VERSION_METADATA',
-                bindings: ownerWorker.bindings,
+                bindings: productBindings,
                 d1Databases: ownerWorker.d1Databases,
                 r2Buckets: ownerWorker.r2Buckets,
                 serviceBindings: {
@@ -228,10 +230,14 @@ export async function preparationFixture(
                         },
                       }
                     : {}),
-                  WORK_AUTHORITY_CHECKPOINT: {
-                    name: 'work-checkpoint',
-                    entrypoint: 'WorkCheckpointService',
-                  },
+                  ...(checkpointEnabled
+                    ? {
+                        WORK_AUTHORITY_CHECKPOINT: {
+                          name: 'work-checkpoint',
+                          entrypoint: 'WorkCheckpointService',
+                        },
+                      }
+                    : {}),
                 },
               },
             ]
@@ -629,14 +635,21 @@ export async function preparationFixture(
       preparation?: { id: string; digest: string; state: string; body: string };
     }>;
   }
-  async function initialize(input: GitDisclosure, throughMigration?: string) {
+  async function initialize(
+    input: GitDisclosure,
+    throughMigration?: string,
+    workThroughMigration?: number,
+  ) {
     const migrations = new URL('../../../crates/worker/migrations/', import.meta.url);
     for (const name of (await readdir(migrations)).filter((n) => n.endsWith('.sql')).sort()) {
       if (throughMigration && name.slice(0, 4) > throughMigration) continue;
       const statements = splitSqlQuery(await readFile(new URL(name, migrations), 'utf8'));
       await DB.batch(statements.map((s) => DB.prepare(s)));
     }
-    await applyWorkMigrations(DB, throughMigration ? Number(throughMigration) : 12);
+    await applyWorkMigrations(
+      DB,
+      workThroughMigration ?? (throughMigration ? Number(throughMigration) : 12),
+    );
     await activateWorkerPolicy(
       DB,
       JSON.parse(

@@ -21,7 +21,13 @@ type State = {
   frozen: boolean;
 };
 const receipt = '3'.repeat(64);
-async function fixture(enrolled = true, throughMigration?: string, sourceRead = false) {
+async function fixture(
+  enrolled = true,
+  throughMigration?: string,
+  sourceRead = false,
+  product = false,
+  workThroughMigration?: number,
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-checkpoint-'));
   const code = await gitFixture(directory, 'code', { 'README.md': 'Synthetic code\n' });
   const personal = sourceRead
@@ -64,10 +70,18 @@ async function fixture(enrolled = true, throughMigration?: string, sourceRead = 
         }
       : {}),
   };
-  let op = await preparationFixture(directory, bindings, enrolled);
+  let op = await preparationFixture(
+    directory,
+    bindings,
+    enrolled,
+    false,
+    undefined,
+    undefined,
+    product,
+  );
   let stopped = false;
   try {
-    const p = await op.initialize(selected.input, throughMigration);
+    const p = await op.initialize(selected.input, throughMigration, workThroughMigration);
     const plan = JSON.parse(p.body).data.plan;
     const request = {
       profile: 'mikaki-managed-work-v1',
@@ -111,6 +125,10 @@ async function fixture(enrolled = true, throughMigration?: string, sourceRead = 
         directory,
         { ...bindings, LOCAL_CHECKPOINT_SOURCE_PAUSE: pauseSource ? 'true' : 'false' },
         withCheckpoint,
+        false,
+        undefined,
+        undefined,
+        product,
       );
       stopped = false;
     }
@@ -156,6 +174,8 @@ async function fixture(enrolled = true, throughMigration?: string, sourceRead = 
           access_revision: 1,
           paths: ['writing.md'],
         }),
+      productFetch: (path: string, options: FixtureRequestOptions = {}) =>
+        op.productFetch(path, options),
       async close() {
         await stop();
         await rm(directory, { recursive: true, force: true });
@@ -181,6 +201,72 @@ function step(f: Awaited<ReturnType<typeof fixture>>, p: Permit) {
     p.previous.sequence,
     p.previous.tip,
   );
+}
+
+async function prepareProductLogout(f: Awaited<ReturnType<typeof fixture>>) {
+  const before = await f.productFetch('/logout', {
+    headers: { Cookie: '__Host-op-sso=synthetic-delivery-session' },
+  });
+  assert.equal(before.status, 200, 'normal product Worker serves the logout confirmation');
+  const html = await before.text();
+  const csrf = /name="csrf" value="([^"]+)"/.exec(html)?.[1];
+  assert.ok(csrf, 'logout confirmation includes its CSRF value');
+  const cookieHeader = before.headers.get('set-cookie') ?? '';
+  const logoutCookie = /__Host-op-logout=([^;,\s]+)/.exec(cookieHeader)?.[1];
+  assert.ok(logoutCookie, 'logout confirmation sets its CSRF cookie');
+  return () =>
+    f.productFetch('/logout', {
+      method: 'POST',
+      headers: {
+        Cookie: `__Host-op-sso=synthetic-delivery-session; __Host-op-logout=${logoutCookie}`,
+        Origin: 'https://work.test',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ csrf }).toString(),
+    });
+}
+
+async function productLogout(f: Awaited<ReturnType<typeof fixture>>) {
+  return (await prepareProductLogout(f))();
+}
+
+async function seedLogoutClient(f: Awaited<ReturnType<typeof fixture>>) {
+  await f.DB.batch([
+    f.DB.prepare(
+      "INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('synthetic-logout-client',1,1,'https://rp.example.test')",
+    ),
+    f.DB.prepare('INSERT INTO app_connection VALUES(?,?,1,1)').bind(
+      'synthetic-delivery-owner',
+      'synthetic-logout-client',
+    ),
+    f.DB.prepare('INSERT INTO client_backchannel_logout_uri VALUES(?,?,1)').bind(
+      'synthetic-logout-client',
+      'https://rp.example.test/backchannel',
+    ),
+    f.DB.prepare('INSERT INTO client_session VALUES(?,?,?,?,?,1,0)').bind(
+      'synthetic-logout-client',
+      'synthetic-logout-sid',
+      'delivery-sso',
+      'synthetic-delivery-owner',
+      'synthetic-logout-subject',
+    ),
+  ]);
+}
+
+async function logoutState(f: Awaited<ReturnType<typeof fixture>>) {
+  return {
+    revoked: await f.DB.prepare('SELECT revoked FROM sso_session WHERE sso_id=?')
+      .bind('delivery-sso')
+      .first('revoked'),
+    transactions: (await f.DB.prepare('SELECT * FROM logout_transaction ORDER BY csrf_hash').all())
+      .results,
+    events: (await f.DB.prepare('SELECT * FROM sso_logout_event ORDER BY sso_id').all()).results,
+    deliveries: (await f.DB.prepare('SELECT * FROM logout_delivery ORDER BY client_id,sid').all())
+      .results,
+    clients: (await f.DB.prepare('SELECT * FROM client_session ORDER BY client_id,sid').all())
+      .results,
+    guards: (await f.DB.prepare('SELECT * FROM atomic_guard ORDER BY operation_id').all()).results,
+  };
 }
 
 test('private checkpoint follows actual work batches and survives independent OP/DO restart without public exposure', async () => {
@@ -809,5 +895,134 @@ test('0012 preserves unenrolled 0011 history and does not retroactively certify 
     await f.DB.prepare('UPDATE sso_session SET revoked=1').run(); // Existing unenrolled OP contract.
   } finally {
     await f.close();
+  }
+});
+
+test('normal OP logout keeps the legacy batch path without a checkpoint table or enrollment', async () => {
+  for (const absentTable of [false, true]) {
+    const f = await fixture(false, undefined, false, true, absentTable ? 10 : undefined);
+    try {
+      await seedLogoutClient(f);
+      const table = await f.DB.prepare(
+        "SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name='work_authority_checkpoint'",
+      ).first('n');
+      assert.equal(table, absentTable ? 0 : 1);
+      if (!absentTable)
+        assert.equal(
+          await f.DB.prepare('SELECT count(*) AS n FROM work_authority_checkpoint').first('n'),
+          0,
+        );
+
+      const response = await productLogout(f);
+      assert.equal(response.status, 200, 'unenrolled legacy logout remains available');
+      const state = await logoutState(f);
+      assert.equal(state.revoked, 1);
+      assert.equal(state.transactions.length, 0);
+      assert.equal(state.events.length, 1);
+      assert.equal(state.deliveries.length, 1);
+      assert.equal(state.clients[0]?.revoked, 1);
+      assert.deepEqual(state.guards, []);
+      if (!absentTable)
+        assert.equal(
+          await f.DB.prepare('SELECT count(*) AS n FROM work_authority_checkpoint').first('n'),
+          0,
+        );
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test('normal OP logout fails closed for an enrolled checkpoint without its service binding', async () => {
+  const f = await fixture(false, undefined, false, true);
+  try {
+    await seedLogoutClient(f);
+    await f.DB.prepare('INSERT INTO work_authority_checkpoint VALUES(1,?,?,0,?)')
+      .bind('synthetic-managed-work', 'a'.repeat(64), 'b'.repeat(64))
+      .run();
+    const submit = await prepareProductLogout(f);
+    const before = await logoutState(f);
+    assert.equal(before.revoked, 0);
+    assert.equal(before.transactions.length, 1, 'GET prepared a durable CSRF transaction');
+    const marker = await f.DB.prepare(
+      'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+    ).first();
+
+    const response = await submit();
+    assert.equal(response.status, 400, 'an enrolled checkpoint cannot fall back to raw D1');
+    assert.deepEqual(await logoutState(f), before);
+    assert.deepEqual(
+      await f.DB.prepare(
+        'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+      ).first(),
+      marker,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('normal OP logout commits through the bound checkpoint and advances D1 and the Durable Object', async () => {
+  const f = await fixture(true, undefined, false, true);
+  try {
+    await seedLogoutClient(f);
+    const before = await f.current();
+    assert.deepEqual((await f.state()).checkpoint, before);
+    const response = await productLogout(f);
+    assert.equal(response.status, 200);
+    const after = await f.current();
+    assert.equal(after.sequence, before.sequence + 1);
+    assert.notEqual(after.tip, before.tip);
+    assert.deepEqual((await f.state()).checkpoint, after);
+    const state = await logoutState(f);
+    assert.equal(state.revoked, 1);
+    assert.equal(state.transactions.length, 0);
+    assert.equal(state.events.length, 1);
+    assert.equal(state.deliveries.length, 1);
+    assert.equal(state.deliveries[0]?.client_id, 'synthetic-logout-client');
+    assert.equal(state.deliveries[0]?.sid, 'synthetic-logout-sid');
+    assert.equal(state.clients[0]?.revoked, 1);
+    assert.deepEqual(state.guards, []);
+    assert.deepEqual(
+      await f.DB.prepare(
+        'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+      ).first(),
+      after,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('normal OP logout does not mutate D1 when its enrolled checkpoint is frozen, above the release floor, or mismatched', async () => {
+  for (const mode of ['frozen', 'release-floor', 'mismatched'] as const) {
+    const f = await fixture(true, undefined, false, true);
+    try {
+      await seedLogoutClient(f);
+      if (mode === 'frozen') await f.checkpoint({ action: 'freeze' });
+      else if (mode === 'release-floor') await f.checkpoint({ action: 'raise-floor', floor: 2 });
+      else {
+        await f.DB.prepare('DROP TRIGGER work_authority_checkpoint_monotonic').run();
+        await f.DB.prepare('UPDATE work_authority_checkpoint SET tip=? WHERE id=1')
+          .bind('c'.repeat(64))
+          .run();
+      }
+      const submit = await prepareProductLogout(f);
+      const before = await logoutState(f);
+      const marker = await f.DB.prepare(
+        'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+      ).first();
+      const response = await submit();
+      assert.equal(response.status, 400, `${mode} checkpoint must refuse logout mutation`);
+      assert.deepEqual(await logoutState(f), before);
+      assert.deepEqual(
+        await f.DB.prepare(
+          'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+        ).first(),
+        marker,
+      );
+    } finally {
+      await f.close();
+    }
   }
 });
