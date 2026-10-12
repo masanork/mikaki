@@ -57,6 +57,34 @@ reviewed copy. Operator registration supplies none of those confirmations.
 Copy execution, credential issuance and AI delegation remain disabled pending
 their productive provider/host and launcher qualification.
 
+## Prepare the code-only copy host
+
+After the owner creates a code-only preparation, retain its exact current Native
+disclosure review. The local bridge accepts that review and the original source
+packet; it derives the source binding rather than accepting arbitrary repository
+paths.
+
+```sh
+npm run prepare:work-code-copy -- NATIVE_DISCLOSURE_REVIEW SOURCE_PACKET OUTPUT_PARENT
+```
+
+The bridge independently restores the retained bundle and checks its selected
+tree, single snapshot commit and all code inventory facts against the Native
+review. It provisions the existing sealed Git registry and code-only Linux image
+context, with separate task and empty-context snapshot packs. A changed packet,
+expired or stale review, different source revision or context-bearing review is refused.
+Changes to the packet's mutable `source.git` cannot add unselected objects.
+The immutable `code-copy-receipt.json` records the source/bundle, disclosure and
+registry digests without owner credentials or consent.
+
+This prepares local input bytes. The review is a projection, not independent
+authorization or proof of current owner consent. Host deployment still needs
+private R2 provisioning, exact version/image/binding observations and an enrolled
+authority. Productive copying additionally needs the Workflow, fixed effect/mint/
+Git gates and active wrapping-key custody. Native repeats source/session and
+consent checks when executing; no local package enables those capabilities or
+reconciles protected unknown provider outcomes.
+
 ## Validation
 
 The packet test restores real Git objects independently and proves history
@@ -66,3 +94,9 @@ foreign authority, audit rollback and frozen/public refusal. Existing Git
 disclosure and public service-boundary tests retain their coverage. These local
 fixtures use synthetic owner identities; production registration needs the
 qualified deployed source and actual existing owner.
+
+`npm run test:work-code-copy` runs real local Native source registration and
+code-only public composition, then restores the sealed host packs independently.
+It verifies original-history and unselected-object exclusion, source binding and
+stale/mismatched refusal, with no owner consent, provider credential or productive
+effect. The case also runs in the Work product CI lane.
