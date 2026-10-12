@@ -1,5 +1,6 @@
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
+import { drainBrowserRoutes } from './support/browser-route-teardown.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
@@ -388,13 +389,25 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
+    await drainBrowserRoutes(staticPage);
     await staticPage.close();
   } catch (error) {
     failure = error;
     throw error;
   } finally {
-    await evidence?.finish(failure);
-    await browser?.close();
-    await harness.close();
+    try {
+      const pages = browser?.contexts().flatMap((context) => context.pages()) ?? [];
+      await Promise.all(pages.map((page) => drainBrowserRoutes(page)));
+    } finally {
+      try {
+        await evidence?.finish(failure);
+      } finally {
+        try {
+          await browser?.close();
+        } finally {
+          await harness.close();
+        }
+      }
+    }
   }
 });
