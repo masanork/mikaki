@@ -6,9 +6,13 @@ import { unstable_splitSqlQuery as splitSqlQuery } from 'wrangler';
 import type { D1Database } from '@cloudflare/workers-types';
 import { OWNER_MIGRATIONS } from '../../scripts/production-owner-schema.ts';
 import { WORK_MIGRATIONS } from '../../scripts/production-work-schema.ts';
-import { productionWorkMigrationStore } from '../../scripts/production-work-migration.ts';
+import {
+  productionWorkMigrationStore,
+  previewProductionWorkSnapshot,
+} from '../../scripts/production-work-migration.ts';
 import {
   captureProductionWorkSnapshot,
+  captureProductionOwnerSnapshot,
   productionBootstrapStore,
   productionWorkInitialTip,
   PRODUCTION_WORK_TARGET,
@@ -90,6 +94,9 @@ test('atomic additive migration fences old app and named-service SQL, preserves 
   const f = await fixture();
   try {
     assert.equal((await f.store.inspect()).phase, 'owner');
+    const before = await captureProductionOwnerSnapshot(f.DB, f.owner);
+    const preview = previewProductionWorkSnapshot(before, f.owner, f.work);
+    productionBootstrapStore(f.DB, preview, f.owner, f.work, { fenced: true });
     await f.store.apply();
     assert.equal((await f.store.inspect()).phase, 'work-fenced');
     for (const sql of [
@@ -101,6 +108,7 @@ test('atomic additive migration fences old app and named-service SQL, preserves 
     ])
       await assert.rejects(f.DB.prepare(sql).run());
     const snapshot = await captureProductionWorkSnapshot(f.DB, f.owner, f.work, { fenced: true });
+    assert.deepEqual(snapshot.tables, preview.tables);
     const plan: BootstrapPlan = {
       format_version: 1,
       packet_sha256: '1'.repeat(64),

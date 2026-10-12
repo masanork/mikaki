@@ -119,17 +119,28 @@ function primaryInsertQuery(expected: PrimarySnapshot) {
   ];
   for (const [index, table] of expected.tables.entries()) {
     conditions.push(`(SELECT count(*) FROM ${quote(table.name)})=${table.rows.length}`);
-    // All fields participate; IS preserves NULL and hex retains BLOB storage type.
-    for (const [rowIndex, row] of table.rows.entries())
-      conditions.push(
-        `EXISTS(SELECT 1 FROM ${quote(table.name)} WHERE ${Object.keys(row)
-          .map((column) =>
-            typeof row[column] === 'object' && row[column] !== null
-              ? `(typeof(${quote(column)})='blob' AND hex(${quote(column)}) IS json_extract(?5,'$.tables[${index}].rows[${rowIndex}].${column}.blob_hex'))`
-              : `${quote(column)} IS json_extract(?5,'$.tables[${index}].rows[${rowIndex}].${column}')`,
-          )
-          .join(' AND ')})`,
+    // Compare every expected row with all its fields. Iterating the bound JSON
+    // avoids repeating the same column predicates for every existing session.
+    // Exact counts plus unique complete rows preserve the original equality guard.
+    if (table.rows.length) {
+      const columns = Object.keys(table.rows[0]!).sort();
+      assert.ok(columns.length > 0 && columns.length <= 100);
+      assert.equal(
+        new Set(sortedRows(table.rows)).size,
+        table.rows.length,
+        'authority_bootstrap_ambiguous_rows',
       );
+      for (const row of table.rows)
+        assert.deepEqual(Object.keys(row).sort(), columns, 'authority_bootstrap_columns_mismatch');
+      conditions.push(
+        `NOT EXISTS(SELECT 1 FROM json_each(?5,'$.tables[${index}].rows') AS expected_row WHERE NOT EXISTS(SELECT 1 FROM ${quote(table.name)} WHERE ${conjunction(
+          columns.map(
+            (column) =>
+              `(CASE WHEN json_type(expected_row.value,'$.${column}')='object' THEN (typeof(${quote(column)})='blob' AND hex(${quote(column)}) IS json_extract(expected_row.value,'$.${column}.blob_hex')) ELSE ${quote(column)} IS json_extract(expected_row.value,'$.${column}') END)`,
+          ),
+        )}))`,
+      );
+    }
   }
   const sql = `INSERT INTO work_authority_checkpoint(id,authority,epoch,sequence,tip) SELECT 1,?1,?2,?3,?4 WHERE ${conjunction(conditions)}`;
   assert.ok(

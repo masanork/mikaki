@@ -261,11 +261,14 @@ test('oversized SQL guards are refused before any independent or primary write c
   const f = await fixture();
   try {
     const snapshot = structuredClone(f.snapshot);
-    for (const name of ['sso_session', 'passkey_credential', 'credential']) {
-      const table = snapshot.tables.find((table) => table.name === name)!;
-      const seed = table.rows[0]!;
-      const key = name === 'sso_session' ? 'sso_id' : 'credential_id';
-      table.rows = Array.from({ length: 64 }, (_, i) => ({ ...seed, [key]: `${seed[key]}-${i}` }));
+    // The compact guard scales by populated columns rather than row count.
+    // Populate the complete real frozen column inventory to exceed its SQL bound.
+    for (const table of snapshot.tables) {
+      if (['work_schema_migrations', 'work_authority_checkpoint'].includes(table.name)) continue;
+      const columns = (
+        await f.DB.prepare(`PRAGMA table_info("${table.name}")`).all<{ name: string }>()
+      ).results;
+      table.rows = [Object.fromEntries(columns.map(({ name }) => [name, null]))];
     }
     assert.throws(
       () => productionBootstrapStore(f.db, snapshot, f.owner, f.work),
@@ -275,6 +278,29 @@ test('oversized SQL guards are refused before any independent or primary write c
       await f.DB.prepare('SELECT count(*) AS n FROM work_authority_checkpoint').first('n'),
       0,
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test('the complete 64-session production snapshot fits the real SQL guard and retains every session', async () => {
+  const f = await fixture();
+  try {
+    await f.DB.batch(
+      Array.from({ length: 63 }, (_, i) =>
+        f.DB.prepare(
+          "INSERT INTO sso_session VALUES(?,'existing-admin','existing-passkey',3,9999999999,0)",
+        ).bind(`additional-session-${i}`),
+      ),
+    );
+    const snapshot = await captureProductionWorkSnapshot(f.db, f.owner, f.work);
+    const plan = structuredClone(f.plan);
+    plan.initial.tip = productionWorkInitialTip(snapshot);
+    const store = productionBootstrapStore(f.db, snapshot, f.owner, f.work);
+    assert.equal((await store.inspect(plan)).pristine, true);
+    await store.insert(plan);
+    assert.equal((await store.inspect(plan)).initial_only, true);
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM sso_session').first('n'), 64);
   } finally {
     await f.close();
   }

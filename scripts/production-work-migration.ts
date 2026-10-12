@@ -13,7 +13,50 @@ import {
   type WorkLedgerRow,
 } from './production-work-schema.ts';
 import { workAdoptionFences } from './production-work-fence.ts';
-import { BOOTSTRAP_SCHEMA_QUERY } from './work-authority-bootstrap.ts';
+import {
+  BOOTSTRAP_SCHEMA_QUERY,
+  bootstrapRow,
+  type PrimarySnapshot,
+} from './work-authority-bootstrap.ts';
+
+/** Compile the exact post-migration shape before fencing the live database. */
+export function previewProductionWorkSnapshot(
+  before: PrimarySnapshot,
+  owner: SqlMigration[],
+  work: SqlMigration[],
+): PrimarySnapshot {
+  assertProductionOwnerSchema(
+    owner,
+    before.migrations.map((name) => ({ name })),
+    before.schema,
+  );
+  assert.deepEqual(
+    before.tables.map(({ name }) => name),
+    before.schema.filter(({ type }) => type === 'table').map(({ name }) => name),
+  );
+  const { queries } = productionWorkMigrationQueries(owner, work);
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const migration of owner) db.exec(migration.sql);
+    for (const sql of queries) db.exec(sql);
+    const schema = db.prepare(BOOTSTRAP_SCHEMA_QUERY).all() as SchemaRow[];
+    return {
+      schema,
+      migrations: structuredClone(before.migrations),
+      tables: schema
+        .filter(({ type }) => type === 'table')
+        .map(({ name }) => ({
+          name,
+          rows: structuredClone(
+            before.tables.find((table) => table.name === name)?.rows ??
+              db.prepare(`SELECT * FROM "${name}"`).all().map(bootstrapRow),
+          ),
+        })),
+    };
+  } finally {
+    db.close();
+  }
+}
 
 export function productionWorkMigrationQueries(owner: SqlMigration[], work: SqlMigration[]) {
   assertWorkMigrationFiles(work);
