@@ -4,6 +4,24 @@
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
+## Production review and next code trial, 2026-10-12 JST
+
+[PR #185](https://github.com/masanork/mikaki/pull/185) makes control-plane operator
+separation optional while retaining the mandatory independent storage checkpoint.
+[PR #187](https://github.com/masanork/mikaki/pull/187) qualifies the exact bounded
+populated-schema preflight. The production Work schema and checkpoint were then
+enrolled without resetting existing Owner accounts, Passkeys or Vault keys.
+[PR #189](https://github.com/masanork/mikaki/pull/189) activates owner/source and
+preparation review; final CI, deployment and checkpoint equality passed.
+The earlier statements about an unbound production OP below are historical.
+
+The next increment adds [operator code registration](work-code-source-registration.md)
+and owner composition/explicit copy consent. The user selected mikaki as the
+first source. Its original history exceeds the bounded Work capacity, so this
+trial uses the exact selected main tree in a separately labeled parentless code
+snapshot. No old protected Artifacts resource or unknown effect is reused.
+Productive copy and real AI issuer/launcher qualification remain separate work.
+
 ## Main delivery, 2026-10-11 JST
 
 Integrate the retained history in four qualified increments: portable rules from

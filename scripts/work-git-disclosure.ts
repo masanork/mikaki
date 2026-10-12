@@ -163,20 +163,8 @@ function verifyContextTree(dir: string, commit: string, tree: string) {
   }
 }
 
-export async function prepareGitDisclosure(
-  code: GitSource,
-  contexts: ContextSource[],
-  outputParent: string,
-  snapshotRepository: string,
-): Promise<{ input: GitDisclosure; gitDir: string }> {
-  if (
-    !id(snapshotRepository) ||
-    contexts.length > 4 ||
-    contexts.reduce((n, c) => n + c.paths.length, 0) > 32 ||
-    new Set([code.repository, snapshotRepository, ...contexts.map((c) => c.repository)]).size !==
-      contexts.length + 2
-  )
-    throw new Error('invalid_git_selection');
+/** Independently hash every reachable object before registering code metadata. */
+export async function inspectCodeSource(code: GitSource): Promise<GitDisclosure['code']> {
   const inspected = await source(code);
   const selected = entries(inspected.dir, code.commit);
   const commits = text(inspected.dir, ['rev-list', '--max-count=4097', code.commit])
@@ -239,16 +227,34 @@ export async function prepareGitDisclosure(
       throw new Error('invalid_git_object');
   }
   if (offset !== raw.length) throw new Error('invalid_git_object');
+  return {
+    repository: code.repository,
+    commit: code.commit,
+    tree: inspected.tree,
+    commits,
+    objects: objects.length,
+    object_bytes: objectBytes,
+    head_files: selected.length,
+  };
+}
+
+export async function prepareGitDisclosure(
+  code: GitSource,
+  contexts: ContextSource[],
+  outputParent: string,
+  snapshotRepository: string,
+): Promise<{ input: GitDisclosure; gitDir: string }> {
+  if (
+    !id(snapshotRepository) ||
+    contexts.length > 4 ||
+    contexts.reduce((n, c) => n + c.paths.length, 0) > 32 ||
+    new Set([code.repository, snapshotRepository, ...contexts.map((c) => c.repository)]).size !==
+      contexts.length + 2
+  )
+    throw new Error('invalid_git_selection');
+  const inspected = await source(code);
   const manifest: GitDisclosure = {
-    code: {
-      repository: code.repository,
-      commit: code.commit,
-      tree: inspected.tree,
-      commits,
-      objects: objects.length,
-      object_bytes: objectBytes,
-      head_files: selected.length,
-    },
+    code: await inspectCodeSource(code),
     contexts: [],
     snapshot: { repository: snapshotRepository, commit: '', tree: '', parents: [] },
   };

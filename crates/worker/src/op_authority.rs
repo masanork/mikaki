@@ -49,6 +49,17 @@ pub fn qualification_routes(
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 enum Change {
+    RegisterSource {
+        source: mikaki_auth::work::SourceInput,
+        account: String,
+        expected_epoch: u64,
+        actor: String,
+        reason: String,
+    },
+    InspectSource {
+        source_id: String,
+        account: String,
+    },
     RevokeAccount {
         account: String,
         expected_epoch: u64,
@@ -138,7 +149,32 @@ async fn change(request: &mut Request, env: &Env) -> worker::Result<serde_json::
         .await
         .map_err(storage)?;
     let db = env.d1("DB")?;
+    let input = match input {
+        Change::RegisterSource {
+            source,
+            account,
+            expected_epoch,
+            actor,
+            reason,
+        } => {
+            return register_source(env, &db, source, &account, expected_epoch, &actor, &reason)
+                .await;
+        }
+        Change::InspectSource { source_id, account } => {
+            if !valid(&source_id, 128) || !valid(&account, 128) {
+                return Err("invalid_authority_input".into());
+            }
+            let value = inspect_source(&db, &source_id, &account).await?;
+            store
+                .current_authority_checkpoint()
+                .await
+                .map_err(storage)?;
+            return Ok(serde_json::json!({"source":value}));
+        }
+        input => input,
+    };
     let (actor, reason, action, target, mut statements, output, policy_audit) = match input {
+        Change::RegisterSource { .. } | Change::InspectSource { .. } => unreachable!(),
         Change::RevokeAccount {
             account,
             expected_epoch,
@@ -267,4 +303,97 @@ async fn change(request: &mut Request, env: &Env) -> worker::Result<serde_json::
     );
     batch(env, statements).await?;
     Ok(output)
+}
+
+#[derive(Deserialize, serde::Serialize)]
+struct SourceObservation {
+    body: String,
+    source_revision: u64,
+    source_active: u64,
+    owner_epoch: u64,
+    access_revision: u64,
+    access_active: u64,
+}
+
+async fn inspect_source(
+    db: &worker::D1Database,
+    source_id: &str,
+    account: &str,
+) -> worker::Result<Option<SourceObservation>> {
+    db.prepare("SELECT v.body,h.source_revision,h.active AS source_active,x.owner_epoch,x.access_revision,x.active AS access_active FROM work_source_head h JOIN work_source_version v ON v.source_id=h.source_id AND v.source_revision=h.source_revision JOIN work_source_access x ON x.source_id=h.source_id JOIN account_security a ON a.account_id=x.owner_id AND a.epoch=x.owner_epoch AND a.active=1 WHERE h.source_id=?1 AND x.owner_id=?2")
+        .bind(&[text(source_id),text(account)])?.first(None).await
+}
+
+/// Trusted operator data, not an owner upload or Git verification claim. The
+/// operator independently verifies Git before this closed metadata capability.
+/// Exact retries read retained state; differing/retired records never overwrite.
+async fn register_source(
+    env: &Env,
+    db: &worker::D1Database,
+    source: mikaki_auth::work::SourceInput,
+    account: &str,
+    epoch: u64,
+    actor: &str,
+    reason: &str,
+) -> worker::Result<serde_json::Value> {
+    if !valid(account, 128)
+        || !valid(actor, 128)
+        || !valid(reason, 512)
+        || source.source_revision != 1
+        || source.role != "code"
+    {
+        return Err("invalid_authority_input".into());
+    }
+    number(epoch)?;
+    let source = mikaki_auth::work::RegisteredSource::from_verified_git(source)
+        .map_err(|_| worker::Error::from("invalid_source_input"))?;
+    let body = source
+        .authority_record()
+        .map_err(|_| worker::Error::from("invalid_source_input"))?;
+    if let Some(current) = inspect_source(db, source.id(), account).await? {
+        if current.body != body
+            || current.source_revision != 1
+            || current.source_active != 1
+            || current.owner_epoch != epoch
+            || current.access_revision != 1
+            || current.access_active != 1
+        {
+            return Err("source_registration_conflict".into());
+        }
+        WorkStore::from_env(env)
+            .map_err(storage)?
+            .current_authority_checkpoint()
+            .await
+            .map_err(storage)?;
+        return Ok(
+            serde_json::json!({"registered":true,"source_id":source.id(),"source_revision":1,"access_revision":1}),
+        );
+    }
+    let mut random = crate::WorkersCryptoRandom;
+    let operation = crate::passkey_login::random_secret(&mut random)?;
+    let mutations = [
+        db.prepare("INSERT INTO work_source_version(source_id,source_revision,body) SELECT ?1,1,?2 WHERE EXISTS(SELECT 1 FROM account_security WHERE account_id=?3 AND epoch=?4 AND active=1) AND NOT EXISTS(SELECT 1 FROM work_source_head WHERE source_id=?1)")
+            .bind(&[text(source.id()),text(&body),text(account),number(epoch)?])?,
+        db.prepare("INSERT INTO work_source_head(source_id,source_revision,active) VALUES(?1,1,1)").bind(&[text(source.id())])?,
+        db.prepare("INSERT INTO work_source_access(owner_id,source_id,owner_epoch,access_revision,active) VALUES(?1,?2,?3,1,1)").bind(&[text(account),text(source.id()),number(epoch)?])?,
+    ];
+    let mut statements = Vec::new();
+    for (index, mutation) in mutations.into_iter().enumerate() {
+        statements.push(mutation);
+        statements.push(db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)").bind(&[text(&format!("{operation}:{index}"))])?);
+    }
+    let receipt =
+        serde_json::json!({"reason":reason,"source_revision":1,"access_revision":1}).to_string();
+    statements.push(db.prepare("INSERT INTO work_audit(audit_id,owner_id,entity_type,entity_id,action,actor,revision,to_state) VALUES(?1,?2,'source',?3,'source.register',?4,1,?5)")
+        .bind(&[text(&operation),text(account),text(source.id()),text(actor),text(&receipt)])?);
+    for index in 0..3 {
+        statements.push(
+            db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
+                .bind(&[text(&format!("{operation}:{index}"))])?,
+        );
+    }
+    batch(env, statements).await?;
+    Ok(
+        serde_json::json!({"registered":true,"source_id":source.id(),"source_revision":1,"access_revision":1}),
+    )
 }
