@@ -20,6 +20,8 @@ const sourceRevision = '440eec8bac7b12b7389d7ca9cbc459b53507a443';
 const suiteImage =
   'registry.gitlab.com/openid/conformance-suite@sha256:69495f453a920c262f66e5e72abd12501c33e05ce88051cddf300c00621a4d70';
 const planName = 'oid4vci-1_0-issuer-haip-test-plan';
+const crossClientParModule =
+  'fapi2-security-profile-final-par-attempt-to-use-request_uri-for-different-client';
 const selection = parseHaipIssuerSelection(process.argv.slice(2));
 const positive = selection.legacyFlags.includes('--positive');
 const encrypted = positive || selection.legacyFlags.includes('--encrypted');
@@ -364,6 +366,7 @@ const runs: {
   variant: Record<string, string>;
   moduleVariant: Record<string, string>;
   ownerApproval: boolean;
+  browserReview?: { screenshotSha256: string; uploaded: boolean; d1Unchanged: boolean };
   milestones: { tokenExchange: boolean; holderNonce: boolean; credentialReceived: boolean };
 }[] = [];
 let active: string | undefined;
@@ -386,6 +389,18 @@ try {
   ]);
   const holder = await generateKeyPair('ES256', { extractable: true });
   const documents: Record<string, string> = {};
+  const crossClientReviews = new Map<
+    string,
+    { jpeg: Buffer; screenshotSha256: string; uploaded: boolean }
+  >();
+  async function parState() {
+    return {
+      par: (await DB.prepare('SELECT * FROM identity_wallet_par ORDER BY request_hash').all())
+        .results,
+      grants: (await DB.prepare('SELECT * FROM identity_wallet_grant ORDER BY grant_id').all())
+        .results,
+    };
+  }
   for (const [format, card] of [
     ['sd_jwt_vc', evidence.makeMnc()],
     ['mdoc', evidence.makeLicense()],
@@ -413,11 +428,77 @@ try {
     assert.equal(approved.status, 200, 'Synthetic owner must explicitly approve account linkage');
     documents[format] = tx.transaction_id;
   }
-  async function approveAuthorization(destination: string, format: string) {
+  async function approveAuthorization(destination: string, format: string, module: string) {
     const url = new URL(destination);
     assert.equal(url.origin + url.pathname, `${issuer}/authorize`);
     assert.ok(url.searchParams.has('client_id') && url.searchParams.has('request_uri'));
     assert.ok(['haip-wallet-1', 'haip-wallet-2'].includes(url.searchParams.get('client_id')!));
+    if (module === crossClientParModule) {
+      assert.equal(url.searchParams.get('client_id'), 'haip-wallet-2');
+      const reference = url.searchParams.get('request_uri')!;
+      assert.match(reference, /^urn:ietf:params:oauth:request_uri:[A-Za-z0-9_-]{43}$/);
+      const before = await parState();
+      const original = before.par.find(
+        (row: Record<string, unknown>) => row.request_hash === digest(reference.split(':').at(-1)!),
+      );
+      assert.ok(original, 'The official request_uri must refer to the stored client1 PAR');
+      assert.equal(original.client_id, 'haip-wallet-1');
+      assert.equal(original.used, 0);
+      const rejection = await worker.fetch(url, {
+        headers: { ...ownerHeaders, 'Accept-Language': 'en' },
+        redirect: 'manual',
+      });
+      assert.equal(rejection.status, 400);
+      assert.equal(rejection.headers.get('location'), null);
+      assert.match(rejection.headers.get('content-type') ?? '', /^text\/html/);
+      assert.equal(rejection.headers.get('cache-control'), 'no-store');
+      assert.equal(rejection.headers.get('referrer-policy'), 'no-referrer');
+      assert.match(rejection.headers.get('content-security-policy') ?? '', /default-src 'none'/);
+      const html = await rejection.text();
+      assert.ok(html.includes('Invalid authorization request'));
+      assert.ok(!html.includes(reference), 'The error page must not disclose the PAR reference');
+      const { chromium } = await import('@playwright/test');
+      const browser = await chromium.launch({
+        headless: true,
+        args: ['--host-resolver-rules=MAP host.docker.internal 127.0.0.1', '--no-proxy-server'],
+      });
+      try {
+        const context = await browser.newContext({
+          ignoreHTTPSErrors: true,
+          locale: 'en-US',
+          viewport: { width: 1000, height: 600 },
+        });
+        await context.route('**/*', async (route) => {
+          const target = new URL(route.request().url());
+          if (
+            route.request().method() === 'GET' &&
+            (target.href === url.href ||
+              (target.origin === origin && target.pathname === '/favicon.svg' && !target.search))
+          )
+            await route.continue();
+          else await route.abort();
+        });
+        const screen = await context.newPage();
+        const response = await screen.goto(url.href, { waitUntil: 'networkidle', timeout: 20000 });
+        assert.equal(response?.status(), 400);
+        assert.equal(screen.url(), url.href);
+        assert.equal(await screen.locator('h1').textContent(), 'Invalid authorization request');
+        const jpeg = await screen.screenshot({ type: 'jpeg', quality: 80, fullPage: true });
+        assert.ok(jpeg.byteLength > 0 && jpeg.byteLength <= 500 * 1024);
+        await writeFile(new URL(`${format}-cross-client-par-error.jpg`, directory), jpeg, {
+          mode: 0o600,
+        });
+        crossClientReviews.set(format, {
+          jpeg,
+          screenshotSha256: createHash('sha256').update(jpeg).digest('hex'),
+          uploaded: false,
+        });
+      } finally {
+        await browser.close();
+      }
+      assert.deepEqual(await parState(), before, 'Rejected requests must preserve PAR and grants');
+      return false;
+    }
     const page = await worker.fetch(url, { headers: ownerHeaders, redirect: 'manual' });
     let approved = page;
     if (page.status === 200) {
@@ -607,6 +688,7 @@ try {
     );
     for (const selected of selectedModules) {
       const module: string = selected.testModule;
+      crossClientReviews.delete(format);
       const moduleVariant = selected.variant ?? {
         sender_constrain: 'dpop',
         fapi_profile: 'vci_haip',
@@ -642,11 +724,52 @@ try {
           const eventId = redirectEvent?._id;
           if (redirect && eventId && !handledRedirects.has(eventId)) {
             try {
-              approved = (await approveAuthorization(redirect, format)) || approved;
+              approved = (await approveAuthorization(redirect, format, module)) || approved;
               handledRedirects.add(eventId);
             } catch (failure) {
               halted = `Owner/callback adapter failed: ${failure instanceof Error ? failure.message : 'unknown'}`;
               break;
+            }
+          }
+          const crossClientReview = crossClientReviews.get(format);
+          if (module === crossClientParModule && crossClientReview && !crossClientReview.uploaded) {
+            const review = entries.find(
+              (entry: any) =>
+                entry.testId === run.id &&
+                entry.src === 'ExpectInvalidRequestUriErrorPage' &&
+                entry.result === 'REVIEW' &&
+                typeof entry.upload === 'string',
+            );
+            if (review) {
+              assert.match(run.id, /^[A-Za-z0-9_-]{1,100}$/);
+              assert.match(review.upload, /^[A-Za-z0-9_-]{1,100}$/);
+              const image = `data:image/jpeg;base64,${crossClientReview.jpeg.toString('base64')}`;
+              await new Promise<void>((resolve, reject) => {
+                const upload = request(
+                  {
+                    hostname: 'localhost',
+                    port: 9443,
+                    rejectUnauthorized: false,
+                    timeout: 15000,
+                    path: `/api/log/${run.id}/images/${review.upload}?description=Actual%20cross-client%20PAR%20error%20page`,
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                  },
+                  (response) => {
+                    response.resume();
+                    response.on('error', reject);
+                    response.on('end', () =>
+                      response.statusCode === 200
+                        ? resolve()
+                        : reject(new Error(`Suite image upload HTTP ${response.statusCode}`)),
+                    );
+                  },
+                );
+                upload.on('error', reject);
+                upload.on('timeout', () => upload.destroy(new Error('Suite image upload timeout')));
+                upload.end(image);
+              });
+              crossClientReview.uploaded = true;
             }
           }
         }
@@ -666,6 +789,7 @@ try {
             .replace(/[A-Za-z0-9_-]{32,}/g, '[redacted]')
             .slice(0, 500),
         }));
+      const crossClientReview = crossClientReviews.get(format);
       runs.push({
         format,
         configuration,
@@ -683,6 +807,15 @@ try {
             ? null
             : 'Polling deadline reached'),
         ownerApproval: approved,
+        ...(crossClientReview
+          ? {
+              browserReview: {
+                screenshotSha256: crossClientReview.screenshotSha256,
+                uploaded: crossClientReview.uploaded,
+                d1Unchanged: true,
+              },
+            }
+          : {}),
         milestones: {
           tokenExchange: log.some(
             (e: any) =>

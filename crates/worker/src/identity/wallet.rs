@@ -346,7 +346,7 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
         let pushed = ctx.env.d1("DB")?.prepare("SELECT request_json,used,expires_at,redirect_uri,wallet_state FROM identity_wallet_par WHERE request_hash=?1 AND client_id=?2 AND client_policy_hash=?3")
             .bind(&[js(&hash(secret)),js(&client),js(&client_policy)])?.first::<Pushed>(None).await?;
         let Some(pushed) = pushed else {
-            return error(400, "invalid_request_uri");
+            return crate::authorization_par_error_page(&req, false);
         };
         if pushed.used != 0 || pushed.expires_at <= now()? {
             let Some(destination) = pushed.redirect_uri.filter(|uri| {
