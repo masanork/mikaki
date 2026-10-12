@@ -2278,15 +2278,15 @@
   },
   {
     "date": "2026-10-12",
-    "commit": "27600fd",
+    "commit": "df5c969",
     "code": {
-      "implementationLines": 79311,
+      "implementationLines": 79326,
       "testLines": 12297,
       "implementationFiles": 277,
       "testFiles": 36,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 36442,
+          "implementationLines": 36457,
           "testLines": 2738
         },
         "rust": {
