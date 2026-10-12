@@ -19,6 +19,10 @@ fn main() {
         "work-sources.ts",
         "work-sources.html",
         "work-source-view.ts",
+        "work-webmcp.ts",
+        "work-assistant.ts",
+        "webmcp.ts",
+        "WorkWebMcp.svelte",
         "work-compose-view.ts",
         "work-copy.ts",
         "work-copy.html",
@@ -206,6 +210,21 @@ fn main() {
         .status()
         .expect("esbuild is required; run npm ci");
     assert!(status.success(), "Search Worker build failed");
+    let mut assistant_build = Command::new(repository.join("node_modules/.bin/esbuild"));
+    assistant_build
+        .arg(manifest.join("ui/work-assistant.ts"))
+        .args(["--bundle", "--platform=browser", "--format=esm", "--minify"])
+        .arg(format!(
+            "--outfile={}",
+            output.join("work-assistant.js").display()
+        ));
+    if env::var("MIKAKI_UI_COVERAGE").as_deref() == Ok("1") {
+        assistant_build.arg("--sourcemap=external");
+    }
+    let status = assistant_build
+        .status()
+        .expect("esbuild is required; run npm ci");
+    assert!(status.success(), "Work assistant build failed");
     for entry in [
         "login",
         "vault",

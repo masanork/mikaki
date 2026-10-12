@@ -1,4 +1,9 @@
 {
+  "workAssistantHeading": "ブラウザーアシスタント",
+  "workAssistantExplanation": "この Work 画面をブラウザーアシスタントから操作できます。コピーの承認と実行には、既存の確認手順が必要です。",
+  "workAssistantEnable": "Work の選択・内容確認・準備作成ツールを許可する",
+  "workAssistantContent": "この選択のファイル内容をアシスタントに公開する",
+  "workAssistantSession": "内容はアシスタントの AI 提供者に送信される場合があります。選択を変更すると内容の公開許可を解除します。この画面を非表示またはロックにすると、ツールの許可をすべて解除します。",
   "waitlistTitle": "mikaki 招待希望",
   "waitlistHeading": "招待を希望する",
   "waitlistIntro": "管理者が申込を審査し、承認した方に招待メールを送ります。",

@@ -77,12 +77,16 @@ test('copy progress needs a fresh start acknowledgement and discards late result
           '/work/source-review.js',
           '/work/preparation-review.js',
           '/work/copy-review.js',
+          '/work/browser-assistant.js',
         ]) {
           const asset = await f.productFetch(path);
           assert.equal(asset.status, 200);
           const measured = measure(path, new Uint8Array(await asset.arrayBuffer()));
-          assert.ok(measured.raw <= 192 * 1024, path);
-          assert.ok(measured.gzip <= 64 * 1024, path);
+          assert.ok(
+            measured.raw <= (path.endsWith('browser-assistant.js') ? 16 : 192) * 1024,
+            path,
+          );
+          assert.ok(measured.gzip <= (path.endsWith('browser-assistant.js') ? 8 : 64) * 1024, path);
           measurements.push(measured);
         }
         const version = await f.product('/version');

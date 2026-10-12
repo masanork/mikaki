@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { vaultContext } from './vault-context.js';
   import { copyHttpPort, type CopyStatus } from './work-copy-view.js';
   import { getLocale } from './paraglide/runtime.js';
   import * as m from './paraglide/messages.js';
+  import WorkWebMcp from './WorkWebMcp.svelte';
+  import { WebMcpFailure } from './webmcp.ts';
+  import type { WorkWebMcpHost } from './work-webmcp.ts';
   const context = vaultContext(),
     scope = context.current(),
     port = copyHttpPort(scope.request);
@@ -23,14 +26,15 @@
     failure = false;
     acknowledged = false;
   }
-  async function load() {
+  async function load(signal = controller.signal) {
     if (busy) return;
     const n = generation;
     busy = true;
     failure = false;
     acknowledged = false;
     try {
-      const r = await port.read(id, controller.signal);
+      const r = await port.read(id, AbortSignal.any([controller.signal, signal]));
+      signal.throwIfAborted();
       if (n !== generation) return;
       scope.assert();
       value = r;
@@ -85,6 +89,60 @@
       if (n === generation) busy = false;
     }
   }
+  const assistant: WorkWebMcpHost = {
+    page: 'copy',
+    snapshot: () => ({
+      page: 'copy',
+      version: JSON.stringify([generation, id, value, acknowledged, busy, failure]),
+      selection: JSON.stringify([id, value?.review_digest]),
+      busy,
+      loaded: value !== null,
+      items: [],
+      files: [],
+      selected: id,
+      prepared: null,
+      copy: value
+        ? {
+            state: value.job?.state ?? 'not_started',
+            done: value.job?.next_step ?? 0,
+            total: value.job?.total_steps ?? 19,
+            can_start: value.can_start,
+            cleanup_pending: value.cleanup_pending,
+          }
+        : null,
+    }),
+    verify: async () => {
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+      await scope.verify();
+      scope.assert();
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+    },
+    contents: () => [],
+    available: (action) => !busy && (action === 'refresh' || (action === 'review' && !!value)),
+    invoke: async (action, args, signal) => {
+      signal.throwIfAborted();
+      if (action === 'refresh') await load(signal);
+      else if (action === 'review') {
+        if (args['action'] !== 'start_copy' && args['action'] !== 'stop_copy')
+          throw new WebMcpFailure('unavailable');
+        await load(signal);
+        await tick();
+        signal.throwIfAborted();
+        const control = document.querySelector<HTMLButtonElement>(
+          '[data-work-action="' + String(args['action']) + '"]',
+        );
+        if (!control) throw new WebMcpFailure('unavailable');
+        const confirmation = document.querySelector<HTMLInputElement>(
+          '[data-work-confirmation="start_copy"]',
+        );
+        if (control.disabled && confirmation && !confirmation.disabled) confirmation.focus();
+        else control.focus();
+        control.scrollIntoView({ block: 'center' });
+      } else throw new WebMcpFailure('unavailable');
+      signal.throwIfAborted();
+      if (failure) throw new WebMcpFailure('unavailable');
+    },
+  };
   const state = $derived(
     !value?.job
       ? m.copy_not_started()
@@ -120,7 +178,7 @@
   <a href={'/work/preparation-review?lang=' + getLocale() + '#' + encodeURIComponent(id)}
     >{m.source_compose_review()}</a
   >
-  <button type="button" disabled={busy} onclick={load}>{m.copy_refresh()}</button>
+  <button type="button" disabled={busy} onclick={() => load()}>{m.copy_refresh()}</button>
   {#if failure}<p role="alert">{m.copy_unavailable()}</p>{/if}
   {#if value}
     <p role="status">{state}</p>
@@ -129,6 +187,7 @@
       </p>{/if}
     {#if value.cleanup_pending}<p role="status">{m.copy_cleanup_pending()}</p>{/if}
     {#if value.job && value.job.state !== 'verified'}<button
+        data-work-action="stop_copy"
         type="button"
         disabled={busy}
         onclick={stop}>{m.copy_cleanup()}</button
@@ -137,13 +196,18 @@
       <label
         ><input
           type="checkbox"
+          data-work-confirmation="start_copy"
           bind:checked={acknowledged}
           disabled={busy}
         />{m.copy_acknowledge()}</label
       >
-      <button type="button" disabled={busy || !acknowledged} onclick={start}
-        >{m.copy_start()}</button
+      <button
+        data-work-action="start_copy"
+        type="button"
+        disabled={busy || !acknowledged}
+        onclick={start}>{m.copy_start()}</button
       >
     {/if}
   {/if}
+  <WorkWebMcp host={assistant} />
 </section>

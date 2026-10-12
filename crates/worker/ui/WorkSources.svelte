@@ -10,6 +10,9 @@
     sourceHttpPort,
   } from './work-source-view.js';
   import { preparationComposePort, type PreparedSelection } from './work-compose-view.js';
+  import WorkWebMcp from './WorkWebMcp.svelte';
+  import { WebMcpFailure } from './webmcp.ts';
+  import type { WorkWebMcpHost } from './work-webmcp.ts';
   let { port }: { port: ReturnType<typeof sourceHttpPort> } = $props();
   const context = vaultContext(),
     scope = context.current();
@@ -66,7 +69,7 @@
     reads = [];
     prepared = null;
   }
-  async function load(more = false) {
+  async function load(more = false, signal = controller.signal) {
     if (busy) return;
     const current = generation;
     busy = true;
@@ -83,7 +86,11 @@
       compositionExpires = 0;
     }
     try {
-      const page = await port.list(more ? next : null, controller.signal);
+      const page = await port.list(
+        more ? next : null,
+        AbortSignal.any([controller.signal, signal]),
+      );
+      signal.throwIfAborted();
       if (current !== generation) return;
       scope.assert();
       sources = more ? [...sources, ...page.sources] : page.sources;
@@ -113,7 +120,7 @@
     compositionExpires = 0;
     failure = '';
   }
-  async function prepare() {
+  async function prepare(signal = controller.signal) {
     if (
       busy ||
       !codeSource ||
@@ -140,8 +147,9 @@
             : [],
         ),
         compositionExpires,
-        controller.signal,
+        AbortSignal.any([controller.signal, signal]),
       );
+      signal.throwIfAborted();
       if (current !== generation) return;
       scope.assert();
       prepared = result;
@@ -151,7 +159,7 @@
       if (current === generation) busy = false;
     }
   }
-  async function review() {
+  async function review(signal = controller.signal) {
     if (busy || count === 0 || count > 32 || total > 131072 || contexts > 4) return;
     const current = generation;
     busy = true;
@@ -162,7 +170,11 @@
       const results = [];
       for (const source of sources) {
         const paths = selected[source.source_id];
-        if (paths?.length) results.push(await port.read(source, paths, controller.signal));
+        if (paths?.length)
+          results.push(
+            await port.read(source, paths, AbortSignal.any([controller.signal, signal])),
+          );
+        signal.throwIfAborted();
         if (current !== generation) return;
         scope.assert();
       }
@@ -175,6 +187,109 @@
       if (current === generation) busy = false;
     }
   }
+  const assistant: WorkWebMcpHost = {
+    page: 'sources',
+    snapshot: () => ({
+      page: 'sources',
+      version: JSON.stringify([
+        generation,
+        sources,
+        selected,
+        codeId,
+        minutes,
+        prepared,
+        busy,
+        loaded,
+        failure,
+      ]),
+      selection: JSON.stringify([sources, selected, codeId, failure]),
+      busy,
+      loaded,
+      items: sources.map((source) => ({
+        id: source.source_id,
+        label: source.label,
+        role: source.role,
+        revision: source.source_revision,
+        commit: source.commit,
+        files: source.files.map(({ path, bytes }) => ({ path, bytes })),
+      })),
+      files: sources.flatMap((source) =>
+        source.files
+          .filter((file) => selected[source.source_id]?.includes(file.path))
+          .map(({ path, bytes }) => ({ source_id: source.source_id, path, bytes })),
+      ),
+      selected: codeId || null,
+      prepared: prepared?.preparation_id ?? null,
+      copy: null,
+    }),
+    verify: async () => {
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+      await scope.verify();
+      scope.assert();
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+    },
+    contents: () => reads,
+    available: (action) =>
+      !busy &&
+      (action === 'refresh' ||
+        (action === 'more' && next !== null) ||
+        (action === 'select_files' && loaded) ||
+        (action === 'select_code' && composeEnabled && loaded) ||
+        (action === 'inspect' && count > 0 && count <= 32 && contexts <= 4 && total <= 131072) ||
+        (action === 'prepare' &&
+          composeEnabled &&
+          !!codeSource &&
+          Number.isInteger(minutes) &&
+          minutes >= 2 &&
+          minutes <= 30 &&
+          contexts <= 4 &&
+          count <= 32 &&
+          total <= 131072 &&
+          (contexts === 0 || reads.length === contexts)) ||
+        (action === 'open_preparation' && prepared !== null)),
+    invoke: async (action, args, signal) => {
+      signal.throwIfAborted();
+      if (action === 'refresh' || action === 'more') await load(action === 'more', signal);
+      else if (action === 'select_code') {
+        const source = sources.find((s) => s.source_id === args['source_id'] && s.role === 'code');
+        if (!source) throw new WebMcpFailure('not_selected');
+        chooseCode(source.source_id);
+      } else if (action === 'select_files') {
+        const source = sources.find((s) => s.source_id === args['source_id'] && s.role !== 'code');
+        const paths = args['paths'] as string[];
+        if (!source || paths.some((path) => !source.files.some((file) => file.path === path)))
+          throw new WebMcpFailure('not_selected');
+        const proposed = { ...selected, [source.source_id]: paths };
+        if (
+          Object.values(proposed).reduce((n, files) => n + files.length, 0) > 32 ||
+          Object.values(proposed).filter((files) => files.length).length > 4 ||
+          sources.reduce(
+            (n, s) =>
+              n +
+              s.files
+                .filter((file) => proposed[s.source_id]?.includes(file.path))
+                .reduce((bytes, file) => bytes + file.bytes, 0),
+            0,
+          ) > 131072
+        )
+          throw new WebMcpFailure('selection_limit');
+        for (const file of source.files) choose(source, file.path, paths.includes(file.path));
+      } else if (action === 'inspect') await review(signal);
+      else if (action === 'prepare') await prepare(signal);
+      else if (action === 'open_preparation') {
+        if (!prepared || prepared.preparation_id !== args['preparation_id'])
+          throw new WebMcpFailure('not_selected');
+        window.location.assign(
+          '/work/preparation-review?lang=' +
+            getLocale() +
+            '#' +
+            encodeURIComponent(prepared.preparation_id),
+        );
+      } else throw new WebMcpFailure('unavailable');
+      signal.throwIfAborted();
+      if (failure) throw new WebMcpFailure('unavailable');
+    },
+  };
   onMount(() => {
     void load();
     const visibility = () => {
@@ -272,7 +387,7 @@
       class="source-primary"
       type="button"
       disabled={busy || count === 0 || count > 32 || total > 131072 || contexts > 4}
-      onclick={review}>{m.source_preview()}</button
+      onclick={() => review()}>{m.source_preview()}</button
     >
     <p>{m.source_limits()}</p>
   </div>
@@ -316,7 +431,7 @@
           count > 32 ||
           total > 131072 ||
           (contexts > 0 && reads.length !== contexts)}
-        onclick={prepare}>{m.source_compose_action()}</button
+        onclick={() => prepare()}>{m.source_compose_action()}</button
       >
       {#if prepared}<div role="status">
           <p>{m.source_compose_ready()}</p>
@@ -329,4 +444,5 @@
           >
         </div>{/if}
     </section>{/if}
+  <WorkWebMcp host={assistant} />
 </section>

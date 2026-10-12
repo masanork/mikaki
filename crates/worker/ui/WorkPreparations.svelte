@@ -11,6 +11,9 @@
     type PreparationReview,
     type CopyReview,
   } from './work-preparation-view.js';
+  import WorkWebMcp from './WorkWebMcp.svelte';
+  import { WebMcpFailure } from './webmcp.ts';
+  import type { WorkWebMcpHost } from './work-webmcp.ts';
   const context = vaultContext(),
     scope = context.current();
   const port = preparationHttpPort(scope.request),
@@ -72,7 +75,7 @@
     reads = [];
     failure = e instanceof SourceError ? e.reason : 'unavailable';
   }
-  async function load(more = false) {
+  async function load(more = false, signal?: AbortSignal) {
     if (busy) return;
     invalidate();
     const current = generation;
@@ -83,7 +86,9 @@
       loaded = false;
     }
     try {
-      const page = await port.list(more ? next : null, controller.signal);
+      const execution = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+      const page = await port.list(more ? next : null, execution);
+      execution.throwIfAborted();
       if (current !== generation) return;
       scope.assert();
       preparations = page.preparations;
@@ -95,15 +100,15 @@
       if (current === generation) busy = false;
     }
   }
-  async function choose(id: string) {
+  async function choose(id: string, signal?: AbortSignal) {
     invalidate();
     const current = generation;
     busy = true;
     try {
-      const result = await port.review(id, controller.signal);
-      const copyReview = copyEnabled
-        ? await port.copyReview(result.preparation, controller.signal)
-        : null;
+      const execution = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+      const result = await port.review(id, execution);
+      const copyReview = copyEnabled ? await port.copyReview(result.preparation, execution) : null;
+      execution.throwIfAborted();
       if (current !== generation) return;
       scope.assert();
       if (result.preparation.expires_at <= Date.now() / 1000) throw new SourceError('stale');
@@ -117,7 +122,7 @@
       if (current === generation) busy = false;
     }
   }
-  async function inspect() {
+  async function inspect(signal = controller.signal) {
     if (!review || busy) return;
     const current = generation,
       selected = review;
@@ -127,10 +132,12 @@
     acknowledged = false;
     failure = '';
     try {
-      const contents = await inspectDisclosure(sources, selected.disclosure, controller.signal);
+      const execution = AbortSignal.any([controller.signal, signal]);
+      const contents = await inspectDisclosure(sources, selected.disclosure, execution);
       // Re-read the preparation and manifest after the source RPC. A changed
       // revision/current state never inherits an earlier displayed inspection.
-      const confirmed = await port.review(selected.preparation.id, controller.signal);
+      const confirmed = await port.review(selected.preparation.id, execution);
+      execution.throwIfAborted();
       if (current !== generation) return;
       scope.assert();
       if (
@@ -180,6 +187,84 @@
       if (current === generation) busy = false;
     }
   }
+  const assistant: WorkWebMcpHost = {
+    page: 'preparations',
+    snapshot: () => ({
+      page: 'preparations',
+      version: JSON.stringify([
+        generation,
+        preparations,
+        review,
+        copy,
+        inspected,
+        acknowledged,
+        busy,
+        loaded,
+      ]),
+      selection: JSON.stringify(review ? [review.preparation, review.disclosure] : null),
+      busy,
+      loaded,
+      items: preparations.map((p) => ({
+        id: p.id,
+        state: p.state,
+        revision: p.revision,
+        expires_at: p.expires_at,
+      })),
+      files:
+        review?.disclosure.contexts.flatMap((c) =>
+          c.files.map(({ path, bytes }) => ({ source_id: c.repository, path, bytes })),
+        ) ?? [],
+      selected: review?.preparation.id ?? null,
+      prepared: null,
+      copy: copy ? { status: copy.status } : null,
+    }),
+    verify: async () => {
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+      await scope.verify();
+      scope.assert();
+      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
+    },
+    contents: () => reads,
+    available: (action) =>
+      !busy &&
+      (action === 'refresh' ||
+        (action === 'more' && next !== null) ||
+        (action === 'open_preparation' && loaded) ||
+        (action === 'inspect' && !!review && review.currentSources) ||
+        (action === 'review' && !!copy)),
+    invoke: async (action, args, signal) => {
+      signal.throwIfAborted();
+      if (action === 'refresh' || action === 'more') await load(action === 'more', signal);
+      else if (action === 'open_preparation') {
+        const p = preparations.find((p) => p.id === args['preparation_id']);
+        if (!p) throw new WebMcpFailure('not_selected');
+        await choose(p.id, signal);
+      } else if (action === 'inspect') await inspect(signal);
+      else if (action === 'review') {
+        if (
+          !review ||
+          !copy ||
+          (args['action'] !== 'approve_copy' && args['action'] !== 'withdraw_copy')
+        )
+          throw new WebMcpFailure('unavailable');
+        await choose(review.preparation.id, signal);
+        await tick();
+        signal.throwIfAborted();
+        const control = document.querySelector<HTMLButtonElement>(
+          '[data-work-action="' + String(args['action']) + '"]',
+        );
+        if (!control) throw new WebMcpFailure('unavailable');
+        const inspection = document.querySelector<HTMLButtonElement>(
+          '[data-work-action="inspect_copy"]',
+        );
+        if (control.disabled && inspection) inspection.focus();
+        else control.focus();
+        control.scrollIntoView({ block: 'center' });
+      } else throw new WebMcpFailure('unavailable');
+      signal.throwIfAborted();
+      if (failure) throw new WebMcpFailure('unavailable');
+    },
+  };
   onMount(() => {
     const linked = window.location.hash.slice(1);
     void load().then(() => {
@@ -332,7 +417,12 @@
               </li>{/each}
           </ul>
         </article>{/each}
-      <button type="button" disabled={busy} onclick={inspect}>{m.preparation_inspect()}</button>
+      <button
+        data-work-action="inspect_copy"
+        type="button"
+        disabled={busy}
+        onclick={() => inspect()}>{m.preparation_inspect()}</button
+      >
       <p>{m.source_read_boundary()}</p>
       {#if copy}
         <section class="source-card" aria-label={m.preparation_copy_consent()}>
@@ -353,6 +443,7 @@
             <label
               ><input
                 type="checkbox"
+                data-work-confirmation="approve_copy"
                 bind:checked={acknowledged}
                 disabled={busy || !inspected || !copy.can_approve}
               />
@@ -361,14 +452,18 @@
             <button
               type="button"
               disabled={busy || !inspected || !acknowledged || !copy.can_approve}
+              data-work-action="approve_copy"
               onclick={() => decideCopy('POST')}>{m.preparation_copy_approve()}</button
             >
           {:else if copy.status === 'approved'}
             <p role="status">
               {copy.current ? m.preparation_copy_approved() : m.preparation_copy_inactive()}
             </p>
-            <button type="button" disabled={busy} onclick={() => decideCopy('DELETE')}
-              >{m.preparation_copy_withdraw()}</button
+            <button
+              data-work-action="withdraw_copy"
+              type="button"
+              disabled={busy}
+              onclick={() => decideCopy('DELETE')}>{m.preparation_copy_withdraw()}</button
             >
           {:else}<p role="status">{m.preparation_copy_withdrawn()}</p>{/if}
           <p>{m.preparation_copy_withdraw_boundary()}</p>
@@ -415,4 +510,5 @@
             <pre tabindex="0" role="region" aria-label={file.path}>{file.content}</pre>
           </article>{/each}{/each}
     </section>{/if}
+  <WorkWebMcp host={assistant} />
 </section>

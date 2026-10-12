@@ -83,7 +83,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     let static_asset = request.method() == Method::Get
         && matches!(
             url.path(),
-            "/work/source-review.js" | "/work/source-review.css"
+            "/work/source-review.js" | "/work/source-review.css" | "/work/browser-assistant.js"
         );
     if !listing && !reading && !page && !static_asset {
         return error(404, "not_found");
@@ -153,7 +153,12 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
                 .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
                 .from_html(html);
         }
-        let (body, mime) = if url.path().ends_with(".js") {
+        let (body, mime) = if url.path() == "/work/browser-assistant.js" {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-assistant.js")),
+                "text/javascript; charset=utf-8",
+            )
+        } else if url.path().ends_with(".js") {
             (
                 include_str!(concat!(env!("OUT_DIR"), "/work-sources.js")),
                 "text/javascript; charset=utf-8",
