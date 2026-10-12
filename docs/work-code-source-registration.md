@@ -59,10 +59,17 @@ their productive provider/host and launcher qualification.
 
 ## Prepare the code-only copy host
 
-After the owner creates a code-only preparation, retain its exact current Native
-disclosure review. The local bridge accepts that review and the original source
-packet; it derives the source binding rather than accepting arbitrary repository
-paths.
+After the owner creates a code-only preparation, open its review and use **Save
+disclosure record** under **Integrity records**. The browser rechecks the live
+owner session, exact selected preparation, current source revisions and expiry
+before downloading the closed Native record. It contains metadata only, without
+file contents, login credentials or copy consent. The opt-in WebMCP
+`mikaki_read_work_disclosure` tool returns the same record through the same
+fresh checks; hiding, locking or changing selection refuses a late result.
+
+Retain that exact current Native disclosure review. The local bridge accepts it
+and the original source packet; it derives the source binding rather than
+accepting arbitrary repository paths.
 
 ```sh
 npm run prepare:work-code-copy -- NATIVE_DISCLOSURE_REVIEW SOURCE_PACKET OUTPUT_PARENT

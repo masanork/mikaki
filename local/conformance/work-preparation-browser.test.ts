@@ -326,28 +326,88 @@ test('owner preparation review keeps copy evidence, access and delegation separa
         )
           .bind(f.first.account)
           .run();
+        const downloads: string[] = [];
+        const downloaded = (download: { suggestedFilename(): string }) =>
+          downloads.push(download.suggestedFilename());
+        page.on('download', downloaded);
+        await page.getByText('照合用の記録', { exact: true }).click();
+        await page.getByRole('button', { name: '開示記録を保存', exact: true }).click();
+        await expect(page.getByRole('alert')).toContainText('参照版が変わりました');
+        assert.deepEqual(downloads, []);
+        page.off('download', downloaded);
         await refresh().click();
         await choose().click();
         await expect(page.getByText('コピーの検証記録あり', { exact: true })).toBeVisible();
         await expect(page.getByText('現在は利用できません', { exact: true })).toBeVisible();
+        await page.getByText('照合用の記録', { exact: true }).click();
+        await expect(
+          page.getByRole('button', { name: '開示記録を保存', exact: true }),
+        ).toBeDisabled();
         await inspect().click();
         await expect(page.getByRole('alert')).toContainText('参照版が変わりました');
         await expect(page.locator('pre')).toHaveCount(0);
       },
     );
-    await t.test('revoked OP SSO clears and locks the complete review', async () => {
-      await choose().click();
-      await expect(details()).toBeVisible();
-      await f.revokeSession();
-      await refresh().click();
-      await expect(
-        page.getByRole('heading', { name: '準備の確認画面をロックしました', exact: true }),
-      ).toBeVisible();
-      await expect(details()).toHaveCount(0);
-    });
   } finally {
     release?.();
     await context.close();
+    await browser.close();
+    await f.close();
+  }
+});
+
+test('revoked OP SSO refuses a disclosure download and locks the complete review', async () => {
+  // A separate owner/runtime keeps this authority check independent of the
+  // preceding suite's request budget. Production rate limits remain intact.
+  const f = await createSourceFixture(undefined, true, 'product');
+  const s = await seedPreparationReview(f);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext();
+    await context.addCookies([
+      {
+        name: '__Host-op-sso',
+        value: f.first.cookie,
+        domain: 'work.test',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    await context.route('https://work.test/**', async (route) => {
+      const request = route.request();
+      const response = await f.worker.fetch(request.url(), {
+        method: request.method(),
+        headers: await request.allHeaders(),
+        body: request.postData() ?? undefined,
+      });
+      await route.fulfill({
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+        body: Buffer.from(await response.arrayBuffer()),
+      });
+    });
+    const page = await context.newPage();
+    const downloads: string[] = [];
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
+    await page.goto('https://work.test/work/preparation-review?lang=ja#' + s.reserved.id);
+    await expect(
+      page.getByRole('heading', { name: '準備と開示の詳細', exact: true }),
+    ).toBeVisible();
+    await page.getByText('照合用の記録', { exact: true }).click();
+    await f.revokeSession();
+    assert.equal((await f.http('/work/preparations')).status, 401);
+    await page.getByRole('button', { name: '開示記録を保存', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: '準備の確認画面をロックしました', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '準備と開示の詳細', exact: true })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole('button', { name: '開示記録を保存', exact: true })).toHaveCount(0);
+    assert.deepEqual(downloads, []);
+  } finally {
     await browser.close();
     await f.close();
   }

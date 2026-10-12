@@ -13,6 +13,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { createTestHarness } from 'wrangler';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
 import { gitFixture } from '../../scripts/work-git-fixture.ts';
+import { prepareWorkCodeCopy } from '../../scripts/prepare-work-code-copy.ts';
 import {
   prepareWorkCodeSource,
   verifyWorkCodeSource,
@@ -210,6 +211,8 @@ for (const lang of ['ja', 'en'] as const) {
               inspect: '開示対象のファイル内容を確認',
               approve: 'このコピーを承認',
               withdraw: 'コピーの承認を取り消す',
+              integrity: '照合用の記録',
+              save: '開示記録を保存',
             }
           : {
               register: 'Register with invitation',
@@ -222,6 +225,8 @@ for (const lang of ['ja', 'en'] as const) {
               inspect: 'Inspect disclosed file contents',
               approve: 'Approve this copy',
               withdraw: 'Withdraw copy consent',
+              integrity: 'Integrity records',
+              save: 'Save disclosure record',
             };
       assert.equal((await page.goto(`${issuer}/work/source-review?lang=${lang}`))?.status(), 401);
       assert.equal(await count('account_security'), 0);
@@ -294,6 +299,27 @@ for (const lang of ['ja', 'en'] as const) {
       const approve = page.getByRole('button', { name: words.approve, exact: true });
       await expect(approve).toBeDisabled();
       await expect(page.getByRole('checkbox')).toBeDisabled();
+      await page.getByText(words.integrity, { exact: true }).click();
+      const downloadEvent = page.waitForEvent('download');
+      await page.getByRole('button', { name: words.save, exact: true }).click();
+      const download = await downloadEvent;
+      assert.equal(await download.failure(), null);
+      const record = JSON.parse(await readFile((await download.path())!, 'utf8'));
+      assert.equal(download.suggestedFilename(), `mikaki-work-disclosure-${record.digest}.json`);
+      assert.equal(record.digest, preparation.disclosure_digest);
+      assert.equal(record.manifest.owner, owner.account_id);
+      assert.equal(record.manifest.code.commit, packet.source.commit);
+      assert.deepEqual(record.manifest.contexts, []);
+      const host = await prepareWorkCodeCopy(
+        record,
+        packet.directory,
+        git.dir,
+        join(directory, 'copy-host'),
+      );
+      assert.equal(host.codeCopyReceipt.disclosure_digest, record.digest);
+      assert.equal(host.codeCopyReceipt.owner_consent_recorded, false);
+      assert.equal(await count('work_copy_consent'), 0, 'Saving metadata is not consent');
+      await noEffects();
       await page.getByRole('button', { name: words.inspect, exact: true }).click();
       await expect(page.getByRole('checkbox')).toBeEnabled();
       await expect(approve).toBeDisabled();

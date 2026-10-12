@@ -640,6 +640,8 @@
   "preparation_delegation": "Execution delegation",
   "preparation_delegation_body": "This screen inspects preparations. Execution requires a separate review of the goal, acceptance criteria and permitted operations before delegation.",
   "preparation_integrity": "Integrity records",
+  "preparation_record_save": "Save disclosure record",
+  "preparation_record_scope": "Save the sources, selection and expiry as a JSON file. It contains no file contents, login credentials or copy approval.",
   "preparation_identifier": "Preparation identifier",
   "preparation_manifest": "Disclosure digest",
   "preparation_checked": "Last checked at",
