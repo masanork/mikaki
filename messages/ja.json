@@ -1,4 +1,7 @@
 {
+  "workAssistantEnable": "Work ツールを許可",
+  "workAssistantContent": "選択したファイル内容を公開",
+  "workAssistantSession": "内容は AI 提供者に送られる場合があります。選択変更で内容公開を、非表示・ロックでツールを解除します。コピーはこの画面で確認します。",
   "waitlistTitle": "mikaki 招待希望",
   "waitlistHeading": "招待を希望する",
   "waitlistIntro": "管理者が申込を審査し、承認した方に招待メールを送ります。",

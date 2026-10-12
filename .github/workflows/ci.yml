@@ -62,6 +62,7 @@ jobs:
           node --test scripts/publish-metrics.test.mjs
           npm run test:agent-preparation
           npm run test:work-artifacts-inspection
+          node --test local/conformance/work-webmcp.test.ts
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo check --locked -p mikaki-worker --target wasm32-unknown-unknown

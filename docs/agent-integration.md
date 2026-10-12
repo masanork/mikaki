@@ -46,6 +46,54 @@ Run `worker-build --release crates/worker` before the browser tests after UI cha
 The native adapter and consent UI add served JavaScript; the Vault gzip budget is
 90 KiB (a 1 KiB increase), while its existing raw-byte budget remains unchanged.
 
+## Work browser WebMCP
+
+The source, preparation and copy-progress screens expose native browser WebMCP
+tools after **Browser assistant** is enabled on that screen. UI clicks and tools
+call the same selection, inspection, preparation and refresh handlers, with the
+same bounded Native APIs, current owner session and checkpoint checks. The
+existing feature flags still control which screens and operations are available.
+Tools neither enable a production flag nor expose operator/bootstrap capabilities.
+
+`mikaki_get_work_state` returns public screen metadata, not authority. Refresh,
+file/code selection, exact-source inspection, preparation and opening an owned
+review are available where their corresponding UI operations are enabled.
+Preparation uses the existing stable operation/expiry and creates no copy consent,
+credential or productive effect. Tool inputs cannot supply an owner, destination,
+grant, bearer or approval flag. State results are bounded, carry no private display
+lease, and label source data as untrusted.
+
+File contents require a separate **Share file contents for this exact selection**
+choice. `mikaki_read_work_file` repeats the existing source inspection and returns
+one selected file, with at most 4,000 Unicode characters. Selection/source/version
+changes clear that permission. Permission is rechecked after final owner-session
+verification, including while an inspection is pending. Contents may be sent to
+the assistant's AI provider; withdrawing permission cannot recall prior results.
+These restrictions govern tool results and do not limit an assistant's separate
+permission to view the page or its DOM.
+
+`mikaki_review_work_action` reopens the current Native copy review or progress and
+focuses the existing approve, withdraw, start or stop control. It returns
+`review_required` without submitting the action or checking an acknowledgment.
+The owner completes the same content/operator review and confirmation as in the
+ordinary UI. No tool treats copy completion as execution delegation.
+
+Tab hiding, locking, navigation and session loss remove registration and clear
+tool/content permission. Caller cancellation reaches pending screen requests and
+late replies cannot restore the cleared view. Tool calls do not renew the display
+lease. Unsupported browsers keep the ordinary UI; WebMCP is a progressive
+enhancement using the [native browser API](https://developer.chrome.com/docs/ai/webmcp).
+The small helper loads only after tools are enabled, under the source-screen
+authentication and checkpoint gate. Its served body is capped at 16 KiB raw /
+8 KiB gzip estimate; the three existing screen budgets remain unchanged.
+
+`npm run test:work-webmcp` builds the current product/qualification fixtures and
+runs adapter invariants plus real Chromium registration, discovery and execution
+over local Work UI, D1, checkpoint and Git. Identity/provider mappings remain
+synthetic, and no remote resource is accessed. This also runs in the Work product
+CI lane. Browser tests cover both tool and human completion paths, content
+permission, stale/cancelled replies, lock/hide and bounded served bundles.
+
 ## Connect a selected v2 record to local Codex
 
 In the Owner workspace, open **Local v2 export** after saving a name or owner note. Select one saved record, enter `codex-local` as the delegate label and `OpenAI` as the service label, and choose one hour or one day. Prepare the export, review the exact plaintext, source revision and expiry, then confirm the selected copy before downloading the bundle and grant separately. Closing the panel, locking the workspace or observing a source revision change discards its prepared download state.

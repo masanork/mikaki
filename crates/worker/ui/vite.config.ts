@@ -44,6 +44,7 @@ export default defineConfig({
     // Vite's ES library output normally preserves whitespace. Owner entries
     // use the final output minifier without splitting or adding assets.
     rolldownOptions: {
+      external: ['/work/browser-assistant.js'],
       output: {
         inlineDynamicImports: true,
         ...(['vault', 'work-sources', 'work-preparations', 'work-copy'].includes(entry)
