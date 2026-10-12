@@ -17,6 +17,11 @@ import {
 } from './work-authority-packet.ts';
 import { REVIEWED_AUTHORITY_MANIFEST } from './allocate-work-authority.ts';
 import { authorityBootstrapOperatorConfig } from './work-authority-bootstrap.ts';
+import {
+  COMPLETION_DIRECTORY,
+  completionEvidenceSchema,
+  inspectAuthorityCompletion,
+} from './work-authority-completion.ts';
 
 export const REVIEWED_BOOTSTRAP_MANIFEST =
   '101e4405e6eb3dfd40e50e46a1bdeaf6d8b886ec294f735b913864a943d53849';
@@ -49,10 +54,13 @@ const reservationSchema = z.strictObject({
     .string()
     .regex(/^local\/generated\/work-authority-allocation\/allocate-[A-Za-z0-9]{6}$/),
 });
-const evidenceSchema = z.strictObject({
+const originalEvidenceSchema = z.strictObject({
   format_version: z.literal(1),
   reservation: z.string().max(4096),
   records: z.array(z.string().max(65536)).min(1).max(1024),
+});
+const evidenceSchema = originalEvidenceSchema.extend({
+  completion: completionEvidenceSchema.optional(),
 });
 export type AllocationEvidence = z.infer<typeof evidenceSchema>;
 const recordBase = { recorded_at: timestamp };
@@ -173,8 +181,8 @@ function finalReport(resources: Identity[]) {
 const jsonBytes = (v: unknown) => Buffer.from(JSON.stringify(v, null, 2) + '\n');
 
 /** A later list or report can never upgrade a lost acknowledgment in this protocol. */
-export function inspectAuthorityAllocation(value: unknown) {
-  const evidence = evidenceSchema.parse(value);
+export function inspectOriginalAuthorityAllocation(value: unknown) {
+  const evidence = originalEvidenceSchema.parse(value);
   assert.ok(
     Buffer.byteLength(JSON.stringify(evidence)) <= 2 * 1024 * 1024,
     'deployment_evidence_too_large',
@@ -290,6 +298,18 @@ export function inspectAuthorityAllocation(value: unknown) {
   };
 }
 
+export function inspectAuthorityAllocation(value: unknown) {
+  const evidence = evidenceSchema.parse(value);
+  const { completion, ...original } = evidence;
+  const observation = inspectOriginalAuthorityAllocation(original);
+  if (!completion) return observation;
+  return {
+    ...observation,
+    ...inspectAuthorityCompletion(observation, completion),
+    allocation_sha256: digest(jsonBytes(evidence)).sha256,
+  };
+}
+
 const reviewerId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$/);
 export const deploymentReviewSchema = z.strictObject({
   format_version: z.literal(1),
@@ -384,7 +404,7 @@ async function retainedRoot() {
   }).trim();
   return dirname(await realpath(resolve(root, common)));
 }
-export async function readAuthorityAllocation(retained: string) {
+export async function readOriginalAuthorityAllocation(retained: string) {
   const reservationPath = join(retained, allocationRoot, 'reservation.json');
   assert.equal(await realpath(reservationPath), reservationPath, 'deployment_symlink_denied');
   const reservation = (await packetFile(reservationPath, 4096)).toString('utf8');
@@ -409,8 +429,45 @@ export async function readAuthorityAllocation(retained: string) {
     'deployment_reservation_changed',
   );
   const evidence: AllocationEvidence = { format_version: 1, reservation, records };
-  inspectAuthorityAllocation(evidence);
+  inspectOriginalAuthorityAllocation(evidence);
   return evidence;
+}
+export async function readAuthorityAllocation(retained: string): Promise<AllocationEvidence> {
+  const evidence = await readOriginalAuthorityAllocation(retained);
+  const directory = join(retained, COMPLETION_DIRECTORY);
+  let names: string[];
+  try {
+    names = (await readdir(directory)).sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return evidence;
+    throw error;
+  }
+  assert.equal(await realpath(directory), directory, 'deployment_symlink_denied');
+  assert.ok(names.length <= 128, 'deployment_completion_too_large');
+  const records: string[] = [];
+  for (const [index, name] of names.entries()) {
+    assert.equal(
+      name,
+      `${String(index).padStart(4, '0')}.json`,
+      'deployment_completion_gap_or_extra',
+    );
+    records.push((await packetFile(join(directory, name), 65536)).toString('utf8'));
+  }
+  assert.deepEqual((await readdir(directory)).sort(), names, 'deployment_completion_changed');
+  for (const [index, name] of names.entries())
+    assert.equal(
+      (await packetFile(join(directory, name), 65536)).toString('utf8'),
+      records[index],
+      'deployment_completion_changed',
+    );
+  assert.deepEqual(
+    await readOriginalAuthorityAllocation(retained),
+    evidence,
+    'deployment_original_changed',
+  );
+  const result = { ...evidence, completion: { format_version: 1 as const, records } };
+  inspectAuthorityAllocation(result);
+  return result;
 }
 async function pinnedParent(retained: string) {
   const directory = join(retained, parentPacket);

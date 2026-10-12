@@ -136,6 +136,34 @@ qualifier source and script digest; keep it outside the immutable packet.
 
 ## Once-only closed resource allocation
 
+### Recovery of the audited DLQ and completion of the remaining Queue
+
+`node scripts/complete-work-authority.ts inspect` reads the retained original
+allocation, pinned DLQ audit receipt and fresh provider identities.
+`complete` reserves one canonical `completion-v1` directory under the original
+common-repository allocation root. Its numbered private records separately
+retain the original unknown DLQ outcome, the positive `create_queue` audit
+match and the one unattempted logout Queue create. The original 236 records,
+reservation and partial seal remain unchanged.
+
+This executor is fixed to the reviewed original allocation/reservation digests,
+DLQ audit ID, Queue identity, name and request-time interval. It re-reads the
+provider audit by ID and verifies the dedicated D1/R2/DLQ identities, unattached
+Queues, absent main Queue and closed Worker identities before admission.
+The shared completion directory and each record are synchronized before the
+new create. A failed or completed reservation is retained across linked
+checkouts. Lost replies consume the remaining Queue slot and require inspection
+of the same identities; later lists cannot grant another create.
+
+The deployment evidence reader validates both journals, includes their combined
+digest and grants completion only after the new Queue acknowledgment, exact
+readback and stable final inventory. Historical unknown admissions remain in
+the original journal and are explicitly linked to the recovery proof. The
+executor enables no Worker, browser ingress, migration, checkpoint bootstrap,
+owner authority or productive Artifacts/Git capability. Origin, separate
+operator/recovery ownership and signing-custody reviews still gate a deployment
+child.
+
 `node scripts/allocate-work-authority.ts inventory` performs two complete bounded
 read inventories of D1, R2, Queues and the two proposed Worker identities. The
 allocator pins the separately reviewed `authority-nMECMX` manifest digest

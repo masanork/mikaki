@@ -327,7 +327,7 @@ async function boundedJSON(response: Response) {
     await reader.cancel();
   }
 }
-function allowedRead(path: string) {
+export function authorityAllocationReadAllowed(path: string) {
   const url = new URL(`https://api.cloudflare.com/client/v4${path}`);
   const p = url.pathname.slice('/client/v4'.length);
   if (
@@ -395,7 +395,7 @@ export async function runAuthorityAllocation(mode: 'inventory' | 'allocate') {
       );
     } else {
       assert.ok(
-        allowedRead(path) ||
+        authorityAllocationReadAllowed(path) ||
           [...ids].some(
             (id) => path === `${base}/d1/database/${id}` || path === `${base}/queues/${id}`,
           ) ||

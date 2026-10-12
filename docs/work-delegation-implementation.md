@@ -1297,3 +1297,94 @@ Next resolve the same DLQ admission with positive evidence, then qualify the
 remaining allocation and remote version/config observations under the retained
 reservation. Shared bootstrap reservation and the bounded remote executor remain
 separate outstanding gates.
+
+## Positive DLQ creation recheck, 2026-10-12 JST
+
+A read-only recheck identifies the original DLQ create in Cloudflare's legacy
+[`audit_logs` API](https://developers.cloudflare.com/api/resources/audit_logs/methods/list/).
+The earlier inspection used only the v2 audit endpoint and missed this record.
+Both endpoints were queried over `2026-10-10T21:50:00Z` through
+`2026-10-10T22:10:00Z`: v2 returns one unrelated create, while v1 returns the
+DLQ `create_queue` with `action.result=true`. Direct lookup of audit ID
+`bee80ee1-8440-46c3-b762-eff0a6d5f0e1` repeats the same single record.
+
+The provider record matches account `4b749427a0c80c547e726a42aff4b6fc`, Queue
+ID `4f95485d3880458b9a14a8168b836498`, and the metadata name
+`mikaki-work-logout-qualification-dlq`. Its event time
+`2026-10-10T21:57:50.458616Z` falls between the retained original DLQ create
+intent (`21:57:49.291Z`) and its HTTP 200 observation (`21:57:50.515Z`).
+The Queue creation time (`21:57:49.42237Z`) also falls inside that original
+request interval. This is positive provider creation evidence for the same
+allocation, rather than an inference from a later name listing.
+
+Queue details read before and after the audit queries agree exactly. Producer
+and consumer counts and their returned lists are all zero; the provider's
+modification time still equals its original creation time. The original 236
+records, reservation digest, partial seal and three protected Artifacts journal
+digests remain unchanged. No provider write, retry, replacement, deployment or
+bootstrap was issued.
+
+The private receipt is
+`local/generated/work-authority-allocation/recheck-wn8aMy/result.json`, SHA-256
+`ef7bad9ee257da2641587a5f7e9b7d4da1b73ff3b2e4e8fdf93110d74df22c52`.
+Its source is preserved beside it as `source.mjs`, SHA-256
+`145392500eae3da7e15cf0c53c8be5a06c2d085a2ef2aa8e8ed941030cebdc30`.
+The receipt contains the direct audit match and request-time checks without
+actor identity, bearer or unrelated raw audit payloads.
+
+The DLQ creation fact is now confirmed. The original journal still retains its
+historical `create_outcome_unknown`; the deployment gate is not silently
+rewritten or bypassed. A reviewed append-only reconciler can consume this
+positive evidence before the unattempted main Queue allocation and child
+deployment proceed. No new DLQ create is needed or authorized by this recheck.
+
+## Audited reconciliation and completed authority allocation, 2026-10-12 JST
+
+The [completion executor](work-authority-qualification.md#recovery-of-the-audited-dlq-and-completion-of-the-remaining-queue)
+pins the original allocation/reservation and positive DLQ audit receipt. It
+re-reads the provider audit and dedicated resource identities, reserves one
+canonical shared completion directory, and retains recovery separately from
+the original unknown outcome. Each numbered record and its parent directory
+are synchronized before the one remaining create. The deployment reader now
+validates both journals and their combined digest; partial or lost replies
+cannot gain completion through a later list, repeated create or forged report.
+
+Clean source `aa54f4b48af4e79ff8a489b4752efe332a203105` completed the run at
+`local/generated/work-authority-completion/complete-KQTgO7`. Exactly one provider
+create was sent: `mikaki-work-logout-qualification`, ID
+`1c31bf78590749df87cd407aa02072b7`, created at
+`2026-10-11T23:55:25.834808Z`. The acknowledgment, exact ID readback and complete
+stable final inventories agree. D1/R2 retain their original identities, and
+the DLQ is recovered by its original successful provider audit without another
+DLQ create. Both Queues have zero producers/consumers; both proposed authority
+Workers are absent.
+
+The six completion records are retained under
+`local/generated/work-authority-allocation/completion-v1`. The original 236
+records, reservation, partial seal and three protected Artifacts journals still
+match their retained digests. The combined evidence is
+`complete-KQTgO7/allocation-evidence.json`, SHA-256
+`dc05a94c13a04f07838324c9fe4185e9eedc70be01eec1541a350a1880393d26`;
+the run receipt SHA-256 is
+`ca35676884d55eaef77de39a05aabc99fb856781b6aa9029567fb5492b6761ad`.
+Current allocation inspection reports **complete=true**, all four verified,
+no current unknown/unverified/unattempted resources, and explicitly retains
+`original_unknown=[logout_dlq]` with the audit recovery relationship.
+
+The separate offline gate receipt is
+`local/generated/work-authority-deployment/inspection-completed-20261012/gate.json`,
+SHA-256 `c77639885b776229793c1e0a9a0715627ad212464033cb7f83c7af16d2b1306e`.
+It verifies the frozen bootstrap parent and completed allocation and leaves
+only origin/operator/recovery/signing-custody review before child preparation.
+A local `deployment-review.draft.json` beside that receipt carries the fixed
+packet/allocation/reservation digests and unresolved review fields; it cannot
+be used as an approved deployment review.
+
+The new **9/9** completion cases pass, together with **18/18** existing
+allocation/materialization cases. Node types, affected-file formatting and
+documentation checks pass; the new suite is registered in CI. No remote CI,
+full product regression, migration, Worker deployment, checkpoint bootstrap,
+actual owner enrollment, or production/Artifacts/Git mutation is claimed.
+Next resolve the isolated HTTPS origin, separate OP/checkpoint deployment and
+recovery ownership, and fresh signing-key custody, then prepare the closed
+deployment child from these retained identities.
