@@ -84,10 +84,15 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
     name: 'Independent test wallet',
     redirect_uri: 'https://wallet.example/callback',
   };
+  const otherWalletClient = {
+    client_id: 'registered-other-wallet',
+    name: 'Other registered wallet',
+    redirect_uri: 'https://other-wallet.example/callback',
+  };
   const walletVars = {
     ...config.vars,
     IDENTITY_WALLET_ENABLED: 'true',
-    IDENTITY_WALLET_CLIENTS: JSON.stringify([walletClient]),
+    IDENTITY_WALLET_CLIENTS: JSON.stringify([walletClient, otherWalletClient]),
   };
   const attesterIssuer = `${root}/identity/attester`;
   const attesterChain = await Promise.all(
@@ -1318,7 +1323,52 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
     const pushedBody = (await pushed.json()) as any;
     const parUrl = `${issuer}/authorize?${new URLSearchParams({ client_id: walletClient.client_id, request_uri: pushedBody.request_uri })}`;
     assert.equal((await external.fetch(parUrl)).status, 401);
-    assert.equal((await changedWallet.fetch(parUrl, { headers: ownerHeaders })).status, 400);
+    const requestHash = hash(pushedBody.request_uri.split(':').at(-1)!);
+    const parSnapshot = await DB.prepare('SELECT * FROM identity_wallet_par WHERE request_hash=?')
+      .bind(requestHash)
+      .first();
+    const grantCount = await DB.prepare('SELECT count(*) AS n FROM identity_wallet_grant').first(
+      'n',
+    );
+    const assertInvalidParReference = async (
+      target: typeof external,
+      clientId: string,
+      label: string,
+    ) => {
+      const url = `${issuer}/authorize?${new URLSearchParams({ client_id: clientId, request_uri: pushedBody.request_uri })}`;
+      const response = await target.fetch(url, {
+        headers: { ...ownerHeaders, 'Accept-Language': 'en' },
+        redirect: 'manual',
+      });
+      assert.equal(response.status, 400, label);
+      assert.match(response.headers.get('content-type') ?? '', /^text\/html/i);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+      assert.match(response.headers.get('content-security-policy') ?? '', /default-src 'none'/);
+      assert.equal(response.headers.get('location'), null, 'invalid PAR references never redirect');
+      const html = await response.text();
+      assert.match(html, /Invalid authorization request/);
+      assert.match(html, /This authorization request link is invalid, expired, or already used/);
+      assert.deepEqual(
+        await DB.prepare('SELECT * FROM identity_wallet_par WHERE request_hash=?')
+          .bind(requestHash)
+          .first(),
+        parSnapshot,
+        'a wrong client must not consume or alter the stored PAR',
+      );
+      assert.equal(
+        await DB.prepare('SELECT count(*) AS n FROM identity_wallet_grant').first('n'),
+        grantCount,
+        'a wrong client must not create an authorization grant',
+      );
+    };
+    await assertInvalidParReference(
+      external,
+      otherWalletClient.client_id,
+      'registered wrong client',
+    );
+    await assertInvalidParReference(external, 'unknown-wallet-client', 'unknown client');
+    await assertInvalidParReference(changedWallet, walletClient.client_id, 'changed client policy');
     const parPage = await external.fetch(
       `${parUrl}&${new URLSearchParams({ scope: 'linked_document_mdoc', redirect_uri: 'https://evil.example/callback', state: 'substituted', code_challenge: secret() })}`,
       { headers: ownerHeaders },

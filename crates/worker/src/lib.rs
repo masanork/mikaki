@@ -942,6 +942,7 @@ fn authorization_par_error_page(
             "Content-Security-Policy",
             "default-src 'none'; img-src 'self'; frame-ancestors 'none'",
         )?
+        .with_header("Referrer-Policy", "no-referrer")?
         .from_html(html)
 }
 
