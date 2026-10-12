@@ -10,7 +10,10 @@ import { getPlatformProxy } from 'wrangler';
 import type { D1Database } from '@cloudflare/workers-types';
 import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
 import { WORK_MIGRATIONS } from './production-work-schema.ts';
-import { productionWorkMigrationStore } from './production-work-migration.ts';
+import {
+  productionWorkMigrationStore,
+  previewProductionWorkSnapshot,
+} from './production-work-migration.ts';
 import {
   captureProductionWorkSnapshot,
   captureProductionOwnerSnapshot,
@@ -283,16 +286,9 @@ async function main() {
       );
       // Refuse overlarge owner data before closing ordinary writers.
       const ownerSnapshot = await captureProductionOwnerSnapshot(DB, owner);
-      assert.ok(
-        Buffer.byteLength(JSON.stringify(ownerSnapshot)) < 500_000,
-        'Owner data exceeds adoption byte preflight',
-      );
-      const guardEstimate = ownerSnapshot.tables.reduce(
-        (bytes, { rows }) =>
-          bytes + 100 + rows.reduce((sum, row) => sum + 80 + Object.keys(row).length * 250, 0),
-        1000,
-      );
-      assert.ok(guardEstimate < 50_000, 'Owner guard exceeds bounded adoption preflight');
+      const preview = previewProductionWorkSnapshot(ownerSnapshot, owner, work);
+      // Compile the actual SQL and snapshot bounds without performing provider I/O.
+      productionBootstrapStore(DB, preview, owner, work, { fenced: true });
       await record({ event: 'migration-intent' });
       await migration.apply();
       await record({ event: 'migration-acknowledged', writers_closed: true });
