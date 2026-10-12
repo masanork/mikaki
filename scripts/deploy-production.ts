@@ -14,6 +14,7 @@ import { assertProductionWorkRolloutSchema } from './production-work-migration.t
 import { productionWorkPacketDigest } from './production-work-packet.ts';
 import { cloudflareMetadataGet } from './production-worker-inventory.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
+import { productionWrangler } from './production-wrangler.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -169,6 +170,18 @@ export function sourceIsCurrent(changedPaths: string[]) {
   return changedPaths.every((path) => metrics.has(path));
 }
 
+export function checkCheckpointExposure(value: unknown) {
+  assert.ok(
+    value &&
+      typeof value === 'object' &&
+      'enabled' in value &&
+      'previews_enabled' in value &&
+      value.enabled === false &&
+      value.previews_enabled === false,
+    'Existing checkpoint must keep workers.dev and preview URLs disabled',
+  );
+}
+
 export function assertWaitlistMailKey(value: unknown): asserts value is string {
   assert.ok(
     typeof value === 'string',
@@ -233,13 +246,15 @@ async function main() {
   assert.deepEqual(assets.source, source);
   for (const extension of ['js', 'css']) assert.match(assets.login[extension], /^[a-f0-9]{64}$/);
   const wrangler = (args: string[]) =>
-    execFileSync(join(root, 'node_modules/.bin/wrangler'), args, {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 120_000,
-      maxBuffer: 4 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    productionWrangler(args, (selected) =>
+      execFileSync(join(root, 'node_modules/.bin/wrangler'), selected, {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 120_000,
+        maxBuffer: 4 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }),
+    );
   const opConfig = 'crates/worker/wrangler.production.jsonc';
   const reviewedOp = JSON.parse(readFileSync(join(root, opConfig), 'utf8')) as Config;
   const workSchemaEnabled = productionWorkSchema(reviewedOp.vars);
@@ -259,13 +274,21 @@ async function main() {
       : [],
     'OP receives only its checkpoint service after schema adoption',
   );
-  const migrations = wrangler(['d1', 'migrations', 'list', 'DB', '--remote', '--config', opConfig]);
+  const migrations = await wrangler([
+    'd1',
+    'migrations',
+    'list',
+    'DB',
+    '--remote',
+    '--config',
+    opConfig,
+  ]);
   assert.ok(
     migrations.includes('No migrations to apply'),
     'Pending migrations require manual reconciliation before deployment',
   );
   const schemaProbe = JSON.parse(
-    wrangler([
+    await wrangler([
       'd1',
       'execute',
       'DB',
@@ -288,7 +311,7 @@ async function main() {
   ) {
     const directory = join(root, 'crates/worker/work-migrations');
     const probe = JSON.parse(
-      wrangler([
+      await wrangler([
         'd1',
         'execute',
         'DB',
@@ -323,7 +346,7 @@ async function main() {
     );
     if (workSchema) {
       const marker = JSON.parse(
-        wrangler([
+        await wrangler([
           'd1',
           'execute',
           'DB',
@@ -399,6 +422,8 @@ async function main() {
       /^[a-f0-9]{32}$/,
       'An existing checkpoint must retain its namespace',
     );
+    const exposure = (await metadataGet(checkpointPath + '/subdomain')) as { result: unknown };
+    checkCheckpointExposure(exposure.result);
   }
   if (workSchemaEnabled) {
     assert.match(reviewedOp.vars.WORK_CHECKPOINT_NAMESPACE_ID!, /^[a-f0-9]{32}$/);
@@ -408,18 +433,24 @@ async function main() {
       'Enrolled production checkpoint namespace changed or absent',
     );
   }
-  const uploadCheckpoint = wrangler([
-    'deploy',
+  const uploadCheckpoint = await wrangler([
+    ...(priorNamespace === null ? ['deploy'] : ['versions', 'upload']),
     join(destination, 'checkpoint/bundle/checkpoint.js'),
     '--no-bundle',
     '--config',
     checkpointConfigPath,
+    ...(priorNamespace === null
+      ? []
+      : ['--tag', source.commit.slice(0, 12), '--message', `main CI ${source.commit}`]),
   ]);
-  const checkpointId = uploadCheckpoint.match(/Current Version ID:\s*([a-f0-9-]{36})/)?.[1];
+  const checkpointId = uploadCheckpoint.match(
+    /(?:Current|Worker) Version ID:\s*([a-f0-9-]{36})/,
+  )?.[1];
   assert.ok(checkpointId, 'Wrangler did not return the checkpoint version identity');
   const checkpointVersion = JSON.parse(
-    wrangler(['versions', 'view', checkpointId, '--config', checkpointConfigPath, '--json']),
+    await wrangler(['versions', 'view', checkpointId, '--config', checkpointConfigPath, '--json']),
   );
+  assert.equal(checkpointVersion.id, checkpointId);
   checkBindings(checkpointVersion, checkpointConfig);
   const namespace = checkpointVersion.resources.bindings.find(
     (binding: Binding) => binding.name === 'CHECKPOINTS',
@@ -428,6 +459,18 @@ async function main() {
     priorNamespace === null || namespace === priorNamespace,
     'Checkpoint deployment must retain its existing namespace',
   );
+  if (priorNamespace !== null) {
+    await wrangler([
+      'versions',
+      'deploy',
+      `${checkpointId}@100`,
+      '--yes',
+      '--config',
+      checkpointConfigPath,
+      '--message',
+      `main CI ${source.commit}`,
+    ]);
+  }
   record.workers.checkpoint = {
     version_id: checkpointId,
     namespace_id: namespace,
@@ -442,7 +485,7 @@ async function main() {
   ]) {
     const config: Config = JSON.parse(readFileSync(join(root, configPath!), 'utf8'));
     const history = JSON.parse(
-      wrangler(['deployments', 'list', '--config', configPath!, '--json']),
+      await wrangler(['deployments', 'list', '--config', configPath!, '--json']),
     );
     const previous = history
       .sort((a: { created_on: string }, b: { created_on: string }) =>
@@ -462,13 +505,13 @@ async function main() {
       `main CI ${source.commit}`,
     ];
     if (worker === 'op') args.push('--secrets-file', secretFile);
-    const upload = wrangler(args);
+    const upload = await wrangler(args);
     const id = upload.match(/Worker Version ID:\s*([a-f0-9-]{36})/)?.[1];
     assert.ok(id, 'Wrangler did not return an uploaded version ID');
     record.workers[worker!] = { version_id: id, previous_deployment: previous, activated: false };
     writeFileSync(evidence, `${JSON.stringify(record, null, 2)}\n`);
     const version = JSON.parse(
-      wrangler(['versions', 'view', id, '--config', configPath!, '--json']),
+      await wrangler(['versions', 'view', id, '--config', configPath!, '--json']),
     );
     assert.equal(version.id, id);
     checkBindings(version, config);
@@ -476,7 +519,7 @@ async function main() {
   }
   for (const item of staged) {
     console.log(
-      wrangler([
+      await wrangler([
         'versions',
         'deploy',
         `${item.id}@100`,
@@ -489,7 +532,7 @@ async function main() {
     );
     (record.workers[item.worker] as { activated: boolean }).activated = true;
     writeFileSync(evidence, `${JSON.stringify(record, null, 2)}\n`);
-    console.log(wrangler(['triggers', 'deploy', '--config', item.configPath]));
+    console.log(await wrangler(['triggers', 'deploy', '--config', item.configPath]));
   }
   const op = staged.find((item) => item.worker === 'op')!;
   appendFileSync(

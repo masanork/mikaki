@@ -572,7 +572,7 @@ test('transport is fixed-origin GET metadata, with endpoint allowlist and redact
       'synthetic-token',
       async () => new Response('MUST_NOT_APPEAR', { status: 502 }),
     )(path),
-    /502: malformed JSON/,
+    /502; endpoint/,
   );
   await assert.rejects(
     cloudflareMetadataGet(
@@ -582,6 +582,66 @@ test('transport is fixed-origin GET metadata, with endpoint allowlist and redact
     )(path),
     /exceeds limit/,
   );
+});
+
+test('metadata retries bounded transient GET failures without retrying denial or invalid responses', async () => {
+  const path = `/accounts/${target.account}/workers/scripts/mikaki-auth/subdomain`;
+  for (const failed of [
+    () => new Response('PRIVATE_BODY', { status: 504 }),
+    () => new Response('PRIVATE_BODY'),
+    () => {
+      throw new Error('PRIVATE_BODY');
+    },
+  ]) {
+    let calls = 0;
+    const waits: number[] = [];
+    const get = cloudflareMetadataGet(
+      target.account,
+      'synthetic-token',
+      async (_url, init) => {
+        assert.equal(init?.method, 'GET');
+        if (++calls < 3) return failed();
+        return new Response(JSON.stringify(envelope({ enabled: false, previews_enabled: false })));
+      },
+      async (ms) => {
+        waits.push(ms);
+      },
+    );
+    assert.deepEqual(await get(path), envelope({ enabled: false, previews_enabled: false }));
+    assert.equal(calls, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+  }
+  for (const [index, failed] of [
+    () => new Response('PRIVATE_BODY', { status: 504 }),
+    () => new Response('PRIVATE_BODY'),
+    () => {
+      throw new Error('PRIVATE_BODY');
+    },
+    () => new Response('PRIVATE_BODY', { status: 403 }),
+    () => new Response(JSON.stringify({ success: false, errors: [{ code: 10000 }] })),
+    () => new Response('x'.repeat(2 * 1024 * 1024 + 1)),
+  ].entries()) {
+    let calls = 0;
+    const waits: number[] = [];
+    const get = cloudflareMetadataGet(
+      target.account,
+      'synthetic-token',
+      async () => {
+        calls++;
+        return failed();
+      },
+      async (ms) => {
+        waits.push(ms);
+      },
+    );
+    await assert.rejects(get(path), (error: Error) => {
+      assert.doesNotMatch(error.message, /PRIVATE_BODY|synthetic-token/);
+      return true;
+    });
+    const transient = index < 3;
+    assert.equal(calls, transient ? 3 : 1);
+    assert.deepEqual(waits, transient ? [1000, 2000] : []);
+  }
 });
 
 test('unknown binding types still require review', () => {
