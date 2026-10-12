@@ -92,8 +92,24 @@ exclusion. The product test runs the actual Rust/Wasm, D1 and SQLite checkpoint:
 registration/retry, owner projection, public code-only composition, stale and
 foreign authority, audit rollback and frozen/public refusal. Existing Git
 disclosure and public service-boundary tests retain their coverage. These local
-fixtures use synthetic owner identities; production registration needs the
-qualified deployed source and actual existing owner.
+fixtures use disposable identities; production registration needs the qualified
+deployed source and actual existing owner.
+
+`npm run test:work-passkey-e2e` runs the complete code-only owner journey in
+Japanese on a desktop viewport and English on a mobile viewport. A local HTTPS
+bridge serves the product Rust/Wasm OP and its real SQLite checkpoint. Chromium's
+CTAP2.1 virtual authenticator performs enrollment, a new login after logout, and
+PRF Vault unlock; the test injects no credential, SSO cookie or WebAuthn result.
+The private operator registers an independently verified Git snapshot for that
+new owner, then the browser selects it, creates a preparation, inspects the
+review and explicitly approves the copy. Database assertions bind the consent
+to the actual login session and exact preparation, keep reload read-only, and
+verify logout invalidation and rejection of a replay with the revoked SSO.
+The final checkpoint matches D1. Copy jobs, provider credentials, task
+repositories, grants and runs remain absent. External Artifacts copying and AI
+execution are outside this journey. The required `work-product` CI lane runs it
+alongside the existing component and failure-path tests and retains browser
+failure traces for these disposable local fixtures.
 
 `npm run test:work-code-copy` runs real local Native source registration and
 code-only public composition, then restores the sealed host packs independently.
