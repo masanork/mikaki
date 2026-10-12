@@ -219,11 +219,10 @@
       copy: copy ? { status: copy.status } : null,
     }),
     verify: async () => {
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
       await scope.verify();
       scope.assert();
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
     },
+    visible: () => document.visibilityState === 'visible',
     contents: () => reads,
     available: (action) =>
       !busy &&
@@ -250,16 +249,6 @@
         await choose(review.preparation.id, signal);
         await tick();
         signal.throwIfAborted();
-        const control = document.querySelector<HTMLButtonElement>(
-          '[data-work-action="' + String(args['action']) + '"]',
-        );
-        if (!control) throw new WebMcpFailure('unavailable');
-        const inspection = document.querySelector<HTMLButtonElement>(
-          '[data-work-action="inspect_copy"]',
-        );
-        if (control.disabled && inspection) inspection.focus();
-        else control.focus();
-        control.scrollIntoView({ block: 'center' });
       } else throw new WebMcpFailure('unavailable');
       signal.throwIfAborted();
       if (failure) throw new WebMcpFailure('unavailable');

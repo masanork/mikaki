@@ -93,6 +93,10 @@ test('source and consent screens share WebMCP actions while retaining exact sele
   let held = false,
     started: (() => void) | undefined,
     release: (() => void) | undefined;
+  function releaseRead() {
+    release?.();
+    release = undefined;
+  }
   await context.route('https://work.test/**', async (route) => {
     const request = route.request(),
       path = new URL(request.url()).pathname;
@@ -263,8 +267,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         const denied = api.call('mikaki_read_work_file', { file_index: 0 });
         await waiting;
         await page.locator('#work-assistant-content').uncheck();
-        release?.();
-        release = undefined;
+        releaseRead();
         const deniedResult = await denied;
         assert.equal(deniedResult.ok, false);
         assert(!JSON.stringify(deniedResult).includes('結論'));
@@ -276,8 +279,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         const pending = api.call('mikaki_read_work_file', { file_index: 0 });
         await hiddenWaiting;
         await page.evaluate(() => (window as unknown as { hideWorkTools(): void }).hideWorkTools());
-        release?.();
-        release = undefined;
+        releaseRead();
         assert.equal((await pending).ok, false);
         await expect.poll(api.names).toHaveLength(0);
         await expect(page.locator('#work-assistant-enabled')).not.toBeChecked();
@@ -313,7 +315,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
     assert.deepEqual(errors, []);
     assert.equal(writes.filter((path) => path === '/work/preparations').length, 1);
   } finally {
-    release?.();
+    releaseRead();
     await browser.close();
     await f.close();
   }

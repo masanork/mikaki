@@ -1,7 +1,7 @@
 {
-  "workAssistantEnable": "Allow assistant tools on this screen",
+  "workAssistantEnable": "Enable Work tools",
   "workAssistantContent": "Share selected file contents",
-  "workAssistantSession": "Shared content may go to your AI provider. Selection changes clear content permission; hiding or locking clears tools. Confirm copy actions here.",
+  "workAssistantSession": "Shared content may reach your AI provider. Changing selection clears content permission; hiding or locking clears tools. Confirm copies here.",
   "waitlistTitle": "Request a mikaki invitation",
   "waitlistHeading": "Request an invitation",
   "waitlistIntro": "An administrator will review your request and email you an invitation if approved.",

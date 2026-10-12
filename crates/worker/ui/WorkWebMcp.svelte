@@ -36,7 +36,12 @@
           signal,
           (_name, phase) => {
             if (!signal.aborted)
-              status = phase === 'running' ? m.busy() : phase === 'failed' ? m.error() : '';
+              status =
+                phase === 'running'
+                  ? m.source_loading()
+                  : phase === 'failed'
+                    ? m.source_unavailable()
+                    : '';
           },
         );
       })
@@ -45,7 +50,7 @@
         controller.abort();
         enabled = false;
         sharedSelection = null;
-        status = m.error();
+        status = m.source_unavailable();
       });
     return () => controller.abort();
   });
@@ -67,6 +72,7 @@
 {#if modelContext}
   <section id="work-browser-assistant" aria-labelledby="work-browser-assistant-heading">
     <h2 id="work-browser-assistant-heading">{m.webmcpHeading()}</h2>
+    <p>{m.workAssistantSession()}</p>
     <label
       ><input
         id="work-assistant-enabled"
@@ -91,7 +97,6 @@
         />{m.workAssistantContent()}</label
       >
     {/if}
-    {#if enabled}<p>{m.workAssistantSession()}</p>{/if}
-    <p role="status" aria-live="polite">{status}</p>
+    <p role="status">{status}</p>
   </section>
 {/if}

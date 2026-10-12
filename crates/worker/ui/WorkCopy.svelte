@@ -112,11 +112,10 @@
         : null,
     }),
     verify: async () => {
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
       await scope.verify();
       scope.assert();
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
     },
+    visible: () => document.visibilityState === 'visible',
     contents: () => [],
     available: (action) => !busy && (action === 'refresh' || (action === 'review' && !!value)),
     invoke: async (action, args, signal) => {
@@ -128,16 +127,6 @@
         await load(signal);
         await tick();
         signal.throwIfAborted();
-        const control = document.querySelector<HTMLButtonElement>(
-          '[data-work-action="' + String(args['action']) + '"]',
-        );
-        if (!control) throw new WebMcpFailure('unavailable');
-        const confirmation = document.querySelector<HTMLInputElement>(
-          '[data-work-confirmation="start_copy"]',
-        );
-        if (control.disabled && confirmation && !confirmation.disabled) confirmation.focus();
-        else control.focus();
-        control.scrollIntoView({ block: 'center' });
       } else throw new WebMcpFailure('unavailable');
       signal.throwIfAborted();
       if (failure) throw new WebMcpFailure('unavailable');

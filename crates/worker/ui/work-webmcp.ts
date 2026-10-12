@@ -43,6 +43,7 @@ export type WorkAssistantSnapshot = {
 export type WorkWebMcpHost = {
   page: WorkAssistantSnapshot['page'];
   snapshot(): WorkAssistantSnapshot;
+  visible(): boolean;
   verify(): Promise<void>;
   available(action: WorkAssistantAction): boolean;
   invoke(
@@ -86,16 +87,19 @@ function publicState(snapshot: WorkAssistantSnapshot) {
 function adapter(host: WorkWebMcpHost, contentPermission: () => string | null) {
   async function guarded<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
     signal.throwIfAborted();
+    if (!host.visible()) throw new WebMcpFailure('unavailable');
     const { version, busy } = host.snapshot();
     if (busy) throw new WebMcpFailure('busy');
     await host.verify();
     signal.throwIfAborted();
+    if (!host.visible()) throw new WebMcpFailure('unavailable');
     if (host.snapshot().version !== version) throw new WebMcpFailure('selection_changed');
     const result = await run();
     signal.throwIfAborted();
     const after = host.snapshot().version;
     await host.verify();
     signal.throwIfAborted();
+    if (!host.visible()) throw new WebMcpFailure('unavailable');
     if (host.snapshot().version !== after) throw new WebMcpFailure('selection_changed');
     return result;
   }
@@ -308,6 +312,24 @@ function reviewTools({ guarded, act, tool }: Adapter): WebMcpTool[] {
           throw new WebMcpFailure('invalid_input');
         return guarded(signal, async () => {
           await act('review', value, signal);
+          // Presentation follows the Native refresh. No click or acknowledgment
+          // is synthesized; Node-only adapter tests have no document to focus.
+          if (typeof document !== 'undefined') {
+            const control = document.querySelector<HTMLButtonElement>(
+              '[data-work-action="' + String(value['action']) + '"]',
+            );
+            if (!control) throw new WebMcpFailure('unavailable');
+            const confirmation = document.querySelector<HTMLInputElement>(
+              '[data-work-confirmation="start_copy"]',
+            );
+            const inspection = document.querySelector<HTMLButtonElement>(
+              '[data-work-action="inspect_copy"]',
+            );
+            if (control.disabled && confirmation && !confirmation.disabled) confirmation.focus();
+            else if (control.disabled && inspection) inspection.focus();
+            else control.focus();
+            control.scrollIntoView({ block: 'center' });
+          }
           return { status: 'review_required', action: value['action'] };
         });
       },

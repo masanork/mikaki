@@ -223,11 +223,10 @@
       copy: null,
     }),
     verify: async () => {
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
       await scope.verify();
       scope.assert();
-      if (document.visibilityState !== 'visible') throw new WebMcpFailure('unavailable');
     },
+    visible: () => document.visibilityState === 'visible',
     contents: () => reads,
     available: (action) =>
       !busy &&

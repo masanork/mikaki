@@ -29,6 +29,7 @@ function fixture(page: WorkAssistantSnapshot['page'] = 'sources') {
   const host: WorkWebMcpHost = {
     page,
     snapshot: () => state,
+    visible: () => true,
     verify: async () => {
       await verification?.(++verifies);
     },
@@ -167,6 +168,9 @@ test('closed schemas, busy views and unavailable actions refuse without dispatch
   f.state.busy = true;
   await assert.rejects(f.invoke('mikaki_prepare_work_copy'), { code: 'busy' });
   f.state.busy = false;
+  f.host.visible = () => false;
+  await assert.rejects(f.invoke('mikaki_prepare_work_copy'), { code: 'unavailable' });
+  f.host.visible = () => true;
   f.host.available = () => false;
   await assert.rejects(f.invoke('mikaki_prepare_work_copy'), { code: 'unavailable' });
   assert.equal(f.actions.length, 0);
