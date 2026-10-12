@@ -19,6 +19,9 @@
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
   import ThreadSearch from './ThreadSearch.svelte';
   import type { SearchHit } from './vault-thread-search.ts';
+  import VaultWebMcp from './VaultWebMcp.svelte';
+  import { WebMcpFailure } from './webmcp.ts';
+  import type { VaultWebMcpHost, WebMcpDraft, WebMcpReviewAction } from './vault-webmcp.ts';
   let { locale }: { locale: Locale } = $props();
   const sourceReview = document.getElementById('app')?.dataset['workSourceReview'] === 'true';
   const preparationReview =
@@ -62,6 +65,78 @@
   let query = $state('');
   let threads: { id: string; revision: number; archive: ThreadArchive }[] = $state([]);
   let selected = $state('');
+  let noteEditor:
+    | {
+        prepareAssistantDraft: (
+          title: string,
+          text: string,
+          revision: number,
+          signal: AbortSignal,
+        ) => Promise<WebMcpDraft>;
+      }
+    | undefined = $state();
+  async function reviewAssistantAction(
+    action: WebMcpReviewAction,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const targets: Record<WebMcpReviewAction, string> = {
+      unlock: 'unlock',
+      save_name: 'save',
+      save_note: 'owner-note-save',
+      delete_name: 'delete',
+      delete_note: 'owner-note-delete',
+      share_name: 'owner-name-sharing',
+      agent_grants: 'owner-agent-grants',
+      note_proposals: 'owner-note-proposals',
+      local_export: 'owner-local-export',
+      passkeys: 'owner-passkeys',
+      import_thread: 'archive-file',
+      lock: 'vault-lock',
+    };
+    signal.throwIfAborted();
+    scope.assert();
+    const target = document.getElementById(targets[action]);
+    if (!(target instanceof HTMLElement)) throw new WebMcpFailure('unavailable');
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    await tick();
+    signal.throwIfAborted();
+    scope.assert();
+    target.scrollIntoView({ block: 'center' });
+    (target.querySelector<HTMLElement>('summary') ?? target).focus();
+  }
+  const assistantHost: Omit<VaultWebMcpHost, 'selection' | 'search' | 'visible'> = {
+    owner: () => owner,
+    store: () => store,
+    blocked: () => editingBlocked,
+    hasDrafts: () => context.hasDrafts?.() ?? dirty,
+    openThread: async (id, revision, signal) => {
+      signal.throwIfAborted();
+      if (
+        !owner ||
+        editingBlocked ||
+        !threads.some((thread) => thread.id === id && thread.revision === revision)
+      )
+        throw new WebMcpFailure('record_changed');
+      selected = id;
+      await tick();
+      signal.throwIfAborted();
+      document.getElementById('thread-title')?.focus();
+    },
+    prepareName: async (value, revision, signal) => {
+      signal.throwIfAborted();
+      if (!owner || editingBlocked || revision !== profileRevision)
+        throw new WebMcpFailure('record_changed');
+      if (dirty || context.hasDrafts?.()) throw new WebMcpFailure('unsaved_changes');
+      name = value;
+      status = m.productUnsavedChanges();
+      return { revision, status: 'review_required' };
+    },
+    prepareNote: async (title, text, revision, signal) => {
+      if (!noteEditor || editingBlocked) throw new WebMcpFailure('unavailable');
+      return noteEditor.prepareAssistantDraft(title, text, revision, signal);
+    },
+    review: reviewAssistantAction,
+  };
   type AgentConnection = {
     grant_id: string;
     delegate: string;
@@ -362,11 +437,17 @@
 </script>
 
 <div class="vault-shell">
-  <ProductHeader {locale} onlock={context.lock} material paused={busy} />
+  <ProductHeader {locale} onlock={context.lock} lockId="vault-lock" material paused={busy} />
   <main id="product-main" tabindex="-1" class="product-main">
     <div class="product-heading">
       <h1>{m.vaultHeading()}</h1>
     </div>
+    <VaultWebMcp
+      host={assistantHost}
+      records={threads}
+      nameRevision={profileRevision}
+      {noteRevision}
+    />
     {#if !opened}
       <section class="product-result" aria-busy={busy}>
         <button id="unlock" class="product-primary" disabled={busy} onclick={unlock}
@@ -420,6 +501,7 @@
             >
           </section>
           <OwnerRecordEditor
+            bind:this={noteEditor}
             target={OWNER_NOTE}
             disabled={editingBlocked}
             refreshEpoch={noteRefreshEpoch}
