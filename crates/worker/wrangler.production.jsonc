@@ -25,8 +25,12 @@
     "WORK_OWNER_API_ENABLED": "true",
     "WORK_SOURCE_API_ENABLED": "true",
     "WORK_PREPARATION_REVIEW_ENABLED": "true",
-    "WORK_PREPARATION_COMPOSE_ENABLED": "false",
-    "WORK_COPY_CONSENT_ENABLED": "false",
+    "WORK_PREPARATION_COMPOSE_ENABLED": "true",
+    "WORK_ARTIFACTS_ACCOUNT": "4b749427a0c80c547e726a42aff4b6fc",
+    "WORK_ARTIFACTS_NAMESPACE": "mikaki-dev",
+    "WORK_COPY_RECIPIENT": "mikaki-work-test",
+    "WORK_COPY_WORKLOAD": "mikaki-work-test",
+    "WORK_COPY_CONSENT_ENABLED": "true",
     "WORK_COPY_EXECUTION_ENABLED": "false"
   },
   "secrets": {

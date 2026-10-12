@@ -112,6 +112,7 @@ export async function createSourceFixture(
         : {}),
       ...(compose
         ? {
+            WORK_ARTIFACTS_ACCOUNT: 'a'.repeat(32),
             WORK_PREPARATION_COMPOSE_ENABLED: 'true',
             WORK_ARTIFACTS_NAMESPACE: 'mikaki-dev',
             WORK_COPY_RECIPIENT: 'synthetic-client',
