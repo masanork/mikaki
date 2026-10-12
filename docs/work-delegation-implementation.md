@@ -1337,3 +1337,54 @@ historical `create_outcome_unknown`; the deployment gate is not silently
 rewritten or bypassed. A reviewed append-only reconciler can consume this
 positive evidence before the unattempted main Queue allocation and child
 deployment proceed. No new DLQ create is needed or authorized by this recheck.
+
+## Audited reconciliation and completed authority allocation, 2026-10-12 JST
+
+The [completion executor](work-authority-qualification.md#recovery-of-the-audited-dlq-and-completion-of-the-remaining-queue)
+pins the original allocation/reservation and positive DLQ audit receipt. It
+re-reads the provider audit and dedicated resource identities, reserves one
+canonical shared completion directory, and retains recovery separately from
+the original unknown outcome. Each numbered record and its parent directory
+are synchronized before the one remaining create. The deployment reader now
+validates both journals and their combined digest; partial or lost replies
+cannot gain completion through a later list, repeated create or forged report.
+
+Clean source `aa54f4b48af4e79ff8a489b4752efe332a203105` completed the run at
+`local/generated/work-authority-completion/complete-KQTgO7`. Exactly one provider
+create was sent: `mikaki-work-logout-qualification`, ID
+`1c31bf78590749df87cd407aa02072b7`, created at
+`2026-10-11T23:55:25.834808Z`. The acknowledgment, exact ID readback and complete
+stable final inventories agree. D1/R2 retain their original identities, and
+the DLQ is recovered by its original successful provider audit without another
+DLQ create. Both Queues have zero producers/consumers; both proposed authority
+Workers are absent.
+
+The six completion records are retained under
+`local/generated/work-authority-allocation/completion-v1`. The original 236
+records, reservation, partial seal and three protected Artifacts journals still
+match their retained digests. The combined evidence is
+`complete-KQTgO7/allocation-evidence.json`, SHA-256
+`dc05a94c13a04f07838324c9fe4185e9eedc70be01eec1541a350a1880393d26`;
+the run receipt SHA-256 is
+`ca35676884d55eaef77de39a05aabc99fb856781b6aa9029567fb5492b6761ad`.
+Current allocation inspection reports **complete=true**, all four verified,
+no current unknown/unverified/unattempted resources, and explicitly retains
+`original_unknown=[logout_dlq]` with the audit recovery relationship.
+
+The separate offline gate receipt is
+`local/generated/work-authority-deployment/inspection-completed-20261012/gate.json`,
+SHA-256 `c77639885b776229793c1e0a9a0715627ad212464033cb7f83c7af16d2b1306e`.
+It verifies the frozen bootstrap parent and completed allocation and leaves
+only origin/operator/recovery/signing-custody review before child preparation.
+A local `deployment-review.draft.json` beside that receipt carries the fixed
+packet/allocation/reservation digests and unresolved review fields; it cannot
+be used as an approved deployment review.
+
+The new **9/9** completion cases pass, together with **18/18** existing
+allocation/materialization cases. Node types, affected-file formatting and
+documentation checks pass; the new suite is registered in CI. No remote CI,
+full product regression, migration, Worker deployment, checkpoint bootstrap,
+actual owner enrollment, or production/Artifacts/Git mutation is claimed.
+Next resolve the isolated HTTPS origin, separate OP/checkpoint deployment and
+recovery ownership, and fresh signing-key custody, then prepare the closed
+deployment child from these retained identities.
