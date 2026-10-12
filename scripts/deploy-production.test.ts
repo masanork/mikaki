@@ -1,8 +1,27 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { assertWaitlistMailKey, checkBindings, sourceIsCurrent } from './deploy-production.ts';
+import {
+  assertWaitlistMailKey,
+  checkBindings,
+  checkCheckpointExposure,
+  sourceIsCurrent,
+} from './deploy-production.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
+
+test('existing checkpoint rollout requires explicit private subdomain and preview state', () => {
+  checkCheckpointExposure({ enabled: false, previews_enabled: false });
+  for (const value of [
+    undefined,
+    null,
+    {},
+    { enabled: false },
+    { enabled: true, previews_enabled: false },
+    { enabled: false, previews_enabled: true },
+    { enabled: 'false', previews_enabled: false },
+  ])
+    assert.throws(() => checkCheckpointExposure(value), /disabled/);
+});
 
 test('private production checkpoint config pins scope and verifies its concrete SQLite namespace', () => {
   const config = JSON.parse(

@@ -1,4 +1,5 @@
 /** Fixed-origin GET metadata only. Never request script content or secret endpoints. */
+import { setTimeout as delay } from 'node:timers/promises';
 const ORIGIN = 'https://api.cloudflare.com/client/v4';
 const MAX_WORKERS = 100;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -70,6 +71,7 @@ type LogoutQueues = {
   };
 };
 export class InventoryError extends Error {}
+class TransientMetadataError extends InventoryError {}
 function gate(ok: unknown, message: string): asserts ok {
   if (!ok) throw new InventoryError(message);
 }
@@ -467,6 +469,7 @@ export function cloudflareMetadataGet(
   account: string,
   token: string,
   fetcher: typeof fetch = fetch,
+  wait: (milliseconds: number) => Promise<unknown> = delay,
 ): MetadataGet {
   gate(
     /^[a-f0-9]{32}$/.test(account) && token.length > 0,
@@ -474,10 +477,10 @@ export function cloudflareMetadataGet(
   );
   const base = `/accounts/${account}/workers/`;
   const queues = `/accounts/${account}/queues`;
-  return async (path) => {
+  const request: MetadataGet = async (path) => {
     gate(
       path.startsWith(base)
-        ? /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
+        ? /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|subdomain|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
             path.slice(base.length),
           )
         : new RegExp(`^${queues.replaceAll('/', '\\/')}\\?page=[1-9][0-9]*&per_page=100$`).test(
@@ -493,6 +496,12 @@ export function cloudflareMetadataGet(
         redirect: 'error',
         signal: AbortSignal.timeout(15_000),
       });
+      if ([500, 502, 503, 504].includes(response.status)) {
+        await response.body?.cancel();
+        throw new TransientMetadataError(
+          `Cloudflare metadata ${response.status}; endpoint ${path}.`,
+        );
+      }
       gate(response.body, `Cloudflare metadata ${response.status}: empty response.`);
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
@@ -515,7 +524,8 @@ export function cloudflareMetadataGet(
       try {
         value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       } catch {
-        throw new InventoryError(`Cloudflare metadata ${response.status}: malformed JSON.`);
+        const ErrorType = response.status === 200 ? TransientMetadataError : InventoryError;
+        throw new ErrorType(`Cloudflare metadata ${response.status}: malformed JSON.`);
       }
       if (!response.ok || !row(value) || value.success !== true) {
         const codes =
@@ -536,7 +546,17 @@ export function cloudflareMetadataGet(
       return value;
     } catch (error) {
       if (error instanceof InventoryError) throw error;
-      throw new InventoryError(`Cloudflare metadata request failed; endpoint ${path}.`);
+      throw new TransientMetadataError(`Cloudflare metadata request failed; endpoint ${path}.`);
+    }
+  };
+  return async (path) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await request(path);
+      } catch (error) {
+        if (attempt === 2 || !(error instanceof TransientMetadataError)) throw error;
+        await wait(1000 * (attempt + 1));
+      }
     }
   };
 }
