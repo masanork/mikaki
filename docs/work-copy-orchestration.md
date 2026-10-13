@@ -6,6 +6,39 @@ after [owner composition](work-preparation-compose.md) and
 [explicit copy approval](work-request-ui.md). Verification and credential
 closure do not delegate work or start an agent.
 
+## Private production staging
+
+The thirteen companions have been provisioned privately from the signed runtime
+for source `9ff6ebfe8ba1e1a2ac92831b50c6995b3b8de75e`. All thirteen deployed
+module bodies were independently read through the provider content API and
+matched the retained bundle bytes. Their settings and active-version bindings
+matched the closed configuration, including 23 named service edges. Workers.dev,
+preview URLs and cron triggers were disabled, with no custom domains. The
+observation receipt SHA-256 is
+`f0c4b869b655200c427f19359ebc8171439f740c911cfecfe47a4fb201c3a177`;
+the configuration packet SHA-256 is
+`b1894ec636d759d572be4def9e77cb9719a7fad8c34448522c05343e18035df3`.
+
+The Git host uses the dedicated private `mikaki-work-git-sources` bucket and
+the digest-pinned Cloudflare Registry image. Its Container uses a newly
+provisioned SQLite DO namespace, with SSH disabled. No sealed source objects
+were uploaded. The retained disclosure has expired and cannot authorize copying.
+Existing qualification resources and protected Artifacts journals were not reused.
+
+`WORK_COPY_BINDINGS_STAGED=true` selects the exact thirteen OP named edges,
+including its existing authority checkpoint edge. Normal promotion requires
+all separately provisioned companions to exist and all six OP copy/effect/mint/
+Git/verification gates to remain explicitly false. Missing, additional or
+retargeted Work capabilities refuse promotion. OP routes, storage, queues and
+runtime secrets remain part of the existing qualified upload. The staging
+selection cannot enable copy execution or provision companions automatically.
+
+This is closed infrastructure staging, not full graph or productive qualification.
+Any later productive rollout must independently match the current OP/checkpoint
+and companion sources, versions, bytes and bindings; register and verify active
+key custody; obtain a fresh Native disclosure and explicit current owner consent;
+then qualify real provider copy, independent Git readback and credential closure.
+
 ## Durable identities and ownership
 
 Rust WorkStore owns a retained `work_copy_job` for each preparation. Migration
