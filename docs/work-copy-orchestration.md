@@ -165,6 +165,13 @@ the independently verified, source-matched OP bundle and private graph, current
 provider versions/resources/custody and live owner approval immediately before
 copying.
 
+Ordinary CI also inspects the current 100% OP version before any checkpoint
+promotion and again before OP activation. Enabled copy/store gates or a productive
+selector require separate reviewed deactivation; CI does not close them over an
+active trial or credential cleanup. A changed current OP version during staging
+refuses activation. This preflight is read-only and does not reset or resolve a
+retained job or unknown outcome.
+
 The operator can derive a separate activation review packet from a verified
 closed configuration packet:
 
