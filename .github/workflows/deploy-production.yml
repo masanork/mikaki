@@ -77,6 +77,7 @@ jobs:
           OP_PRIVATE_JWK: ${{ secrets.OP_PRIVATE_JWK }}
           MIKAKI_READY_TOKEN: ${{ secrets.MIKAKI_READY_TOKEN }}
           WAITLIST_MAIL_KEY: ${{ secrets.WAITLIST_MAIL_KEY }}
+          WORK_CREDENTIAL_KEY_V1: ${{ secrets.WORK_CREDENTIAL_KEY_V1 }}
         run: node scripts/deploy-production.ts "$PROMOTION_DIR"
       - name: Remove temporary secret file
         if: always()
