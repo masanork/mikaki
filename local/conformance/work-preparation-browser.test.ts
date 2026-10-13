@@ -93,9 +93,8 @@ test('owner preparation review keeps copy evidence, access and delegation separa
   await mkdir(shots, { recursive: true });
   const refresh = () => page.getByRole('button', { name: '準備一覧を再読み込み', exact: true });
   const choose = () => page.locator('.preparation-list button').first();
-  const inspect = () =>
-    page.getByRole('button', { name: '開示対象のファイル内容を確認', exact: true });
-  const details = () => page.getByRole('heading', { name: '準備と開示の詳細', exact: true });
+  const inspect = () => page.getByRole('button', { name: 'コピー対象を確認', exact: true });
+  const details = () => page.getByRole('heading', { name: 'コピー内容', exact: true });
   const fresh = async () => {
     await page.goto('https://work.test/work/preparation-review?lang=ja');
     await expect(choose()).toBeVisible();
@@ -108,14 +107,12 @@ test('owner preparation review keeps copy evidence, access and delegation separa
         await choose().click();
         await expect(details()).toBeFocused();
         await expect(page.getByText('コピー開始前', { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
         await expect(page.getByText('実行用の登録は未完了', { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
+        await page.locator('.work-selected-files > summary').click();
         await expect(page.getByText('preferences/writing.md', { exact: true })).toBeVisible();
-        await expect(
-          page.getByText(
-            'このコードをコピーする場合、履歴 2 コミット、現行 3 ファイルが含まれます。',
-            { exact: true },
-          ),
-        ).toBeVisible();
+        await expect(page.getByText('3 ファイル · 2 コミット', { exact: true })).toBeVisible();
         await inspect().click();
         await expect(page.locator('pre')).toHaveText(f.contents['preferences/writing.md']);
         await expect(
@@ -142,11 +139,15 @@ test('owner preparation review keeps copy evidence, access and delegation separa
         await refresh().click();
         await choose().click();
         await expect(page.getByText('コピーの検証記録あり', { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
         await expect(page.getByText('実行用の登録は未完了', { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
         await s.call({ action: 'materialize-preparation', id: s.reserved.id });
         await refresh().click();
         await choose().click();
+        await page.locator('.work-record-details > summary').click();
         await expect(page.getByText('現在の利用条件を確認済み', { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
         assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_grant').first('n'), 0);
       },
     );
@@ -199,14 +200,12 @@ test('owner preparation review keeps copy evidence, access and delegation separa
         await page.screenshot({ path: shots + '/mobile-ja.png', fullPage: true });
         await page.getByRole('combobox', { name: /Language|言語/ }).selectOption('en');
         await expect(
-          page.getByRole('heading', { name: 'Review work preparations', exact: true }),
+          page.getByRole('heading', { name: 'Review the copy', exact: true }),
         ).toBeVisible();
         await expect(page.locator('pre')).toHaveCount(0);
         await choose().click();
         await expect(page.getByText('Copy verification recorded', { exact: true })).toBeVisible();
-        await page
-          .getByRole('button', { name: 'Inspect disclosed file contents', exact: true })
-          .click();
+        await page.getByRole('button', { name: 'Check copy contents', exact: true }).click();
         await expect(page.locator('pre')).toHaveText(f.contents['preferences/writing.md']);
         await page.evaluate(() => scrollTo(0, 0));
         await page.screenshot({ path: shots + '/selected-en.png', fullPage: true });
@@ -269,6 +268,9 @@ test('owner preparation review keeps copy evidence, access and delegation separa
         await expect(details()).toHaveCount(0);
         await expect(page.locator('pre')).toHaveCount(0);
         await expect(choose()).toBeDisabled();
+        await expect(
+          page.getByRole('link', { name: '新しいコピーを準備', exact: true }),
+        ).toHaveAttribute('href', '/work/source-review?lang=ja');
         await page.clock.setFixedTime(new Date());
         await fresh();
       },
@@ -392,9 +394,7 @@ test('revoked OP SSO refuses a disclosure download and locks the complete review
     const downloads: string[] = [];
     page.on('download', (download) => downloads.push(download.suggestedFilename()));
     await page.goto('https://work.test/work/preparation-review?lang=ja#' + s.reserved.id);
-    await expect(
-      page.getByRole('heading', { name: '準備と開示の詳細', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'コピー内容', exact: true })).toBeVisible();
     await page.getByText('照合用の記録', { exact: true }).click();
     await f.revokeSession();
     assert.equal((await f.http('/work/preparations')).status, 401);
@@ -402,9 +402,7 @@ test('revoked OP SSO refuses a disclosure download and locks the complete review
     await expect(
       page.getByRole('heading', { name: '準備の確認画面をロックしました', exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: '準備と開示の詳細', exact: true })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole('heading', { name: 'コピー内容', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '開示記録を保存', exact: true })).toHaveCount(0);
     assert.deepEqual(downloads, []);
   } finally {

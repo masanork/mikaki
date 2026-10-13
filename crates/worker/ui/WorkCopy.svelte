@@ -163,40 +163,61 @@
 </script>
 
 <section aria-busy={busy}>
-  <p>{m.copy_boundary()}</p>
   <a href={'/work/preparation-review?lang=' + getLocale() + '#' + encodeURIComponent(id)}
     >{m.source_compose_review()}</a
   >
   <button type="button" disabled={busy} onclick={() => load()}>{m.copy_refresh()}</button>
   {#if failure}<p role="alert">{m.copy_unavailable()}</p>{/if}
   {#if value}
-    <p role="status">{state}</p>
-    {#if value.job}<p>
-        {m.copy_progress({ done: value.job.next_step, total: value.job.total_steps })}
-      </p>{/if}
-    {#if value.cleanup_pending}<p role="status">{m.copy_cleanup_pending()}</p>{/if}
-    {#if value.job && value.job.state !== 'verified'}<button
-        data-work-action="stop_copy"
-        type="button"
-        disabled={busy}
-        onclick={stop}>{m.copy_cleanup()}</button
-      >{/if}
-    {#if value.can_start}
-      <label
-        ><input
-          type="checkbox"
-          data-work-confirmation="start_copy"
-          bind:checked={acknowledged}
+    <section class="source-card work-progress-card">
+      <h2>{m.work_copy_progress_title()}</h2>
+      <p class="work-progress-state">
+        {!value.job || value.job.state === 'queued'
+          ? m.work_copy_waiting()
+          : value.job.state === 'verified'
+            ? m.work_copy_done()
+            : value.job.state === 'blocked'
+              ? m.work_copy_attention()
+              : m.work_copy_pending()}
+      </p>
+      <p role="status">{state}</p>
+      {#if value.job}<progress
+          value={value.job.next_step}
+          max={value.job.total_steps}
+          aria-label={m.work_copy_progress_title()}
+        ></progress>
+        <p>
+          {m.copy_progress({ done: value.job.next_step, total: value.job.total_steps })}
+        </p>{/if}
+      {#if value.cleanup_pending}<p role="status">{m.copy_cleanup_pending()}</p>{/if}
+      {#if value.job && value.job.state !== 'verified'}<button
+          data-work-action="stop_copy"
+          type="button"
           disabled={busy}
-        />{m.copy_acknowledge()}</label
-      >
-      <button
-        data-work-action="start_copy"
-        type="button"
-        disabled={busy || !acknowledged}
-        onclick={start}>{m.copy_start()}</button
-      >
-    {/if}
+          onclick={stop}>{m.copy_cleanup()}</button
+        >{/if}
+      {#if value.can_start}
+        <label class="work-acknowledge"
+          ><input
+            type="checkbox"
+            data-work-confirmation="start_copy"
+            bind:checked={acknowledged}
+            disabled={busy}
+          />{m.copy_acknowledge()}</label
+        >
+        <button
+          class="work-primary"
+          data-work-action="start_copy"
+          type="button"
+          disabled={busy || !acknowledged}
+          onclick={start}>{m.copy_start()}</button
+        >
+      {/if}
+    </section>
   {/if}
+  <details class="work-details work-help">
+    <summary>{m.work_copy_help()}</summary>
+    <p>{m.copy_boundary()}</p>
+  </details>
   <WorkWebMcp host={assistant} />
 </section>

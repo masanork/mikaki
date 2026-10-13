@@ -109,12 +109,9 @@ test('owner source review uses authenticated native records and actual Git file 
       async () => {
         await fresh();
         await expect(
-          page.getByText(
-            'このコードをコピーする場合、履歴 2 コミット、現行 3 ファイルが含まれます。',
-            {
-              exact: true,
-            },
-          ),
+          page.getByText('3 ファイル · 2 コミット', {
+            exact: true,
+          }),
         ).toBeVisible();
         await expect(page.getByText('FOREIGN_ONLY', { exact: true })).toHaveCount(0);
         await expect(preview()).toBeDisabled();
@@ -212,7 +209,7 @@ test('owner source review uses authenticated native records and actual Git file 
         await page.screenshot({ path: `${shots}/mobile-ja.png`, fullPage: true });
         await page.getByRole('combobox', { name: /Language|言語/ }).selectOption('en');
         await expect(
-          page.getByRole('heading', { name: 'Review source files', exact: true }),
+          page.getByRole('heading', { name: 'Choose what to copy', exact: true }),
         ).toBeVisible();
         await expect(page.locator('pre')).toHaveCount(0);
         await expect(chosen()).not.toBeChecked();

@@ -320,13 +320,19 @@ function reviewTools({ guarded, act, tool }: Adapter): WebMcpTool[] {
             const control = document.querySelector<HTMLButtonElement>(
               '[data-work-action="' + String(value['action']) + '"]',
             );
-            if (!control) throw new WebMcpFailure('unavailable');
             const confirmation = document.querySelector<HTMLInputElement>(
               '[data-work-confirmation="start_copy"]',
             );
             const inspection = document.querySelector<HTMLButtonElement>(
               '[data-work-action="inspect_copy"]',
             );
+            if (!control) {
+              if (value['action'] !== 'approve_copy' || !inspection || inspection.disabled)
+                throw new WebMcpFailure('unavailable');
+              inspection.focus();
+              inspection.scrollIntoView({ block: 'center' });
+              return { status: 'review_required', action: value['action'] };
+            }
             if (control.disabled && confirmation && !confirmation.disabled) confirmation.focus();
             else if (control.disabled && inspection) inspection.focus();
             else control.focus();
