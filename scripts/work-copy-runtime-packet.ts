@@ -207,6 +207,7 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
       platform: 'browser',
       format: 'esm',
       target: 'es2022',
+      tsconfigRaw: { compilerOptions: { useDefineForClassFields: true } },
       external: ['cloudflare:workers'],
       metafile: true,
       logLevel: 'silent',

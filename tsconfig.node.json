@@ -21,6 +21,7 @@
   ],
   "exclude": [
     "local/ui",
+    "local/generated",
     "design/probes/node_modules",
     "design/probes/pqc/pkg",
     "design/probes/pqc/pkg-web",
