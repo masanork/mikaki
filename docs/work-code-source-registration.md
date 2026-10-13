@@ -144,6 +144,47 @@ members, symlinks and attempts to relabel the packet as execution authority.
 
 ## Validation
 
+### Retain the private copy binding plan
+
+After freezing runtime bytes, use `copyBindingTargetSchema` in
+`scripts/work-copy-binding-plan.ts` to prepare a closed, secret-free target
+review. It names the account/authority/Artifacts namespace, thirteen companion
+service names through a prefix, the existing OP and checkpoint versions, an OP
+source/attestation digest, checkpoint namespace/object, sealed host
+disclosure/registry/image digests and private R2 bucket, and wrapping-key
+version/custody review references. The OP source must equal the runtime source.
+Service names must be distinct. Keep the exact review SHA-256 outside the packet.
+
+```sh
+npm run prepare:work-copy-bindings -- RUNTIME_PACKET RUNTIME_SHA256 SOURCE_COMMIT TARGET_REVIEW TARGET_SHA256 local/generated/work-copy-bindings
+npm run verify:work-copy-bindings -- BINDING_PACKET RETAINED_MANIFEST_SHA256
+```
+
+The exclusive child retains the entire verified runtime packet byte for byte,
+the target review and the canonical 36 named service bindings. It specifies all
+eight copy orchestration bindings, independent preparation/Git/dispatch/refusal
+capabilities, narrowly scoped checkpoint lookup/maintenance gates, Workflow and
+private host resource expectations. Its whole inventory uses the runtime
+packet's entry/depth/aggregate-byte bounds. Verification is portable without
+the original runtime directory, rechecks dependency integrity and refuses
+changed graph/authority even if a caller rewrites the child inventory. The
+binding format follows [named service entrypoints](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/).
+
+This is an offline graph plan, not a deployable full OP/Container configuration,
+an attestation verifier or provider observation. Target versions, sealed supply
+and custody references remain claims until independently compared with their
+retained evidence and actual provider state. The existing checkpoint receives
+no redeployment/bootstrap authorization. Productive flags remain false, public
+routes and cron triggers remain empty, and no secret value or credential is
+included. Current Native disclosure/source, OP attestation, sealed host/R2/image,
+active wrapping custody, actual bindings and owner consent remain required for
+#200's live copy/readback/closure acceptance.
+
+`npm run test:work-copy-bindings` runs portability, privilege/target/secret/link
+substitution cases and loads every companion destination's named entrypoint in
+local workerd with disabled gates. Its OP transport is a closed fixture; this
+qualifies companion cold admission, not OP Wasm or any live owner/provider.
+
 The packet test restores real Git objects independently and proves history
 exclusion. The product test runs the actual Rust/Wasm, D1 and SQLite checkpoint:
 registration/retry, owner projection, public code-only composition, stale and

@@ -124,7 +124,10 @@
     "register:work-code-source": "node scripts/register-work-code-source.ts",
     "prepare:work-copy-runtime": "node scripts/work-copy-runtime-packet.ts create",
     "verify:work-copy-runtime": "node scripts/work-copy-runtime-packet.ts verify",
-    "test:work-copy-runtime": "node --test scripts/work-copy-runtime-packet.test.ts"
+    "test:work-copy-runtime": "node --test scripts/work-copy-runtime-packet.test.ts",
+    "prepare:work-copy-bindings": "node scripts/work-copy-binding-plan.ts create",
+    "verify:work-copy-bindings": "node scripts/work-copy-binding-plan.ts verify",
+    "test:work-copy-bindings": "node --test scripts/work-copy-binding-plan.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

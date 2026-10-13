@@ -80,7 +80,7 @@ function memberPath(path: unknown): asserts path is string {
   assert.ok(typeof path === 'string' && /^[A-Za-z0-9_@.\/-]+$/.test(path));
   assert.ok(!path.startsWith('/') && path.split('/').every((p) => p && p !== '.' && p !== '..'));
 }
-async function members(
+export async function copyRuntimeInventory(
   directory: string,
   prefix = '',
   budget = { entries: 0, bytes: 0 },
@@ -96,7 +96,7 @@ async function members(
     const location = join(directory, path);
     const info = await lstat(location);
     assert.ok(!info.isSymbolicLink(), 'copy_packet_link_denied');
-    if (info.isDirectory()) found.push(...(await members(directory, path, budget)));
+    if (info.isDirectory()) found.push(...(await copyRuntimeInventory(directory, path, budget)));
     else {
       assert.ok(info.isFile() && info.nlink === 1, 'copy_packet_member_denied');
       budget.bytes += info.size;
@@ -233,7 +233,7 @@ export async function verifyCopyRuntimePacket(
     bundle: `workers/${id}.mjs`,
   }));
   assert.deepEqual(manifest.modules, modules, 'copy_packet_modules_denied');
-  const actual = await members(directory);
+  const actual = await copyRuntimeInventory(directory);
   assert.deepEqual(manifest.members, actual, 'copy_packet_members_changed');
   const dependencies = await verifyDependencies(directory, manifest.dependencies);
   const required = [
@@ -514,7 +514,7 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
       inputs: record.inputs.sort(),
     })),
     prerequisites,
-    members: await members(directory),
+    members: await copyRuntimeInventory(directory),
   });
   const receipt = {
     source_commit: source.commit,
