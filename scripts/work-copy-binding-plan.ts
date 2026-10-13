@@ -248,7 +248,6 @@ async function ignoredOutput(parentInput: string) {
     inside && !inside.startsWith('..') && !inside.startsWith('/'),
     'copy_binding_output_denied',
   );
-  execFileSync('git', ['check-ignore', '--quiet', parent], { cwd: root, stdio: 'pipe' });
   let ancestor = root;
   for (const part of relative(root, parent).split('/')) {
     ancestor = join(ancestor, part);
@@ -261,6 +260,7 @@ async function ignoredOutput(parentInput: string) {
     else await mkdir(ancestor, { mode: 0o700 });
   }
   assert.equal(await realpath(parent), parent, 'copy_binding_output_link_denied');
+  execFileSync('git', ['check-ignore', '--quiet', parent], { cwd: root, stdio: 'pipe' });
   return parent;
 }
 
@@ -297,6 +297,8 @@ export async function prepareCopyBindingPlan(
 export async function verifyCopyBindingPlan(directoryInput: string, expectedSha256: string) {
   const directory = resolve(directoryInput);
   assert.equal(await realpath(directory), directory, 'copy_binding_directory_link_denied');
+  const manifestStat = await lstat(join(directory, 'manifest.json'));
+  assert.ok(manifestStat.isFile() && manifestStat.nlink === 1, 'copy_binding_manifest_denied');
   const manifestBytes = await packetFile(join(directory, 'manifest.json'), 256 * 1024);
   assert.equal(digest(manifestBytes), hex.parse(expectedSha256), 'copy_binding_manifest_changed');
   const manifest = z
