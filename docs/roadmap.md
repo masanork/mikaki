@@ -4,10 +4,16 @@ This page groups the project's intended stages. It is a direction of work, not a
 
 ## Current delivery order, 2026-10-13 JST
 
-The fresh-baseline retirement/reset #121 and resource/ownership/code cleanup
-#99–#104 are complete. Their evidence remains in the
-[cutover record](production-reset-2026-10-05.md) and [status](status.md).
-They are prerequisites already delivered, rather than the next backlog items.
+The fresh-baseline retirement/reset #121 and resource/ownership/GC work
+#99–#101/#103 have completed acceptance in the
+[cutover record](production-reset-2026-10-05.md).
+[Code/model cleanup #102](https://github.com/masanork/mikaki/issues/102)
+records its accepted PR #131 scope, checked completion conditions and
+[successful promotion](https://github.com/masanork/mikaki/actions/runs/37377175796).
+[Architecture tracking #104](https://github.com/masanork/mikaki/issues/104)
+is closed; keep subsequent documentation current in this roadmap and
+[status](status.md), rather than treating that closed tracking state as fresh
+qualification of every later architecture change.
 
 | Order | Work | Completion boundary |
 | --- | --- | --- |

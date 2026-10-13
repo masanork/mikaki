@@ -69,9 +69,12 @@ records the bounded implementation increments.
 
 ## Release blockers
 
-Before use by real users, complete the intended-device/RP acceptance, an explicit
-Vault key-loss recovery policy, production recovery/monitoring, and the relevant
-security/conformance gates. Additional-Passkey wrappers do not supply all-key-loss
+Before use by real users, complete the intended-device/RP acceptance, invitation
+and administrator operations, an explicit Vault key-loss recovery policy,
+production recovery/monitoring, and the relevant security/conformance gates.
+Retain another trusted administrator before depending on the service for other
+users, as required by [account enrollment](account-enrollment.md); the single
+recorded administrator does not establish administration continuity. Additional-Passkey wrappers do not supply all-key-loss
 recovery. Sharing policy, hosted Agent, productive Work copy and Identity activation
 must each retain their separate reviewed configuration and qualification.
 See [release and recovery](release-and-recovery.md),
