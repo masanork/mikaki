@@ -315,3 +315,60 @@ fn pending_holder_binds_once_only_after_token_and_before_expiry() {
             .is_err()
     );
 }
+
+#[test]
+fn explicit_age_pool_advances_only_after_a_validated_receipt_and_closes_at_its_budget() {
+    let budget = mikaki_identity::age_pool::Budget {
+        size: 8,
+        claims_json: mikaki_identity::claim_profile::ClaimProfile::age_only().to_json(),
+    };
+    let mut a = Authorization::new_pending_holder(
+        ISSUER,
+        "wallet",
+        CALLBACK,
+        "linked_document",
+        [1; 32],
+        [2; 32],
+        key(6).public().unwrap(),
+        key(7).public().unwrap(),
+        NOW,
+    )
+    .unwrap();
+    a.request_age_pool(budget.clone(), NOW).unwrap();
+    assert!(a.request_age_pool(budget.clone(), NOW).is_err());
+    assert_eq!(
+        mikaki_identity::age_pool::Budget::parse(
+            a.par_parameters(NOW).unwrap()["mikaki_age_pool"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap()
+        .size,
+        8
+    );
+    pushed(&mut a);
+    a.accept_callback(&callback(), NOW + 1).unwrap();
+    a.accept_token(token(), NOW + 1).unwrap();
+    assert!(a.request_age_pool(budget, NOW + 1).is_err());
+    for seed in 10..18 {
+        let holder = key(seed).public().unwrap();
+        a.bind_holder(holder.clone(), NOW + 2).unwrap();
+        assert!(a.bind_holder(key(20).public().unwrap(), NOW + 2).is_err());
+        assert!(
+            a.finish_receipt(&key(20).public().unwrap(), NOW + 2)
+                .is_err()
+        );
+        a.finish_receipt(&holder, NOW + 2).unwrap();
+        assert!(a.bind_holder(holder, NOW + 2).is_err());
+    }
+    assert!(a.authorization_header(NOW + 2).is_err());
+    assert!(a.bind_holder(key(20).public().unwrap(), NOW + 2).is_err());
+    let mut single = session();
+    pushed(&mut single);
+    single.accept_callback(&callback(), NOW + 1).unwrap();
+    single.accept_token(token(), NOW + 1).unwrap();
+    single
+        .finish_receipt(&key(8).public().unwrap(), NOW + 2)
+        .unwrap();
+    assert!(single.authorization_header(NOW + 2).is_err());
+}

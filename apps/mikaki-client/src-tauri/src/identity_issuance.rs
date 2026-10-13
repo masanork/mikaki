@@ -83,9 +83,6 @@ impl Inner {
             .cloned();
         Ok(())
     }
-    fn install_receipt(&mut self, app: &AppHandle, receipt: Receipt) -> Result<(), String> {
-        self.install_receipts(app, vec![receipt])
-    }
     fn install_receipts(&mut self, app: &AppHandle, receipts: Vec<Receipt>) -> Result<(), String> {
         self.restore_receipts(app)?;
         let at = now()?;

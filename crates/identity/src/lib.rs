@@ -1,5 +1,6 @@
 //! Shared bounded card parsing, evidence verification and first-party issuance profile.
 pub mod age_batch;
+pub mod age_pool;
 pub mod android_attestation_evidence;
 pub mod attester_proof;
 pub mod card;

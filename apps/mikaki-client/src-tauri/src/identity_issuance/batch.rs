@@ -9,6 +9,9 @@ pub(super) fn metadata_claims(metadata: &Value, configuration: &str) -> Result<S
     if metadata["mikaki_age_batch_intake"]["batch_size"].as_u64() != Some(MAX_SIZE as u64) {
         return Err("age_batch_unavailable".into());
     }
+    age_claims(metadata, configuration)
+}
+pub(super) fn age_claims(metadata: &Value, configuration: &str) -> Result<String, String> {
     let paths = metadata["credential_configurations_supported"][configuration]
         ["credential_metadata"]["claims"]
         .as_array()
@@ -37,6 +40,41 @@ pub(super) fn metadata_claims(metadata: &Value, configuration: &str) -> Result<S
     Ok(profile.to_json())
 }
 
+pub(super) fn validate_age_receipt(
+    receipt: &Receipt,
+    claims_json: &str,
+    at: u64,
+) -> Result<(), String> {
+    let (expiry, values) = receipt.verified_values(ISSUER, at)?;
+    validate_age_values(&values, expiry, claims_json, at)
+}
+fn validate_age_values(
+    values: &Value,
+    expiry: u64,
+    claims_json: &str,
+    at: u64,
+) -> Result<(), String> {
+    let profile = ClaimProfile::from_json(claims_json).map_err(|_| "invalid_metadata")?;
+    if !profile.is_age_only() {
+        return Err("invalid_metadata".into());
+    }
+    let expected: Vec<String> =
+        serde_json::from_str(claims_json).map_err(|_| "invalid_metadata")?;
+    let fields: Vec<_> = values
+        .as_object()
+        .ok_or("invalid_credential")?
+        .keys()
+        .filter(|n| claim_profile::supported(n))
+        .collect();
+    if fields.len() != expected.len()
+        || fields.iter().any(|n| !expected.contains(n))
+        || expected.iter().any(|n| !values[n].is_boolean())
+        || expiry > at.saturating_add(300)
+    {
+        return Err("invalid_credential".into());
+    }
+    Ok(())
+}
 pub(super) fn verify_response(
     issued: Value,
     keys: Vec<HolderKey>,
@@ -50,11 +88,7 @@ pub(super) fn verify_response(
         .as_array()
         .filter(|a| a.len() == keys.len() && !a.is_empty() && a.len() <= MAX_SIZE)
         .ok_or("invalid_response")?;
-    let expected: Option<Vec<String>> = claims_json
-        .map(serde_json::from_str)
-        .transpose()
-        .map_err(|_| "invalid_metadata")?;
-    if keys.len() > 1 && expected.is_none() {
+    if keys.len() > 1 && claims_json.is_none() {
         return Err("invalid_response".into());
     }
     let format = match configuration {
@@ -82,22 +116,8 @@ pub(super) fn verify_response(
             credential_trust: None,
         };
         let (expiry, values) = receipt.verified_values(ISSUER, at)?;
-        if let Some(expected) = &expected {
-            let fields: Vec<_> = values
-                .as_object()
-                .ok_or("invalid_credential")?
-                .keys()
-                .filter(|n| claim_profile::supported(n))
-                .collect();
-            if fields.len() != expected.len()
-                || fields.iter().any(|n| !expected.contains(n))
-                || expected
-                    .iter()
-                    .any(|n| !claim_profile::is_age_claim(n) || !values[n].is_boolean())
-                || expiry > at.saturating_add(300)
-            {
-                return Err("invalid_credential".into());
-            }
+        if let Some(claims) = claims_json {
+            validate_age_values(&values, expiry, claims, at)?;
         }
         receipt.expires_at = expiry;
         receipts.push(receipt);

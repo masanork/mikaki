@@ -324,6 +324,10 @@ struct Row {
     client_id: Option<String>,
     #[serde(default)]
     dpop_jkt: Option<String>,
+    #[serde(default)]
+    issuance_count: usize,
+    #[serde(default)]
+    client_binding: Option<String>,
 }
 const COLUMNS: &str = "tx_id,holder_json,document_json,policy_hash,state,account_id,epoch";
 fn query_tx(req: &Request) -> worker::Result<Option<String>> {
@@ -611,6 +615,9 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     if age_batch_enabled(&ctx)? {
         metadata["mikaki_age_batch_intake"] =
             json!({"batch_size":mikaki_identity::age_batch::MAX_SIZE});
+    }
+    if wallet::age_pool_enabled(&ctx)? {
+        metadata["mikaki_age_pool"] = json!({"max_size":mikaki_identity::age_batch::MAX_SIZE});
     }
     response(metadata)
 }
@@ -948,6 +955,13 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         }
         (intake_keys[0].clone(), None)
     };
+    if row.document_id.is_some() {
+        match wallet::fresh_pool_holder(&ctx, &row, &holder) {
+            Ok(false) => return error(400, "invalid_proof"),
+            Err(_) => return error(403, "document_revalidation_required"),
+            Ok(true) => {}
+        }
+    }
     let document: VerifiedDocument =
         serde_json::from_str(&row.document_json).map_err(|_| server_error())?;
     let (trust, policy_hash) = policy(&ctx)?;

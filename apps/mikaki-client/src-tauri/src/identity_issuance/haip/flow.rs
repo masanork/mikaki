@@ -70,6 +70,7 @@ pub async fn start_identity_wallet_issuance(
     app: AppHandle,
     state: State<'_, IdentityState>,
     configuration: String,
+    credential_count: Option<usize>,
 ) -> Result<WalletStatus, String> {
     let cfg = load_configuration()?;
     if !matches!(
@@ -78,9 +79,23 @@ pub async fn start_identity_wallet_issuance(
     ) {
         return Err("invalid_configuration".into());
     }
+    let requested_count = credential_count.unwrap_or(1);
+    if !(1..=mikaki_identity::age_batch::MAX_SIZE).contains(&requested_count) {
+        return Err("invalid_age_pool".into());
+    }
     let guard = gate(&state)?;
     {
         let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
+        s.restore_receipts(&app)?;
+        if s.receipts
+            .iter()
+            .filter(|r| r.expires_at > now().unwrap_or(u64::MAX))
+            .count()
+            + requested_count
+            > mikaki_identity::age_batch::MAX_SIZE
+        {
+            return Err("wallet_inventory_full".into());
+        }
         s.haip = None;
         s.haip_state = "starting";
         s.flow = None;
@@ -88,6 +103,17 @@ pub async fn start_identity_wallet_issuance(
     }
     let result = async {
         let context = issuer::metadata(&guard, &configuration).await?;
+        let budget = if requested_count > 1 {
+            Some(mikaki_identity::age_pool::Budget {
+                size: requested_count,
+                claims_json: context
+                    .age_pool_claims
+                    .clone()
+                    .ok_or("age_pool_unavailable")?,
+            })
+        } else {
+            None
+        };
         let (mut session, attestation) = Enrollment::enroll(
             &app,
             &guard,
@@ -97,6 +123,9 @@ pub async fn start_identity_wallet_issuance(
             &cfg.client_trust,
         )
         .await?;
+        if let Some(budget) = budget {
+            session.protocol.request_age_pool(budget, now()?)?;
+        }
         session
             .distinct_encryption_key(&context.encryption.request_key().map_err(str::to_string)?)?;
         let started = now()?;
@@ -127,6 +156,7 @@ pub async fn start_identity_wallet_issuance(
             configuration,
             browser_until,
             as_nonce,
+            requested_count,
         });
         s.haip_state = "pending";
         app.opener()
@@ -177,53 +207,65 @@ pub async fn receive_identity_wallet_credential(
         )
         .await?;
         pending.session.protocol.accept_token(token, now()?)?;
-        let nonce = issuer::credential_nonce(&guard).await?;
-        let key_attestation = pending
-            .session
-            .attest_holder(
-                &app,
-                &guard,
-                &pending.attestation,
-                &cfg.client_trust,
-                &nonce,
-                &cfg.key_trust,
-            )
-            .await?;
         let context = pending
             .context
             .take()
             .ok_or("wallet_transaction_unavailable")?;
-        pending
-            .session
-            .distinct_encryption_key(&context.encryption.request_key().map_err(str::to_string)?)?;
-        let payload =
+        let mut receipts = Vec::with_capacity(pending.requested_count);
+        for _ in 0..pending.requested_count {
+            let nonce = issuer::credential_nonce(&guard).await?;
+            let attestation = pending
+                .session
+                .attest_holder(
+                    &app,
+                    &guard,
+                    &pending.attestation,
+                    &cfg.client_trust,
+                    &nonce,
+                    &cfg.key_trust,
+                )
+                .await?;
+            pending.session.distinct_encryption_key(
+                &context.encryption.request_key().map_err(str::to_string)?,
+            )?;
+            let payload =
+                pending
+                    .session
+                    .credential_request(&nonce, &attestation, &cfg.key_trust)?;
+            let issued =
+                issuer::credential(&pending.session, &guard, &context, payload, issuer::send)
+                    .await?;
+            let receipt = verified_receipt(
+                issued,
+                &context,
+                pending
+                    .session
+                    .holder
+                    .take()
+                    .ok_or("wallet_transaction_unavailable")?,
+                &pending.configuration,
+                cfg.credential_trust.clone(),
+            )?;
+            if let Some(claims) = &context.age_pool_claims {
+                batch::validate_age_receipt(&receipt, claims, now()?)?;
+            }
             pending
                 .session
-                .credential_request(&nonce, &key_attestation, &cfg.key_trust)?;
-        let issued =
-            issuer::credential(&pending.session, &guard, &context, payload, issuer::send).await?;
-        let receipt = verified_receipt(
-            issued,
-            context,
-            pending
-                .session
-                .holder
-                .take()
-                .ok_or("wallet_transaction_unavailable")?,
-            &pending.configuration,
-            cfg.credential_trust,
-        )?;
+                .protocol
+                .finish_receipt(&receipt.key.public()?, now()?)?;
+            receipts.push(receipt);
+        }
         let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
         if s.generation != guard.generation {
             return Err("cancelled".into());
         }
         let result = ReceiveResult {
             state: "received",
-            credential_count: Some(1),
-            expires_at: Some(receipt.expires_at),
-            format: Some(receipt.format.clone()),
+            credential_count: Some(receipts.len()),
+            expires_at: receipts.iter().map(|r| r.expires_at).min(),
+            format: receipts.first().map(|r| r.format.clone()),
         };
-        s.install_receipt(&app, receipt)?;
+        s.install_receipts(&app, receipts)?;
         s.haip_state = "received";
         pending.session.protocol.cancel();
         Ok(result)
@@ -237,7 +279,7 @@ pub async fn receive_identity_wallet_credential(
 
 pub(super) fn verified_receipt(
     issued: Value,
-    context: issuer::Context,
+    context: &issuer::Context,
     key: HolderKey,
     configuration: &str,
     credential_trust: identity_wallet::CredentialTrust,
@@ -262,8 +304,8 @@ pub(super) fn verified_receipt(
         format: format.into(),
         key,
         expires_at: 0,
-        issuer_key: context.issuer_key,
-        issuer_kid: context.issuer_kid,
+        issuer_key: context.issuer_key.clone(),
+        issuer_kid: context.issuer_kid.clone(),
         credential_trust: Some(credential_trust),
     };
     receipt.expires_at = receipt.validate(ISSUER, now()?)?;

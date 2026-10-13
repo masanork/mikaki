@@ -226,7 +226,83 @@ fn clients(ctx: &RouteContext<()>) -> worker::Result<(Vec<Client>, String)> {
     } else {
         "public-wallet-v3-par-completion".to_owned()
     };
+    let binding_policy = if age_pool_enabled(ctx)? {
+        format!(
+            "{binding_policy}:haip-age-pool-v1:{}",
+            claim_profile(ctx)?.to_json()
+        )
+    } else {
+        binding_policy
+    };
     Ok((clients, hash(&format!("{raw}:{binding_policy}"))))
+}
+pub(super) fn age_pool_enabled(ctx: &RouteContext<()>) -> worker::Result<bool> {
+    Ok(haip(ctx)
+        && ctx
+            .env
+            .var("IDENTITY_HAIP_AGE_POOL_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+        && claim_profile(ctx)?.is_age_only())
+}
+fn requested_pool(
+    ctx: &RouteContext<()>,
+    raw: Option<&str>,
+) -> worker::Result<Option<mikaki_identity::age_pool::Budget>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let budget = mikaki_identity::age_pool::Budget::parse(raw).map_err(|_| server_error())?;
+    if !age_pool_enabled(ctx)? || budget.claims_json != claim_profile(ctx)?.to_json() {
+        return Err(server_error());
+    }
+    Ok(Some(budget))
+}
+pub(super) fn pool_state(
+    ctx: &RouteContext<()>,
+    row: &Row,
+) -> worker::Result<Option<mikaki_identity::age_pool::State>> {
+    let value: Value = serde_json::from_str(&row.holder_json).map_err(|_| server_error())?;
+    if value.get("age_pool_version").is_none() {
+        return Ok(None);
+    }
+    let state: mikaki_identity::age_pool::State =
+        serde_json::from_value(value).map_err(|_| server_error())?;
+    state
+        .validate(row.issuance_count)
+        .map_err(|_| server_error())?;
+    if !age_pool_enabled(ctx)? || state.budget.claims_json != claim_profile(ctx)?.to_json() {
+        return Err(server_error());
+    }
+    Ok(Some(state))
+}
+pub(super) fn fresh_pool_holder(
+    ctx: &RouteContext<()>,
+    row: &Row,
+    holder: &PublicJwk,
+) -> worker::Result<bool> {
+    let Some(state) = pool_state(ctx, row)? else {
+        return Ok(true);
+    };
+    let thumbprint = holder.thumbprint().map_err(|_| server_error())?;
+    if state.next(holder).is_err() || row.dpop_jkt.as_deref() == Some(&thumbprint) {
+        return Ok(false);
+    }
+    let (registry, _) = clients(ctx)?;
+    let attesters = registry
+        .iter()
+        .find(|c| Some(&c.client_id) == row.client_id.as_ref())
+        .and_then(|c| c.attesters.as_ref())
+        .ok_or_else(server_error)?;
+    // client_binding is the domain-separated hash of (attester, key thumbprint),
+    // not the bare thumbprint used for DPoP. Compare each provisioned authority.
+    for attester in attesters {
+        if row.client_binding.as_deref()
+            == Some(&hash(&serde_json::to_string(&(attester, &thumbprint))?))
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 #[derive(Deserialize, serde::Serialize)]
 struct Authorization {
@@ -247,6 +323,7 @@ struct Authorization {
     client_secret: Option<String>,
     client_assertion: Option<String>,
     client_assertion_type: Option<String>,
+    mikaki_age_pool: Option<String>,
 }
 fn invalid_request(request: &Authorization, iss: &str) -> bool {
     request.response_type != "code"
@@ -322,6 +399,9 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
         .find(|(key, _)| key == "request_uri")
         .map(|(_, value)| value.into_owned())
     {
+        if url.query_pairs().any(|(k, _)| k == "mikaki_age_pool") {
+            return error(400, "invalid_request");
+        }
         // All authorization parameters come from the stored PAR. Parameters
         // alongside the reference cannot replace redirect_uri, scope or state.
         let client = url
@@ -397,6 +477,10 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
     if invalid_request(&request, &iss) {
         return error(400, "invalid_request");
     }
+    let pool = match requested_pool(&ctx, request.mikaki_age_pool.as_deref()) {
+        Ok(pool) => pool,
+        Err(_) => return error(400, "invalid_age_pool"),
+    };
     let Some(configuration) = configuration(&request.scope) else {
         return error(400, "invalid_scope");
     };
@@ -441,22 +525,48 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
     }
     let grant = random()?;
     let csrf = random()?;
-    let r = db.prepare("INSERT INTO identity_wallet_grant(grant_id,account_id,epoch,session_hash,csrf_hash,client_id,client_policy_hash,policy_hash,redirect_uri,wallet_state,code_challenge,configuration,state,expires_at,par_hash,authorization_dpop_jkt,issuance_limit) SELECT ?1,?2,a.epoch,?3,?4,?5,?6,?7,?8,?9,?10,?11,'pending',unixepoch()+300,?12,?13,?14 FROM account_security a WHERE a.account_id=?2 AND a.active=1 AND (SELECT count(*) FROM identity_wallet_grant WHERE state='pending' AND expires_at>unixepoch())<10000 AND (?12 IS NULL OR EXISTS(SELECT 1 FROM identity_wallet_par p WHERE p.request_hash=?12 AND p.used=0 AND p.expires_at>unixepoch()))")
-        .bind(&[js(&grant), js(&owner.account_id), js(&owner.secret_hash), js(&hash(&csrf)), js(&client.client_id), js(&client_policy), js(&policy_hash), js(&client.redirect_uri), request.state.as_deref().map(js).unwrap_or(JsValue::NULL), js(&request.code_challenge), js(configuration),par_hash.as_deref().map(js).unwrap_or(JsValue::NULL),request.dpop_jkt.as_deref().map(js).unwrap_or(JsValue::NULL),JsValue::from_f64(if haip(&ctx) {16.0} else {1.0})])?.run().await?;
+    let holder_json = pool
+        .clone()
+        .map(mikaki_identity::age_pool::State::new)
+        .transpose()
+        .map_err(|_| server_error())?
+        .map(|state| serde_json::to_string(&state))
+        .transpose()?;
+    let r = db.prepare("INSERT INTO identity_wallet_grant(grant_id,account_id,epoch,session_hash,csrf_hash,client_id,client_policy_hash,policy_hash,redirect_uri,wallet_state,code_challenge,configuration,state,expires_at,par_hash,authorization_dpop_jkt,issuance_limit,holder_json) SELECT ?1,?2,a.epoch,?3,?4,?5,?6,?7,?8,?9,?10,?11,'pending',unixepoch()+300,?12,?13,?14,?15 FROM account_security a WHERE a.account_id=?2 AND a.active=1 AND (SELECT count(*) FROM identity_wallet_grant WHERE state='pending' AND expires_at>unixepoch())<10000 AND (?12 IS NULL OR EXISTS(SELECT 1 FROM identity_wallet_par p WHERE p.request_hash=?12 AND p.used=0 AND p.expires_at>unixepoch()))")
+        .bind(&[js(&grant), js(&owner.account_id), js(&owner.secret_hash), js(&hash(&csrf)), js(&client.client_id), js(&client_policy), js(&policy_hash), js(&client.redirect_uri), request.state.as_deref().map(js).unwrap_or(JsValue::NULL), js(&request.code_challenge), js(configuration),par_hash.as_deref().map(js).unwrap_or(JsValue::NULL),request.dpop_jkt.as_deref().map(js).unwrap_or(JsValue::NULL),JsValue::from_f64(if haip(&ctx) {16.0} else {1.0}),holder_json.as_deref().map(js).unwrap_or(JsValue::NULL)])?.run().await?;
     if r.meta()?.and_then(|m| m.changes).unwrap_or(0) == 0 {
         return error(409, "transaction_unavailable");
     }
     html(format!(
-        "<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>walletへの発行</title><main><h1>walletへの発行を承認</h1><p>アカウント: {}</p><p>登録済み送信先: {} ({})</p><p>戻り先: {}</p><p>形式: {}</p><p>選んだ身分証の氏名・住所・生年月日と、記録されている性別・有効期限を発行します。政府発行の証明書ではありません。有効期間は最長5分です。受領するwalletが所有を証明した鍵に発行します。{}意図したwalletから開始した操作か確認してください。</p><form method=post action=/identity/issuer/authorize><input type=hidden name=grant value='{grant}'><input type=hidden name=csrf value='{csrf}'>{options}<button name=decision value=approve>このwalletへの発行を許可</button><button name=decision value=deny formnovalidate>拒否</button></form></main></html>",
+        "<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>walletへの発行</title><main><h1>walletへの発行を承認</h1><p>アカウント: {}</p><p>登録済み送信先: {} ({})</p><p>戻り先: {}</p><p>形式: {}</p><p>選んだ身分証から、次の属性を発行します: {}。政府発行の証明書ではありません。有効期間は最長5分です。受領するwalletが所有を証明した鍵に発行します。{}意図したwalletから開始した操作か確認してください。</p><form method=post action=/identity/issuer/authorize><input type=hidden name=grant value='{grant}'><input type=hidden name=csrf value='{csrf}'>{options}<button name=decision value=approve>このwalletへの発行を許可</button><button name=decision value=deny formnovalidate>拒否</button></form></main></html>",
         escape(&owner.account_id),
         escape(&client.name),
         escape(&client.client_id),
         escape(&client.redirect_uri),
-        escape(configuration),
-        if haip(&ctx) {
-            "walletインスタンスのClient Attestationを検証しています。同じ形式・属性を、token取得から120秒以内に最大16件発行することを許可します。"
+        escape(if configuration == mdoc::CONFIGURATION {
+            "mdoc"
         } else {
-            "公開クライアント登録はwalletの実体を認証するものではありません。"
+            "SD-JWT"
+        }),
+        escape(
+            &claim_profile(&ctx)?
+                .metadata(None)
+                .as_array()
+                .ok_or_else(server_error)?
+                .iter()
+                .filter_map(|c| c["display"][0]["name"].as_str())
+                .collect::<Vec<_>>()
+                .join("、")
+        ),
+        if let Some(pool) = &pool {
+            format!(
+                "walletインスタンスのClient Attestationを検証しています。別々の端末鍵に、年齢専用の証明書を{}件発行することを許可します。token取得から120秒以内に1件ずつ受け取り、全件の検証後にまとめて保存します。",
+                pool.size
+            )
+        } else if haip(&ctx) {
+            "walletインスタンスのClient Attestationを検証しています。同じ形式・属性を、token取得から120秒以内に最大16件発行することを許可します。".to_owned()
+        } else {
+            "公開クライアント登録はwalletの実体を認証するものではありません。".to_owned()
         }
     ))
 }
@@ -663,7 +773,7 @@ pub(super) async fn load(
         return Ok(None);
     }
     let (_, client_policy) = clients(ctx)?;
-    ctx.env.d1("DB")?.prepare("SELECT g.grant_id AS tx_id,'{}' AS holder_json,d.document_json,g.policy_hash,g.state,g.document_id,g.client_id,g.dpop_jkt FROM identity_wallet_grant g JOIN identity_document d ON d.document_id=g.document_id WHERE g.access_hash=?1 AND g.state='token' AND g.token_expires_at>unixepoch() AND g.client_policy_hash=?2 AND g.configuration=?3 AND d.revoked=0")
+    ctx.env.d1("DB")?.prepare("SELECT g.grant_id AS tx_id,coalesce(g.holder_json,'{}') AS holder_json,g.issuance_count,g.client_binding,d.document_json,g.policy_hash,g.state,g.document_id,g.client_id,g.dpop_jkt FROM identity_wallet_grant g JOIN identity_document d ON d.document_id=g.document_id WHERE g.access_hash=?1 AND g.state='token' AND g.token_expires_at>unixepoch() AND g.client_policy_hash=?2 AND g.configuration=?3 AND d.revoked=0")
         .bind(&[js(&hash(access)),js(&client_policy),js(configuration)])?.first::<Row>(None).await
 }
 pub(super) async fn commit(
@@ -675,6 +785,21 @@ pub(super) async fn commit(
     expires_at: u64,
 ) -> worker::Result<bool> {
     let (_, client_policy) = clients(ctx)?;
+    if let Some(state) = pool_state(ctx, row)? {
+        let next = state.next(holder).map_err(|_| server_error())?;
+        let encoded = serde_json::to_string(&next)?;
+        let db = ctx.env.d1("DB")?;
+        let consume = db.prepare("UPDATE identity_wallet_grant SET issuance_count=issuance_count+1,proof_nonce_hash=?1,holder_json=?2 WHERE grant_id=?3 AND access_hash=?4 AND state='token' AND issuance_count=?8 AND issuance_count<?9 AND holder_json=?10 AND token_expires_at>unixepoch() AND client_policy_hash=?5 AND policy_hash=?6 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=identity_wallet_grant.document_id AND d.account_id=identity_wallet_grant.account_id AND d.revoked=0 AND d.valid_until>=?7 AND unixepoch()<?7 AND d.policy_hash=?6 AND a.active=1 AND a.epoch=d.epoch AND a.epoch=identity_wallet_grant.epoch)")
+            .bind(&[js(&hash(nonce)),js(&encoded),js(&row.tx_id),js(&hash(access)),js(&client_policy),js(&row.policy_hash),JsValue::from_f64(expires_at as f64),JsValue::from_f64(row.issuance_count as f64),JsValue::from_f64(state.budget.size as f64),js(&row.holder_json)])?;
+        let close = db.prepare("UPDATE identity_wallet_grant SET state='issued',access_hash=NULL WHERE grant_id=?1 AND access_hash=?2 AND state='token' AND issuance_count=?3 AND holder_json=?4")
+            .bind(&[js(&row.tx_id),js(&hash(access)),JsValue::from_f64(state.budget.size as f64),js(&encoded)])?;
+        // D1 batches are transactional. Check the consume result, never the close
+        // result alone, so a concurrent stale response cannot dispatch a receipt.
+        let result = db.batch(vec![consume, close]).await;
+        return Ok(
+            matches!(result,Ok(r) if r.first().and_then(|r|r.meta().ok().flatten()).and_then(|m|m.changes).unwrap_or(0)>0),
+        );
+    }
     let result = ctx.env.d1("DB")?.prepare("UPDATE identity_wallet_grant SET issuance_count=issuance_count+1,state=CASE WHEN issuance_count+1=issuance_limit THEN 'issued' ELSE 'token' END,proof_nonce_hash=?1,holder_json=?2,access_hash=CASE WHEN issuance_count+1=issuance_limit THEN NULL ELSE access_hash END WHERE grant_id=?3 AND access_hash=?4 AND state='token' AND issuance_count<issuance_limit AND token_expires_at>unixepoch() AND client_policy_hash=?5 AND policy_hash=?6 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=identity_wallet_grant.document_id AND d.account_id=identity_wallet_grant.account_id AND d.revoked=0 AND d.valid_until>=?7 AND unixepoch()<?7 AND d.policy_hash=?6 AND a.active=1 AND a.epoch=d.epoch AND a.epoch=identity_wallet_grant.epoch)")
         .bind(&[js(&hash(nonce)),js(&serde_json::to_string(holder)?),js(&row.tx_id),js(&hash(access)),js(&client_policy),js(&row.policy_hash),JsValue::from_f64(expires_at as f64)])?.run().await;
     Ok(matches!(result,Ok(r) if r.meta().ok().flatten().and_then(|m|m.changes).unwrap_or(0)>0))
@@ -701,6 +826,10 @@ pub async fn par(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
     if invalid_request(&request, &iss) || req.headers().get("authorization")?.is_some() {
         return error(400, "invalid_request");
     }
+    let _pool = match requested_pool(&ctx, request.mikaki_age_pool.as_deref()) {
+        Ok(pool) => pool,
+        Err(_) => return error(400, "invalid_age_pool"),
+    };
     let Some(configuration) = configuration(&request.scope) else {
         return error(400, "invalid_scope");
     };

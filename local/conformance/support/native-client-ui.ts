@@ -150,6 +150,12 @@ export async function createNativeUiPage(
               ? { state: 'pending' }
               : {
                   state: 'received',
+                  credential_count:
+                    mock.arguments
+                      .slice()
+                      .reverse()
+                      .find((c) => c.command === 'start_identity_wallet_issuance')?.args
+                      ?.credentialCount ?? 1,
                   format: initial.identityFormat ?? 'dc+sd-jwt',
                   expires_at: Math.floor(Date.now() / 1000) + 300,
                 };

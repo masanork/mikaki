@@ -33,6 +33,8 @@ pub struct Authorization {
     instance: PublicJwk,
     dpop: PublicJwk,
     holder: Option<PublicJwk>,
+    age_pool: Option<crate::age_pool::Budget>,
+    received_holders: Vec<String>,
     until: u64,
     phase: Phase,
 }
@@ -178,9 +180,45 @@ impl Authorization {
             instance,
             dpop,
             holder,
+            age_pool: None,
+            received_holders: Vec::new(),
             until: now.saturating_add(180),
             phase: Phase::Par,
         })
+    }
+    /// Freeze the requested receive budget before PAR; no post-approval expansion.
+    pub fn request_age_pool(
+        &mut self,
+        budget: crate::age_pool::Budget,
+        now: u64,
+    ) -> Result<(), String> {
+        self.live(now)?;
+        if !matches!(self.phase, Phase::Par) || self.holder.is_some() || self.age_pool.is_some() {
+            return Err("wallet_transaction_unavailable".into());
+        }
+        budget.validate().map_err(str::to_string)?;
+        self.age_pool = Some(budget);
+        Ok(())
+    }
+    /// Called only after independently validating the received credential. Keep
+    /// prior key identities so the next slot cannot replace/reuse an earlier key.
+    pub fn finish_receipt(&mut self, holder: &PublicJwk, now: u64) -> Result<(), String> {
+        self.live(now)?;
+        if !matches!(self.phase, Phase::Token { until, .. } if now < until)
+            || self.holder.as_ref() != Some(holder)
+        {
+            return Err("wallet_transaction_unavailable".into());
+        }
+        let thumbprint = holder.thumbprint().map_err(str::to_string)?;
+        if self.received_holders.contains(&thumbprint) {
+            return Err("invalid_proof".into());
+        }
+        self.received_holders.push(thumbprint);
+        self.holder = None;
+        if self.received_holders.len() == self.age_pool.as_ref().map_or(1, |b| b.size) {
+            self.cancel();
+        }
+        Ok(())
     }
     pub fn holder_binding_available(&self, now: u64) -> Result<(), String> {
         self.live(now)?;
@@ -193,7 +231,12 @@ impl Authorization {
     pub fn bind_holder(&mut self, holder: PublicJwk, now: u64) -> Result<(), String> {
         self.holder_binding_available(now)?;
         holder.verifying_key().map_err(str::to_owned)?;
-        if holder == self.instance || holder == self.dpop {
+        if holder == self.instance
+            || holder == self.dpop
+            || self
+                .received_holders
+                .contains(&holder.thumbprint().map_err(str::to_string)?)
+        {
             return Err("wallet_configuration_invalid".into());
         }
         self.holder = Some(holder);
@@ -211,11 +254,14 @@ impl Authorization {
         if !matches!(self.phase, Phase::Par) {
             return Err("wallet_transaction_unavailable".into());
         }
-        Ok(
-            json!({"client_id":self.client,"redirect_uri":self.callback.as_str(),"response_type":"code",
+        let mut parameters = json!({"client_id":self.client,"redirect_uri":self.callback.as_str(),"response_type":"code",
             "scope":self.configuration,"state":&*self.state,"code_challenge":B64.encode(Sha256::digest(self.verifier.as_bytes())),
-            "code_challenge_method":"S256","dpop_jkt":self.dpop.thumbprint().map_err(str::to_owned)?}),
-        )
+            "code_challenge_method":"S256","dpop_jkt":self.dpop.thumbprint().map_err(str::to_owned)?});
+        if let Some(budget) = &self.age_pool {
+            parameters["mikaki_age_pool"] =
+                json!(serde_json::to_string(budget).map_err(|_| "invalid_age_pool")?);
+        }
+        Ok(parameters)
     }
     pub fn accept_par(&mut self, body: &Value, now: u64) -> Result<Url, String> {
         self.live(now)?;
