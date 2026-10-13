@@ -344,12 +344,7 @@
 </script>
 
 <section aria-busy={busy}>
-  <p class="source-lead">{m.preparation_intro()}</p>
-  <p class="source-boundary">{m.preparation_boundary()}</p>
-  <div class="source-toolbar">
-    <button type="button" disabled={busy} onclick={() => load()}>{m.preparation_refresh()}</button>
-    <p aria-live="polite">{busy ? m.source_loading() : ''}</p>
-  </div>
+  {#if busy}<p role="status">{m.source_loading()}</p>{/if}
   {#if failure}<p role="alert" class="source-error">
       {failure === 'session'
         ? m.source_session()
@@ -358,128 +353,169 @@
           : m.preparation_unavailable()}
     </p>{/if}
   {#if loaded && preparations.length === 0}<p>{m.preparation_empty()}</p>{/if}
-  <ul class="preparation-list">
-    {#each preparations as p (p.id)}
-      <li>
-        <button
-          type="button"
-          disabled={busy || p.expires_at <= now}
-          onclick={() => choose(p.id)}
-          aria-pressed={review?.preparation.id === p.id}
-        >
-          <strong>{p.task.name}</strong><span
-            >{copyState(p)} · {p.expires_at <= now
-              ? m.preparation_expired()
-              : date(p.expires_at)}</span
-          >
-        </button>
-      </li>
-    {/each}
-  </ul>
+  {#if loaded && !preparations.some((p) => p.expires_at > now)}
+    <a class="work-primary" href={'/work/source-review?lang=' + getLocale()}>{m.work_new_copy()}</a>
+  {/if}
+  <div class="source-toolbar work-quiet-toolbar">
+    <details class="work-details work-list-picker" open={!review}>
+      <summary>{m.work_preparation_choose()}</summary>
+      <ul class="preparation-list work-current-list">
+        {#each preparations.filter((p) => p.expires_at > now) as p (p.id)}
+          <li>
+            <button
+              type="button"
+              data-preparation-id={p.id}
+              disabled={busy}
+              onclick={() => choose(p.id)}
+              aria-pressed={review?.preparation.id === p.id}
+            >
+              <strong>{m.work_saved_copy()}</strong><span
+                >{copyState(p)} · {date(p.expires_at)}</span
+              >
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </details>
+    <button type="button" disabled={busy} onclick={() => load()}>{m.preparation_refresh()}</button>
+  </div>
   {#if next}<button type="button" disabled={busy} onclick={() => load(true)}
       >{m.source_more()}</button
     >{/if}
   {#if review}
     {@const p = review.preparation}
     {@const d = review.disclosure}
-    <section class="source-card" aria-labelledby="preparation-review-title">
-      <h2 id="preparation-review-title" bind:this={heading} tabindex="-1">
-        {m.preparation_details()}
-      </h2>
-      <dl>
-        <div>
-          <dt>{m.preparation_copy_state()}</dt>
-          <dd>{copyState(p)}</dd>
-        </div>
-        <div>
-          <dt>{m.preparation_availability()}</dt>
-          <dd>
-            {!review.currentSources
-              ? m.preparation_inactive()
-              : p.current_authority
+    {@const files = d.contexts.reduce((n, c) => n + c.files.length, 0)}
+    {@const records = [
+      { label: m.source_code(), value: p.task.namespace + ' / ' + p.task.name, code: false },
+      {
+        label: m.preparation_snapshot(),
+        value: p.snapshot.namespace + ' / ' + p.snapshot.name,
+        code: false,
+      },
+      { label: m.source_version(), value: d.code.commit, code: true },
+      ...(review.currentSources
+        ? [
+            {
+              label: m.preparation_availability(),
+              value: p.current_authority
                 ? m.preparation_current()
                 : p.materialized
                   ? m.preparation_inactive()
-                  : m.preparation_unmaterialized()}
-          </dd>
+                  : m.preparation_unmaterialized(),
+              code: false,
+            },
+          ]
+        : []),
+      ...(copy
+        ? [
+            {
+              label: m.preparation_copy_account(),
+              value: copy.subject.artifacts_account,
+              code: true,
+            },
+          ]
+        : []),
+      { label: m.preparation_recipient(), value: d.recipient, code: false },
+      { label: m.preparation_workload(), value: d.workload, code: false },
+      { label: m.preparation_identifier(), value: p.id, code: true },
+      { label: m.preparation_manifest(), value: p.disclosure_digest, code: true },
+      { label: m.preparation_checked(), value: date(review.checkedAt), code: false },
+      {
+        label: m.preparation_repository_ids(),
+        value:
+          (p.task.repository_id ?? m.preparation_unknown()) +
+          ' / ' +
+          (p.snapshot.repository_id ?? m.preparation_unknown()),
+        code: false,
+      },
+    ]}
+    <section class="source-card work-review-card" aria-labelledby="preparation-review-title">
+      <div class="source-heading">
+        <h2 id="preparation-review-title" bind:this={heading} tabindex="-1">
+          {m.preparation_details()}
+        </h2>
+        <span class="work-state">{copyState(p)}</span>
+      </div>
+      {#if !review.currentSources}<p class="source-error" role="status">
+          {m.preparation_inactive()}
+        </p>{/if}
+      <div class="work-copy-summary">
+        <div>
+          <h3>{m.source_code()}</h3>
+          <strong>{d.code.repository}</strong>
+          <p>{m.work_code_summary({ files: d.code.head_files, commits: d.code.commits })}</p>
         </div>
         <div>
-          <dt>{m.preparation_expiry()}</dt>
-          <dd>{date(p.expires_at)}</dd>
+          <h3>{m.preparation_context()}</h3>
+          <p>
+            {files === 0
+              ? m.work_context_none()
+              : m.source_selection({ files, bytes: d.selected_bytes })}
+          </p>
         </div>
-        <div>
-          <dt>{m.preparation_recipient()}</dt>
-          <dd>{d.recipient}</dd>
-        </div>
-        <div>
-          <dt>{m.preparation_workload()}</dt>
-          <dd>{d.workload}</dd>
-        </div>
-      </dl>
-      <h3>{m.preparation_destinations()}</h3>
-      <dl>
-        <div>
-          <dt>{m.source_code()}</dt>
-          <dd>{p.task.namespace} / {p.task.name}</dd>
-        </div>
-        <div>
-          <dt>{m.preparation_snapshot()}</dt>
-          <dd>{p.snapshot.namespace} / {p.snapshot.name}</dd>
-        </div>
-      </dl>
-      <h3>{m.preparation_code()}</h3>
-      <p>{m.source_history({ commits: d.code.commits, files: d.code.head_files })}</p>
-      <dl>
-        <div>
-          <dt>{m.source_version()}</dt>
-          <dd><code>{d.code.commit}</code></dd>
-        </div>
-      </dl>
-      <h3>{m.preparation_context()}</h3>
-      <p>
-        {m.source_selection({
-          files: d.contexts.reduce((n, c) => n + c.files.length, 0),
-          bytes: d.selected_bytes,
-        })}
-      </p>
-      {#each d.contexts as c, i}<article>
-          <h4>
-            {d.registered_sources[i + 1]!.role === 'personal'
-              ? m.source_personal()
-              : m.source_project()} · {c.repository}
-          </h4>
-          <p>{m.source_version()}: <code>{c.commit}</code></p>
-          <ul>
-            {#each c.files as f}<li>
-                <strong>{f.path}</strong> · {f.bytes}
-                {m.source_bytes()}
-              </li>{/each}
-          </ul>
-        </article>{/each}
-      <button
-        data-work-action="inspect_copy"
-        type="button"
-        disabled={busy}
-        onclick={() => inspect()}>{m.preparation_inspect()}</button
-      >
-      <p>{m.source_read_boundary()}</p>
+      </div>
+      {#if files > 0}<details class="work-details work-selected-files">
+          <summary>{m.work_selected_files({ count: files })}</summary>
+          {#each d.contexts as c, i}<article>
+              <h4>
+                {d.registered_sources[i + 1]!.role === 'personal'
+                  ? m.source_personal()
+                  : m.source_project()} · {c.repository}
+              </h4>
+              <ul>
+                {#each c.files as f}<li>
+                    <strong>{f.path}</strong> · {f.bytes}
+                    {m.source_bytes()}
+                  </li>{/each}
+              </ul>
+            </article>{/each}
+        </details>{/if}
+      <div class="work-destination">
+        <h3>
+          {m.preparation_destinations()}{#if copy}
+            · <span>{copy.subject.operator}</span>{/if}
+        </h3>
+        <dl>
+          <div>
+            <dt>{m.source_code()}</dt>
+            <dd>{p.task.namespace}</dd>
+          </div>
+          <div>
+            <dt>{m.preparation_snapshot()}</dt>
+            <dd>{p.snapshot.namespace}</dd>
+          </div>
+          <div>
+            <dt>{m.preparation_expiry()}</dt>
+            <dd>{date(p.expires_at)}</dd>
+          </div>
+        </dl>
+      </div>
+      <div class="work-inspection">
+        <button
+          class:work-primary={!inspected}
+          data-work-action="inspect_copy"
+          type="button"
+          disabled={busy}
+          onclick={() => inspect()}>{m.preparation_inspect()}</button
+        >
+        {#if inspected}<p class="work-checked" role="status">{m.work_inspection_ready()}</p>{/if}
+      </div>
+      {#if reads.length}<section class="source-preview" aria-label={m.source_preview_title()}>
+          <h2 bind:this={previewHeading} tabindex="-1">{m.source_preview_title()}</h2>
+          {#each reads as read}<h3>{read.source.label}</h3>
+            {#each read.files as file}<article>
+                <h4>{file.path}</h4>
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to a named, scrollable file region.) -->
+                <pre tabindex="0" role="region" aria-label={file.path}>{file.content}</pre>
+              </article>{/each}{/each}
+        </section>{/if}
+
       {#if copy}
-        <section class="source-card" aria-label={m.preparation_copy_consent()}>
-          <h3>{m.preparation_copy_consent()}</h3>
-          <p>{m.preparation_copy_scope()}</p>
-          <dl>
-            <div>
-              <dt>{m.preparation_copy_operator()}</dt>
-              <dd>{copy.subject.operator}</dd>
-            </div>
-            <div>
-              <dt>{m.preparation_copy_account()}</dt>
-              <dd><code>{copy.subject.artifacts_account}</code></dd>
-            </div>
-          </dl>
-          {#if copy.status === 'unconfirmed'}
-            <p>{m.preparation_copy_inspect_first()}</p>
-            <label
+        <section class="work-consent" aria-label={m.preparation_copy_consent()}>
+          <p class="work-copy-notice">{m.work_copy_notice()}</p>
+          {#if copy.status === 'unconfirmed' && inspected}
+            <label class="work-acknowledge"
               ><input
                 type="checkbox"
                 data-work-confirmation="approve_copy"
@@ -489,6 +525,7 @@
               {m.preparation_copy_acknowledge()}</label
             >
             <button
+              class="work-primary"
               type="button"
               disabled={busy || !inspected || !acknowledged || !copy.can_approve}
               data-work-action="approve_copy"
@@ -498,62 +535,71 @@
             <p role="status">
               {copy.current ? m.preparation_copy_approved() : m.preparation_copy_inactive()}
             </p>
+            {#if executionEnabled}<a
+                class="work-primary"
+                href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
+                >{m.copy_open()}</a
+              >{/if}
             <button
               data-work-action="withdraw_copy"
               type="button"
               disabled={busy}
               onclick={() => decideCopy('DELETE')}>{m.preparation_copy_withdraw()}</button
             >
-          {:else}<p role="status">{m.preparation_copy_withdrawn()}</p>{/if}
-          <p>{m.preparation_copy_withdraw_boundary()}</p>
-          {#if executionEnabled && copy.status !== 'unconfirmed'}<a
-              href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
-              >{m.copy_open()}</a
-            >{/if}
+            <p class="work-hint">{m.preparation_copy_withdraw_boundary()}</p>
+          {:else if copy.status === 'withdrawn'}<p role="status">
+              {m.preparation_copy_withdrawn()}
+            </p>
+            {#if executionEnabled}<a
+                href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
+                >{m.copy_open()}</a
+              >{/if}
+          {/if}
         </section>
       {/if}
-      <h3>{m.preparation_delegation()}</h3>
-      <p>{m.preparation_delegation_body()}</p>
-      <details>
-        <summary>{m.preparation_integrity()}</summary>
-        <p>{m.preparation_record_scope()}</p>
+      <div class="work-review-record">
         <button
           type="button"
           disabled={busy || !review.currentSources || p.expires_at <= now}
           onclick={() => downloadDisclosure()}>{m.preparation_record_save()}</button
         >
-        <dl>
-          <div>
-            <dt>{m.preparation_identifier()}</dt>
-            <dd><code>{p.id}</code></dd>
-          </div>
-          <div>
-            <dt>{m.preparation_manifest()}</dt>
-            <dd><code>{p.disclosure_digest}</code></dd>
-          </div>
-          <div>
-            <dt>{m.preparation_checked()}</dt>
-            <dd>{date(review.checkedAt)}</dd>
-          </div>
-          <div>
-            <dt>{m.preparation_repository_ids()}</dt>
-            <dd>
-              {p.task.repository_id ?? m.preparation_unknown()} / {p.snapshot.repository_id ??
-                m.preparation_unknown()}
-            </dd>
-          </div>
-        </dl>
-      </details>
+        <details class="work-details work-record-details">
+          <summary>{m.preparation_integrity()}</summary>
+          <p>{m.preparation_record_scope()}</p>
+          <dl>
+            {#each records as record}<div>
+                <dt>{record.label}</dt>
+                <dd>
+                  {#if record.code}<code>{record.value}</code>{:else}{record.value}{/if}
+                </dd>
+              </div>{/each}
+          </dl>
+          <h3>{m.preparation_delegation()}</h3>
+          <p>{m.preparation_delegation_body()}</p>
+          <p>{m.preparation_boundary()}</p>
+        </details>
+      </div>
     </section>
   {/if}
-  {#if reads.length}<section class="source-preview" aria-label={m.source_preview_title()}>
-      <h2 bind:this={previewHeading} tabindex="-1">{m.source_preview_title()}</h2>
-      {#each reads as read}<h3>{read.source.label}</h3>
-        {#each read.files as file}<article>
-            <h4>{file.path}</h4>
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to a named, scrollable file region.) -->
-            <pre tabindex="0" role="region" aria-label={file.path}>{file.content}</pre>
-          </article>{/each}{/each}
-    </section>{/if}
+  {#if preparations.some((p) => p.expires_at <= now)}
+    <details class="work-details work-history">
+      <summary
+        >{m.work_history({
+          count: preparations.filter((p) => p.expires_at <= now).length,
+        })}</summary
+      >
+      <ul class="preparation-list">
+        {#each preparations.filter((p) => p.expires_at <= now) as p (p.id)}
+          <li>
+            <button type="button" disabled
+              ><strong>{m.work_past_copy()}</strong><span
+                >{copyState(p)} · {m.preparation_expired()}</span
+              ></button
+            >
+          </li>
+        {/each}
+      </ul>
+    </details>
+  {/if}
   <WorkWebMcp host={assistant} />
 </section>

@@ -110,7 +110,7 @@ test('owner source review uses authenticated native records and actual Git file 
         await fresh();
         await expect(
           page.getByText(
-            'このコードをコピーする場合、履歴 2 コミット、現行 3 ファイルが含まれます。',
+            '3 ファイル · 2 コミット',
             {
               exact: true,
             },
@@ -212,7 +212,7 @@ test('owner source review uses authenticated native records and actual Git file 
         await page.screenshot({ path: `${shots}/mobile-ja.png`, fullPage: true });
         await page.getByRole('combobox', { name: /Language|言語/ }).selectOption('en');
         await expect(
-          page.getByRole('heading', { name: 'Review source files', exact: true }),
+          page.getByRole('heading', { name: 'Choose what to copy', exact: true }),
         ).toBeVisible();
         await expect(page.locator('pre')).toHaveCount(0);
         await expect(chosen()).not.toBeChecked();

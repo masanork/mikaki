@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import ProductHeader from './ProductHeader.svelte';
   import WorkPreparations from './WorkPreparations.svelte';
+  import WorkSteps from './WorkSteps.svelte';
   import { vaultContext } from './vault-context.js';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
@@ -23,6 +24,7 @@
 <div class="vault-shell">
   <ProductHeader {locale} onlock={context.lock} lockLabel={m.source_lock()} material />
   <main id="product-main" tabindex="-1" class="product-main source-page preparation-page">
+    <WorkSteps current={2} />
     <div class="product-heading"><h1>{m.preparation_title()}</h1></div>
     {#if ready}<WorkPreparations />{:else}<p role="status">{m.source_loading()}</p>{/if}
   </main>

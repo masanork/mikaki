@@ -207,8 +207,8 @@ for (const lang of ['ja', 'en'] as const) {
               logout: 'ログアウト',
               loggedOut: 'ログアウトしました',
               prepare: '準備を作成',
-              review: '準備を確認する',
-              inspect: '開示対象のファイル内容を確認',
+              review: 'コピー内容を確認',
+              inspect: 'コピー対象を確認',
               approve: 'このコピーを承認',
               withdraw: 'コピーの承認を取り消す',
               integrity: '照合用の記録',
@@ -221,8 +221,8 @@ for (const lang of ['ja', 'en'] as const) {
               logout: 'Log out',
               loggedOut: 'You have logged out',
               prepare: 'Prepare copy',
-              review: 'Review preparation',
-              inspect: 'Inspect disclosed file contents',
+              review: 'Review the copy',
+              inspect: 'Check copy contents',
               approve: 'Approve this copy',
               withdraw: 'Withdraw copy consent',
               integrity: 'Integrity records',
@@ -312,8 +312,8 @@ for (const lang of ['ja', 'en'] as const) {
       const reviewUrl = `${issuer}/work/preparation-review?lang=${lang}#${preparation.preparation_id}`;
       await expect(page).toHaveURL(reviewUrl);
       const approve = page.getByRole('button', { name: words.approve, exact: true });
-      await expect(approve).toBeDisabled();
-      await expect(page.getByRole('checkbox')).toBeDisabled();
+      await expect(approve).toHaveCount(0);
+      await expect(page.getByRole('checkbox')).toHaveCount(0);
       await page.getByText(words.integrity, { exact: true }).click();
       const downloadEvent = page.waitForEvent('download');
       await page.getByRole('button', { name: words.save, exact: true }).click();

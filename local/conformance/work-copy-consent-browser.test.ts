@@ -64,8 +64,7 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
       .catch(() => {});
   });
   const choose = () => page.locator('.preparation-list button').first();
-  const inspect = () =>
-    page.getByRole('button', { name: '開示対象のファイル内容を確認', exact: true });
+  const inspect = () => page.getByRole('button', { name: 'コピー対象を確認', exact: true });
   const approve = () => page.getByRole('button', { name: 'このコピーを承認', exact: true });
   const checkbox = () => page.getByRole('checkbox');
   const shots = new URL('../../artifacts/work-copy-consent/', import.meta.url).pathname;
@@ -76,10 +75,16 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
       async () => {
         await page.goto('https://work.test/work/preparation-review?lang=ja');
         await choose().click();
-        await expect(approve()).toBeDisabled();
-        await expect(checkbox()).toBeDisabled();
+        await expect(approve()).toHaveCount(0);
+        await expect(checkbox()).toHaveCount(0);
         await expect(page.getByText('Cloudflare Artifacts', { exact: true })).toBeVisible();
+        await expect(page.locator('.work-record-details')).not.toHaveAttribute('open');
+        await page.locator('.work-record-details > summary').click();
         await expect(page.getByText('a'.repeat(32), { exact: true })).toBeVisible();
+        await page.locator('.work-record-details > summary').click();
+        await page.locator('main').focus();
+        await page.evaluate(() => scrollTo(0, 0));
+        await page.screenshot({ path: shots + '/review-compact-ja.png', fullPage: true });
         await inspect().click();
         await expect(page.locator('pre')).toHaveText(f.contents['preferences/writing.md']);
         await expect(checkbox()).toBeEnabled();
@@ -97,10 +102,8 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
         await choose().click();
         await expect(
           page.getByRole('button', { name: 'Approve this copy', exact: true }),
-        ).toBeDisabled();
-        await page
-          .getByRole('button', { name: 'Inspect disclosed file contents', exact: true })
-          .click();
+        ).toHaveCount(0);
+        await page.getByRole('button', { name: 'Check copy contents', exact: true }).click();
         await expect(checkbox()).toBeEnabled();
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -154,9 +157,8 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
           expires_at: Math.floor(Date.now() / 1000) + 720,
         });
         const p = await s.reserve('late-copy-task', d.digest);
-        const name = JSON.parse(p.body).data.plan.task_name;
         await page.goto('https://work.test/work/preparation-review?lang=ja');
-        await page.getByRole('button', { name: new RegExp(name) }).click();
+        await page.locator(`[data-preparation-id="${p.id}"]`).click();
         await inspect().click();
         await checkbox().check();
         const ready = new Promise<void>((r) => (started = r));
@@ -182,7 +184,7 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
           1,
         );
         await page.goto('https://work.test/work/preparation-review?lang=ja');
-        await page.getByRole('button', { name: new RegExp(name) }).click();
+        await page.locator(`[data-preparation-id="${p.id}"]`).click();
         await expect(
           page.getByRole('button', { name: 'コピーの承認を取り消す', exact: true }),
         ).toBeVisible();

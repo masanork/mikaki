@@ -26,6 +26,7 @@ fn main() {
         "work-assistant.ts",
         "webmcp.ts",
         "WorkWebMcp.svelte",
+        "WorkSteps.svelte",
         "work-compose-view.ts",
         "work-copy.ts",
         "work-copy.html",

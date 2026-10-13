@@ -100,13 +100,16 @@ test('owner source selection creates a preparation and opens fresh separate copy
     });
   const link = (lang = 'ja') =>
     page.getByRole('link', {
-      name: lang === 'ja' ? '準備を確認する' : 'Review preparation',
+      name: lang === 'ja' ? 'コピー内容を確認' : 'Review the copy',
       exact: true,
     });
   async function fresh(lang = 'ja', paths = ['preferences/writing.md']) {
     await page.goto('https://work.test/work/source-review?lang=' + lang);
     await expect(code()).toBeVisible();
     await code().check();
+    if (paths.length)
+      for (const summary of await page.locator('.work-reference-source > summary').all())
+        await summary.click();
     for (const path of paths) await file(path).check();
     if (paths.length) {
       await expect(prepare(lang)).toBeDisabled();
@@ -125,6 +128,8 @@ test('owner source selection creates a preparation and opens fresh separate copy
         await expect(prepare()).toBeDisabled();
         assert.equal(await count('work_preparation'), 0);
         await code().check();
+        for (const summary of await page.locator('.work-reference-source > summary').all())
+          await summary.click();
         await file().check();
         await expect(prepare()).toBeDisabled();
         await preview().click();
@@ -140,11 +145,8 @@ test('owner source selection creates a preparation and opens fresh separate copy
         await link().click();
         await expect(page).toHaveURL(new RegExp('/work/preparation-review\\?lang=ja#' + id + '$'));
         const approve = page.getByRole('button', { name: 'このコピーを承認', exact: true });
-        await expect(approve).toBeVisible();
-        await expect(approve).toBeDisabled();
-        await page
-          .getByRole('button', { name: '開示対象のファイル内容を確認', exact: true })
-          .click();
+        await expect(approve).toHaveCount(0);
+        await page.getByRole('button', { name: 'コピー対象を確認', exact: true }).click();
         await expect(page.getByRole('checkbox')).toBeEnabled();
         await page.getByRole('checkbox').check();
         await expect(approve).toBeEnabled();
@@ -168,11 +170,9 @@ test('owner source selection creates a preparation and opens fresh separate copy
       async () => {
         await page.setViewportSize({ width: 375, height: 900 });
         await fresh('en', []);
-        await expect(preview('en')).toBeDisabled();
+        await expect(preview('en')).toHaveCount(0);
         await expect(page.getByText('Code to copy: Synthetic code', { exact: true })).toBeVisible();
-        await expect(
-          page.getByText('Context selected: 0 files, 0 bytes', { exact: true }),
-        ).toBeVisible();
+        await expect(page.getByText('No reference files', { exact: true })).toBeVisible();
         await page.screenshot({ path: shots + 'source-en-mobile.png', fullPage: true });
         await auditAccessibility(page, 'work-preparation-compose-en-mobile');
         assert.equal(
@@ -187,7 +187,7 @@ test('owner source selection creates a preparation and opens fresh separate copy
         await link('en').click();
         await expect(
           page.getByRole('button', { name: 'Approve this copy', exact: true }),
-        ).toBeDisabled();
+        ).toHaveCount(0);
         await expect(page.locator('html')).toHaveAttribute('lang', 'en');
         await expect(page.getByText('SYNTHETIC_UNSELECTED', { exact: false })).toHaveCount(0);
       },
@@ -214,7 +214,7 @@ test('owner source selection creates a preparation and opens fresh separate copy
         );
         await expect(
           page.getByRole('button', { name: 'このコピーを承認', exact: true }),
-        ).toBeDisabled();
+        ).toHaveCount(0);
         assert.equal(await count('work_copy_consent'), 1);
       },
     );

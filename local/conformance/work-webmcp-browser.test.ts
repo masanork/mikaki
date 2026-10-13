@@ -203,10 +203,11 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         assert.equal(await count('work_copy_consent'), 0);
         assert.equal(await count('work_credential_attempt'), 0);
         await expect(
-          page.getByRole('link', { name: 'Review preparation', exact: true }),
+          page.getByRole('link', { name: 'Review the copy', exact: true }),
         ).toHaveAttribute('href', '/work/preparation-review?lang=en#' + preparation);
-        await page.getByRole('link', { name: 'Review preparation', exact: true }).click();
-        await expect(page.locator('[data-work-action="approve_copy"]')).toBeVisible();
+        await page.getByRole('link', { name: 'Review the copy', exact: true }).click();
+        await expect(page.locator('[data-work-action="inspect_copy"]')).toBeVisible();
+        await expect(page.locator('[data-work-action="approve_copy"]')).toHaveCount(0);
         assert.deepEqual(await api.names(), []);
         await page.locator('#work-assistant-enabled').check();
         await expect.poll(api.names).toContain('mikaki_review_work_action');
@@ -234,7 +235,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
           { status: 'review_required', action: 'approve_copy' },
         );
         assert.equal(await count('work_copy_consent'), 0);
-        await expect(page.locator('[data-work-action="approve_copy"]')).toBeDisabled();
+        await expect(page.locator('[data-work-action="approve_copy"]')).toHaveCount(0);
         await expect(page.locator('[data-work-action="inspect_copy"]')).toBeFocused();
         assert.equal((await api.call('mikaki_inspect_work_selection')).ok, true);
         await page.locator('[data-work-confirmation="approve_copy"]').check();
