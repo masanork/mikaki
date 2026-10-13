@@ -188,6 +188,18 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
           },
         },
       },
+      ...[false, true].map((changed) => ({
+        config: {
+          ...config,
+          name: changed ? 'identity-age-batch-changed' : 'identity-age-batch',
+          vars: {
+            ...config.vars,
+            IDENTITY_AGE_BATCH_ENABLED: 'true',
+            IDENTITY_ISSUANCE_CLAIMS: JSON.stringify([changed ? 'age_over_20' : 'age_over_18']),
+            IDENTITY_CREDENTIAL_ENCRYPTION_JWK: JSON.stringify(issuerEncryptionJwk),
+          },
+        },
+      })),
       {
         config: {
           ...config,
@@ -486,6 +498,307 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         issuer_kid: 'document-issuer',
       });
       await verifyAgePresentations(vectors, ['age_over_18']);
+    }
+    const batchWorker = harness.getWorker('identity-age-batch');
+    const batchMetadata = (await (
+      await batchWorker.fetch(`${root}/.well-known/openid-credential-issuer/identity/issuer`)
+    ).json()) as any;
+    assert.deepEqual(batchMetadata.mikaki_age_batch_intake, { batch_size: 8 });
+    assert.equal(
+      batchMetadata.batch_credential_issuance,
+      undefined,
+      'intake extension does not advertise HAIP batch support',
+    );
+    const batchKeys = await Promise.all(
+      Array.from({ length: 8 }, () => generateKeyPair('ES256', { extractable: true })),
+    );
+    const batchHolders = await Promise.all(batchKeys.map((k) => exportJWK(k.publicKey)));
+    for (const target of [worker, ageOnly, harness.getWorker('identity-haip')]) {
+      assert.equal(
+        (
+          await post(
+            '/identity/intake',
+            {
+              evidence: f.makeMnc(),
+              holder_jwks: batchHolders.slice(0, 2),
+              credential_configuration_id: 'linked_document',
+            },
+            {},
+            target,
+          )
+        ).status,
+        400,
+      );
+    }
+    for (const keys of [
+      [],
+      batchHolders.slice(0, 1),
+      [...batchHolders, batchHolders[0]],
+      [batchHolders[0], batchHolders[0]],
+    ]) {
+      assert.equal(
+        (
+          await post(
+            '/identity/intake',
+            {
+              evidence: f.makeMnc(),
+              holder_jwks: keys,
+              credential_configuration_id: 'linked_document',
+            },
+            {},
+            batchWorker,
+          )
+        ).status,
+        400,
+      );
+    }
+    for (const decision of ['deny', 'link']) {
+      const response = await post(
+        '/identity/intake',
+        {
+          evidence: f.makeMnc(),
+          holder_jwks: batchHolders.slice(0, 2),
+          credential_configuration_id: 'linked_document',
+        },
+        {},
+        batchWorker,
+      );
+      assert.equal(response.status, 200);
+      const tx = (await response.json()) as any;
+      await approve(tx, decision, batchWorker);
+      const polled = await post(
+        '/identity/poll',
+        { transaction_id: tx.transaction_id, poll_secret: tx.poll_secret },
+        {},
+        batchWorker,
+      );
+      assert.equal(
+        polled.status,
+        decision === 'deny' ? 403 : 404,
+        'denial/link-only approval grants no batch issuance',
+      );
+    }
+    for (const configuration of ['linked_document', 'linked_document_mdoc']) {
+      for (const size of [2, 8]) {
+        const intake = await post(
+          '/identity/intake',
+          {
+            evidence: size === 2 ? f.makeMnc() : f.makeLicense(),
+            holder_jwks: batchHolders.slice(0, size),
+            credential_configuration_id: configuration,
+          },
+          {},
+          batchWorker,
+        );
+        assert.equal(intake.status, 200, await intake.clone().text());
+        const started = (await intake.json()) as any;
+        assert.equal(started.credential_count, size);
+        assert.deepEqual(
+          started.holder_thumbprints,
+          await Promise.all(batchHolders.slice(0, size).map((key) => calculateJwkThumbprint(key))),
+        );
+        const page = await batchWorker.fetch(started.approval_url, {
+          headers: { Cookie: '__Host-op-sso=owner-cookie' },
+        });
+        assert.equal(page.status, 200);
+        const html = await page.text();
+        assert.ok(
+          html.includes(`証明書を${size}件`) &&
+            html.includes(configuration === 'linked_document' ? 'SD-JWT' : 'mdoc') &&
+            html.includes('18歳以上である'),
+        );
+        for (const thumbprint of started.holder_thumbprints) assert.ok(html.includes(thumbprint));
+        // Withdrawal or a profile change invalidates the exact batch grant, even before approval.
+        assert.equal(
+          (
+            await harness
+              .getWorker('identity-age-batch-changed')
+              .fetch(started.approval_url, { headers: { Cookie: '__Host-op-sso=owner-cookie' } })
+          ).status,
+          403,
+        );
+        // The failed request replaced the CSRF token; read a fresh review before submitting.
+        await approve(started, 'approve', batchWorker);
+        const offered = await post(
+          '/identity/poll',
+          { transaction_id: started.transaction_id, poll_secret: started.poll_secret },
+          {},
+          batchWorker,
+        );
+        const offer = ((await offered.json()) as any).credential_offer;
+        const token = await batchWorker.fetch(`${issuer}/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+            'pre-authorized_code':
+              offer.grants['urn:ietf:params:oauth:grant-type:pre-authorized_code'][
+                'pre-authorized_code'
+              ],
+          }).toString(),
+        });
+        assert.equal(token.status, 200);
+        const access = ((await token.json()) as any).access_token;
+        const nonce = (
+          (await (await batchWorker.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
+        ).c_nonce;
+        const proofs = await Promise.all(
+          batchKeys.slice(0, size).map((k, i) =>
+            new SignJWT({ aud: issuer, iat: Math.floor(Date.now() / 1000), nonce })
+              .setProtectedHeader({
+                typ: 'openid4vci-proof+jwt',
+                alg: 'ES256',
+                jwk: batchHolders[i],
+              })
+              .sign(k.privateKey),
+          ),
+        );
+        const wrongNonce = await new SignJWT({
+          aud: issuer,
+          iat: Math.floor(Date.now() / 1000),
+          nonce: secret(),
+        })
+          .setProtectedHeader({
+            typ: 'openid4vci-proof+jwt',
+            alg: 'ES256',
+            jwk: batchHolders[size - 1],
+          })
+          .sign(batchKeys[size - 1].privateKey);
+        const request = { credential_configuration_id: configuration, proofs: { jwt: proofs } };
+        const issue = (body = request, target = batchWorker) =>
+          post('/identity/issuer/credential', body, { Authorization: `Bearer ${access}` }, target);
+        for (const bad of [
+          { ...request, proofs: { jwt: [...proofs.slice(0, -1), wrongNonce] } },
+          { ...request, proofs: { jwt: [...proofs.slice(0, -1), 'invalid'] } },
+          { ...request, proofs: { jwt: [...proofs, proofs[0]] } },
+          { ...request, proofs: { jwt: proofs.slice(0, -1) } },
+          { ...request, proofs: { jwt: [proofs[1], proofs[0], ...proofs.slice(2)] } },
+          {
+            ...request,
+            credential_configuration_id:
+              configuration === 'linked_document' ? 'linked_document_mdoc' : 'linked_document',
+          },
+        ]) {
+          assert.equal((await issue(bad)).status, 400);
+        }
+        assert.equal(
+          (await issue(request, ageOnly)).status,
+          400,
+          'flag withdrawal blocks issuance',
+        );
+        assert.equal(
+          (await issue(request, harness.getWorker('identity-age-batch-changed'))).status,
+          400,
+          'changed attributes block issuance',
+        );
+        assert.equal(
+          (
+            (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
+              .bind(hash(nonce))
+              .first()) as any
+          ).used,
+          0,
+          'validation failure consumes no grant or nonce',
+        );
+        let received: any;
+        if (size === 8) {
+          const recipient = await generateKeyPair('ECDH-ES', { extractable: true });
+          const jwk = {
+            ...(await exportJWK(recipient.publicKey)),
+            kid: 'batch-response',
+            alg: 'ECDH-ES',
+            use: 'enc',
+          };
+          const requestJwk = batchMetadata.credential_request_encryption.jwks.keys[0];
+          const wire = await new CompactEncrypt(
+            Buffer.from(
+              JSON.stringify({
+                ...request,
+                credential_response_encryption: { jwk, enc: 'A256GCM' },
+              }),
+            ),
+          )
+            .setProtectedHeader({
+              alg: 'ECDH-ES',
+              enc: 'A256GCM',
+              kid: requestJwk.kid,
+              cty: 'json',
+            })
+            .encrypt(await importJWK(requestJwk, 'ECDH-ES'));
+          const result = await batchWorker.fetch(`${issuer}/credential`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/jwt', Authorization: `Bearer ${access}` },
+            body: wire,
+          });
+          assert.equal(result.status, 200, await result.clone().text());
+          received = JSON.parse(
+            Buffer.from(
+              (await compactDecrypt(await result.text(), recipient.privateKey)).plaintext,
+            ).toString(),
+          );
+        } else {
+          const results = await Promise.all([issue(), issue()]);
+          assert.equal(
+            results.filter((r) => r.status === 200).length,
+            1,
+            'one atomic batch wins concurrent issuance',
+          );
+          assert.ok(results.every((r) => [200, 401, 409].includes(r.status)));
+          received = await results.find((r) => r.status === 200)!.json();
+        }
+        assert.equal(received.credentials.length, size);
+        const salts = new Set<string>();
+        for (let i = 0; i < size; i++) {
+          const credential = received.credentials[i].credential;
+          if (configuration === 'linked_document') {
+            const { payload } = await jwtVerify(credential.split('~')[0], op.publicKey, { issuer });
+            assert.deepEqual((payload.cnf as any).jwk, batchHolders[i]);
+            assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 300);
+            assert.equal(
+              credential.split('~').slice(1).filter(Boolean).length,
+              1,
+              'the batch contains only its approved age claim',
+            );
+            const disclosure = JSON.parse(
+              Buffer.from(credential.split('~')[1], 'base64url').toString(),
+            );
+            assert.equal(disclosure[1], 'age_over_18');
+            assert.equal(disclosure[2], true);
+            salts.add(disclosure[0]);
+          } else {
+            const verified = verifyMdocIssuer(
+              credential,
+              batchHolders[i],
+              await exportJWK(op.publicKey),
+            );
+            assert.deepEqual(verified.values, { age_over_18: true });
+          }
+        }
+        if (configuration === 'linked_document')
+          assert.equal(salts.size, size, 'each credential has independent disclosure entropy');
+        assert.equal(new Set(received.credentials.map((c: any) => c.credential)).size, size);
+        assert.equal(
+          (
+            (await DB.prepare('SELECT state,access_hash FROM identity_transaction WHERE tx_id=?')
+              .bind(started.transaction_id)
+              .first()) as any
+          ).state,
+          'issued',
+        );
+        assert.equal(
+          (
+            (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
+              .bind(hash(nonce))
+              .first()) as any
+          ).used,
+          1,
+        );
+        assert.equal(
+          (await issue()).status,
+          401,
+          'no refill or second batch after successful/unknown delivery',
+        );
+      }
     }
     // A separate wallet owns its own private key: the original reading app key is never exported.
     const external = harness.getWorker('identity-wallet');

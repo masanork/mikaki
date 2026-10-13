@@ -244,6 +244,16 @@
                 <option value="linked_document">SD-JWT</option>
                 <option value="linked_document_mdoc">mdoc（発行者証明書の設定が必要）</option>
               </select>
+              <label for="identity-credential-count">受け取る件数</label>
+              <select id="identity-credential-count">
+                <option value="1">1件</option>
+                <option value="2">2件</option>
+                <option value="4">4件</option>
+                <option value="8">8件</option>
+              </select>
+              <p class="help">
+                複数件の受取は、発行者が有効にした年齢専用の実験機能です。各証明書に別の端末鍵を使い、承認した件数をまとめて保存します。保存枠は合計8件、証明書は最長5分で失効します。
+              </p>
               <button id="identity-link" class="secondary" type="button">
                 サーバーで検証して紐付ける
               </button>

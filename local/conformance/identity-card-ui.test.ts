@@ -200,6 +200,88 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
         await page.close();
       }
     });
+    for (const format of ['dc+sd-jwt', 'mso_mdoc']) {
+      await t.test(
+        `eight age credentials require an explicit selection and show all holder keys (${format})`,
+        async () => {
+          const { page, errors } = await createNativeUiPage(browser, server.url, {
+            identityReader: true,
+            identityFormat: format,
+          });
+          try {
+            await page.locator('#open-settings').click();
+            await page.getByRole('link', { name: '診断' }).click();
+            await page.locator('#identity-pin').fill('1234');
+            await page.locator('#identity-read').click();
+            await page.locator('#identity-preview').waitFor({ state: 'visible' });
+            assert.equal(await page.locator('#identity-credential-count').inputValue(), '1');
+            await page
+              .locator('#identity-credential-format')
+              .selectOption(format === 'mso_mdoc' ? 'linked_document_mdoc' : 'linked_document');
+            await page.locator('#identity-credential-count').selectOption('8');
+            await page.locator('#identity-link').click();
+            await page.waitForFunction(() =>
+              document
+                .querySelector('#identity-holder')
+                ?.textContent?.includes('synthetic-holder-key-8'),
+            );
+            const args = await page.evaluate(
+              () =>
+                window.__nativeUiTest.arguments
+                  .slice()
+                  .reverse()
+                  .find((c) => c.command === 'start_identity_link')?.args,
+            );
+            assert.deepEqual(args, {
+              configuration: format === 'mso_mdoc' ? 'linked_document_mdoc' : 'linked_document',
+              credentialCount: 8,
+            });
+            assert.match((await page.locator('#identity-holder').textContent()) ?? '', /8件/);
+            for (const width of [320, 375, 480]) {
+              await page.setViewportSize({ width, height: 812 });
+              assert.equal(
+                await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+                false,
+              );
+            }
+            await page.locator('#identity-receive').click();
+            await page.waitForFunction(() =>
+              document
+                .querySelector('#identity-issuance-status')
+                ?.textContent?.includes('8件受け取り、全件の署名'),
+            );
+            assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
+            assert.deepEqual(errors, []);
+          } finally {
+            await page.close();
+          }
+        },
+      );
+    }
+    await t.test('unavailable age batch explains how to choose a single receipt', async () => {
+      const { page, errors } = await createNativeUiPage(browser, server.url, {
+        identityReader: true,
+      });
+      try {
+        await page.locator('#open-settings').click();
+        await page.getByRole('link', { name: '診断' }).click();
+        await page.locator('#identity-pin').fill('1234');
+        await page.locator('#identity-read').click();
+        await page.locator('#identity-preview').waitFor({ state: 'visible' });
+        await page.locator('#identity-credential-count').selectOption('2');
+        await page.evaluate(() => {
+          window.__nativeUiTest.failures.start_identity_link = 'age_batch_unavailable';
+        });
+        await page.locator('#identity-link').click();
+        await page.waitForFunction(() =>
+          document.querySelector('#identity-issuance-status')?.textContent?.includes('1件を選んで'),
+        );
+        assert.equal(await page.locator('#identity-receive').isVisible(), false);
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
+    });
     await t.test('cancelled link cannot restore an approval or receipt UI', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,

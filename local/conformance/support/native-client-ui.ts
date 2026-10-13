@@ -175,11 +175,24 @@ export async function createNativeUiPage(
           };
           break;
         case 'start_identity_link':
-          result = { holder_thumbprint: 'synthetic-holder-key', expires_in: 600 };
+          result = {
+            holder_thumbprint: 'synthetic-holder-key',
+            holder_thumbprints: Array.from(
+              { length: Number(args?.credentialCount ?? 1) },
+              (_, i) => `synthetic-holder-key-${i + 1}`,
+            ),
+            credential_count: args?.credentialCount ?? 1,
+            expires_in: 600,
+          };
           break;
         case 'receive_identity_credential':
           result = {
             state: 'received',
+            credential_count:
+              mock.arguments
+                .slice()
+                .reverse()
+                .find((c) => c.command === 'start_identity_link')?.args?.credentialCount ?? 1,
             format: initial.identityFormat ?? 'dc+sd-jwt',
             expires_at: Math.floor(Date.now() / 1000) + 300,
           };
