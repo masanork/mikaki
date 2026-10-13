@@ -185,6 +185,44 @@ qualifies companion cold admission, not OP Wasm or any live owner/provider.
 
 ## Validation
 
+### Closed companion configuration inputs
+
+After reviewing a binding packet, materialize its thirteen companion Worker
+configurations into a new exclusive child:
+
+```sh
+npm run prepare:work-copy-configs -- BINDING_PACKET BINDING_MANIFEST_SHA256 local/generated/work-copy-configs
+npm run verify:work-copy-configs -- CONFIG_PACKET CONFIG_MANIFEST_SHA256
+```
+
+The child retains the full binding/runtime packet. Each `configs/ID/wrangler.json`
+points only to those frozen bundled bytes with bundling and additional-module
+discovery disabled. All productive flags remain false; routes, cron triggers,
+workers.dev and previews remain closed. Existing checkpoint and OP configurations
+are not emitted. `deployment-inputs.json` records the required OP changes against
+its expected existing version; applying them still requires preserving the
+complete existing OP configuration, services, routes, resources and secrets.
+No shared checkpoint namespace is allocated or bootstrapped by this preparer.
+
+Workflow, Artifacts namespace and private R2 bindings follow the canonical graph.
+The host uses its own service name as the image repository and a digest-pinned
+Cloudflare Registry reference, with the `durable_object` scheduling policy and
+the SQLite `GitHostContainer` export. SSH is disabled. See [named Container
+images](https://developers.cloudflare.com/containers/guides/image-management/).
+Local remote resource access is disabled. Configuration verification re-derives
+every field and refuses additional capabilities, mutable images, different
+entry bytes, ingress, execution or rewritten checkpoint/OP claims even after
+member hashes are rewritten. The inherited inventory bounds still apply.
+
+The image digest must identify the provider's registry manifest. A Docker image
+ID or build output alone is not a verified Cloudflare Registry observation.
+This child includes no sealed source packs, image layers, runtime secrets or
+owner authorization, and performs no provider operation. Existing target/custody
+claims and all live copy/readback/closure prerequisites remain unresolved.
+The binding test suite runs thirteen dry runs with the pinned Wrangler, confirms
+the output entry bytes are unchanged, and generates host binding types. Cloudflare
+API access is directed to a closed loopback endpoint during those tests.
+
 The packet test restores real Git objects independently and proves history
 exclusion. The product test runs the actual Rust/Wasm, D1 and SQLite checkpoint:
 registration/retry, owner projection, public code-only composition, stale and
