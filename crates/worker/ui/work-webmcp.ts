@@ -1,6 +1,7 @@
 /** Browser adapter over the same owner-screen actions. Projections grant no authority. */
 import { WebMcpFailure, type WebMcpTool } from './webmcp.ts';
 import type { SourceRead } from './work-source-view.ts';
+import type { WorkDisclosureRecord } from './work-preparation-view.ts';
 
 export type WorkAssistantAction =
   | 'refresh'
@@ -52,6 +53,7 @@ export type WorkWebMcpHost = {
     signal: AbortSignal,
   ): Promise<void>;
   contents(): SourceRead[];
+  disclosure?(signal: AbortSignal): Promise<WorkDisclosureRecord>;
 };
 const reviews: WorkReviewAction[] = ['approve_copy', 'withdraw_copy', 'start_copy', 'stop_copy'];
 function input(value: unknown, keys: string[]): Record<string, unknown> {
@@ -347,7 +349,27 @@ export const createSourceWebMcpTools: WorkToolFactory = (host, permission) => {
 };
 export const createPreparationWebMcpTools: WorkToolFactory = (host, permission) => {
   const a = adapter(host, permission);
-  return [...commonTools(a), ...inspectionTools(a), ...reviewTools(a)];
+  return [
+    ...commonTools(a),
+    ...inspectionTools(a),
+    ...reviewTools(a),
+    a.tool(
+      'mikaki_read_work_disclosure',
+      'Read the current selected Native disclosure record, also available as a JSON download in Integrity records. Contains metadata, not file contents, credentials or copy approval. Rechecks the session, selection, source revisions and expiry.',
+      schema({}),
+      async (args, { signal }) => {
+        input(args, []);
+        return a.guarded(signal, async () => {
+          if (!host.disclosure) throw new WebMcpFailure('unavailable');
+          const record = structuredClone(await host.disclosure(signal));
+          if (new TextEncoder().encode(JSON.stringify(record)).length > 65536)
+            throw new WebMcpFailure('result_limit');
+          return record;
+        });
+      },
+      true,
+    ),
+  ];
 };
 export const createCopyWebMcpTools: WorkToolFactory = (host, permission) => {
   const a = adapter(host, permission);

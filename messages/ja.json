@@ -640,6 +640,8 @@
   "preparation_delegation": "実行への委任",
   "preparation_delegation_body": "この画面では準備の確認のみ行えます。実行には、目的・完了条件・許可する操作を別途確認して委任する必要があります。",
   "preparation_integrity": "照合用の記録",
+  "preparation_record_save": "開示記録を保存",
+  "preparation_record_scope": "参照元・選択範囲・期限の記録を JSON ファイルに保存します。ファイルの本文やログイン情報、コピーの承認は含みません。",
   "preparation_identifier": "準備の識別子",
   "preparation_manifest": "開示内容のダイジェスト",
   "preparation_checked": "最終確認日時",

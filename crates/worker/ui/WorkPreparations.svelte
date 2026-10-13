@@ -10,6 +10,7 @@
     type WorkPreparation,
     type PreparationReview,
     type CopyReview,
+    type WorkDisclosureRecord,
   } from './work-preparation-view.js';
   import WorkWebMcp from './WorkWebMcp.svelte';
   import { WebMcpFailure } from './webmcp.ts';
@@ -187,6 +188,54 @@
       if (current === generation) busy = false;
     }
   }
+  async function readDisclosure(signal = controller.signal): Promise<WorkDisclosureRecord> {
+    if (!review || busy || !review.currentSources) throw new SourceError('stale');
+    const current = generation,
+      selected = review;
+    busy = true;
+    try {
+      const execution = AbortSignal.any([controller.signal, signal]);
+      await scope.verify();
+      const confirmed = await port.review(selected.preparation.id, execution);
+      await scope.verify();
+      execution.throwIfAborted();
+      scope.assert();
+      if (
+        current !== generation ||
+        !confirmed.currentSources ||
+        JSON.stringify(confirmed.preparation) !== JSON.stringify(selected.preparation) ||
+        JSON.stringify(confirmed.disclosure) !== JSON.stringify(selected.disclosure) ||
+        confirmed.preparation.expires_at <= Date.now() / 1000
+      )
+        throw new SourceError('stale');
+      return {
+        kind: 'disclosure',
+        digest: confirmed.preparation.disclosure_digest,
+        manifest: confirmed.disclosure,
+        current_sources: true,
+      };
+    } finally {
+      if (current === generation) busy = false;
+    }
+  }
+  async function downloadDisclosure() {
+    const current = generation;
+    try {
+      const record = await readDisclosure();
+      scope.assert();
+      if (current !== generation) throw new SourceError('stale');
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(record, null, 2) + '\n'], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `mikaki-work-disclosure-${record.digest}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      if (current === generation) failed(e);
+    }
+  }
   const assistant: WorkWebMcpHost = {
     page: 'preparations',
     snapshot: () => ({
@@ -224,6 +273,7 @@
     },
     visible: () => document.visibilityState === 'visible',
     contents: () => reads,
+    disclosure: readDisclosure,
     available: (action) =>
       !busy &&
       (action === 'refresh' ||
@@ -466,6 +516,12 @@
       <p>{m.preparation_delegation_body()}</p>
       <details>
         <summary>{m.preparation_integrity()}</summary>
+        <p>{m.preparation_record_scope()}</p>
+        <button
+          type="button"
+          disabled={busy || !review.currentSources || p.expires_at <= now}
+          onclick={() => downloadDisclosure()}>{m.preparation_record_save()}</button
+        >
         <dl>
           <div>
             <dt>{m.preparation_identifier()}</dt>

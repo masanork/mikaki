@@ -1,7 +1,7 @@
 /** Native Chromium WebMCP over actual Work UI, Native/D1/checkpoint and local Git.
  * Identity/provider mappings are synthetic; no remote resource is touched. */
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { chromium, expect, type BrowserContext, type Page } from '@playwright/test';
 import { createSourceFixture } from './support/work-source-fixture.ts';
@@ -91,6 +91,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('dialog', (dialog) => void dialog.accept());
   let held = false,
+    heldDisclosure = false,
     started: (() => void) | undefined,
     release: (() => void) | undefined;
   function releaseRead() {
@@ -107,8 +108,12 @@ test('source and consent screens share WebMCP actions while retaining exact sele
       body: request.postData() ?? undefined,
     });
     const body = Buffer.from(await response.arrayBuffer());
-    if (held && path === '/work/sources/read') {
+    if (
+      (held && path === '/work/sources/read') ||
+      (heldDisclosure && path.startsWith('/work/disclosures/'))
+    ) {
       held = false;
+      heldDisclosure = false;
       started?.();
       await new Promise<void>((resolve) => {
         release = resolve;
@@ -205,6 +210,25 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         assert.deepEqual(await api.names(), []);
         await page.locator('#work-assistant-enabled').check();
         await expect.poll(api.names).toContain('mikaki_review_work_action');
+        await expect.poll(api.names).toContain('mikaki_read_work_disclosure');
+        const disclosure = await api.call('mikaki_read_work_disclosure');
+        assert.equal(disclosure.ok, true);
+        assert.equal(disclosure.result.kind, 'disclosure');
+        assert.equal(disclosure.result.current_sources, true);
+        assert(!JSON.stringify(disclosure).includes('結論'));
+        assert(!JSON.stringify(disclosure).includes(f.first.cookie));
+        await page.getByText('Integrity records', { exact: true }).click();
+        const downloadEvent = page.waitForEvent('download');
+        await page.getByRole('button', { name: 'Save disclosure record', exact: true }).click();
+        const download = await downloadEvent;
+        assert.equal(await download.failure(), null);
+        assert.deepEqual(
+          JSON.parse(await readFile((await download.path())!, 'utf8')),
+          disclosure.result,
+        );
+        assert.equal(await count('work_copy_consent'), 0);
+        assert.equal(await count('work_credential_attempt'), 0);
+        await page.screenshot({ path: shots + '/disclosure-record-en.png', fullPage: true });
         assert.deepEqual(
           (await api.call('mikaki_review_work_action', { action: 'approve_copy' })).result,
           { status: 'review_required', action: 'approve_copy' },
@@ -226,6 +250,25 @@ test('source and consent screens share WebMCP actions while retaining exact sele
           await f.DB.prepare('SELECT active FROM work_copy_consent LIMIT 1').first('active'),
           1,
         );
+      },
+    );
+    await t.test(
+      'hiding the review refuses a late disclosure record without another consent or effect',
+      async () => {
+        const waiting = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        heldDisclosure = true;
+        const pending = api.call('mikaki_read_work_disclosure');
+        await waiting;
+        await page.evaluate(() => (window as unknown as { hideWorkTools(): void }).hideWorkTools());
+        releaseRead();
+        const result = await pending;
+        assert.equal(result.ok, false);
+        assert.equal('result' in result, false);
+        await expect.poll(api.names).toHaveLength(0);
+        assert.equal(await count('work_copy_consent'), 1);
+        assert.equal(await count('work_credential_attempt'), 0);
       },
     );
     await t.test(

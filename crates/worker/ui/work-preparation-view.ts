@@ -108,6 +108,12 @@ export const disclosureSchema = z
     }
   });
 export type WorkDisclosure = z.infer<typeof disclosureSchema>;
+export type WorkDisclosureRecord = {
+  kind: 'disclosure';
+  digest: string;
+  manifest: WorkDisclosure;
+  current_sources: true;
+};
 const envelope = <S extends z.ZodType>(record: S) =>
   z.strictObject({ format_version: z.literal(1), checked_at: time, record });
 const copySchema = z.strictObject({
