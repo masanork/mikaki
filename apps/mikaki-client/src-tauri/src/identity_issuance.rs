@@ -766,10 +766,47 @@ pub struct PresentationReview {
     verifier_name: String,
     response_uri: String,
     values: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<Value>,
     retained_fields: Vec<String>,
     expires_at: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     credentials: Vec<inventory::CredentialReview>,
+}
+// Only authenticated provenance, never an undisclosed attribute value, enters consent UI.
+fn presentation_source(receipt: &Receipt, at: u64) -> Result<Option<Value>, String> {
+    let (document_type, evidence) = if receipt.format == "mso_mdoc" {
+        let validated = mdoc::verify_receipt(
+            &receipt.credential,
+            &receipt.issuer_key,
+            &receipt.key.public()?,
+            at,
+        )
+        .map_err(str::to_string)?;
+        let Some(evidence) = validated.evidence else {
+            return Ok(None);
+        };
+        (evidence["document_type"].clone(), evidence)
+    } else {
+        let validated = issuance::verify_receipt(
+            &receipt.credential,
+            &receipt.issuer_key,
+            &receipt.issuer_kid,
+            &receipt.key.public()?,
+            ISSUER,
+            at,
+        )
+        .map_err(str::to_string)?;
+        (
+            validated["document_type"].clone(),
+            validated["evidence"].clone(),
+        )
+    };
+    Ok(Some(
+        json!({"document_type":document_type,"predicate_source":evidence["predicate_source"],
+        "assurance":evidence["assurance"],"verified_at":evidence["verified_at"],
+        "live_possession_verified":evidence["live_possession_verified"],"government_credential":evidence["government_credential"]}),
+    ))
 }
 #[tauri::command]
 pub fn review_identity_presentation(
@@ -844,6 +881,7 @@ fn prepare_checked_presentation(
         verifier_name: checked.verifier_name.clone(),
         response_uri: checked.response_uri().to_string(),
         values,
+        source: presentation_source(receipt, now()?)?,
         retained_fields: checked.retained_fields.clone(),
         expires_at: checked.expires_at().min(receipt.expires_at),
         credentials: Vec::new(),

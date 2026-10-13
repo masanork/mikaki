@@ -2,6 +2,8 @@
 
 The Android Tauri client reads My Number input-support four attributes and traditional IC driving licences. It can submit the signed evidence, obtain account-owner approval in the system browser, and receive a first-party **Mikaki linked-document attribute credential** through OID4VCI 1.0 (`dc+sd-jwt` or `mso_mdoc`). This is implemented locally, disabled for production by default, and not yet qualified with physical cards. It is not a government-issued PID or mobile driving licence.
 
+The [age-predicate profile](identity-age-predicates.md) can issue and present only `age_over_18`/`age_over_20`, with raw-attribute omission at issuance, separate predicate consent and independent host verifier regressions. Its static-assurance and DF31 real-intake gates are explicit; OP/ASC and unlinkable batch issuance remain deferred.
+
 **Source status, 2026-10-05:** PR #105 merged on 2026-10-04. Main includes Identity migrations `0036`–`0044` and the subsequent GC/resource migrations `0045`–`0046`. The preparation and integration checkpoints below record pre-merge work. They do not establish the current production migration ledger, feature activation or physical-device qualification; see [current source and deployment evidence](status.md).
 
 ## Latest selected HAIP run — 2026-10-09

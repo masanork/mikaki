@@ -430,16 +430,13 @@ pub fn parse_device_request(
     let claims = spaces[0]
         .1
         .as_map()
-        .filter(|m| !m.is_empty() && m.len() <= 5)
+        .filter(|m| !m.is_empty() && m.len() <= 7)
         .ok_or("unsupported_device_request")?;
     let mut fields = Vec::new();
     let mut retained_fields = Vec::new();
     for (name, retain) in claims {
         let name = name.as_text().ok_or("unsupported_device_request")?;
-        if !matches!(
-            name,
-            "name" | "address" | "birthdate" | "gender" | "document_expiry_date"
-        ) {
+        if !crate::claim_profile::supported(name) {
             return Err("unsupported_device_request");
         }
         let C::Bool(retain) = retain else {

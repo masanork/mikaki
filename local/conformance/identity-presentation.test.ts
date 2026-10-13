@@ -6,6 +6,11 @@ import { importJWK, jwtVerify } from 'jose';
 import type { Cbor } from './support/mdoc-test.ts';
 import { setTimeout } from 'node:timers/promises';
 import { withNativePresentationHttp } from './support/native-presentation-http.ts';
+import { agePresentationVectors, verifyAgePresentations } from './support/age-presentation.ts';
+
+test('independent verifier accepts only age_over_18 from both age-only formats and rejects birthdate substitution', async () => {
+  await verifyAgePresentations(agePresentationVectors());
+});
 
 test('native HTTPS retrieval survives wallet work beyond the server keep-alive deadline', async () => {
   await withNativePresentationHttp(async (http) => {

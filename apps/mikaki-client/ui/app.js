@@ -391,8 +391,7 @@ function renderIdentityReader(view) {
     if (cardBusy || !$('#identity-preview').hidden || $('#identity-pin').value)
       cancelIdentityRead();
   }
-  $('#identity-read').disabled =
-    cardBusy || issuanceBusy || !!pending || walletActive;
+  $('#identity-read').disabled = cardBusy || issuanceBusy || !!pending || walletActive;
   $('#identity-pin').disabled = cardBusy;
   $('#identity-pin2').disabled = cardBusy;
   $('#identity-type').disabled = cardBusy;
@@ -546,8 +545,7 @@ function renderWalletIssuance(view) {
   if (walletActive && !document.hidden)
     walletTimer = setTimeout(() => void refreshWalletIssuance(), 5000);
   $('#identity-wallet-issuance').hidden = !walletAvailable;
-  $('#identity-wallet-start').disabled =
-    walletActive || issuanceBusy || cardBusy || !!pending;
+  $('#identity-wallet-start').disabled = walletActive || issuanceBusy || cardBusy || !!pending;
   $('#identity-wallet-format').disabled = walletActive || issuanceBusy;
   $('#identity-wallet-receive').hidden =
     !walletActive || !['pending', 'ready'].includes(walletPhase);
@@ -805,6 +803,25 @@ $('#identity-wallet-restore').addEventListener('click', async () => {
     render();
   }
 });
+function appendPredicateSource(target, credential) {
+  if (!Object.keys(credential.values).some((key) => key === 'age_over_18' || key === 'age_over_20'))
+    return;
+  const term = document.createElement('dt');
+  term.textContent = '確認結果の根拠';
+  const description = document.createElement('dd');
+  const documentType = credential.source?.document_type;
+  const label =
+    documentType === 'my_number_card'
+      ? 'マイナンバーカード（券面入力補助AP）'
+      : documentType === 'driving_license'
+        ? 'IC運転免許証'
+        : '紐付けた文書';
+  const disclosure = Object.hasOwn(credential.values, 'birthdate')
+    ? '生年月日の値も上記のとおり送信します。'
+    : '生年月日の値は送信しません。';
+  description.textContent = `${label}の署名済み生年月日から発行時に計算。${disclosure}カードの現在の所持は確認していません。`;
+  target.append(term, description);
+}
 async function reviewPresentation(command, args) {
   if (!invoke || issuanceBusy || cardBusy) return;
   clearPresentationReview();
@@ -827,12 +844,14 @@ async function reviewPresentation(command, args) {
       name: '氏名',
       address: '住所',
       birthdate: '生年月日',
+      age_over_18: '18歳以上である',
+      age_over_20: '20歳以上である',
       gender: '性別（カード上の符号）',
       document_expiry_date: '身分証の有効期限',
     };
     const credentials = review.credentials?.length
       ? review.credentials
-      : [{ values: review.values, retained_fields: review.retained_fields }];
+      : [{ values: review.values, source: review.source, retained_fields: review.retained_fields }];
     const appendValues = (target, credential) => {
       for (const [key, value] of Object.entries(credential.values)) {
         const term = document.createElement('dt');
@@ -843,9 +862,14 @@ async function reviewPresentation(command, args) {
         description.textContent =
           typeof value === 'object' && value !== null
             ? (value.formatted ?? JSON.stringify(value))
-            : String(value);
+            : typeof value === 'boolean'
+              ? value
+                ? 'はい'
+                : 'いいえ'
+              : String(value);
         target.append(term, description);
       }
+      appendPredicateSource(target, credential);
     };
     for (const [index, credential] of credentials.entries()) {
       if (review.credentials?.length) {
@@ -1066,6 +1090,8 @@ $('#identity-proximity-start').addEventListener('click', async () => {
       name: '氏名',
       address: '住所',
       birthdate: '生年月日',
+      age_over_18: '18歳以上である',
+      age_over_20: '20歳以上である',
       gender: '性別（カード上の符号）',
       document_expiry_date: '身分証の有効期限',
     };
@@ -1078,9 +1104,14 @@ $('#identity-proximity-start').addEventListener('click', async () => {
       description.textContent =
         typeof value === 'object' && value !== null
           ? (value.formatted ?? JSON.stringify(value))
-          : String(value);
+          : typeof value === 'boolean'
+            ? value
+              ? 'はい'
+              : 'いいえ'
+            : String(value);
       $('#identity-proximity-values').append(term, description);
     }
+    appendPredicateSource($('#identity-proximity-values'), review);
     $('#identity-proximity-consent').hidden = false;
     $('#identity-proximity-status').textContent =
       (engagement === 'qr_nfc' || engagement === 'nfc_negotiated_data'

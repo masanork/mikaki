@@ -220,16 +220,17 @@ pub fn parse_preview(raw: &[u8]) -> Result<CardPreview, CardFailure> {
         return Err(FailureCode::InvalidData.into());
     }
     let info = parse_basic_info(raw).map_err(|_| CardFailure::from(FailureCode::InvalidData))?;
+    let birth_date = card_date(claims.get(&0xdf24).ok_or(FailureCode::InvalidData)?)?;
     if info.name.trim().is_empty()
         || info.address.trim().is_empty()
-        || !valid_date(&info.birth_date)
+        || info.birth_date != birth_date
     {
         return Err(FailureCode::InvalidData.into());
     }
     Ok(CardPreview {
         name: info.name,
         address: info.address,
-        birth_date: info.birth_date,
+        birth_date,
         gender: info.gender,
         verification: "unverified".into(),
         document_type: DocumentType::MyNumberCard,
@@ -240,6 +241,13 @@ pub fn parse_preview(raw: &[u8]) -> Result<CardPreview, CardFailure> {
 
 pub fn valid_date(date: &str) -> bool {
     if date.len() != 10 || !date.is_ascii() {
+        return false;
+    }
+    if !date
+        .bytes()
+        .enumerate()
+        .all(|(i, b)| matches!(i, 4 | 7) || b.is_ascii_digit())
+    {
         return false;
     }
     let (Ok(year), Ok(month), Ok(day)) = (
@@ -268,6 +276,41 @@ pub fn valid_date(date: &str) -> bool {
         31,
     ];
     day >= 1 && day <= days[month - 1]
+}
+
+/// Validate the original card date as well as its normalized Gregorian result.
+/// Pre-1873 Japanese dates used a different calendar and are not guessed here.
+fn card_date(raw: &str) -> Result<String, CardFailure> {
+    let bad = || CardFailure::from(FailureCode::InvalidData);
+    if !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(bad());
+    }
+    let date = match raw.len() {
+        8 => format!("{}-{}-{}", &raw[..4], &raw[4..6], &raw[6..]),
+        7 => {
+            if &raw[1..3] == "00" {
+                return Err(bad());
+            }
+            let date = civ_card::utils::DateUtils::parse_japanese_era(raw).map_err(|_| bad())?;
+            let (start, end) = match &raw[..1] {
+                "1" => ("1873-01-01", "1912-07-30"),
+                "2" => ("1912-07-30", "1926-12-25"),
+                "3" => ("1926-12-25", "1989-01-08"),
+                "4" => ("1989-01-08", "2019-05-01"),
+                "5" => ("2019-05-01", "9999-12-31"),
+                _ => return Err(bad()),
+            };
+            if date.as_str() < start || date.as_str() >= end {
+                return Err(bad());
+            }
+            date
+        }
+        _ => return Err(bad()),
+    };
+    if !valid_date(&date) {
+        return Err(bad());
+    }
+    Ok(date)
 }
 
 fn validate_tlv<'a>(
@@ -333,6 +376,30 @@ fn validate_tlv<'a>(
     Ok(())
 }
 
+#[cfg(test)]
+mod date_tests {
+    use super::*;
+    #[test]
+    fn era_dates_require_valid_calendar_and_actual_era_boundaries() {
+        for (raw, expected) in [
+            ("4020228", "1990-02-28"),
+            ("4010108", "1989-01-08"),
+            ("3640107", "1989-01-07"),
+            ("4310430", "2019-04-30"),
+            ("5010501", "2019-05-01"),
+            ("2010730", "1912-07-30"),
+            ("19900228", "1990-02-28"),
+        ] {
+            assert_eq!(card_date(raw).unwrap(), expected);
+        }
+        for raw in [
+            "4000101", "4010101", "4310501", "4320101", "3640108", "3010101", "5010430", "6010101",
+            "1050101", "19900230", "4020230", "4??0228",
+        ] {
+            assert!(card_date(raw).is_err(), "{raw}");
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,7 +662,7 @@ pub fn license_fields(
 }
 
 pub fn parse_license(raw: &[u8]) -> Result<CardPreview, CardFailure> {
-    use civ_card::utils::{DateUtils, decode_jis_x0208};
+    use civ_card::utils::decode_jis_x0208;
     let fields = license_fields(raw)?;
     let get = |tag| {
         fields
@@ -626,12 +693,7 @@ pub fn parse_license(raw: &[u8]) -> Result<CardPreview, CardFailure> {
         }
         let input =
             std::str::from_utf8(bytes).map_err(|_| CardFailure::from(FailureCode::InvalidData))?;
-        let date = DateUtils::parse_japanese_era(input)
-            .map_err(|_| CardFailure::from(FailureCode::InvalidData))?;
-        if !valid_date(&date) {
-            return Err(FailureCode::InvalidData.into());
-        }
-        Ok(date)
+        card_date(input)
     };
     Ok(CardPreview {
         name: text(0x12, 72)?,

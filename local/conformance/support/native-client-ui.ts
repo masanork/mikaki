@@ -14,6 +14,9 @@ export interface NativeUiScenario {
   identityFormat?: string;
   identityNoClaims?: boolean;
   identityBatch?: boolean;
+  identityAge?: boolean;
+  identityAgeValue?: boolean;
+  identityAgeDocument?: string;
   identityFailure?: { code: string; remaining_retries?: number };
 }
 
@@ -233,7 +236,19 @@ export async function createNativeUiPage(
             review_id: 'fixture-review',
             verifier_name: '試験提示先',
             response_uri: 'https://verifier.example/response',
-            values: initial.identityNoClaims ? {} : { name: '試験 太郎', birthdate: '1990-02-28' },
+            values: initial.identityNoClaims
+              ? {}
+              : initial.identityAge
+                ? { age_over_18: initial.identityAgeValue ?? true }
+                : { name: '試験 太郎', birthdate: '1990-02-28' },
+            ...(initial.identityAge
+              ? {
+                  source: {
+                    document_type: initial.identityAgeDocument ?? 'my_number_card',
+                    predicate_source: 'birthdate',
+                  },
+                }
+              : {}),
             retained_fields:
               !initial.identityNoClaims && initial.identityFormat === 'mso_mdoc' ? ['name'] : [],
             expires_at: Math.floor(Date.now() / 1000) + 120,

@@ -31,6 +31,7 @@ import { withOfficialWalletSuite } from './support/official-wallet-suite.ts';
 import { withNativePresentationHttp } from './support/native-presentation-http.ts';
 import { issuedWalletVerifier } from './support/issued-wallet-presentation.ts';
 import { androidAttestationFixture, fixtureKey } from './support/android-attestation-fixture.ts';
+import { agePresentationVectors, verifyAgePresentations } from './support/age-presentation.ts';
 
 const root = 'https://issuer.example';
 const issuer = `${root}/identity/issuer`;
@@ -177,6 +178,26 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
     root: new URL('../..', import.meta.url).pathname,
     workers: [
       { config },
+      {
+        config: {
+          ...config,
+          name: 'identity-age-only',
+          vars: {
+            ...config.vars,
+            IDENTITY_ISSUANCE_CLAIMS: JSON.stringify(['age_over_18']),
+          },
+        },
+      },
+      {
+        config: {
+          ...config,
+          name: 'identity-invalid-claims',
+          vars: {
+            ...config.vars,
+            IDENTITY_ISSUANCE_CLAIMS: JSON.stringify(['unknown']),
+          },
+        },
+      },
       {
         config: {
           ...config,
@@ -392,6 +413,80 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal((await request('owner-cookie')).status, 409);
     };
     const poll = (tx: Awaited<ReturnType<typeof start>>) => post('/identity/poll', tx);
+    const ageOnly = harness.getWorker('identity-age-only');
+    const ageMetadata = await ageOnly.fetch(
+      `${root}/.well-known/openid-credential-issuer/identity/issuer`,
+    );
+    assert.equal(ageMetadata.status, 200);
+    const ageConfigurations = ((await ageMetadata.json()) as any)
+      .credential_configurations_supported;
+    assert.deepEqual(
+      ageConfigurations.linked_document.credential_metadata.claims.map((c: any) => c.path),
+      [['age_over_18']],
+    );
+    assert.deepEqual(
+      ageConfigurations.linked_document_mdoc.credential_metadata.claims.map((c: any) => c.path),
+      [['app.tossa.mikaki.linked_document.1', 'age_over_18']],
+    );
+    const ageType = (await (await ageOnly.fetch(`${issuer}/types/linked-document`)).json()) as any;
+    assert.ok(ageType.claims.some((c: any) => c.path[0] === 'age_over_20'));
+    assert.equal(
+      (
+        await harness
+          .getWorker('identity-invalid-claims')
+          .fetch(`${root}/.well-known/openid-credential-issuer/identity/issuer`)
+      ).status,
+      503,
+    );
+    for (const evidence of [f.makeMnc(), f.makeLicense()]) {
+      const receipts: Record<string, string> = {};
+      for (const configuration of ['linked_document', 'linked_document_mdoc']) {
+        const tx = await start(evidence, ageOnly);
+        await approve(tx, 'approve', ageOnly);
+        const offered = await post(
+          '/identity/poll',
+          { transaction_id: tx.transaction_id, poll_secret: tx.poll_secret },
+          {},
+          ageOnly,
+        );
+        assert.equal(offered.status, 200);
+        const offer = ((await offered.json()) as any).credential_offer;
+        const token = await ageOnly.fetch(`${issuer}/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+            'pre-authorized_code':
+              offer.grants['urn:ietf:params:oauth:grant-type:pre-authorized_code'][
+                'pre-authorized_code'
+              ],
+          }).toString(),
+        });
+        assert.equal(token.status, 200);
+        const access = ((await token.json()) as any).access_token;
+        const nonce = (
+          (await (await ageOnly.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
+        ).c_nonce;
+        const proof = await new SignJWT({ aud: issuer, iat: Math.floor(Date.now() / 1000), nonce })
+          .setProtectedHeader({ alg: 'ES256', typ: 'openid4vci-proof+jwt', jwk: holder })
+          .sign(wallet.privateKey);
+        const issued = await post(
+          '/identity/issuer/credential',
+          { credential_configuration_id: configuration, proofs: { jwt: [proof] } },
+          { Authorization: `Bearer ${access}` },
+          ageOnly,
+        );
+        assert.equal(issued.status, 200, await issued.clone().text());
+        receipts[configuration] = ((await issued.json()) as any).credentials[0].credential;
+      }
+      const vectors = agePresentationVectors({
+        sd: receipts.linked_document,
+        mdoc: receipts.linked_document_mdoc,
+        holder_private_jwk: { ...(await exportJWK(wallet.privateKey)), kid: 'fixture-holder' },
+        issuer_kid: 'document-issuer',
+      });
+      await verifyAgePresentations(vectors, ['age_over_18']);
+    }
     // A separate wallet owns its own private key: the original reading app key is never exported.
     const external = harness.getWorker('identity-wallet');
     const changedWallet = harness.getWorker('identity-wallet-changed');
