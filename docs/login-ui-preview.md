@@ -28,4 +28,4 @@ The shared woven-fence logo introduced by PR #34 remains in the native icons, fa
 
 Login-only rules are scoped to `.auth-shell`. Shared typography, box sizing and brand sizing live in `product.css`, so the Vault, completion and logout pages retain their layouts.
 
-The direct `/` entry uses the same material and lighting as a single fence; see [direct issuer preview](home-ui-preview.md).
+The direct `/` entry uses the same gate material, lighting and crossbar sign-in entry. Matching OP and destination origins give both leaves the same material without removing the gate's meeting line; see [direct issuer preview](home-ui-preview.md).

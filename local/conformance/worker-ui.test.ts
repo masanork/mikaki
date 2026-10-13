@@ -152,9 +152,14 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         return;
       }
       if (url.pathname === '/login') {
+        const rpHost = url.searchParams.has('same-rp')
+          ? url.host
+          : url.searchParams.has('other-rp')
+            ? 'other.example'
+            : 'client.example';
         await route.fulfill({
           contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="https://${url.searchParams.has('other-rp') ? 'other.example' : 'client.example'}/callback" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
+          body: `<!doctype html><html lang="${locale}"><head><title>mikaki</title><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="https://${rpHost}/callback" data-client="test-rp" data-enrollment="${url.searchParams.has('enroll')}" data-owner-login="${url.searchParams.has('same-rp')}"></div><script type="module" src="/login/login.js"></script></body></html>`,
         });
         return;
       }
@@ -217,6 +222,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       .evaluate((canvas) => canvas.dispatchEvent(new Event('contextlost')));
     await page.locator('.gate-background[data-renderer="css"]').waitFor();
     assert.equal(await page.locator('#passkey').isEnabled(), true);
+    assert.equal(await page.locator('.gate-fallback span').count(), 2);
     await page.goto('https://mikaki.test/login?other-rp=1');
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
     assert.notEqual(
@@ -233,6 +239,23 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
         .evaluate((node) => (node as HTMLElement).style.getPropertyValue('--rp-hue')),
       firstStyle,
     );
+    // First-party login still has two leaves when both material profiles are identical.
+    for (const fallback of [false, true]) {
+      await page.goto(`https://mikaki.test/login?same-rp=1${fallback ? '&no-canvas=1' : ''}`);
+      await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
+      await page
+        .locator(`.gate-background[data-renderer="${fallback ? 'css' : 'canvas'}"]`)
+        .waitFor();
+      assert.equal(await page.locator('.gate-fallback span').count(), 2);
+      assert.equal(await page.locator('.origin strong').nth(1).textContent(), 'mikaki.test');
+      assert.equal(
+        await page.locator('.auth-shell').evaluate((scene) => {
+          const style = (scene as HTMLElement).style;
+          return style.getPropertyValue('--page-hue') === style.getPropertyValue('--rp-hue');
+        }),
+        true,
+      );
+    }
     await page.goto('https://mikaki.test/login?pending-passkey=1');
     await page.locator('.auth-shell[data-paused="true"]').waitFor();
     await page.locator('#passkey').click();
@@ -297,8 +320,11 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/?lang=ja');
     await page.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
-    assert.equal(await page.locator('.gate-fallback span').count(), 1);
-    assert.equal(await page.locator('.bolt, #passkey').count(), 0);
+    assert.equal(await page.locator('.gate-fallback span').count(), 2);
+    assert.equal(await page.locator('.bolt .saddle').count(), 2);
+    assert.equal(await page.locator('.bolt a.passkey').count(), 1);
+    assert.equal(await page.locator('#passkey').count(), 0);
+    await auditAccessibility(page, 'home-signin-ja');
     assert.equal(
       await page.getByRole('link', { name: 'サインイン', exact: true }).getAttribute('href'),
       '/signin?lang=ja',
@@ -320,6 +346,7 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.getByRole('heading', { name: 'Sign in with your passkey' }).waitFor();
     await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
     assert.equal(await page.locator('.plate .origin strong').textContent(), 'other.test');
+    assert.equal(await page.locator('.gate-fallback span').count(), 2);
     assert.notEqual(
       await page
         .locator('.auth-shell')
@@ -355,7 +382,14 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.goto('https://mikaki.test/?no-canvas=1');
     await page.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
-    assert.equal(await page.locator('.gate-fallback span').count(), 1);
+    assert.equal(await page.locator('.gate-fallback span').count(), 2);
+    assert.equal(
+      await page
+        .locator('.gate-fallback span')
+        .first()
+        .evaluate((leaf) => getComputedStyle(leaf).borderRightWidth),
+      '9px',
+    );
     assert.deepEqual(errors, []);
     const staticPage = await browser.newPage({
       javaScriptEnabled: false,
@@ -371,8 +405,10 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     });
     await staticPage.goto('https://mikaki.test/');
     await staticPage.getByRole('heading', { name: 'Passkeyでサインイン' }).waitFor();
-    assert.equal(await staticPage.locator('.gate-fallback span').count(), 1);
+    assert.equal(await staticPage.locator('.gate-fallback span').count(), 2);
     assert.equal(await staticPage.locator('#passkey, canvas').count(), 0);
+    assert.equal(await staticPage.locator('.bolt .saddle').count(), 2);
+    assert.equal(await staticPage.locator('.bolt a.passkey').count(), 1);
     assert.equal(
       await staticPage.getByRole('link', { name: 'サインイン', exact: true }).getAttribute('href'),
       '/signin?lang=ja',

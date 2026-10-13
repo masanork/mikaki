@@ -246,11 +246,15 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     });
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
     await page.goto(`${issuer}/?lang=en`);
+    await expect(page.locator('.gate-fallback span')).toHaveCount(2);
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
     await expect(
       page.getByRole('link', { name: 'Register with an invitation', exact: true }),
     ).toHaveAttribute('href', '/enroll?lang=en');
     await expect(page.locator('details.registration')).toHaveCount(0);
+    await expect(page.locator('.gate-fallback span')).toHaveCount(2);
+    assert.equal(await page.locator('.origin strong').first().textContent(), new URL(issuer).host);
+    assert.equal(await page.locator('.origin strong').nth(1).textContent(), new URL(issuer).host);
     const pendingTx = new URL(page.url()).searchParams.get('tx')!;
     const unusedInvite = 'i'.repeat(43);
     await DB.prepare(
