@@ -139,6 +139,7 @@ pub(super) struct Context {
     pub encryption: WalletEncryption,
     pub issuer_key: PublicJwk,
     pub issuer_kid: String,
+    pub age_pool_claims: Option<String>,
 }
 fn validate_metadata(metadata: &Value, oauth: &Value, configuration: &str) -> Result<(), String> {
     mikaki_identity::wallet_profile::validate_metadata(metadata, oauth, configuration)
@@ -178,10 +179,21 @@ pub(super) async fn metadata(guard: &Gate, configuration: &str) -> Result<Contex
         return Err("invalid_metadata".into());
     }
     live(guard)?;
+    let age_pool_claims = if metadata.get("mikaki_age_pool").is_some() {
+        if metadata["mikaki_age_pool"]["max_size"].as_u64()
+            != Some(mikaki_identity::age_batch::MAX_SIZE as u64)
+        {
+            return Err("invalid_metadata".into());
+        }
+        Some(batch::age_claims(&metadata, configuration)?)
+    } else {
+        None
+    };
     Ok(Context {
         encryption,
         issuer_key: key,
         issuer_kid: kid,
+        age_pool_claims,
     })
 }
 pub(super) async fn credential_nonce(guard: &Gate) -> Result<String, String> {

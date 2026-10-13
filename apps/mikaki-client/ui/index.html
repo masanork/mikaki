@@ -338,6 +338,16 @@
               <option value="linked_document">SD-JWT</option>
               <option value="linked_document_mdoc">mdoc</option>
             </select>
+            <label for="identity-wallet-count">受け取る件数</label>
+            <select id="identity-wallet-count">
+              <option value="1">1件</option>
+              <option value="2">2件</option>
+              <option value="4">4件</option>
+              <option value="8">8件</option>
+            </select>
+            <p class="help">
+              複数件は発行者が有効にした年齢専用の実験機能です。各件で別の端末鍵を確認し、全件を受け取ってからまとめて保存します。途中で失敗した場合は、最初から承認を取り直してください。
+            </p>
             <button id="identity-wallet-start" class="secondary" type="button">
               この端末で証明書を受け取る
             </button>

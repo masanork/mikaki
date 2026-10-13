@@ -65,6 +65,72 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
           await page.close();
         }
       });
+    for (const format of ['dc+sd-jwt', 'mso_mdoc'])
+      await t.test(
+        `age pool selects eight receipts and locks its count until cancellation (${format})`,
+        async () => {
+          const { page, errors } = await createNativeUiPage(browser, server.url, {
+            identityWallet: true,
+            identityFormat: format,
+          });
+          try {
+            await page.locator('#open-settings').click();
+            await page.getByRole('link', { name: '診断' }).click();
+            assert.equal(await page.locator('#identity-wallet-count').inputValue(), '1');
+            await page.locator('#identity-wallet-count').selectOption('8');
+            await page
+              .locator('#identity-wallet-format')
+              .selectOption(format === 'mso_mdoc' ? 'linked_document_mdoc' : 'linked_document');
+            await page.locator('#identity-wallet-start').click();
+            await page.locator('#identity-wallet-receive').waitFor({ state: 'visible' });
+            assert.equal(await page.locator('#identity-wallet-count').isDisabled(), true);
+            const args = await page.evaluate(
+              () =>
+                window.__nativeUiTest.arguments.find(
+                  (c) => c.command === 'start_identity_wallet_issuance',
+                )?.args,
+            );
+            assert.deepEqual(args, {
+              configuration: format === 'mso_mdoc' ? 'linked_document_mdoc' : 'linked_document',
+              credentialCount: 8,
+            });
+            await page.evaluate(() =>
+              window.__nativeUiTest.emit('identity-issuance-updated', 'ready'),
+            );
+            await page.locator('#identity-wallet-receive').click();
+            await page.waitForFunction(() =>
+              document
+                .querySelector('#identity-wallet-status')
+                ?.textContent?.includes('8件受け取り、全件の署名'),
+            );
+            assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
+            assert.deepEqual(errors, []);
+          } finally {
+            await page.close();
+          }
+        },
+      );
+    await t.test('unavailable age pool explains single-receipt fallback', async () => {
+      const { page, errors } = await createNativeUiPage(browser, server.url, {
+        identityWallet: true,
+      });
+      try {
+        await page.locator('#open-settings').click();
+        await page.getByRole('link', { name: '診断' }).click();
+        await page.locator('#identity-wallet-count').selectOption('2');
+        await page.evaluate(() => {
+          window.__nativeUiTest.failures.start_identity_wallet_issuance = 'age_pool_unavailable';
+        });
+        await page.locator('#identity-wallet-start').click();
+        await page.waitForFunction(() =>
+          document.querySelector('#identity-wallet-status')?.textContent?.includes('1件を選んで'),
+        );
+        assert.equal(await page.locator('#identity-wallet-count').isDisabled(), false);
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
+    });
     for (const command of ['start_identity_wallet_issuance', 'receive_identity_wallet_credential'])
       await t.test(`cancellation blocks late ${command}`, async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {

@@ -495,6 +495,10 @@ function issuanceError(error) {
       issuer_unavailable: 'サーバーの身分証検証・発行機能はまだ有効になっていません。',
       not_found: 'サーバーの身分証検証・発行機能はまだ有効になっていません。',
       access_denied: '紐付けと発行が拒否されました。',
+      age_pool_unavailable:
+        '年齢専用の複数件受取は、この発行者では有効になっていません。1件を選んでください。',
+      invalid_age_pool:
+        '年齢専用の受取件数や属性を確認できませんでした。承認を取り直してください。',
       age_batch_unavailable:
         '年齢専用の複数件発行は、この発行者では有効になっていません。1件を選んでください。',
       invalid_age_batch: '年齢専用の発行件数や鍵を確認できませんでした。読み取り直してください。',
@@ -554,6 +558,7 @@ function renderWalletIssuance(view) {
   $('#identity-wallet-issuance').hidden = !walletAvailable;
   $('#identity-wallet-start').disabled = walletActive || issuanceBusy || cardBusy || !!pending;
   $('#identity-wallet-format').disabled = walletActive || issuanceBusy;
+  $('#identity-wallet-count').disabled = walletActive || issuanceBusy;
   $('#identity-wallet-receive').hidden =
     !walletActive || !['pending', 'ready'].includes(walletPhase);
   $('#identity-wallet-receive').disabled = issuanceBusy || cardBusy;
@@ -636,6 +641,9 @@ $('#identity-wallet-start').addEventListener('click', async () => {
   try {
     const result = await invoke('start_identity_wallet_issuance', {
       configuration: $('#identity-wallet-format').value,
+      ...(Number($('#identity-wallet-count').value) > 1
+        ? { credentialCount: Number($('#identity-wallet-count').value) }
+        : {}),
     });
     if (generation !== walletGeneration) return;
     if (result.phase !== 'pending') throw Error('invalid_response');
@@ -670,7 +678,7 @@ $('#identity-wallet-receive').addEventListener('click', async () => {
       walletPhase = 'received';
       $('#identity-wallet-status').textContent =
         (result.format === 'mso_mdoc' ? 'mdoc' : 'SD-JWT') +
-        '属性証明書を受け取り、署名を確認しました。有効期限: ' +
+        `属性証明書を${result.credential_count ?? 1}件受け取り、全件の署名を確認しました。有効期限: ` +
         new Date(result.expires_at * 1000).toLocaleTimeString();
     } else throw Error('invalid_response');
   } catch (error) {

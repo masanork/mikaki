@@ -26,6 +26,7 @@ pub(super) struct Pending {
     pub configuration: String,
     pub browser_until: u64,
     pub as_nonce: Option<String>,
+    pub requested_count: usize,
 }
 impl Signer for HolderKey {
     fn public(&self) -> Result<PublicJwk, String> {

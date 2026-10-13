@@ -94,6 +94,7 @@ mod tests {
                 configuration: "linked_document".into(),
                 browser_until: at + 90,
                 as_nonce: None,
+                requested_count: 1,
             },
             state,
         )
