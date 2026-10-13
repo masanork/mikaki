@@ -17,6 +17,22 @@ struct Job {
     updated_at: u64,
 }
 const FIELDS: &str = "preparation_id,review_digest,state,next_step,inflight,revision,updated_at";
+
+/// Productive copy activation selects exactly one Native disclosure. Environment
+/// configuration is an operator fence, never owner consent or source authority.
+fn activated_disclosure(env: &Env) -> Result<Digest> {
+    if !env
+        .var("WORK_COPY_ACTIVATION_PROFILE")
+        .is_ok_and(|v| v.to_string() == "single-disclosure")
+    {
+        return Err(Denied::StaleAuthority.into());
+    }
+    let value = env
+        .var("WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST")
+        .map_err(|_| Denied::StaleAuthority)?
+        .to_string();
+    Ok(Digest::parse_hex(&value).map_err(|_| Denied::StaleAuthority)?)
+}
 #[derive(Clone, Copy)]
 enum Phase {
     Initial,
@@ -83,6 +99,13 @@ pub(crate) async fn gate(env: &Env, binding: &str, path: &str, input: Value) -> 
     serde_json::from_str(&body).map_err(|_| Denied::InvalidInput.into())
 }
 impl WorkStore {
+    pub(crate) async fn require_copy_activation(&self, env: &Env, id: &str) -> Result<()> {
+        let p = self.preparation(id).await?;
+        if activated_disclosure(env)? != p.disclosure_digest() {
+            return Err(Denied::StaleAuthority.into());
+        }
+        Ok(())
+    }
     async fn copy_job(&self, id: &str) -> Result<Job> {
         let row: Job = self
             .first(
@@ -96,7 +119,13 @@ impl WorkStore {
         Digest::parse_hex(&row.review_digest)?;
         Ok(row)
     }
-    pub async fn owner_copy_job(&self, session: &str, id: &str, account: &str) -> Result<Value> {
+    pub async fn owner_copy_job(
+        &self,
+        env: &Env,
+        session: &str,
+        id: &str,
+        account: &str,
+    ) -> Result<Value> {
         let review = self.owner_copy_review(session, id, account).await?;
         let p = self
             .owner_record(session, OwnerRecordKind::Preparation, id)
@@ -109,6 +138,7 @@ impl WorkStore {
             .first::<Job>(None)
             .await?;
         let approving_session=self.statement("SELECT preparation_id FROM work_copy_consent_current WHERE preparation_id=?1 AND session_hash=?2",&[text(id),text(session)])?.first::<String>(Some("preparation_id")).await?.is_some();
+        let activation_current = self.require_copy_activation(env, id).await.is_ok();
         let cleanup_pending = if job.as_ref().is_some_and(|j| j.state == "blocked") {
             self.credential_attempts(id)
                 .await?
@@ -118,7 +148,7 @@ impl WorkStore {
             false
         };
         Ok(
-            json!({"review_digest":review["review_digest"],"can_start":job.is_none() && approving_session && review["current"]==true && p["preparation"]["state"]=="reserved","cleanup_pending":cleanup_pending,
+            json!({"review_digest":review["review_digest"],"can_start":activation_current && job.is_none() && approving_session && review["current"]==true && p["preparation"]["state"]=="reserved","cleanup_pending":cleanup_pending,
           "preparation_state":p["preparation"]["state"],"job":job.map(|j|j.project())}),
         )
     }
@@ -134,6 +164,7 @@ impl WorkStore {
         if review["review_digest"] != digest.to_hex() {
             return Err(Denied::ReviewMismatch.into());
         }
+        self.require_copy_activation(env, id).await?;
         // An exact retry must still use the approving live SSO and fixed account.
         if self.statement("SELECT preparation_id FROM work_copy_consent_current WHERE preparation_id=?1 AND session_hash=?2 AND review_digest=?3 AND artifacts_account=?4",&[text(id),text(session),text(&digest.to_hex()),text(&account)])?.first::<String>(Some("preparation_id")).await?.is_none(){return Err(Denied::StaleAuthority.into());}
         let existing = self
@@ -166,7 +197,7 @@ impl WorkStore {
             )
             .await;
         }
-        self.owner_copy_job(session, id, &account).await
+        self.owner_copy_job(env, session, id, &account).await
     }
     async fn active_copy_key(&self, env: &Env) -> Result<WrappingKey> {
         let version = self
@@ -181,9 +212,10 @@ impl WorkStore {
         self.check_copy_key(&key).await?;
         Ok(key)
     }
-    pub async fn pending_copy_jobs(&self) -> Result<Value> {
+    pub async fn pending_copy_jobs(&self, env: &Env) -> Result<Value> {
         self.require_current_authority().await?;
-        let ids=self.statement("SELECT j.preparation_id FROM work_copy_job j JOIN work_copy_consent_current c ON c.preparation_id=j.preparation_id AND c.review_digest=j.review_digest WHERE j.state='queued' ORDER BY j.preparation_id LIMIT 20",&[])?.all().await?.results::<serde_json::Value>()?;
+        let selected = activated_disclosure(env)?;
+        let ids=self.statement("SELECT j.preparation_id FROM work_copy_job j JOIN work_copy_consent_current c ON c.preparation_id=j.preparation_id AND c.review_digest=j.review_digest JOIN work_preparation p ON p.operation_id=j.preparation_id WHERE j.state='queued' AND p.disclosure_digest=?1 ORDER BY j.preparation_id LIMIT 20",&[text(&selected.to_hex())])?.all().await?.results::<serde_json::Value>()?;
         Ok(json!({"preparations":ids}))
     }
     pub async fn advance_copy_job(&self, env: &Env, id: &str, expected: u64) -> Result<Value> {
@@ -201,6 +233,7 @@ impl WorkStore {
             let _ = self.cleanup_copy_job(env, id).await;
             return Ok(json!({"preparation_id":id,"state":"blocked","next_step":job.next_step}));
         }
+        self.require_copy_activation(env, id).await?;
         self.require_current_authority().await?;
         self.require_copy_consent(id, Some(&copy_account(env)?))
             .await?;

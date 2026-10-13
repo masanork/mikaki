@@ -5,6 +5,79 @@ import { test } from 'node:test';
 import { copyJobFixture as fixture } from './support/work-copy-job-fixture.ts';
 import { copyHttpPort } from '../../crates/worker/ui/work-copy-view.ts';
 
+test('operator activation cannot replace current consent and refuses another disclosure before queuing', async () => {
+  const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+  try {
+    assert.equal((await f.start()).status, 409);
+    assert.equal((await f.approve()).status, 200);
+    const before = await f.remote();
+    const variants: Record<string, string>[] = [
+      { WORK_COPY_ACTIVATION_PROFILE: '' },
+      { WORK_COPY_ACTIVATION_PROFILE: 'closed' },
+      { WORK_COPY_ACTIVATION_PROFILE: 'unknown' },
+      { WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST: '' },
+      { WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST: 'A'.repeat(64) },
+      { WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST: '0'.repeat(64) },
+    ];
+    for (const changed of variants) {
+      await f.restart(changed);
+      assert.equal((await f.copy()).body.record.can_start, false);
+      assert.equal((await f.start()).status, 409, JSON.stringify(changed));
+      assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_job').first('n'), 0);
+      assert.equal(
+        await f.DB.prepare('SELECT count(*) AS n FROM work_credential_attempt').first('n'),
+        0,
+      );
+      assert.deepEqual(await f.remote(), before);
+    }
+    await f.restart();
+    assert.equal((await f.copy()).body.record.can_start, true);
+    assert.equal((await f.start()).status, 200);
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_copy_job').first('n'), 1);
+    assert.deepEqual(await f.remote(), before);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a changed activation stops queued work and new effects while known credential cleanup survives', async () => {
+  const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+  try {
+    assert.equal((await f.approve()).status, 200);
+    assert.equal((await f.start()).status, 200);
+    await f.restart({ WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST: '0'.repeat(64) });
+    const pending = await f.copyPrivate({ action: 'pending' });
+    assert.equal(pending.status, 200);
+    assert.deepEqual(((await pending.json()) as any).preparations, []);
+    assert.equal((await f.advance(0)).status, 409);
+    assert.equal((await f.remote()).repos.length, 0);
+    await f.restart();
+    for (const step of [0, 1, 2]) assert.equal((await f.advance(step)).status, 200);
+    const before = await f.remote();
+    assert.equal(
+      await f.DB.prepare(
+        'SELECT count(*) AS n FROM work_credential_attempt WHERE envelope IS NOT NULL',
+      ).first('n'),
+      1,
+    );
+    await f.restart({ WORK_COPY_ACTIVATION_PROFILE: 'closed' });
+    assert.equal((await f.advance(3)).status, 409);
+    assert.deepEqual(await f.remote(), before);
+    assert.equal(f.http.counts.pushes, 0);
+    assert.equal((await f.stop()).status, 200);
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT count(*) AS n FROM work_credential_attempt WHERE state!='closed'",
+      ).first('n'),
+      0,
+    );
+    for (const table of ['work_grant', 'work_run'])
+      assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM ' + table).first('n'), 0);
+  } finally {
+    await f.close();
+  }
+});
+
 test('public composition and explicit consent drive one Workflow through both sealed Git copies', async () => {
   const f = await fixture({}, { composed: true, sealedHost: true });
   try {

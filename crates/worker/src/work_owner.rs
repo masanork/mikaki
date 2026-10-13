@@ -244,7 +244,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
         };
         if request.method() == Method::Get {
             store
-                .owner_copy_job(&owner.secret_hash, &id, &account)
+                .owner_copy_job(&env, &owner.secret_hash, &id, &account)
                 .await
         } else {
             if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
@@ -278,7 +278,7 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
                         match store.cleanup_copy_job(&env, &id).await {
                             Ok(_) => {
                                 store
-                                    .owner_copy_job(&owner.secret_hash, &id, &account)
+                                    .owner_copy_job(&env, &owner.secret_hash, &id, &account)
                                     .await
                             }
                             Err(e) => Err(e),

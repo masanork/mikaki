@@ -34,6 +34,16 @@ export function assertClosedProductionCopyGraph(config: Config) {
     'Invalid copy binding stage',
   );
   const staged = selected === 'true';
+  assert.equal(
+    config.vars.WORK_COPY_ACTIVATION_PROFILE,
+    'closed',
+    'Ordinary copy activation profile must remain closed',
+  );
+  assert.equal(
+    config.vars.WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST,
+    undefined,
+    'Ordinary promotion must not retain a productive disclosure selector',
+  );
   if (staged) {
     assert.equal(config.vars.WORK_SCHEMA_ENABLED, 'true', 'Copy bindings require enrolled schema');
     for (const name of CLOSED_OP_COPY_VARS)

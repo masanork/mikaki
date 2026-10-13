@@ -50,7 +50,7 @@ export async function copyJobFixture(
       directory,
       'snapshot',
     );
-    const bindings = {
+    const bindings: Record<string, string> = {
       WORK_COPY_EXECUTION_ENABLED: 'true',
       WORK_COPY_CONSENT_ENABLED: 'true',
       WORK_PREPARATION_REVIEW_ENABLED: 'true',
@@ -175,6 +175,21 @@ export async function copyJobFixture(
     const disclosure = (await product(`/work/preparations/${p.id}`)).body.record.preparation
       .disclosure_digest;
     const nativeDisclosure = (await product(`/work/disclosures/${disclosure}`)).body.record;
+    // The actual product Worker requires an operator scope independently of
+    // consent. Set it only after reading this fixture's Native disclosure, then
+    // restart with the same persisted primary/checkpoint state, without seeding.
+    bindings.WORK_COPY_ACTIVATION_PROFILE ??= 'single-disclosure';
+    bindings.WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST ??= disclosure;
+    await op.close();
+    op = opResource = await preparationFixture(
+      directory,
+      bindings,
+      true,
+      true,
+      undefined,
+      transport,
+      true,
+    );
     const sourceBindings = [
       { source_id: 'code', source_revision: 1, access_revision: 1, gitDir: code.dir },
       { source_id: 'personal', source_revision: 1, access_revision: 1, gitDir: personal.dir },

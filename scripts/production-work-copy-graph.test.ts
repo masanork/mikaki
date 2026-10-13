@@ -40,6 +40,14 @@ test('staged production graph refuses enabled gates and altered named capabiliti
     entrypoint: 'OpAuthorityAdmin',
   });
   assert.throws(() => assertClosedProductionCopyGraph(additional), /graph differs/);
+  for (const value of [undefined, '', 'single-disclosure', 'unknown']) {
+    const changed = config();
+    changed.vars.WORK_COPY_ACTIVATION_PROFILE = value;
+    assert.throws(() => assertClosedProductionCopyGraph(changed), /remain closed/);
+  }
+  const selected = config();
+  selected.vars.WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST = 'a'.repeat(64);
+  assert.throws(() => assertClosedProductionCopyGraph(selected), /selector/);
 });
 
 test('unstaged selection permits only the existing enrolled checkpoint edge', () => {
