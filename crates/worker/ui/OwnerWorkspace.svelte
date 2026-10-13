@@ -442,6 +442,14 @@
     <div class="product-heading">
       <h1>{m.vaultHeading()}</h1>
     </div>
+    {#if sourceReview || preparationReview}
+      <nav class="product-nav" aria-label={m.source_compose_title()}>
+        {#if sourceReview}<a href={`/work/source-review?lang=${locale}`}>{m.source_title()}</a>{/if}
+        {#if preparationReview}<a href={`/work/preparation-review?lang=${locale}`}
+            >{m.preparation_title()}</a
+          >{/if}
+      </nav>
+    {/if}
     <VaultWebMcp
       host={assistantHost}
       records={threads}
@@ -460,11 +468,6 @@
         <nav class="product-nav" aria-label={m.vaultHeading()}>
           <a href="#profile">{m.productProfile()}</a><a href="#owner-note">{m.vaultNoteHeading()}</a
           ><a href="#threads">{m.ownerWorkspaceThreads()}</a>
-          {#if sourceReview}<a href={`/work/source-review?lang=${locale}`}>{m.source_title()}</a
-            >{/if}
-          {#if preparationReview}<a href={`/work/preparation-review?lang=${locale}`}
-              >{m.preparation_title()}</a
-            >{/if}
         </nav>
         <div class="product-content">
           <section id="profile" aria-labelledby="profile-heading" aria-busy={busy}>

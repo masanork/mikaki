@@ -271,11 +271,26 @@ for (const lang of ['ja', 'en'] as const) {
       assert.ok(sso, 'SSO must come from the product login response');
       const sessionHash = createHash('sha256').update(sso.value).digest('base64url');
       const beforeUnlock = assertions;
-      await page.locator('#unlock').click();
-      await expect(page.locator('#name')).toHaveValue('');
-      assert.ok(assertions > beforeUnlock, 'Vault must perform real virtual PRF authentication');
-
-      await page.goto(`${issuer}/work/source-review?lang=${lang}`);
+      const sourceLink = page.locator(`a[href="/work/source-review?lang=${lang}"]`);
+      await expect(sourceLink).toBeVisible();
+      await expect(page.locator('#unlock')).toBeVisible();
+      assert.equal(
+        (
+          await worker.fetch(`${issuer}/work/source-review?lang=${lang}`, {
+            headers: { Cookie: `__Host-op-sso=${sso.value}`, 'Sec-Fetch-Site': 'cross-site' },
+          })
+        ).status,
+        403,
+        'Cross-site Work page reads must remain refused',
+      );
+      const sourceNavigation = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/work/source-review',
+      );
+      await sourceLink.click();
+      const sourceResponse = await sourceNavigation;
+      assert.equal(sourceResponse.status(), 200);
+      assert.equal((await sourceResponse.request().allHeaders())['sec-fetch-site'], 'same-origin');
+      assert.equal(assertions, beforeUnlock, 'Code preparation must not unlock private Vault data');
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
       const prepare = page.getByRole('button', { name: words.prepare, exact: true });
       await expect(prepare).toBeDisabled();
