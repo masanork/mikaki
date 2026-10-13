@@ -1,5 +1,21 @@
 # Work adoption into the existing production OP
 
+## Current activation, reviewed 2026-10-13 JST
+
+PR #189 enrolled production schema/checkpoint and opened owner/source/preparation
+review. PR #192 enabled composition and separate explicit copy consent; PRs
+#197/#198 connected current disclosure export to code-only host preparation.
+[Main source `d549fa3`](https://github.com/masanork/mikaki/actions/runs/38326750131)
+passed deployment and source-matched smoke. Productive copy execution remains
+disabled. Track its next gates in [#199](https://github.com/masanork/mikaki/issues/199)
+and [current status](status.md).
+
+## Historical pre-activation preparation, 2026-10-12 JST
+
+The preparation and sequence below record the pre-activation baseline; their
+then-unbound OP and unopened capability statements are historical. Preserve the
+original populated snapshot and one-shot enrollment evidence.
+
 Production activation is authorized for testing. The retained Work implementation
 has reached main through PRs #178, #179, #181 and #182. Main source
 `9bbe587aff3fc3458525c842a2696cbc86819c2c` passed the complete CI, signing,

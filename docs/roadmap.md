@@ -2,35 +2,37 @@
 
 This page groups the project's intended stages. It is a direction of work, not a release promise. [Status](status.md) lists what has actually been verified or deployed.
 
-## Delivery order after the 2026-10-05 reset
+## Current delivery order, 2026-10-13 JST
 
-Obsolete browser/API, native OAuth and Agent v1 authority are retired by
-PRs #125–#128. PR #129 consolidated the supported schema, reset production,
-retired the old Demo/Tossa resources and deployed the dedicated Docs RP.
-The [cutover record](production-reset-2026-10-05.md) links successful attested
-promotion and public smoke; source retirement and actual data deletion are both
-established. Historical `0036`–`0046` migration files are not an upgrade path for
-the fresh database.
+The fresh-baseline retirement/reset #121 and resource/ownership/code cleanup
+#99–#104 are complete. Their evidence remains in the
+[cutover record](production-reset-2026-10-05.md) and [status](status.md).
+They are prerequisites already delivered, rather than the next backlog items.
 
 | Order | Work | Completion boundary |
 | --- | --- | --- |
-| 1 | Review deployed retention, service ownership and candidate GC against #99/#100/#103; keep the production privilege gate exact | Use real Worker regressions, actual active bindings/schedules and the fresh baseline. Keep production load/alerts separate from functional completion. |
-| 2 | Finish authority/test-model cleanup under [#102](https://github.com/masanork/mikaki/issues/102) | Remove obsolete callers and exclusive crypto/fixtures; retain denial, exact retry, old-head isolation and current Owner-key contracts. |
-| 3 | Add Owner wrapper/key continuity under [#114](https://github.com/masanork/mikaki/issues/114), then broader selected sharing/approval under [#113](https://github.com/masanork/mikaki/issues/113) | Define additional-passkey registration, retry, revocation and all-key-loss limits before broadening access. Never distribute the parent key. |
-| 4 | Connect one real conversation archive source under [#115](https://github.com/masanork/mikaki/issues/115) | Reuse encrypted record import/search; establish stable source IDs, edit/delete/reimport semantics and limits. Archive import precedes any separately qualified live E2EE delivery. |
-| 5 | Qualify real-device Owner PRF and recovery under [#112](https://github.com/masanork/mikaki/issues/112) and #114 | Use the new source/version and fresh registrations. Synthetic browser results do not complete physical-device checks. |
-| 6 | Activate prepared Identity profiles under [#116](https://github.com/masanork/mikaki/issues/116), then qualify [#117](https://github.com/masanork/mikaki/issues/117)–[#120](https://github.com/masanork/mikaki/issues/120) | Identity schema is already in the single fresh baseline. Remaining gates are keys/trust, bindings/verifier configuration, activation and profile smoke; full certification remains separate. |
+| 1 | Maintain status and Issue acceptance boundaries | Record completed implementation/deployment, the exact scoped evidence, remaining acceptance and next action. Keep historical evidence tied to its original source. |
+| 2 | [Work's first complete journey #199](https://github.com/masanork/mikaki/issues/199) | One owner, one code-only snapshot, one authenticated AI run, one candidate and one exact owner adoption. Productive copy #200 precedes run #201 and adoption #202. Code adoption and saving decisions remain separate. |
+| 3 | Deferred intended-device/RP acceptance #4/#5/#6/#112, with additional-Passkey checks #114 | Use a fresh account and recorded app/Worker version for Docs callback/UserInfo, Vault PRF/reopen and logout. #112's requested later device session remains deferred; virtual-authenticator results do not close it. |
+| 4 | Mixed/sustained capacity evidence #106 before backend decisions | Compare latency, failure, queue/outbox backlog, DB/CPU and cost under fixed workloads. Preserve storage contracts #107; evaluate DO #108, audit delivery #110 and PostgreSQL #111 only against measured needs. |
 
-The scaling track starts with [#106](https://github.com/masanork/mikaki/issues/106)
-measurements, followed by business-operation storage contracts in
-[#107](https://github.com/masanork/mikaki/issues/107). Queue delivery (#109/#110)
-can build on those contracts. DO state (#108) and Hyperdrive/PostgreSQL (#111)
-remain alternatives to evaluate against measured needs; no additional backend
-is required to complete this retirement or the first Vault integrations.
+The existing Vault track remains: broader selected sharing/real-owner use #113,
+key-loss policy and staged rotation #114, and one named conversation-source
+adapter #115. Name/note sharing, proposal review/approved saves and additional
+Passkey wrappers are implemented; their broader acceptance conditions remain.
+
+Identity activation #116 requires profile keys/trust/bindings before physical
+card/device #117 and external-wallet #118 qualification. Selected local Issuer
+84/84 PASS and subsequent SKIP/REVIEW evidence are recorded under #119; full
+Issuer/Wallet/certification and ISO transport #120 remain distinct gates.
+
+Queue logout #109 is already deployed, including observed delivery of three
+retained production events. Its remaining load/capacity acceptance belongs with
+#106 and its owner E2E with #6; do not repeat its completed implementation.
 
 ## Longer-term stages
 
-The [repository-work track](work-delegation-implementation.md) carries [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) onto current main: portable Rust rules, fresh-schema authority and independent checkpoint/initial-effect admission are locally qualified. Source/product review integration comes next, followed by productive upload/readback. GitHub remains canonical; protected remote Artifacts journals, production activation and Cloudflare CI retain their separate qualification gates.
+The [repository-work track](work-delegation-implementation.md) carries [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) onto main. Production preparation/review, code-source registration and copy-consent screens are enabled; productive provider copies and authenticated AI execution remain gated under #199–#202. GitHub remains canonical. Protected Artifacts identities, journals and unknown outcomes retain their original evidence.
 
 | Stage                              | Intended outcome                                                                                                                     | Maturity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -46,7 +48,7 @@ The [repository-work track](work-delegation-implementation.md) carries [ADR 0016
 
 The [implementation spec](implementation-spec.md) contains the earlier staged design and acceptance gates. [Storage API](storage-api.md) and [Vault claim sharing](vault-claim-sharing.md) separate implemented slices from remaining proposals. [Crypto agility](crypto-agility.md) and [PQC rollout](pqc-rollout.md) describe migration conditions, not currently deployed algorithms or a committed rollout date.
 
-New capabilities should have a concrete user need, state transitions, failure behavior, and verification plan before they add abstractions to the authentication core. A future container deployment would add an adapter around the same core; it is not part of the first release.
+New capabilities should have a concrete user need, state transitions, failure behavior, and verification plan before they add abstractions to the authentication core. The sealed private Container Git-host adapter has scoped local and isolated Cloudflare qualification; productive copying remains a separate activation gate.
 
 For the protocol refit, the [Vault fit/gap backlog](vault-fit-gap.md) sequences owner-key continuity, typed data, domain proposal ownership, and approved encrypted writes. Remote OAuth, RP profile release, credential presentation, and FileNode adoption have independent consumer-driven tracks; implementing every candidate standard is not a prerequisite for the common Vault path.
 
@@ -72,7 +74,7 @@ The subsequent [OIDF HTTPS evidence](oidf-conformance-2026-09-29.md) adds creden
 
 ## Current product follow-ups
 
-For the native app, the `feat/issue-121-native-vault-retirement` follow-up removes the [legacy Vault ciphertext OAuth preview](native-vault-oauth.md); it does not replace it with a new record API or use it as Wallet storage. Ordinary OIDC/PKCE and the separate Identity holder-key, Wallet and presentation paths remain. PR #105 already supplies the disabled-by-default linked-document credential implementation; next qualify its intended-device lifecycle, independent full-app/network interoperability, issuer trust/status and holder-key recovery under issues #117–#120. Historical native Vault tests do not qualify those paths or production activation.
+For the native app, merged PR #127 removed the [legacy Vault ciphertext OAuth preview](native-vault-oauth.md); it does not replace it with a new record API or use it as Wallet storage. Ordinary OIDC/PKCE and the separate Identity holder-key, Wallet and presentation paths remain. PR #105 already supplies the disabled-by-default linked-document credential implementation; next qualify its intended-device lifecycle, independent full-app/network interoperability, issuer trust/status and holder-key recovery under issues #117–#120. Historical native Vault tests do not qualify those paths or production activation.
 
 The [product quality gates](product-quality.md) track responsive/keyboard/error behavior, documentation drift, operational readiness, and the remaining activation evidence. The [account and Vault UI](product-ui-preview.md) now shares the login design; local visual and interaction checks do not replace intended-device, assistive-technology, or production validation.
 
