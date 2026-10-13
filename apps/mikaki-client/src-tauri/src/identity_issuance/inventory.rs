@@ -277,7 +277,7 @@ fn sign(
             mikaki_identity::presentation::binding_claims(&selected, request, at)
                 .map_err(str::to_string)?,
         )?;
-        Ok(Zeroizing::new(format!("{}{binding}", &*selected)))
+        Ok(Zeroizing::new(format!("{}{binding}", *selected)))
     }
 }
 

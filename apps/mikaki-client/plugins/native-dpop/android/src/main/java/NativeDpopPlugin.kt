@@ -164,9 +164,13 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
             cipher.updateAAD("mikaki.identity.wallet.v1".toByteArray(Charsets.US_ASCII))
             val encrypted = cipher.doFinal(plain)
             require(cipher.iv.size == 12)
+            val packet = byteArrayOf(1) + cipher.iv + encrypted
             val file = walletFile(); val stream = file.startWrite()
-            try { stream.write(byteArrayOf(1)); stream.write(cipher.iv); stream.write(encrypted); file.finishWrite(stream) }
+            try { stream.write(packet); file.finishWrite(stream) }
             catch (error: Exception) { file.failWrite(stream); throw error }
+            // A presentation may retire the last receipt. Acknowledge only the
+            // exact committed ciphertext, never a stale backup or failed rename.
+            require(file.openRead().use { require(it.channel.size() == packet.size.toLong()); it.readBytes().contentEquals(packet) })
             invoke.resolve()
         } catch (_: Exception) { invoke.reject("wallet_storage_unavailable") }
         finally { plain?.fill(0) }

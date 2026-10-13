@@ -119,6 +119,39 @@ impl Inner {
             self.initial_invocation_checked = true;
         }
     }
+    fn retire_age_receipts(
+        &mut self,
+        app: &AppHandle,
+        selected: &[String],
+        at: u64,
+    ) -> Result<(), String> {
+        self.retire_age_receipts_with(
+            selected,
+            at,
+            |remaining, anchor| identity_wallet::save_retired_inventory(app, remaining, anchor),
+            |key| key.destroy(),
+        )
+    }
+    fn retire_age_receipts_with(
+        &mut self,
+        selected: &[String],
+        at: u64,
+        persist: impl FnOnce(&[Receipt], &Receipt) -> Result<(), String>,
+        destroy: impl Fn(&HolderKey) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let removed =
+            identity_wallet::retirement::commit(&mut self.receipts, selected, ISSUER, at, persist)?;
+        self.receipt = self
+            .receipts
+            .iter()
+            .rev()
+            .find(|r| r.expires_at > at)
+            .cloned();
+        for key in removed {
+            destroy(&key)?;
+        }
+        Ok(())
+    }
     fn consume_review(&mut self, id: &str) -> Result<PendingPresentation, String> {
         if !self.presentation.as_ref().is_some_and(|p| p.id == id) {
             return Err("review_required".into());
@@ -775,6 +808,7 @@ pub struct PresentationReview {
 }
 // Only authenticated provenance, never an undisclosed attribute value, enters consent UI.
 fn presentation_source(receipt: &Receipt, at: u64) -> Result<Option<Value>, String> {
+    let single_use = receipt.single_use(ISSUER, at)?;
     let (document_type, evidence) = if receipt.format == "mso_mdoc" {
         let validated = mdoc::verify_receipt(
             &receipt.credential,
@@ -803,7 +837,7 @@ fn presentation_source(receipt: &Receipt, at: u64) -> Result<Option<Value>, Stri
         )
     };
     Ok(Some(
-        json!({"document_type":document_type,"predicate_source":evidence["predicate_source"],
+        json!({"document_type":document_type,"single_use":single_use,"predicate_source":evidence["predicate_source"],
         "assurance":evidence["assurance"],"verified_at":evidence["verified_at"],
         "live_possession_verified":evidence["live_possession_verified"],"government_credential":evidence["government_credential"]}),
     ))
@@ -997,7 +1031,7 @@ pub async fn confirm_identity_presentation(
                 mikaki_identity::presentation::binding_claims(&selected, &pending.request, now()?)
                     .map_err(str::to_string)?,
             )?;
-            Zeroizing::new(format!("{}{kb}", &*selected))
+            Zeroizing::new(format!("{}{kb}", *selected))
         };
         let encrypted = pending.request.response_encryption().is_some();
         let token = Zeroizing::new(if encrypted {
@@ -1030,12 +1064,33 @@ pub async fn confirm_identity_presentation(
         ]
     };
     {
-        let s = state.0.lock().map_err(|_| "identity_unavailable")?;
+        let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
         if s.generation != guard.generation {
             return Err("cancelled".into());
         }
         if pending.inventory.is_some() {
             inventory::validate(&pending, &s.receipts, now()?)?;
+        }
+        if pending.expires_at <= now()? {
+            return Err("request_expired".into());
+        }
+        let selected = if pending.inventory.is_some() {
+            pending
+                .bindings
+                .iter()
+                .map(|(_, hash)| hash.clone())
+                .collect::<Vec<_>>()
+        } else {
+            vec![pending.credential_hash.clone()]
+        };
+        s.retire_age_receipts(&app, &selected, now()?)?;
+    }
+    // Storage and Keystore calls may take time. Retirement is irreversible,
+    // but cancellation or expiry during that work still suppresses dispatch.
+    {
+        let s = state.0.lock().map_err(|_| "identity_unavailable")?;
+        if s.generation != guard.generation {
+            return Err("cancelled".into());
         }
         if pending.expires_at <= now()? {
             return Err("request_expired".into());
@@ -1111,6 +1166,83 @@ mod presentation_tests {
         assert!(matches!(state.consume_review("review"),Err(e) if e=="review_required"));
         state.presentation = Some(pending());
         assert!(matches!(state.consume_review("review"),Err(e) if e=="request_consumed"));
+    }
+    #[test]
+    fn age_retirement_clears_the_legacy_cache_before_key_deletion_and_never_requeues() {
+        use crate::identity_wallet::credential_trust_tests::receipt_with_profile;
+        use std::cell::RefCell;
+        const AT: u64 = 1791000000;
+        for format in ["dc+sd-jwt", "mso_mdoc"] {
+            let receipt = receipt_with_profile(
+                format,
+                3,
+                ISSUER,
+                &mikaki_identity::claim_profile::ClaimProfile::age_only(),
+            );
+            let selected = vec![credential_hash(&receipt.credential)];
+            let mut state = Inner {
+                receipt: Some(receipt.clone()),
+                receipts: vec![receipt],
+                ..Inner::default()
+            };
+            let events = RefCell::new(Vec::new());
+            assert!(state
+                .retire_age_receipts_with(
+                    &selected,
+                    AT,
+                    |remaining, _| {
+                        assert!(remaining.is_empty());
+                        events.borrow_mut().push("persist");
+                        Ok(())
+                    },
+                    |_| {
+                        events.borrow_mut().push("destroy");
+                        Err("wallet_key_unavailable".into())
+                    }
+                )
+                .is_err());
+            assert_eq!(*events.borrow(), vec!["persist", "destroy"]);
+            assert!(state.receipts.is_empty() && state.receipt.is_none());
+            assert!(state
+                .retire_age_receipts_with(
+                    &selected,
+                    AT,
+                    |_, _| panic!("cannot recover a consumed receipt"),
+                    |_| panic!()
+                )
+                .is_err());
+        }
+    }
+    #[test]
+    fn storage_failure_leaves_unused_receipts_available_and_never_deletes_their_keys() {
+        use crate::identity_wallet::credential_trust_tests::receipt_with_profile;
+        const AT: u64 = 1791000000;
+        let receipt = receipt_with_profile(
+            "dc+sd-jwt",
+            3,
+            ISSUER,
+            &mikaki_identity::claim_profile::ClaimProfile::age_only(),
+        );
+        let selected = vec![credential_hash(&receipt.credential)];
+        let mut state = Inner {
+            receipt: Some(receipt.clone()),
+            receipts: vec![receipt],
+            ..Inner::default()
+        };
+        assert!(state
+            .retire_age_receipts_with(
+                &selected,
+                AT,
+                |_, _| Err("wallet_storage_unavailable".into()),
+                |_| panic!("storage failed; no dispatch or deletion")
+            )
+            .is_err());
+        assert_eq!(state.receipts.len(), 1);
+        assert!(state.receipt.is_some());
+        assert!(state
+            .retire_age_receipts_with(&selected, AT, |_, _| Ok(()), |_| Ok(()))
+            .is_ok());
+        assert!(state.receipts.is_empty() && state.receipt.is_none());
     }
     #[test]
     fn concurrent_confirmation_has_one_winner() {

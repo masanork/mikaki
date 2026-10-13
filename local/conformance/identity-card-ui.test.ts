@@ -453,6 +453,59 @@ test('native same-device invocations use consent and discard requests after leav
   const server = await startNativeUiServer();
   const browser = await chromium.launch({ headless: true });
   try {
+    for (const singleUse of [true, false]) {
+      await t.test(
+        'type-only consent shows the authenticated usage policy: ' + singleUse,
+        async () => {
+          const { page, errors } = await createNativeUiPage(browser, server.url, {
+            identityReader: true,
+            identityInvocation: true,
+            identityAge: true,
+            identityNoClaims: true,
+            identityAgeSingleUse: singleUse,
+          });
+          try {
+            await page.locator('#identity-vp-consent').waitFor({ state: 'visible' });
+            const text = await page.locator('#identity-vp-values').innerText();
+            assert.equal(text.includes('1回限りの年齢証明'), singleUse);
+            assert.doesNotMatch(text, /はい|いいえ|1990-02-28|試験 太郎/);
+            assert.ok(
+              !(await page.evaluate(() =>
+                window.__nativeUiTest.calls.includes('confirm_identity_presentation'),
+              )),
+            );
+            assert.deepEqual(errors, []);
+          } finally {
+            await page.close();
+          }
+        },
+      );
+    }
+    await t.test(
+      'proximity age consent explains one use without exposing the birthdate',
+      async () => {
+        const { page, errors } = await createNativeUiPage(browser, server.url, {
+          identityReader: true,
+          identityAge: true,
+          identityFormat: 'mso_mdoc',
+          identityAgeDocument: 'driving_license',
+        });
+        try {
+          await page.locator('#open-settings').click();
+          await page.getByRole('link', { name: '診断' }).click();
+          await page.locator('#identity-proximity-start').click();
+          await page.locator('#identity-proximity-consent').waitFor({ state: 'visible' });
+          const text = await page.locator('#identity-proximity-values').innerText();
+          assert.match(text, /1回限りの年齢証明/);
+          assert.match(text, /送信に失敗しても再利用できません/);
+          assert.match(text, /IC運転免許証/);
+          assert.doesNotMatch(text, /1990-02-28|試験 太郎/);
+          assert.deepEqual(errors, []);
+        } finally {
+          await page.close();
+        }
+      },
+    );
     for (const format of ['dc+sd-jwt', 'mso_mdoc']) {
       for (const value of [true, false])
         await t.test(
@@ -474,6 +527,8 @@ test('native same-device invocations use consent and discard requests after leav
               assert.match(text, /確認結果の根拠/);
               assert.match(text, format === 'mso_mdoc' ? /IC運転免許証/ : /マイナンバーカード/);
               assert.match(text, /生年月日の値は送信しません/);
+              assert.match(text, /1回限りの年齢証明/);
+              assert.match(text, /送信に失敗しても再利用できません/);
               assert.doesNotMatch(text, /試験 太郎|東京都|1990-02-28|20歳以上/);
               await page.locator('#identity-vp-approve').click();
               await page.waitForFunction(() =>

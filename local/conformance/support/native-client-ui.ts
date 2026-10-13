@@ -17,6 +17,7 @@ export interface NativeUiScenario {
   identityAge?: boolean;
   identityAgeValue?: boolean;
   identityAgeDocument?: string;
+  identityAgeSingleUse?: boolean;
   identityFailure?: { code: string; remaining_retries?: number };
 }
 
@@ -195,7 +196,18 @@ export async function createNativeUiPage(
           result = {
             review_id: 'fixture-proximity-review',
             reader_name: '試験読み手',
-            values: { name: '試験 太郎', birthdate: '1990-02-28' },
+            values: initial.identityAge
+              ? { age_over_18: initial.identityAgeValue ?? true }
+              : { name: '試験 太郎', birthdate: '1990-02-28' },
+            ...(initial.identityAge
+              ? {
+                  source: {
+                    document_type: initial.identityAgeDocument ?? 'my_number_card',
+                    predicate_source: 'birthdate',
+                    single_use: initial.identityAgeSingleUse ?? true,
+                  },
+                }
+              : {}),
             retained_fields: ['name'],
             expires_at: Math.floor(Date.now() / 1000) + 120,
           };
@@ -246,6 +258,7 @@ export async function createNativeUiPage(
                   source: {
                     document_type: initial.identityAgeDocument ?? 'my_number_card',
                     predicate_source: 'birthdate',
+                    single_use: initial.identityAgeSingleUse ?? true,
                   },
                 }
               : {}),

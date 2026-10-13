@@ -436,10 +436,11 @@ pub(super) mod android {
             .seal_response_at(&response, now()?)
             .map_err(str::to_string)?;
         {
-            let s = state.0.lock().map_err(|_| "identity_unavailable")?;
-            if s.generation != guard.generation {
+            let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
+            if s.generation != guard.generation || s.proximity_id.as_deref() != Some(&id) {
                 return Err("cancelled".into());
             }
+            s.retire_age_receipts(&app, &[flow.credential_hash.clone()], now()?)?;
         }
         live(&flow)?;
         // Bound the Android transfer by both the approved wall-clock deadline and
