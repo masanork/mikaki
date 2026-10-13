@@ -13,7 +13,7 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
@@ -30,6 +30,10 @@ import {
   prepareClosedCopyConfigurations,
   verifyClosedCopyConfigurations,
 } from './work-copy-worker-configs.ts';
+import {
+  prepareCopyActivationInputs,
+  verifyCopyActivationInputs,
+} from './work-copy-activation-inputs.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const parent = join(root, 'local/generated/copy-binding-tests');
@@ -84,6 +88,7 @@ test('retained private binding plan qualifies real companion bytes and refuses p
     parent,
   );
   let closed: Awaited<ReturnType<typeof prepareClosedCopyConfigurations>> | undefined;
+  let activation: Awaited<ReturnType<typeof prepareCopyActivationInputs>> | undefined;
   try {
     await t.test(
       'portable child preserves exact parent bytes, declared scope and closed execution',
@@ -301,6 +306,176 @@ test('retained private binding plan qualifies real companion bytes and refuses p
       },
     );
     await t.test(
+      'portable activation review changes only thirteen gates and retains the exact deployable modules',
+      async () => {
+        assert.ok(closed);
+        activation = await prepareCopyActivationInputs(
+          closed.directory,
+          closed.manifest_sha256,
+          parent,
+        );
+        const held = closed.directory + '-held';
+        await rename(closed.directory, held);
+        try {
+          const verified = await verifyCopyActivationInputs(
+            activation.directory,
+            activation.manifest_sha256,
+          );
+          assert.equal(verified.workers, 13);
+          assert.equal(verified.external_effects, false);
+          const review = JSON.parse(
+            await readFile(join(activation.directory, 'activation-review.json'), 'utf8'),
+          );
+          assert.equal(review.current_owner_session_source_expiry_and_consent_verified, false);
+          assert.equal(review.current_provider_observations_verified, false);
+          assert.equal(review.provider_transport_included, false);
+          assert.equal(review.prerequisites.execution_authorized, false);
+          assert.equal(review.prerequisites.ai_delegation_authorized, false);
+          assert.equal(review.op.full_configuration_emitted, false);
+          assert.equal(review.checkpoint.configuration_emitted, false);
+          assert.equal(Object.keys(review.op.requested_gate_values).length, 6);
+          assert.deepEqual(Object.values(review.op.requested_gate_values), Array(6).fill('true'));
+          assert.equal(review.companion_changes.length, 13);
+          const dry = await mkdtemp(join(parent, 'activation-dry-'));
+          const run = promisify(execFile);
+          try {
+            for (const change of review.companion_changes) {
+              const path = join(activation.directory, 'configs', change.worker, 'wrangler.json');
+              const candidate = JSON.parse(await readFile(path, 'utf8'));
+              const baseline = JSON.parse(
+                await readFile(join(held, 'configs', change.worker, 'wrangler.json'), 'utf8'),
+              );
+              baseline.vars[change.gate] = 'true';
+              baseline.main = `../../closed/binding/runtime/workers/${change.worker}.mjs`;
+              assert.deepEqual(candidate, baseline);
+              const output = join(dry, change.worker);
+              await run(
+                process.execPath,
+                [
+                  join(root, 'node_modules/wrangler/bin/wrangler.js'),
+                  'deploy',
+                  '--dry-run',
+                  '--containers-rollout',
+                  'none',
+                  '--config',
+                  path,
+                  '--outdir',
+                  output,
+                ],
+                {
+                  cwd: root,
+                  timeout: 30000,
+                  maxBuffer: 1024 * 1024,
+                  env: {
+                    ...process.env,
+                    CI: 'true',
+                    CLOUDFLARE_API_TOKEN: '',
+                    CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:1',
+                    WRANGLER_SEND_METRICS: 'false',
+                  },
+                },
+              );
+              const emitted = (await readdir(output)).filter((name) => /\.(?:js|mjs)$/.test(name));
+              assert.equal(emitted.length, 1);
+              assert.deepEqual(
+                await readFile(join(output, emitted[0]!)),
+                await readFile(
+                  join(
+                    activation.directory,
+                    'closed/binding/runtime/workers',
+                    change.worker + '.mjs',
+                  ),
+                ),
+              );
+            }
+          } finally {
+            await rm(dry, { recursive: true, force: true });
+          }
+        } finally {
+          await rename(held, closed.directory);
+        }
+      },
+    );
+    await t.test(
+      'rewritten activation inventory cannot change scope, admission pins, closure gates or authority',
+      async () => {
+        assert.ok(activation);
+        const manifestPath = join(activation.directory, 'manifest.json');
+        const configPath = join(activation.directory, 'configs/git-host/wrangler.json');
+        const savedManifest = await readFile(manifestPath);
+        const savedConfig = await readFile(configPath);
+        for (const mutate of [
+          (c: any) => {
+            c.vars.WORK_ARTIFACTS_ACCOUNT = 'b'.repeat(32);
+          },
+          (c: any) => {
+            c.vars.WORK_GIT_HOST_ENABLED = 'false';
+          },
+          (c: any) => {
+            c.vars.WORK_GIT_DISCLOSURE_DIGEST = '0'.repeat(64);
+          },
+          (c: any) => {
+            c.services.push({
+              binding: 'ADMIN',
+              service: target.op.service,
+              entrypoint: 'OpAuthorityAdmin',
+            });
+          },
+          (c: any) => {
+            c.routes = ['public.invalid/*'];
+          },
+          (c: any) => {
+            c.main = '/tmp/unreviewed.mjs';
+          },
+        ]) {
+          const config = JSON.parse(savedConfig.toString());
+          mutate(config);
+          await writeFile(configPath, bytes(config));
+          await assert.rejects(
+            verifyCopyActivationInputs(activation.directory, activation.manifest_sha256),
+            /members_changed/,
+          );
+          const manifest = JSON.parse(savedManifest.toString());
+          manifest.members = await copyRuntimeInventory(activation.directory);
+          const changed = bytes(manifest);
+          await writeFile(manifestPath, changed);
+          await assert.rejects(
+            verifyCopyActivationInputs(activation.directory, sha(changed)),
+            /capabilities_changed/,
+          );
+          await writeFile(configPath, savedConfig);
+          await writeFile(manifestPath, savedManifest);
+        }
+        const closingPath = join(activation.directory, 'configs/mint-close/wrangler.json');
+        const savedClosing = await readFile(closingPath);
+        const closing = JSON.parse(savedClosing.toString());
+        closing.vars.WORK_MINT_CLOSURE_ENABLED = 'false';
+        await writeFile(closingPath, bytes(closing));
+        const manifest = JSON.parse(savedManifest.toString());
+        manifest.members = await copyRuntimeInventory(activation.directory);
+        const changed = bytes(manifest);
+        await writeFile(manifestPath, changed);
+        await assert.rejects(
+          verifyCopyActivationInputs(activation.directory, sha(changed)),
+          /capabilities_changed/,
+        );
+        await writeFile(closingPath, savedClosing);
+        await writeFile(manifestPath, savedManifest);
+        const extra = join(activation.directory, 'configs/op/wrangler.json');
+        await mkdir(dirname(extra), { recursive: true });
+        await writeFile(extra, '{}');
+        manifest.members = await copyRuntimeInventory(activation.directory);
+        const extraManifest = bytes(manifest);
+        await writeFile(manifestPath, extraManifest);
+        await assert.rejects(
+          verifyCopyActivationInputs(activation.directory, sha(extraManifest)),
+          /extra_member/,
+        );
+        await rm(dirname(extra), { recursive: true, force: true });
+        await writeFile(manifestPath, savedManifest);
+      },
+    );
+    await t.test(
       'rewritten configuration inventory cannot grant bootstrap, open ingress or substitute image bytes',
       async () => {
         assert.ok(closed);
@@ -458,6 +633,7 @@ test('retained private binding plan qualifies real companion bytes and refuses p
       await writeFile(planPath, saved);
     });
   } finally {
+    if (activation) await rm(activation.directory, { recursive: true, force: true });
     if (closed) await rm(closed.directory, { recursive: true, force: true });
     await rm(runtime.directory, { recursive: true, force: true });
     await rm(packet.directory, { recursive: true, force: true });

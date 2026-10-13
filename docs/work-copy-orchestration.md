@@ -137,6 +137,32 @@ Copy verification explicitly leaves work delegation unperformed.
 
 ## Qualification and activation limits
 
+The operator can derive a separate activation review packet from a verified
+closed configuration packet:
+
+```sh
+node scripts/work-copy-activation-inputs.ts create <closed-directory> <closed-manifest-sha256> <ignored-output-parent>
+node scripts/work-copy-activation-inputs.ts verify <candidate-directory> <candidate-manifest-sha256>
+```
+
+The candidate retains the complete closed parent and exact runtime bytes. Its
+13 companion configurations change only their one execution/maintenance gate
+from false to true and the relative path to the retained module. The immutable
+image, host disclosure/registry pins, private service graph, resources, scope,
+disabled public ingress, disabled SSH and empty cron lists stay fixed. Verification
+derives every configuration again, so rewriting inventory hashes cannot add
+authority, substitute selectors or disable a credential closure gate.
+
+`activation-review.json` lists the six requested OP gate changes separately.
+It emits neither an OP nor a checkpoint configuration. Ordinary production
+promotion continues to reject those enabled OP gates. The candidate provides
+no provider transport, source upload, bootstrap, owner approval or AI delegation.
+It records that current provider observations and owner/session/source/expiry/
+consent have not been verified. A saved parent or a successful dry run cannot
+satisfy those requirements; expired disclosure selectors must be replaced through
+a new verified closed parent. Actual activation still requires its separately
+reviewed OP rollout and live prerequisites immediately before any effect.
+
 Local tests run the product Rust/Wasm, primary D1, independent checkpoint and
 effect journals, actual Cloudflare Workflow engine and real loopback Git smart
 HTTP. Owner identities, provider IDs and secrets are synthetic. Browser tests
