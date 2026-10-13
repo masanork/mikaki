@@ -92,6 +92,44 @@ Git gates and active wrapping-key custody. Native repeats source/session and
 consent checks when executing; no local package enables those capabilities or
 reconciles protected unknown provider outcomes.
 
+## Freeze the copy companion runtime inputs
+
+Before attaching a real disclosure or enabling productive copy, prepare the
+companion Worker bytes from a clean committed checkout:
+
+```sh
+npm run prepare:work-copy-runtime -- local/generated/work-copy-runtime
+npm run verify:work-copy-runtime -- PACKET_DIRECTORY RETAINED_MANIFEST_SHA256 SOURCE_COMMIT
+```
+
+The packet contains fourteen actual companion bundles (Workflow, initial/mint/Git
+and maintenance/refusal/composition gates, private Git host and checkpoint),
+their committed project inputs, dependency lockfiles, consumed dependency files,
+package metadata, registry archives and tool versions. Project modules are read
+against the selected Git commit during bundling. Dependency bytes and resolution
+metadata are compared with the archive whose SHA-512 integrity matches the lock.
+Archives come from npm cache with `--offline --ignore-scripts`; a missing cache
+entry refuses preparation. Every bundle
+has only the Cloudflare runtime import remaining. Keep the returned source and
+manifest digest outside the packet; verification requires those exact values
+and rejects changed, missing, additional, linked or source-substituted members.
+Traversal is bounded to 768 entries, 12 path levels and 64 MiB total; dependency
+verification repeats lock/archive/file checks after the member inventory.
+
+This is a local byte inventory, not a signed release, target configuration or
+remote runtime observation. It contains no OP Wasm, owner disclosure/consent,
+source packs, Container image or provider credentials. The matching attested OP,
+current Native disclosure/source packet, sealed image/R2 supply, actual private
+resource/version/binding observations and active wrapping-key custody remain
+required before activation. Copy and AI execution permissions remain absent.
+The [first productive-copy Issue #200](https://github.com/masanork/mikaki/issues/200)
+tracks those separate gates.
+
+`npm run test:work-copy-runtime` builds the real companion bundles and checks
+public and named cold admission in local workerd without provider bindings. It
+also qualifies retained-digest rejection of byte/manifest substitution, unknown
+members, symlinks and attempts to relabel the packet as execution authority.
+
 ## Validation
 
 The packet test restores real Git objects independently and proves history

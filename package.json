@@ -121,7 +121,10 @@
     "prepare:work-code-source": "node scripts/prepare-work-code-source.ts",
     "prepare:work-code-copy": "node scripts/prepare-work-code-copy.ts",
     "test:work-code-copy": "npm run build:work-owner-fixture && node --test local/conformance/work-code-copy.test.ts",
-    "register:work-code-source": "node scripts/register-work-code-source.ts"
+    "register:work-code-source": "node scripts/register-work-code-source.ts",
+    "prepare:work-copy-runtime": "node scripts/work-copy-runtime-packet.ts create",
+    "verify:work-copy-runtime": "node scripts/work-copy-runtime-packet.ts verify",
+    "test:work-copy-runtime": "node --test scripts/work-copy-runtime-packet.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
