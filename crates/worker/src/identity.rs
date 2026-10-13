@@ -12,6 +12,7 @@ use crate::{
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use mikaki_identity::{
+    claim_profile::ClaimProfile,
     evidence::{Evidence, TrustedKey, VerifiedDocument, verify},
     issuance::{self, PublicJwk},
     mdoc,
@@ -87,6 +88,12 @@ fn trust_policy(env: &worker::Env) -> worker::Result<(Vec<TrustedKey>, String)> 
 fn signing(ctx: &RouteContext<()>) -> worker::Result<(p256_key::Key, String)> {
     let raw = Zeroizing::new(ctx.env.secret("IDENTITY_ISSUER_JWK")?.to_string());
     issuance::issuer_key(&raw).map_err(|_| server_error())
+}
+fn claim_profile(ctx: &RouteContext<()>) -> worker::Result<ClaimProfile> {
+    match ctx.env.var("IDENTITY_ISSUANCE_CLAIMS") {
+        Ok(raw) => ClaimProfile::from_json(&raw.to_string()).map_err(|_| server_error()),
+        Err(_) => Ok(ClaimProfile::default()),
+    }
 }
 fn encryption_key(
     ctx: &RouteContext<()>,
@@ -468,8 +475,15 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     }
     let iss = issuer(&ctx)?;
     let mut metadata = json!({"credential_issuer":iss,"credential_endpoint":format!("{iss}/credential"),"nonce_endpoint":format!("{iss}/nonce"),"credential_configurations_supported":{"linked_document":{"format":"dc+sd-jwt","scope":"linked_document","vct":format!("{iss}/types/linked-document"),"cryptographic_binding_methods_supported":["jwk"],"credential_signing_alg_values_supported":["ES256"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}}}});
+    let Ok(profile) = claim_profile(&ctx) else {
+        return error(503, "issuer_unavailable");
+    };
+    metadata["credential_configurations_supported"][issuance::CONFIGURATION]["credential_metadata"] =
+        json!({"claims":profile.metadata(None)});
     if mdoc_certificate(&ctx)?.is_some() {
         metadata["credential_configurations_supported"][mdoc::CONFIGURATION] = json!({"format":"mso_mdoc","doctype":mdoc::DOCTYPE,"scope":mdoc::CONFIGURATION,"cryptographic_binding_methods_supported":["cose_key"],"credential_signing_alg_values_supported":[-7],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}});
+        metadata["credential_configurations_supported"][mdoc::CONFIGURATION]["credential_metadata"] =
+            json!({"claims":profile.metadata(Some(mdoc::NAMESPACE))});
     }
     if wallet::haip(&ctx) {
         let Ok((policy, _)) = wallet::key_attestation_policy(&ctx) else {
@@ -555,7 +569,7 @@ pub async fn type_metadata(_req: Request, ctx: RouteContext<()>) -> worker::Resu
         return error(404, "not_found");
     }
     response(
-        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes linked by account-owner consent. Not a government credential; no liveness or current licence status assertion."}),
+        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes and age predicates linked by account-owner consent. Predicates do not increase assurance. Not a government credential; no liveness or current licence status assertion.","claims":ClaimProfile::all().metadata(None)}),
     )
 }
 #[derive(Deserialize)]
@@ -893,19 +907,23 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     if present.is_none() {
         return error(400, "invalid_nonce");
     }
-    let count = 3
-        + usize::from(!document.attributes.gender.is_empty())
-        + usize::from(document.attributes.expiry_date.is_some());
+    let Ok(profile) = claim_profile(&ctx) else {
+        return error(503, "issuer_unavailable");
+    };
+    let count = profile.values(&document, validity.evaluated_at()).len();
+    if count == 0 {
+        return error(403, "document_revalidation_required");
+    }
     let mut salts = vec![[0; 16]; count];
     for salt in &mut salts {
         WorkersCryptoRandom.fill(salt).map_err(|_| server_error())?;
     }
     let credential = Zeroizing::new(
         match certificate {
-            Some(cert) => {
-                mdoc::issue_with_validity(&key, &cert, &holder, &document, validity, &salts)
-            }
-            None if signing_trust.is_some() => issuance::issue_with_certificate_trust(
+            Some(cert) => mdoc::issue_with_profile(
+                &key, &cert, &holder, &document, validity, &salts, &profile,
+            ),
+            None if signing_trust.is_some() => issuance::issue_with_certificate_trust_and_profile(
                 &key,
                 &kid,
                 &iss,
@@ -914,9 +932,10 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
                 validity,
                 &salts,
                 signing_trust.as_ref().unwrap(),
+                &profile,
             ),
-            None => issuance::issue_with_validity(
-                &key, &kid, &iss, &holder, &document, validity, &salts,
+            None => issuance::issue_with_profile(
+                &key, &kid, &iss, &holder, &document, validity, &salts, &profile,
             ),
         }
         .map_err(|_| server_error())?,

@@ -4,6 +4,7 @@ pub mod attester_proof;
 pub mod card;
 pub mod certificate;
 mod certificate_revocation;
+pub mod claim_profile;
 pub mod client_attestation;
 pub mod credential_certificate;
 pub mod credential_receipt;

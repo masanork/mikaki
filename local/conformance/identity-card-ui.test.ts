@@ -453,6 +453,46 @@ test('native same-device invocations use consent and discard requests after leav
   const server = await startNativeUiServer();
   const browser = await chromium.launch({ headless: true });
   try {
+    for (const format of ['dc+sd-jwt', 'mso_mdoc']) {
+      for (const value of [true, false])
+        await t.test(
+          `age-only ${format} consent shows ${value} and source without raw values`,
+          async () => {
+            const { page, errors } = await createNativeUiPage(browser, server.url, {
+              identityReader: true,
+              identityInvocation: true,
+              identityAge: true,
+              identityAgeValue: value,
+              identityFormat: format,
+              identityAgeDocument: format === 'mso_mdoc' ? 'driving_license' : 'my_number_card',
+            });
+            try {
+              await page.locator('#identity-vp-consent').waitFor({ state: 'visible' });
+              const text = await page.locator('#identity-vp-values').innerText();
+              assert.match(text, /18歳以上である/);
+              assert.match(text, value ? /はい/ : /いいえ/);
+              assert.match(text, /確認結果の根拠/);
+              assert.match(text, format === 'mso_mdoc' ? /IC運転免許証/ : /マイナンバーカード/);
+              assert.match(text, /生年月日の値は送信しません/);
+              assert.doesNotMatch(text, /試験 太郎|東京都|1990-02-28|20歳以上/);
+              await page.locator('#identity-vp-approve').click();
+              await page.waitForFunction(() =>
+                window.__nativeUiTest.calls.includes('confirm_identity_presentation'),
+              );
+              const args = await page.evaluate(
+                () =>
+                  window.__nativeUiTest.arguments.find(
+                    (c) => c.command === 'confirm_identity_presentation',
+                  )?.args,
+              );
+              assert.deepEqual(args, { reviewId: 'fixture-review', approve: true });
+              assert.deepEqual(errors, []);
+            } finally {
+              await page.close();
+            }
+          },
+        );
+    }
     for (const approve of [false, true])
       await t.test(
         `mixed credential consent is grouped and ${approve ? 'approved' : 'denied'} once`,

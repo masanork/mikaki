@@ -48,33 +48,54 @@ fn receipt(format: &str) -> Receipt {
     receipt_with(format, 3, ISSUER)
 }
 pub(crate) fn receipt_with(format: &str, seed: u8, issuer_url: &str) -> Receipt {
+    receipt_with_profile(
+        format,
+        seed,
+        issuer_url,
+        &mikaki_identity::claim_profile::ClaimProfile::default(),
+    )
+}
+pub(crate) fn receipt_with_profile(
+    format: &str,
+    seed: u8,
+    issuer_url: &str,
+    profile: &mikaki_identity::claim_profile::ClaimProfile,
+) -> Receipt {
     let issuer = SigningKey::from_slice(&[4; 32]).unwrap();
     let holder = HolderKey::Memory(SigningKey::from_slice(&[seed; 32]).unwrap());
     let document: VerifiedDocument = serde_json::from_value(json!({"attributes":{"name":"Fixture","address":"Private","birth_date":"1990-02-28","gender":"1","verification":"issuer_signed_static_data","document_type":"my_number_card","expiry_date":null,"backend_verifiable":true},"trusted_key_id":"fixture","verified_at":NOW,"assurance":"issuer_signed_static_data","attributes_source":"input_support_ef"})).unwrap();
+    let salts = profile
+        .values(&document, NOW)
+        .iter()
+        .enumerate()
+        .map(|(i, _)| [i as u8 + 1; 16])
+        .collect::<Vec<_>>();
     let credential = if format == "dc+sd-jwt" {
-        issuance::issue_with_certificate_trust(
+        issuance::issue_with_certificate_trust_and_profile(
             &issuer,
             "issuer",
             issuer_url,
             &holder.public().unwrap(),
             &document,
             Validity::new(&document, NOW, NOW + 300).unwrap(),
-            &[[1; 16], [2; 16], [3; 16], [4; 16]],
+            &salts,
             &SigningTrust {
                 chain: vec![STANDARD.encode(bytes("sd-signer.der"))],
                 trust_anchors: policy().sd_jwt.trust_anchors,
                 revocation: None,
             },
+            profile,
         )
         .unwrap()
     } else {
-        mdoc::issue(
+        mdoc::issue_with_profile(
             &issuer,
             &bytes("mdoc-signer.der"),
             &holder.public().unwrap(),
             &document,
-            NOW,
-            &[[1; 16], [2; 16], [3; 16], [4; 16]],
+            Validity::new(&document, NOW, NOW + 300).unwrap(),
+            &salts,
+            profile,
         )
         .unwrap()
     };

@@ -7,6 +7,8 @@ pub(super) struct CredentialReview {
     query_id: String,
     format: String,
     values: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<Value>,
     retained_fields: Vec<String>,
 }
 fn verified(receipts: &[Receipt], at: u64) -> (Vec<&Receipt>, Vec<VerifiedCredential>) {
@@ -144,6 +146,7 @@ fn review(
             query_id: selection.request().query_id().into(),
             format: selection.request().format().into(),
             values: selection.values(at)?,
+            source: presentation_source(native[selection.inventory_index()], at)?,
             retained_fields: selection.request().retained_fields.clone(),
         });
         bindings.push((
@@ -157,6 +160,7 @@ fn review(
         verifier_name: routing.verifier_name.clone(),
         response_uri: routing.response_uri().into(),
         values: json!({}),
+        source: None,
         retained_fields: Vec::new(),
         expires_at: prepared.expires_at(),
         credentials,
@@ -283,6 +287,9 @@ mod tests {
     use mikaki_identity::presentation::{self, VerifierRegistration};
     const AT: u64 = 1791000000;
     fn request(nonce: u8) -> InventoryRequest {
+        request_with_fields(nonce, ["name", "birthdate"])
+    }
+    fn request_with_fields(nonce: u8, fields: [&str; 2]) -> InventoryRequest {
         let signer = p256::ecdsa::SigningKey::from_slice(&[5; 32]).unwrap();
         let recipient = p256::ecdsa::SigningKey::from_slice(&[6; 32]).unwrap();
         let registry = VerifierRegistration {
@@ -300,7 +307,7 @@ mod tests {
                 jwk: PublicJwk::from_key(recipient.verifying_key()),
             }),
         };
-        let claims = json!({"iss":"fixture","aud":"https://self-issued.me/v2","client_id":"fixture","response_type":"vp_token","response_mode":"direct_post.jwt","response_uri":registry.response_uri,"nonce":format!("{nonce:043}"),"state":"S".repeat(43),"iat":AT,"exp":AT+120,"dcql_query":{"credentials":[{"id":"name","format":"dc+sd-jwt","meta":{"vct_values":[format!("{ISSUER}/types/linked-document")]},"claims":[{"path":["name"]}]},{"id":"birth","format":"mso_mdoc","meta":{"doctype_value":mdoc::DOCTYPE},"claims":[{"path":[mdoc::NAMESPACE,"birthdate"],"intent_to_retain":true}]}]}});
+        let claims = json!({"iss":"fixture","aud":"https://self-issued.me/v2","client_id":"fixture","response_type":"vp_token","response_mode":"direct_post.jwt","response_uri":registry.response_uri,"nonce":format!("{nonce:043}"),"state":"S".repeat(43),"iat":AT,"exp":AT+120,"dcql_query":{"credentials":[{"id":"name","format":"dc+sd-jwt","meta":{"vct_values":[format!("{ISSUER}/types/linked-document")]},"claims":[{"path":[fields[0]]}]},{"id":"birth","format":"mso_mdoc","meta":{"doctype_value":mdoc::DOCTYPE},"claims":[{"path":[mdoc::NAMESPACE,fields[1]],"intent_to_retain":true}]}]}});
         let compact = issuance::sign_jwt(
             &signer,
             json!({"typ":"oauth-authz-req+jwt","alg":"ES256","kid":"key"}),
@@ -321,6 +328,41 @@ mod tests {
             receipt_with("dc+sd-jwt", 3, ISSUER),
             receipt_with("mso_mdoc", 8, ISSUER),
         ]
+    }
+    #[test]
+    fn age_only_native_review_uses_authenticated_sources_and_never_partially_matches_birthdate() {
+        use crate::identity_wallet::credential_trust_tests::receipt_with_profile;
+        let profile = mikaki_identity::claim_profile::ClaimProfile::age_only();
+        let receipts = vec![
+            receipt_with_profile("dc+sd-jwt", 3, ISSUER, &profile),
+            receipt_with_profile("mso_mdoc", 8, ISSUER, &profile),
+        ];
+        let (consent, _) = review(
+            request_with_fields(1, ["age_over_18", "age_over_18"]),
+            &receipts,
+            AT,
+        )
+        .unwrap();
+        for credential in &consent.credentials {
+            assert_eq!(credential.values, json!({"age_over_18":true}));
+            let source = credential.source.as_ref().unwrap();
+            assert_eq!(source["document_type"], "my_number_card");
+            assert_eq!(source["predicate_source"], "birthdate");
+            assert_eq!(source["assurance"], "issuer_signed_static_data");
+            assert_eq!(source["government_credential"], false);
+        }
+        let serialized = serde_json::to_string(&consent).unwrap();
+        assert!(
+            !serialized.contains("1990-02-28")
+                && !serialized.contains("Private")
+                && !serialized.contains("age_over_20")
+        );
+        assert!(review(
+            request_with_fields(2, ["age_over_18", "birthdate"]),
+            &receipts,
+            AT
+        )
+        .is_err());
     }
     #[test]
     fn identity_inventory_review_binds_each_credential_and_confirmation_is_atomic() {

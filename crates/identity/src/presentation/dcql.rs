@@ -25,7 +25,7 @@ pub(super) fn present_claims<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Vec<Claim>, D::Error> {
     let claims = Vec::<Claim>::deserialize(d)?;
-    if claims.is_empty() || claims.len() > 5 {
+    if claims.is_empty() || claims.len() > 7 {
         return Err(serde::de::Error::custom("nonempty bounded claims required"));
     }
     Ok(claims)
@@ -56,7 +56,7 @@ pub(super) fn select_available(
     let mut ids = HashSet::new();
     let mut matches = Vec::new();
     for q in &dcql.credentials {
-        if !id(&q.id) || !ids.insert(q.id.as_str()) || q.claims.len() > 5 {
+        if !id(&q.id) || !ids.insert(q.id.as_str()) || q.claims.len() > 7 {
             return Err(invalid);
         }
         let type_matches = match q.format.as_str() {
@@ -190,11 +190,7 @@ pub(super) fn fields(query: &Query) -> Result<(Vec<String>, Vec<String>), &'stat
             ("mso_mdoc", [ns, name]) if ns == crate::mdoc::NAMESPACE => name,
             _ => return Err("unsupported_query"),
         };
-        if !matches!(
-            name.as_str(),
-            "name" | "address" | "birthdate" | "gender" | "document_expiry_date"
-        ) || !names.insert(name)
-        {
+        if !crate::claim_profile::supported(name) || !names.insert(name) {
             return Err("unsupported_query");
         }
         fields.push(name.clone());

@@ -318,27 +318,48 @@ pub fn issue_with_validity(
     validity: crate::issuance::Validity,
     salts: &[[u8; 16]],
 ) -> Result<String, &'static str> {
+    issue_with_profile(
+        key,
+        cert,
+        holder,
+        document,
+        validity,
+        salts,
+        &crate::claim_profile::ClaimProfile::default(),
+    )
+}
+pub fn issue_with_profile(
+    key: &SigningKey,
+    cert: &[u8],
+    holder: &PublicJwk,
+    document: &VerifiedDocument,
+    validity: crate::issuance::Validity,
+    salts: &[[u8; 16]],
+    profile: &crate::claim_profile::ClaimProfile,
+) -> Result<String, &'static str> {
     let now = validity.issued_at();
     let end = certificate_valid_until(cert, &PublicJwk::from_key(key.verifying_key()), now)?;
-    let validity = crate::issuance::Validity::new(document, now, validity.expires_at().min(end))?;
-    let a = &document.attributes;
-    let mut values = vec![
-        ("name", text(&a.name)),
-        ("address", text(&a.address)),
-        ("birthdate", text(&a.birth_date)),
-    ];
-    if !a.gender.is_empty() {
-        values.push(("gender", text(&a.gender)))
+    let validity = validity.limit(document, end)?;
+    let values = profile.values(document, validity.evaluated_at());
+    if values.is_empty() {
+        return Err("no_issuable_claims");
     }
-    if let Some(exp) = &a.expiry_date {
-        values.push(("document_expiry_date", text(exp)))
-    }
+    let predicates = values
+        .iter()
+        .any(|(name, _)| crate::claim_profile::is_age_claim(name));
     if values.len() != salts.len() {
         return Err("invalid_salts");
     }
     let mut items = Vec::new();
     let mut digests = Vec::new();
     for (i, ((name, value), salt)) in values.into_iter().zip(salts).enumerate() {
+        let value = if let Some(b) = value.as_bool() {
+            C::Bool(b)
+        } else if name == "address" {
+            text(value["formatted"].as_str().ok_or("invalid_mdoc")?)
+        } else {
+            text(value.as_str().ok_or("invalid_mdoc")?)
+        };
         let item = tag(map(vec![
             ("digestID", integer(i as i64)),
             ("random", bytes(salt.to_vec())),
@@ -351,7 +372,7 @@ pub fn issue_with_validity(
         ));
         items.push(item);
     }
-    let mso = tag(map(vec![
+    let mut mso_fields = vec![
         ("version", text("1.0")),
         ("digestAlgorithm", text("SHA-256")),
         ("valueDigests", map(vec![(NAMESPACE, C::Map(digests))])),
@@ -365,7 +386,29 @@ pub fn issue_with_validity(
                 ("validUntil", date(validity.expires_at())?),
             ]),
         ),
-    ]))?;
+    ];
+    // Custom linked-document MSO extension, signed even when only one predicate is sent.
+    // It carries provenance/assurance, never the original attributes or card signature.
+    if predicates {
+        let evidence =
+            crate::claim_profile::evidence_metadata(document, Some(validity.evaluated_at()));
+        let mut encoded = vec![];
+        ciborium::ser::into_writer(&evidence, &mut encoded).map_err(|_| "invalid_mdoc")?;
+        let mut provenance = decode(&encoded)?;
+        if let C::Map(m) = &mut provenance {
+            m.push((
+                text("document_type"),
+                text(
+                    serde_json::to_value(document.attributes.document_type)
+                        .map_err(|_| "invalid_mdoc")?
+                        .as_str()
+                        .ok_or("invalid_mdoc")?,
+                ),
+            ));
+        }
+        mso_fields.push(("mikakiEvidence", provenance));
+    }
+    let mso = tag(map(mso_fields))?;
     let payload = encode(&mso)?;
     let signature: Signature = key.sign(&signature_input(&payload)?);
     let auth = sign1(
@@ -383,6 +426,7 @@ pub struct Validated {
     pub issuer_signed: C,
     pub values: Value,
     pub expires_at: u64,
+    pub evidence: Option<Value>,
 }
 pub fn verify_receipt(
     credential: &str,
@@ -459,14 +503,14 @@ pub fn verify_receipt(
     let items = spaces[0]
         .1
         .as_array()
-        .filter(|a| (3..=5).contains(&a.len()) && a.len() == digests.len())
+        .filter(|a| (1..=7).contains(&a.len()) && a.len() == digests.len())
         .ok_or("invalid_mdoc")?;
     let mut values = json!({});
     let mut ids = HashSet::new();
     for item in items {
         let inner = embedded(item)?;
         let id = numeric(get(&inner, "digestID")?)?;
-        if id > 4 || !ids.insert(id) {
+        if id > 6 || !ids.insert(id) {
             return Err("invalid_mdoc");
         }
         let digest = digests
@@ -484,22 +528,38 @@ pub fn verify_receipt(
         let name = get(&inner, "elementIdentifier")?
             .as_text()
             .ok_or("invalid_mdoc")?;
-        if !matches!(
-            name,
-            "name" | "address" | "birthdate" | "gender" | "document_expiry_date"
-        ) || values.get(name).is_some()
-        {
+        if !crate::claim_profile::supported(name) || values.get(name).is_some() {
             return Err("invalid_mdoc");
         }
-        values[name] = json!(
-            get(&inner, "elementValue")?
-                .as_text()
-                .ok_or("invalid_mdoc")?
-        );
+        let value = get(&inner, "elementValue")?;
+        values[name] = if crate::claim_profile::is_age_claim(name) {
+            let C::Bool(b) = value else {
+                return Err("invalid_mdoc");
+            };
+            json!(b)
+        } else {
+            json!(value.as_text().ok_or("invalid_mdoc")?)
+        };
     }
-    if ["name", "address", "birthdate"]
-        .iter()
-        .any(|k| values.get(k).is_none())
+    let evidence = match get(&mso, "mikakiEvidence") {
+        Ok(v) => Some(
+            ciborium::de::from_reader::<Value, _>(encode(v)?.as_slice())
+                .map_err(|_| "invalid_mdoc")?,
+        ),
+        Err(_) => None,
+    };
+    if values
+        .as_object()
+        .ok_or("invalid_mdoc")?
+        .keys()
+        .any(|name| crate::claim_profile::is_age_claim(name))
+        && evidence.as_ref().is_none_or(|e| {
+            e["assurance"] != "issuer_signed_static_data"
+                || e["live_possession_verified"] != false
+                || e["government_credential"] != false
+                || e["predicate_source"] != "birthdate"
+                || e["verified_at"].as_u64().is_none()
+        })
     {
         return Err("invalid_mdoc");
     }
@@ -509,6 +569,7 @@ pub fn verify_receipt(
         issuer_signed: signed,
         values,
         expires_at: exp,
+        evidence,
     })
 }
 /// OpenID4VP Final redirect/direct_post (NOT ISO 18013-7 Annex B).
@@ -589,7 +650,7 @@ pub fn device_authentication(transcript: &[u8]) -> Result<Vec<u8>, &'static str>
     ]))?)
 }
 pub fn selected_values(receipt: &Validated, fields: &[String]) -> Result<Value, &'static str> {
-    if fields.len() > 5 {
+    if fields.len() > 7 {
         return Err("unsupported_query");
     }
     let mut values = json!({});

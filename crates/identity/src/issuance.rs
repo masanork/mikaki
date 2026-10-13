@@ -281,6 +281,7 @@ pub fn create_proof(
 pub struct Validity {
     issued_at: u64,
     expires_at: u64,
+    evaluated_at: u64,
 }
 impl Validity {
     pub fn new(document: &VerifiedDocument, now: u64, deadline: u64) -> Result<Self, &'static str> {
@@ -299,6 +300,7 @@ impl Validity {
         Ok(Self {
             issued_at: now,
             expires_at,
+            evaluated_at: now,
         })
     }
     /// HAIP privacy policy: minute grid, never extend any verified deadline.
@@ -316,6 +318,7 @@ impl Validity {
         Ok(Self {
             issued_at,
             expires_at,
+            evaluated_at: self.evaluated_at,
         })
     }
     pub fn expires_at(self) -> u64 {
@@ -323,6 +326,18 @@ impl Validity {
     }
     pub fn issued_at(self) -> u64 {
         self.issued_at
+    }
+    pub fn evaluated_at(self) -> u64 {
+        self.evaluated_at
+    }
+    pub(crate) fn limit(
+        self,
+        document: &VerifiedDocument,
+        deadline: u64,
+    ) -> Result<Self, &'static str> {
+        let mut bounded = Self::new(document, self.issued_at, self.expires_at.min(deadline))?;
+        bounded.evaluated_at = self.evaluated_at;
+        Ok(bounded)
     }
 }
 /// Also used when verifying restored receipts, independently of the issuer implementation.
@@ -364,6 +379,28 @@ pub fn issue_with_validity(
     validity: Validity,
     salts: &[[u8; 16]],
 ) -> Result<String, &'static str> {
+    issue_with_profile(
+        key,
+        kid,
+        issuer,
+        holder,
+        document,
+        validity,
+        salts,
+        &crate::claim_profile::ClaimProfile::default(),
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub fn issue_with_profile(
+    key: &SigningKey,
+    kid: &str,
+    issuer: &str,
+    holder: &PublicJwk,
+    document: &VerifiedDocument,
+    validity: Validity,
+    salts: &[[u8; 16]],
+    profile: &crate::claim_profile::ClaimProfile,
+) -> Result<String, &'static str> {
     issue_with_header(
         key,
         json!({"typ":"dc+sd-jwt","alg":"ES256","kid":kid}),
@@ -372,6 +409,7 @@ pub fn issue_with_validity(
         document,
         validity,
         salts,
+        profile,
     )
 }
 // Keep the explicit signing inputs aligned with issue(); trust adds one policy input.
@@ -386,17 +424,37 @@ pub fn issue_with_certificate_trust(
     salts: &[[u8; 16]],
     trust: &crate::credential_certificate::SigningTrust,
 ) -> Result<String, &'static str> {
+    issue_with_certificate_trust_and_profile(
+        key,
+        kid,
+        issuer,
+        holder,
+        document,
+        validity,
+        salts,
+        trust,
+        &crate::claim_profile::ClaimProfile::default(),
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub fn issue_with_certificate_trust_and_profile(
+    key: &SigningKey,
+    kid: &str,
+    issuer: &str,
+    holder: &PublicJwk,
+    document: &VerifiedDocument,
+    validity: Validity,
+    salts: &[[u8; 16]],
+    trust: &crate::credential_certificate::SigningTrust,
+    profile: &crate::claim_profile::ClaimProfile,
+) -> Result<String, &'static str> {
     let (_, deadline) = crate::credential_certificate::verify(
         trust,
         &PublicJwk::from_key(key.verifying_key()),
         crate::credential_certificate::Purpose::SdJwt,
         validity.issued_at(),
     )?;
-    let validity = Validity::new(
-        document,
-        validity.issued_at(),
-        validity.expires_at().min(deadline),
-    )?;
+    let validity = validity.limit(document, deadline)?;
     issue_with_header(
         key,
         json!({"typ":"dc+sd-jwt","alg":"ES256","kid":kid,"x5c":trust.chain}),
@@ -405,8 +463,10 @@ pub fn issue_with_certificate_trust(
         document,
         validity,
         salts,
+        profile,
     )
 }
+#[allow(clippy::too_many_arguments)]
 fn issue_with_header(
     key: &SigningKey,
     header: Value,
@@ -415,23 +475,22 @@ fn issue_with_header(
     document: &VerifiedDocument,
     validity: Validity,
     salts: &[[u8; 16]],
+    profile: &crate::claim_profile::ClaimProfile,
 ) -> Result<String, &'static str> {
     // Rebind even a validity constructed for another document to this document's expiry.
-    let validity = Validity::new(document, validity.issued_at, validity.expires_at)?;
+    let validity = validity.limit(document, u64::MAX)?;
     let now = validity.issued_at;
     holder.verifying_key()?;
     let a = &document.attributes;
-    let mut claims = vec![
-        ("name", json!(a.name)),
-        ("address", json!({"formatted":a.address})),
-        ("birthdate", json!(a.birth_date)),
-    ];
-    if !a.gender.is_empty() {
-        claims.push(("gender", json!(a.gender)));
+    let claims = profile.values(document, validity.evaluated_at());
+    if claims.is_empty() {
+        return Err("no_issuable_claims");
     }
-    if let Some(date) = &a.expiry_date {
-        claims.push(("document_expiry_date", json!(date)));
-    }
+    let predicate_at = claims
+        .iter()
+        .any(|(name, _)| crate::claim_profile::is_age_claim(name))
+        .then_some(validity.evaluated_at());
+    let evidence = crate::claim_profile::evidence_metadata(document, predicate_at);
     if salts.len() != claims.len() {
         return Err("invalid_salts");
     }
@@ -448,7 +507,7 @@ fn issue_with_header(
     let token = sign_jwt(
         key,
         header,
-        json!({"iss":issuer,"iat":now,"exp":validity.expires_at,"vct":format!("{issuer}/types/linked-document"),"cnf":{"jwk":holder},"_sd_alg":"sha-256","_sd":hashes,"document_type":a.document_type,"evidence":{"assurance":document.assurance,"verified_at":document.verified_at,"trusted_key_id":document.trusted_key_id,"attributes_source":document.attributes_source,"live_possession_verified":false,"government_credential":false}}),
+        json!({"iss":issuer,"iat":now,"exp":validity.expires_at,"vct":format!("{issuer}/types/linked-document"),"cnf":{"jwk":holder},"_sd_alg":"sha-256","_sd":hashes,"document_type":a.document_type,"evidence":evidence}),
     )?;
     Ok(format!("{token}~{}~", disclosures.join("~")))
 }
@@ -541,16 +600,28 @@ pub fn verify_receipt(
             .filter(|a| a.len() == 3)
             .ok_or("invalid_credential")?;
         let name = array[1].as_str().ok_or("invalid_credential")?;
-        if !matches!(
-            name,
-            "name" | "address" | "birthdate" | "gender" | "document_expiry_date"
-        ) || claims.get(name).is_some()
+        if !crate::claim_profile::supported(name)
+            || claims.get(name).is_some()
+            || (crate::claim_profile::is_age_claim(name) && !array[2].is_boolean())
         {
             return Err("invalid_credential");
         }
         claims[name] = array[2].clone();
     }
     if seen.len() != hashes.len() {
+        return Err("invalid_credential");
+    }
+    if claims
+        .as_object()
+        .ok_or("invalid_credential")?
+        .keys()
+        .any(|name| crate::claim_profile::is_age_claim(name))
+        && (claims["evidence"]["assurance"] != "issuer_signed_static_data"
+            || claims["evidence"]["live_possession_verified"] != false
+            || claims["evidence"]["government_credential"] != false
+            || claims["evidence"]["predicate_source"] != "birthdate"
+            || claims["evidence"]["verified_at"].as_u64().is_none())
+    {
         return Err("invalid_credential");
     }
     check_document_expiry(&claims, claims["exp"].as_u64().ok_or("invalid_credential")?)?;

@@ -1,5 +1,6 @@
 //! QR-engaged Android BLE peripheral holder. Ciphertext stays on native transport.
 use super::*;
+#[cfg(target_os = "android")]
 use p256::elliptic_curve::Generate;
 #[derive(Serialize)]
 pub struct Started {
@@ -13,6 +14,8 @@ pub struct Review {
     review_id: String,
     reader_name: String,
     values: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<Value>,
     retained_fields: Vec<String>,
     expires_at: u64,
 }
@@ -354,6 +357,7 @@ pub(super) mod android {
         )
         .map_err(str::to_string)?;
         let values = mdoc::selected_values(&validated, &request.fields).map_err(str::to_string)?;
+        let source = presentation_source(receipt, now()?)?;
         let review_id = random();
         flow.review_id = Some(review_id.clone());
         let expires_at = flow.expires_at;
@@ -362,6 +366,7 @@ pub(super) mod android {
             review_id,
             reader_name: request.reader_name,
             values,
+            source,
             retained_fields: request.retained_fields,
             expires_at,
         })
