@@ -8,6 +8,34 @@ The protected remote journals and their six empty development repositories are
 untouched. This increment uses synthetic Artifacts over actual Workers RPC and
 persistent SQLite, together with the actual Rust/Wasm OP and D1.
 
+## Initial operator key registration
+
+The named `OpAuthorityAdmin` capability accepts `inspect-work-credential-key`
+with `key_version`, and `initialize-work-credential-key` with `key_version`
+and `expected_fingerprint`, through its existing private POST `/authority`.
+Both require enrolled, current independent authority and
+`WORK_CREDENTIAL_KEY_ADMIN_ENABLED=true`. Production keeps that flag false.
+Public HTTP and raw Wasm RPC remain closed. The request never carries key bytes;
+Native reads only the already provisioned `WORK_CREDENTIAL_KEY_V<version>`
+secret and verifies its fingerprint and `WORK_CREDENTIAL_KEY_FLOOR`.
+
+Initialization inserts only into an empty key ledger. The exact active key can
+be read on retry, without another audit or authority frame. Any different
+existing, decrypt-only or retired key prevents initialization; this capability
+cannot rotate, retire or replace a key. The first insertion and existing
+`work_credential_key_audit` record commit in one checkpoint-covered transaction,
+and audit failure rolls both back. Responses contain only version, fingerprint
+and state, with `Cache-Control: no-store`.
+
+Provisioning and retained external secret custody still precede registration.
+They must preserve the existing OP secrets and its complete deployment
+configuration. Neither successful registration nor an inspected fingerprint
+establishes that external custody is recoverable, enables copy execution or
+authorizes an agent. No provider credential, repository, grant or run is created.
+The Work product CI suite qualifies this Native path, concurrent/exact retries,
+fingerprint/input/floor/secret refusal, audit rollback and frozen/unenrolled
+authority alongside the existing custody and public-boundary tests.
+
 ## Fixed authority and admission
 
 The [Native adapter](../crates/worker/src/work_effect.rs) accepts an opaque attempt

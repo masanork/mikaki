@@ -49,6 +49,13 @@ pub fn qualification_routes(
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 enum Change {
+    InspectWorkCredentialKey {
+        key_version: u64,
+    },
+    InitializeWorkCredentialKey {
+        key_version: u64,
+        expected_fingerprint: String,
+    },
     RegisterSource {
         source: mikaki_auth::work::SourceInput,
         account: String,
@@ -150,6 +157,41 @@ async fn change(request: &mut Request, env: &Env) -> worker::Result<serde_json::
         .map_err(storage)?;
     let db = env.d1("DB")?;
     let input = match input {
+        Change::InspectWorkCredentialKey { key_version } => {
+            if env.var("WORK_CREDENTIAL_KEY_ADMIN_ENABLED")?.to_string() != "true"
+                || key_version == 0
+            {
+                return Err("invalid_authority_input".into());
+            }
+            let key = store
+                .credential_key_status(key_version)
+                .await
+                .map_err(storage)?;
+            return Ok(serde_json::json!({"key":key}));
+        }
+        Change::InitializeWorkCredentialKey {
+            key_version,
+            expected_fingerprint,
+        } => {
+            if env.var("WORK_CREDENTIAL_KEY_ADMIN_ENABLED")?.to_string() != "true"
+                || !revision(&expected_fingerprint)
+            {
+                return Err("invalid_authority_input".into());
+            }
+            let key = crate::work_store::credential_key(env, key_version).map_err(storage)?;
+            if key.fingerprint().to_hex() != expected_fingerprint {
+                return Err("invalid_authority_input".into());
+            }
+            store
+                .initialize_credential_key(&key)
+                .await
+                .map_err(storage)?;
+            let key = store
+                .credential_key_status(key_version)
+                .await
+                .map_err(storage)?;
+            return Ok(serde_json::json!({"key":key}));
+        }
         Change::RegisterSource {
             source,
             account,
@@ -174,7 +216,10 @@ async fn change(request: &mut Request, env: &Env) -> worker::Result<serde_json::
         input => input,
     };
     let (actor, reason, action, target, mut statements, output, policy_audit) = match input {
-        Change::RegisterSource { .. } | Change::InspectSource { .. } => unreachable!(),
+        Change::RegisterSource { .. }
+        | Change::InspectSource { .. }
+        | Change::InspectWorkCredentialKey { .. }
+        | Change::InitializeWorkCredentialKey { .. } => unreachable!(),
         Change::RevokeAccount {
             account,
             expected_epoch,

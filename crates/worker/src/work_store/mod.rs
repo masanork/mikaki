@@ -25,7 +25,7 @@ pub use checkpoint::AuthorityCheckpoint;
 pub use compose::PreparationComposeInput;
 pub use copy_consent::copy_account;
 pub(crate) use credentials::ClosedCredential;
-pub use credentials::{CredentialDispatch, CredentialStatus, credential_key};
+pub use credentials::{CredentialDispatch, CredentialKeyStatus, CredentialStatus, credential_key};
 pub use operations::{DispatchResult, Outcome};
 pub(crate) use owner::owner_id_shape;
 pub use owner::{OwnerRecordKind, OwnerRequestPage};

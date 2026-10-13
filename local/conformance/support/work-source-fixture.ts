@@ -17,6 +17,7 @@ export async function createSourceFixture(
   copyConsent = false,
   ownerSessionSeconds = 3600,
   compose = false,
+  operatorBindings: Record<string, string> = {},
 ) {
   const product = entry !== 'qualification';
   const enrolled = entry === 'product';
@@ -119,6 +120,7 @@ export async function createSourceFixture(
             WORK_COPY_WORKLOAD: 'synthetic-workload',
           }
         : {}),
+      ...operatorBindings,
     },
     services: [
       ...checkpointServices,

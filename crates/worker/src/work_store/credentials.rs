@@ -22,8 +22,8 @@ pub fn credential_key(env: &worker::Env, version: u64) -> Result<WrappingKey> {
     );
     Ok(WrappingKey::from_service_secret(version, &secret)?)
 }
-#[derive(Deserialize)]
-struct KeyRow {
+#[derive(Deserialize, serde::Serialize)]
+pub struct CredentialKeyStatus {
     version: u64,
     fingerprint: String,
     state: String,
@@ -71,6 +71,49 @@ impl CredentialRow {
     }
 }
 impl WorkStore {
+    pub async fn credential_key_status(&self, version: u64) -> Result<Option<CredentialKeyStatus>> {
+        self.current_authority_checkpoint().await?;
+        let status = self
+            .statement(
+                "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
+                &[number(version)?],
+            )?
+            .first::<CredentialKeyStatus>(None)
+            .await?;
+        self.current_authority_checkpoint().await?;
+        Ok(status)
+    }
+
+    /// Initial operator activation only. An existing key is never rotated or
+    /// retired by this capability; an exact retry reads the original result.
+    pub async fn initialize_credential_key(&self, key: &WrappingKey) -> Result<()> {
+        self.current_authority_checkpoint().await?;
+        if self.check_key(key, true).await.is_ok() {
+            return Ok(());
+        }
+        let guard = opaque()?;
+        let result = self
+            .checkpoint_batch(vec![
+                self.statement(
+                    "INSERT INTO work_credential_key(version,fingerprint,state) SELECT ?1,?2,'active' WHERE NOT EXISTS(SELECT 1 FROM work_credential_key)",
+                    &[number(key.version())?, text(&key.fingerprint().to_hex())],
+                )?,
+                self.statement(include_str!("../../sql/work/guard.sql"), &[text(&guard)])?,
+                self.statement(
+                    "INSERT INTO work_credential_key_audit VALUES(?1,?2,'active',unixepoch())",
+                    &[text(&opaque()?), number(key.version())?],
+                )?,
+                self.statement("DELETE FROM work_transition_guard WHERE guard_id=?1", &[text(&guard)])?,
+            ])
+            .await;
+        if self.check_key(key, true).await.is_ok() {
+            self.current_authority_checkpoint().await?;
+            return Ok(());
+        }
+        result?;
+        Err(Denied::Conflict.into())
+    }
+
     pub(super) async fn check_copy_key(&self, key: &WrappingKey) -> Result<()> {
         self.check_key(key, true).await
     }
@@ -111,7 +154,7 @@ impl WorkStore {
                 None
             } else {
                 let version = row.key_version.ok_or(Denied::BindingMismatch)?;
-                let key: KeyRow = self.first(
+                let key: CredentialKeyStatus = self.first(
                     "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
                     &[number(version)?],
                 ).await?;
@@ -472,7 +515,7 @@ impl WorkStore {
             .transpose()
     }
     async fn check_key(&self, key: &WrappingKey, active: bool) -> Result<()> {
-        let row: KeyRow = self
+        let row: CredentialKeyStatus = self
             .first(
                 "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
                 &[number(key.version())?],
@@ -492,7 +535,7 @@ impl WorkStore {
                 "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
                 &[number(key.version())?],
             )?
-            .first::<KeyRow>(None)
+            .first::<CredentialKeyStatus>(None)
             .await?;
         if let Some(row) = existing {
             if row.fingerprint == key.fingerprint().to_hex() && row.state == "active" {
@@ -505,7 +548,7 @@ impl WorkStore {
                 "SELECT version,fingerprint,state FROM work_credential_key WHERE state='active'",
                 &[],
             )?
-            .first::<KeyRow>(None)
+            .first::<CredentialKeyStatus>(None)
             .await?;
         let old = current.as_ref().map_or(0, |row| row.version);
         let guard = opaque()?;
@@ -530,7 +573,7 @@ impl WorkStore {
         Err(Denied::Conflict.into())
     }
     pub async fn retire_credential_key(&self, key: &WrappingKey) -> Result<()> {
-        let row: KeyRow = self
+        let row: CredentialKeyStatus = self
             .first(
                 "SELECT version,fingerprint,state FROM work_credential_key WHERE version=?1",
                 &[number(key.version())?],
