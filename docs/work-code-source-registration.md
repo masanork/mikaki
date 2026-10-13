@@ -141,12 +141,23 @@ deployment archive remains separate from the companion packet's local checkpoint
 reference bundle. Existing promotion continues to activate only the existing
 OP/Claims/checkpoint release; it does not deploy any copy companion.
 
+Use the same provenance filters as the existing production promoter, for both
+the receipt and archive. Supply the intended source commit as `SOURCE_COMMIT`:
+
+```sh
+gh attestation verify RELEASE_DIRECTORY/release.json -R masanork/mikaki --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml --source-digest SOURCE_COMMIT --source-ref refs/heads/main --deny-self-hosted-runners
+gh attestation verify RELEASE_DIRECTORY/mikaki-work-copy-runtime.tar.gz -R masanork/mikaki --signer-workflow masanork/mikaki/.github/workflows/supply-chain-build.yml --source-digest SOURCE_COMMIT --source-ref refs/heads/main --deny-self-hosted-runners
+```
+
 Outside CI, `npm run prepare:work-copy-release -- artifacts/work-copy-runtime`
 creates the same exclusive release directory. Recheck the retained receipt digest
 and source with `npm run verify:work-copy-release -- RELEASE_DIRECTORY
 RECEIPT_SHA256 SOURCE_COMMIT`. Archive extraction follows bounded decompression,
 complete path/type/duplicate checks and the original runtime/dependency verifier.
 No source pack, owner record, credential or Container image enters this archive.
+After provenance verification, `npm run restore:work-copy-release --
+RELEASE_DIRECTORY RECEIPT_SHA256 SOURCE_COMMIT local/generated/RESTORED_RUNTIME`
+creates an exclusive verified runtime directory for the binding/config preparers.
 
 The local packet alone is a byte inventory, not a signed release, target configuration or
 remote runtime observation. It contains no OP Wasm, owner disclosure/consent,

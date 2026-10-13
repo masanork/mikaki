@@ -243,6 +243,33 @@ export async function verifyCopyRuntimeRelease(
   }
 }
 
+export async function restoreCopyRuntimeRelease(
+  input: string,
+  receiptSha: string,
+  source: string,
+  output: string,
+) {
+  const verified = await verifyCopyRuntimeRelease(input, receiptSha, source);
+  const directory = await exclusiveDirectory(output);
+  const receipt = await packetFile(join(resolve(input), 'release.json'), 16384);
+  assert.equal(digest(receipt), receiptSha, 'copy_release_receipt_changed');
+  const archive = await packetFile(join(resolve(input), archiveName), COPY_PACKET_LIMITS.bytes);
+  assert.equal(digest(archive), verified.archive.sha256, 'copy_release_archive_changed');
+  const records = regularUstarMembers(
+    gunzipSync(archive, { maxOutputLength: COPY_PACKET_LIMITS.bytes + 1024 * 1024 }),
+  );
+  for (const record of records) {
+    const path = join(directory, record.path);
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(path, record.bytes, { flag: 'wx', mode: 0o600 });
+  }
+  await verifyCopyRuntimePacket(directory, {
+    source_commit: verified.source_commit,
+    manifest_sha256: verified.manifest_sha256,
+  });
+  return { directory, ...verified };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const [action, ...args] = process.argv.slice(2);
@@ -259,6 +286,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         args[0]!,
       );
       assert.deepEqual(releaseSource(root), source, 'copy_release_source_changed');
+    } else if (action === 'restore' && args.length === 4) {
+      result = await restoreCopyRuntimeRelease(args[0]!, args[1]!, args[2]!, args[3]!);
     } else {
       assert.ok(action === 'verify' && args.length === 3);
       result = await verifyCopyRuntimeRelease(args[0]!, args[1]!, args[2]!);

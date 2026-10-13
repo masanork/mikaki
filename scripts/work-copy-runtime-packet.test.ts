@@ -16,6 +16,7 @@ import {
 } from './work-copy-runtime-packet.ts';
 import {
   packageCopyRuntimeRelease,
+  restoreCopyRuntimeRelease,
   verifyCopyRuntimeRelease,
 } from './work-copy-runtime-release.ts';
 
@@ -45,6 +46,22 @@ test('committed companion packet loads real bundles cold and rejects substitutio
         const output = packet.directory + '-release';
         const release = await packageCopyRuntimeRelease(packet.directory, expected, output);
         try {
+          const restored = output + '-restored';
+          try {
+            await restoreCopyRuntimeRelease(
+              output,
+              release.release_sha256,
+              expected.source_commit,
+              restored,
+            );
+            await verifyCopyRuntimePacket(restored, expected);
+            assert.deepEqual(
+              await readFile(join(restored, 'workers/copy.mjs')),
+              await readFile(join(packet.directory, 'workers/copy.mjs')),
+            );
+          } finally {
+            await rm(restored, { recursive: true, force: true });
+          }
           const verified = await verifyCopyRuntimeRelease(
             output,
             release.release_sha256,
