@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { mkdir, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -116,6 +117,45 @@ test('committed companion packet loads real bundles cold and rejects substitutio
             verifyCopyRuntimeRelease(output, sha(updated), expected.source_commit),
             /links_denied/,
           );
+          for (const [mutate, error] of [
+            [
+              (tar: Buffer) => {
+                tar.fill(0, 0, 100);
+                tar.write('../escape', 0);
+              },
+              /path_denied/,
+            ],
+            [
+              (tar: Buffer) => {
+                tar[156] = 83;
+              },
+              /links_denied/,
+            ],
+            [
+              (tar: Buffer) => {
+                tar.fill(48, 124, 135);
+                tar.write('77777777777', 124);
+              },
+              /file_limit/,
+            ],
+          ] as const) {
+            const tar = gunzipSync(archive);
+            mutate(tar);
+            tar.fill(32, 148, 156);
+            const checksum = tar.subarray(0, 512).reduce((total, byte) => total + byte, 0);
+            tar.write(checksum.toString(8).padStart(6, '0'), 148);
+            tar[154] = 0;
+            tar[155] = 32;
+            const corrupt = gzipSync(tar);
+            await writeFile(archivePath, corrupt);
+            receipt.archive = { ...receipt.archive, bytes: corrupt.length, sha256: sha(corrupt) };
+            const changedReceipt = Buffer.from(JSON.stringify(receipt) + '\n');
+            await writeFile(metadataPath, changedReceipt);
+            await assert.rejects(
+              verifyCopyRuntimeRelease(output, sha(changedReceipt), expected.source_commit),
+              error,
+            );
+          }
           await writeFile(archivePath, archive);
           await writeFile(metadataPath, metadata);
         } finally {

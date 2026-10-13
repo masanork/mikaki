@@ -36,6 +36,76 @@ const receiptSchema = z.strictObject({
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const decode = (bytes: Buffer): unknown =>
   JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+// Accept only the regular USTAR records emitted by our packer. No archive
+// interpreter applies ownership, modes, link targets, sparse maps or extensions.
+function regularUstarMembers(tar: Buffer) {
+  const members: { path: string; bytes: Buffer }[] = [];
+  const names = new Set<string>();
+  const octal = (field: Buffer) => {
+    const value = field.toString('ascii').replace(/\0.*$/, '').trim();
+    assert.match(value, /^[0-7]+$/, 'copy_release_header_denied');
+    const number = Number.parseInt(value, 8);
+    assert.ok(Number.isSafeInteger(number), 'copy_release_header_denied');
+    return number;
+  };
+  const field = (bytes: Buffer) => {
+    const end = bytes.indexOf(0);
+    if (end >= 0)
+      assert.ok(
+        bytes.subarray(end).every((byte) => byte === 0),
+        'copy_release_header_denied',
+      );
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      end < 0 ? bytes : bytes.subarray(0, end),
+    );
+  };
+  let offset = 0;
+  for (;;) {
+    assert.ok(offset + 512 <= tar.length, 'copy_release_truncated');
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) {
+      assert.ok(
+        tar.length - offset >= 1024 && tar.subarray(offset).every((byte) => byte === 0),
+        'copy_release_trailing_data',
+      );
+      break;
+    }
+    assert.equal(
+      header.subarray(257, 265).toString('hex'),
+      '7573746172003030',
+      'copy_release_header_denied',
+    );
+    assert.ok(header[156] === 48 || header[156] === 0, 'copy_release_links_denied');
+    assert.equal(
+      octal(header.subarray(148, 156)),
+      header.reduce((sum, byte, index) => sum + (index >= 148 && index < 156 ? 32 : byte), 0),
+      'copy_release_checksum_denied',
+    );
+    const prefix = field(header.subarray(345, 500));
+    const name = field(header.subarray(0, 100));
+    const path = prefix ? `${prefix}/${name}` : name;
+    assert.ok(
+      /^[A-Za-z0-9_@.\/-]+$/.test(path) &&
+        !path.startsWith('/') &&
+        path.split('/').every((part) => part && part !== '.' && part !== '..') &&
+        path.split('/').length <= COPY_PACKET_LIMITS.depth,
+      'copy_release_path_denied',
+    );
+    assert.ok(
+      !names.has(path) && members.length < COPY_PACKET_LIMITS.entries,
+      'copy_release_members_denied',
+    );
+    names.add(path);
+    const size = octal(header.subarray(124, 136));
+    assert.ok(size <= 16 * 1024 * 1024, 'copy_release_file_limit');
+    const next = offset + 512 + Math.ceil(size / 512) * 512;
+    assert.ok(next <= tar.length, 'copy_release_truncated');
+    members.push({ path, bytes: tar.subarray(offset + 512, offset + 512 + size) });
+    offset = next;
+  }
+  assert.ok(members.length > 0, 'copy_release_members_denied');
+  return members;
+}
 async function exclusiveDirectory(input: string) {
   const directory = resolve(input);
   assert.ok(
@@ -129,40 +199,28 @@ export async function verifyCopyRuntimeRelease(
   assert.equal(archive.length, receipt.archive.bytes, 'copy_release_archive_changed');
   assert.equal(digest(archive), receipt.archive.sha256, 'copy_release_archive_changed');
   const tar = gunzipSync(archive, { maxOutputLength: COPY_PACKET_LIMITS.bytes + 1024 * 1024 });
-  const command = (args: string[]) =>
-    execFileSync('tar', args, {
-      input: tar,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 30000,
-      maxBuffer: 256 * 1024,
-    });
-  const names = command(['-tf', '-']).toString('utf8').trimEnd().split('\n');
-  assert.ok(
-    names.length > 0 &&
-      names.length <= COPY_PACKET_LIMITS.entries &&
-      new Set(names).size === names.length,
-    'copy_release_members_denied',
-  );
-  for (const name of names)
-    assert.ok(
-      /^[A-Za-z0-9_@.\/-]+$/.test(name) &&
-        !name.startsWith('/') &&
-        name.split('/').every((part) => part && part !== '.' && part !== '..'),
-      'copy_release_path_denied',
-    );
-  const types = command(['-tvf', '-']).toString('utf8').trimEnd().split('\n');
-  assert.equal(types.length, names.length, 'copy_release_members_denied');
-  assert.ok(
-    types.every((line) => line.startsWith('-')),
-    'copy_release_links_denied',
-  );
-  // Extraction follows bounded decompression and complete regular-member/path checks.
+  const records = regularUstarMembers(tar);
+  const names = records.map((record) => record.path);
   const parent = join(root, 'local/generated/work-copy-release-verification');
-  await mkdir(parent, { recursive: true, mode: 0o700 });
+  let ancestor = root;
+  for (const part of relative(root, parent).split('/')) {
+    ancestor = join(ancestor, part);
+    const info = await lstat(ancestor).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    if (info)
+      assert.ok(info.isDirectory() && !info.isSymbolicLink(), 'copy_release_scratch_link_denied');
+    else await mkdir(ancestor, { mode: 0o700 });
+  }
   assert.equal(await realpath(parent), parent, 'copy_release_scratch_link_denied');
   const restored = await mkdtemp(join(parent, 'runtime-'));
   try {
-    command(['-xf', '-', '-C', restored, '--no-same-owner', '--no-same-permissions']);
+    for (const record of records) {
+      const path = join(restored, record.path);
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      await writeFile(path, record.bytes, { flag: 'wx', mode: 0o600 });
+    }
     const checked = await verifyCopyRuntimePacket(restored, {
       source_commit: receipt.source_commit,
       manifest_sha256: receipt.manifest_sha256,
