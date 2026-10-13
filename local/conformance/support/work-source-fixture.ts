@@ -252,7 +252,7 @@ export async function createSourceFixture(
     const fixture = product ? harness.getWorker('source-fixture') : worker;
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
-    await applyWorkMigrations(DB, copyConsent ? 13 : 12);
+    await applyWorkMigrations(DB, compose ? 14 : copyConsent ? 13 : 12);
     await activateWorkerPolicy(
       DB,
       JSON.parse(

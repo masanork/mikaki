@@ -31,6 +31,66 @@ impl PreparationRow {
     }
 }
 impl WorkStore {
+    /// Retire bounded, expired reservations that never acquired an execution or
+    /// external obligation. Preserve their identities, immutable bodies and
+    /// audit history; dispatched/unknown effects still require real cleanup.
+    pub(super) async fn retire_owner_expired_reservations(&self, session_hash: &str) -> Result<()> {
+        let guard = include_str!("../../sql/work/expired-unused-preparation.sql");
+        let select = format!(
+            "SELECT body,state,revision,evidence,cleanup_receipt FROM work_preparation \
+             WHERE {guard} AND owner_id IN(SELECT account_id FROM authenticated_owner) \
+             AND operation_id>?2 ORDER BY operation_id LIMIT 20"
+        );
+        let rows = self
+            .owner_statement(session_hash, &select, "")?
+            .all()
+            .await?
+            .results::<PreparationRow>()?;
+        for row in rows {
+            let mut p = row.restore()?;
+            if p.state() != PreparationState::Reserved {
+                return Err(Denied::InvalidTransition.into());
+            }
+            p.require_cleanup(); // Native Reserved -> Cleaned, no external dispatch.
+            let sql = format!(
+                "WITH authenticated_owner AS ({}) \
+                 UPDATE work_preparation SET state='cleaned',revision=revision+1 \
+                 WHERE {guard} AND operation_id=?2 AND body=?3 \
+                 AND owner_id IN(SELECT account_id FROM authenticated_owner)",
+                include_str!("../../sql/work/owner-session.sql")
+            );
+            let result = self
+                .atomic(
+                    vec![
+                        self.statement(&sql, &[text(session_hash), text(p.id()), text(&row.body)])?,
+                    ],
+                    Audit {
+                        before: Some("reserved"),
+                        after: Some("cleaned"),
+                        actor: "op-work-preparer",
+                        ..owner_audit(
+                            p.owner_id(),
+                            "preparation",
+                            p.id(),
+                            "preparation.cleanup",
+                            2,
+                        )
+                    },
+                    vec![],
+                )
+                .await;
+            self.recover_preparation_transition(
+                p.id(),
+                PreparationState::Cleaned,
+                None,
+                None,
+                result,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn task_from_preparation(
         &self,
         p: &Preparation,

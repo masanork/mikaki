@@ -168,6 +168,11 @@ test('owner source selection creates a preparation and opens fresh separate copy
       async () => {
         await page.setViewportSize({ width: 375, height: 900 });
         await fresh('en', []);
+        await expect(preview('en')).toBeDisabled();
+        await expect(page.getByText('Code to copy: Synthetic code', { exact: true })).toBeVisible();
+        await expect(
+          page.getByText('Context selected: 0 files, 0 bytes', { exact: true }),
+        ).toBeVisible();
         await page.screenshot({ path: shots + 'source-en-mobile.png', fullPage: true });
         await auditAccessibility(page, 'work-preparation-compose-en-mobile');
         assert.equal(
