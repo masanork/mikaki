@@ -147,7 +147,10 @@ export function authorityTemplates(account: string) {
   };
 }
 
-export function authorityPlan(account: string, baseline: 'current' | 'retained' = 'current') {
+export function authorityPlan(
+  account: string,
+  baseline: 'current' | 'waitlist' | 'retained' = 'current',
+) {
   authorityTemplates(account);
   return {
     format_version: 1,
@@ -180,7 +183,9 @@ export function authorityPlan(account: string, baseline: 'current' | 'retained' 
       'review-independent-operator-and-release-recovery-ownership',
       baseline === 'retained'
         ? 'apply-frozen-fourteen-migrations-to-empty-isolated-d1'
-        : 'apply-frozen-fifteen-migrations-to-empty-isolated-d1',
+        : baseline === 'waitlist'
+          ? 'apply-frozen-fifteen-migrations-to-empty-isolated-d1'
+          : 'apply-frozen-sixteen-migrations-to-empty-isolated-d1',
       'bootstrap-independent-checkpoint-and-primary-once-under-quiescence',
       'verify-matching-current-markers-before-opening-browser-ingress',
       'complete-actual-passkey-owner-enrollment-and-prf-vault-open',
@@ -200,9 +205,11 @@ export function authorityPlan(account: string, baseline: 'current' | 'retained' 
 /** Apply the packaged chain only to in-memory SQLite to inventory its exact schema. */
 export async function authoritySchema(directory: string) {
   const names = (await readdir(directory)).sort();
-  const owner = names.includes('0003_enrollment_waitlist.sql')
+  const owner = names.includes('0004_identity_age_requests.sql')
     ? OWNER_MIGRATIONS
-    : OWNER_MIGRATIONS.slice(0, 2);
+    : names.includes('0003_enrollment_waitlist.sql')
+      ? OWNER_MIGRATIONS.slice(0, 3)
+      : OWNER_MIGRATIONS.slice(0, 2);
   const workNames = [
     '0003_work_delegation.sql',
     '0004_work_disclosure_budget.sql',
@@ -287,10 +294,14 @@ export async function authorityInventory(directory: string, source: Source) {
     );
   const schema = await authoritySchema(join(directory, 'migrations'));
   const baseline = schema.migrations.some(
-    (migration) => migration.path === 'migrations/0003_enrollment_waitlist.sql',
+    (migration) => migration.path === 'migrations/0004_identity_age_requests.sql',
   )
     ? 'current'
-    : 'retained';
+    : schema.migrations.some(
+          (migration) => migration.path === 'migrations/0003_enrollment_waitlist.sql',
+        )
+      ? 'waitlist'
+      : 'retained';
   assert.deepEqual(
     JSON.parse((await packetFile(join(directory, 'plan.json'))).toString('utf8')),
     authorityPlan(AUTHORITY_ACCOUNT, baseline),

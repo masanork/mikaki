@@ -157,6 +157,64 @@ pub struct LogoutTokenSigningInput {
     signing_input: String,
 }
 
+/// Signed custom UserInfo with a bounded lifetime and an explicit RP audience.
+pub struct UserInfoSigningInput(IdTokenSigningInput);
+impl UserInfoSigningInput {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        algorithm: &'static str,
+        kid: &str,
+        issuer: &str,
+        subject: &str,
+        audience: &str,
+        issued_at: u64,
+        expires_at: u64,
+        linked: &serde_json::Value,
+    ) -> Result<Self, InvalidIdTokenClaims> {
+        if !["ES256", "RS256"].contains(&algorithm)
+            || kid.is_empty()
+            || kid.len() > 128
+            || kid.bytes().any(|b| b.is_ascii_control())
+            || !issuer.starts_with("https://")
+            || issuer.len() > 2048
+            || subject.is_empty()
+            || subject.len() > 255
+            || audience.is_empty()
+            || audience.len() > 128
+            || issued_at == 0
+            || expires_at <= issued_at
+            || expires_at - issued_at > 300
+            || !linked.is_object()
+        {
+            return Err(InvalidIdTokenClaims);
+        }
+        let header = serde_json::to_vec(&ProtectedHeader {
+            alg: algorithm,
+            kid,
+            typ: "JWT",
+        })
+        .map_err(|_| InvalidIdTokenClaims)?;
+        let claims = serde_json::to_vec(
+            &serde_json::json!({"iss":issuer,"sub":subject,"aud":audience,
+            "iat":issued_at,"exp":expires_at,"mikaki_linked_document":linked}),
+        )
+        .map_err(|_| InvalidIdTokenClaims)?;
+        if claims.len() > 8192 {
+            return Err(InvalidIdTokenClaims);
+        }
+        Ok(Self(IdTokenSigningInput {
+            algorithm,
+            signing_input: format!("{}.{}", B64.encode(header), B64.encode(claims)),
+        }))
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+    pub fn finish(self, signature: &[u8]) -> Result<String, InvalidIdTokenClaims> {
+        self.0.finish(signature)
+    }
+}
+
 impl LogoutTokenSigningInput {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -234,6 +292,16 @@ impl LogoutTokenSigningInput {
 }
 
 impl P256TokenSigner {
+    pub fn sign_userinfo(
+        &self,
+        input: UserInfoSigningInput,
+    ) -> Result<String, InvalidIdTokenClaims> {
+        if input.0.algorithm != "ES256" {
+            return Err(InvalidIdTokenClaims);
+        }
+        let signature: Signature = self.key.sign(input.as_bytes());
+        input.finish(&signature.to_bytes())
+    }
     /// Validate and return a minimal public ES256 JWK suitable for a JWKS.
     /// Unknown/private parameters are rejected rather than reflected.
     pub fn canonical_public_jwk(input: &str) -> Option<String> {

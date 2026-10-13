@@ -1,4 +1,4 @@
-//! Bounded ASC Draft 02 projection for a future authenticated UserInfo adapter.
+//! Bounded ASC Draft 02 projection for internal and custom-claim UserInfo adapters.
 //! This module does not assert account/person binding or enable verified_claims.
 use crate::{claim_profile::age_over, evidence::VerifiedDocument};
 use serde::Deserialize;
@@ -27,6 +27,23 @@ struct Claims {
 #[serde(deny_unknown_fields)]
 struct UserInfo {
     verified_claims: VerifiedClaims,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkedClaims {
+    userinfo: LinkedUserInfo,
+    #[serde(rename = "_asc")]
+    asc: Asc,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkedUserInfo {
+    mikaki_linked_document: LinkedDocument,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkedDocument {
+    attributes: BTreeMap<String, Option<Constraint>>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,15 +99,33 @@ impl AgeRequest {
         {
             return Err(invalid());
         }
-        if request.asc.transformed_claims.is_empty()
-            || request.asc.transformed_claims.len() > MAX_COUNT
-            || claims.claims.is_empty()
-            || claims.claims.len() > MAX_COUNT
+        Self::validate(claims.claims, request.asc)
+    }
+    /// Experimental custom-claim delivery. This carries static source assurance,
+    /// never verified person/account binding. Accept only authenticated PAR input.
+    pub fn parse_linked(raw: &[u8]) -> Result<Self, Error> {
+        if raw.len() > 4096 {
+            return Err(Error::InvalidRequest);
+        }
+        let value = crate::wallet_profile::strict_json(raw).map_err(|_| Error::InvalidRequest)?;
+        let request: LinkedClaims =
+            serde_json::from_value(value).map_err(|_| Error::InvalidRequest)?;
+        Self::validate(
+            request.userinfo.mikaki_linked_document.attributes,
+            request.asc,
+        )
+    }
+    fn validate(claims: BTreeMap<String, Option<Constraint>>, asc: Asc) -> Result<Self, Error> {
+        let invalid = || Error::InvalidRequest;
+        if asc.transformed_claims.is_empty()
+            || asc.transformed_claims.len() > MAX_COUNT
+            || claims.is_empty()
+            || claims.len() > MAX_COUNT
         {
             return Err(invalid());
         }
         let mut definitions = BTreeMap::new();
-        for (alias, definition) in request.asc.transformed_claims {
+        for (alias, definition) in asc.transformed_claims {
             let threshold = match alias.as_str() {
                 "age_over_18" => 18,
                 "age_over_20" => 20,
@@ -104,7 +139,7 @@ impl AgeRequest {
             definitions.insert(alias, threshold);
         }
         let mut selected = Vec::new();
-        for (name, constraint) in claims.claims {
+        for (name, constraint) in claims {
             let alias = name.strip_prefix(':').ok_or_else(invalid)?;
             let threshold = *definitions.get(alias).ok_or_else(invalid)?;
             let expected = constraint.and_then(|c| c.value);

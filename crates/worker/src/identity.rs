@@ -1,4 +1,5 @@
 //! Dedicated document intake and OID4VCI issuer. Ordinary OP/Vault tokens have no authority here.
+pub(crate) mod age_request;
 mod attester;
 mod claims;
 mod wallet;

@@ -25,6 +25,10 @@ export const OWNER_MIGRATIONS = [
     name: '0003_enrollment_waitlist.sql',
     sha256: '769f3cd22812ac3436656115074d0f9371eb6c3b91a19c376ebc21b337450b07',
   },
+  {
+    name: '0004_identity_age_requests.sql',
+    sha256: '2eb1455067507ebe6bfc007a9ab2330b101522a7417729b2edf793f806b892b6',
+  },
 ] as const;
 
 export function assertProductionOwnerSchema(

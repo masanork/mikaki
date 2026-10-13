@@ -67,6 +67,7 @@ fn form(body: &str, maximum: usize) -> Option<BTreeMap<String, String>> {
                     | "max_age"
                     | "ui_locales"
                     | "response_mode"
+                    | "claims"
             )
             || values
                 .insert(key.into_owned(), value.into_owned())
@@ -110,6 +111,14 @@ pub(super) async fn route(
     let Some(mut fields) = form(&body, policy.parameter_count()) else {
         return error("invalid_request", 400);
     };
+    if let Some(raw) = fields.get("claims")
+        && fields
+            .get("scope")
+            .and_then(|scope| super::identity::age_request::parse(&context.env, raw, scope))
+            .is_none()
+    {
+        return error("invalid_request", 400);
+    }
     let (Some(client_id), Some(assertion_type), Some(compact), Some(redirect_uri)) = (
         fields.get("client_id"),
         fields.get("client_assertion_type"),
