@@ -186,13 +186,13 @@ test('activation requires all configured native, Vault and runtime secret bindin
   const bindings: Record<string, unknown>[] = [
     { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
     { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
-    { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
-    {
-      name: 'WORK_AUTHORITY_CHECKPOINT',
-      type: 'service',
-      service: 'mikaki-auth-work-checkpoint',
-      entrypoint: 'WorkCheckpointService',
-    },
+    ...config.services.map(
+      ({ binding, ...service }: { binding: string; service: string; entrypoint?: string }) => ({
+        name: binding,
+        type: 'service',
+        ...service,
+      }),
+    ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
@@ -262,13 +262,13 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
   const bindings: Record<string, unknown>[] = [
     { name: 'DB', type: 'd1', database_id: config.d1_databases[0].database_id },
     { name: 'VAULT_BLOBS', type: 'r2_bucket', bucket_name: 'mikaki-auth-vault' },
-    { name: 'USERINFO_CLAIMS', type: 'service', service: 'mikaki-auth-claims' },
-    {
-      name: 'WORK_AUTHORITY_CHECKPOINT',
-      type: 'service',
-      service: 'mikaki-auth-work-checkpoint',
-      entrypoint: 'WorkCheckpointService',
-    },
+    ...config.services.map(
+      ({ binding, ...service }: { binding: string; service: string; entrypoint?: string }) => ({
+        name: binding,
+        type: 'service',
+        ...service,
+      }),
+    ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },

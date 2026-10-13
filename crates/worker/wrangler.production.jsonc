@@ -33,7 +33,13 @@
     "WORK_COPY_CONSENT_ENABLED": "true",
     "WORK_COPY_EXECUTION_ENABLED": "false",
     "WORK_CREDENTIAL_KEY_ADMIN_ENABLED": "true",
-    "WORK_CREDENTIAL_KEY_FLOOR": "1"
+    "WORK_CREDENTIAL_KEY_FLOOR": "1",
+    "WORK_COPY_BINDINGS_STAGED": "true",
+    "WORK_EFFECT_STORE_ENABLED": "false",
+    "WORK_MINT_STORE_ENABLED": "false",
+    "WORK_GIT_STORE_ENABLED": "false",
+    "WORK_GIT_EXECUTION_ENABLED": "false",
+    "WORK_PREPARATION_VERIFY_ENABLED": "false"
   },
   "secrets": {
     "required": [
@@ -75,6 +81,66 @@
       "binding": "WORK_AUTHORITY_CHECKPOINT",
       "service": "mikaki-auth-work-checkpoint",
       "entrypoint": "WorkCheckpointService"
+    },
+    {
+      "binding": "WORK_COPY_STARTER",
+      "service": "mikaki-work-copy",
+      "entrypoint": "WorkCopyStarter"
+    },
+    {
+      "binding": "WORK_COPY_INITIAL",
+      "service": "mikaki-work-initial",
+      "entrypoint": "WorkEffectGate"
+    },
+    {
+      "binding": "WORK_COPY_INITIAL_RECONCILER",
+      "service": "mikaki-work-initial-reconcile",
+      "entrypoint": "WorkEffectReconciler"
+    },
+    {
+      "binding": "WORK_COPY_MINT",
+      "service": "mikaki-work-mint",
+      "entrypoint": "WorkMintGate"
+    },
+    {
+      "binding": "WORK_COPY_GIT",
+      "service": "mikaki-work-git",
+      "entrypoint": "WorkGitGate"
+    },
+    {
+      "binding": "WORK_COPY_RECONCILER",
+      "service": "mikaki-work-mint-reconcile",
+      "entrypoint": "WorkMintReconciler"
+    },
+    {
+      "binding": "WORK_COPY_CLOSER",
+      "service": "mikaki-work-mint-close",
+      "entrypoint": "WorkMintCloser"
+    },
+    {
+      "binding": "WORK_COPY_VERIFIER",
+      "service": "mikaki-work-preparation",
+      "entrypoint": "WorkPreparationGate"
+    },
+    {
+      "binding": "WORK_PREPARATION_EVIDENCE",
+      "service": "mikaki-auth-work-checkpoint",
+      "entrypoint": "WorkPreparationEvidence"
+    },
+    {
+      "binding": "WORK_GIT_EXECUTION_CHECKPOINT",
+      "service": "mikaki-auth-work-checkpoint",
+      "entrypoint": "WorkGitExecutionCheckpoint"
+    },
+    {
+      "binding": "WORK_GIT_TRANSPORT",
+      "service": "mikaki-work-git-transport",
+      "entrypoint": "WorkGitTransport"
+    },
+    {
+      "binding": "WORK_MINT_REFUSAL_TRANSPORT",
+      "service": "mikaki-work-mint-refusal",
+      "entrypoint": "WorkMintRefusalTransport"
     }
   ],
   "queues": {

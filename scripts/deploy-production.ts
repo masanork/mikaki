@@ -15,6 +15,10 @@ import { productionWorkPacketDigest } from './production-work-packet.ts';
 import { cloudflareMetadataGet } from './production-worker-inventory.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 import { productionWrangler } from './production-wrangler.ts';
+import {
+  assertClosedProductionCopyGraph,
+  assertCopyCompanionsPresent,
+} from './production-work-copy-graph.ts';
 
 type Binding = Record<string, unknown>;
 type Config = {
@@ -305,22 +309,8 @@ async function main() {
   const opConfig = 'crates/worker/wrangler.production.jsonc';
   const reviewedOp = JSON.parse(readFileSync(join(root, opConfig), 'utf8')) as Config;
   const workSchemaEnabled = productionWorkSchema(reviewedOp.vars);
+  const copyBindingsStaged = assertClosedProductionCopyGraph(reviewedOp);
   const adopting = reviewedOp.vars.WORK_SCHEMA_ADOPTION === 'true';
-  const checkpointBindings =
-    reviewedOp.services?.filter((item) => item.service === PRODUCTION_WORK_TARGET.checkpoint) ?? [];
-  assert.deepEqual(
-    checkpointBindings,
-    workSchemaEnabled
-      ? [
-          {
-            binding: 'WORK_AUTHORITY_CHECKPOINT',
-            service: PRODUCTION_WORK_TARGET.checkpoint,
-            entrypoint: 'WorkCheckpointService',
-          },
-        ]
-      : [],
-    'OP receives only its checkpoint service after schema adoption',
-  );
   const migrations = await wrangler([
     'd1',
     'migrations',
@@ -445,6 +435,7 @@ async function main() {
     Array.isArray(roster.result) && roster.result.length <= 100,
     'Bounded checkpoint resource inventory required',
   );
+  if (copyBindingsStaged) assertCopyCompanionsPresent(roster.result);
   const checkpointPath = `/accounts/${PRODUCTION_WORK_TARGET.account}/workers/scripts/${PRODUCTION_WORK_TARGET.checkpoint}`;
   let priorNamespace: string | null = null;
   if (roster.result.some(({ id }) => id === PRODUCTION_WORK_TARGET.checkpoint)) {
