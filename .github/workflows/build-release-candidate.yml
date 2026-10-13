@@ -93,6 +93,8 @@ jobs:
       - name: Prepare reviewed upload bundles
         id: promotion
         run: npm run release:prepare-upload
+      - name: Prepare source-bound copy companion release
+        run: npm run prepare:work-copy-release
       - name: Recheck upload inputs
         env:
           PROMOTION_DIR: ${{ steps.promotion.outputs.promotion_dir }}

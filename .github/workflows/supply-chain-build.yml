@@ -31,6 +31,7 @@ jobs:
           promotion_dir=$(dirname "${inventories[0]}")
           npm run release:verify
           npm run release:verify-upload -- "$promotion_dir"
+          npm run verify:work-copy-release
           echo "promotion_dir=$promotion_dir" >> "$GITHUB_OUTPUT"
       - name: Attest release inventory
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -61,6 +62,14 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-work-checkpoint.tar.gz
+      - name: Attest Work copy companion inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: artifacts/work-copy-runtime-manifest.json
+      - name: Attest Work copy companion provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: artifacts/mikaki-work-copy-runtime.tar.gz
       - name: Attest UserInfo claim Worker SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
