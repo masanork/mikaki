@@ -104,11 +104,17 @@ npm run verify:work-copy-runtime -- PACKET_DIRECTORY RETAINED_MANIFEST_SHA256 SO
 
 The packet contains fourteen actual companion bundles (Workflow, initial/mint/Git
 and maintenance/refusal/composition gates, private Git host and checkpoint),
-their committed project inputs, dependency lockfiles and tool versions. Project
-modules are read against the selected Git commit during bundling. Every bundle
+their committed project inputs, dependency lockfiles, consumed dependency files,
+package metadata, registry archives and tool versions. Project modules are read
+against the selected Git commit during bundling. Dependency bytes and resolution
+metadata are compared with the archive whose SHA-512 integrity matches the lock.
+Archives come from npm cache with `--offline --ignore-scripts`; a missing cache
+entry refuses preparation. Every bundle
 has only the Cloudflare runtime import remaining. Keep the returned source and
 manifest digest outside the packet; verification requires those exact values
 and rejects changed, missing, additional, linked or source-substituted members.
+Traversal is bounded to 768 entries, 12 path levels and 64 MiB total; dependency
+verification repeats lock/archive/file checks after the member inventory.
 
 This is a local byte inventory, not a signed release, target configuration or
 remote runtime observation. It contains no OP Wasm, owner disclosure/consent,

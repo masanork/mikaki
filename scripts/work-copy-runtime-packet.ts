@@ -310,8 +310,9 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
     return bytes;
   };
   const lock = decode(await packetFile(join(root, 'package-lock.json'))) as Lock;
-  const dependencies = new Map<string, { record: Dependency; archive: Buffer }>();
-  const dependencyLoads = new Map<string, Promise<{ record: Dependency; archive: Buffer }>>();
+  type LoadedDependency = { record: Dependency; archive: Buffer; names: Set<string> };
+  const dependencies = new Map<string, LoadedDependency>();
+  const dependencyLoads = new Map<string, Promise<LoadedDependency>>();
   const dependencyFile = async (name: string) => {
     const selected = lockedDependency(lock, name);
     let pending = dependencyLoads.get(selected.owner);
@@ -350,11 +351,23 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
           await rm(scratch, { recursive: true, force: true });
         }
         dependencyIntegrity(archive, selected.integrity);
+        const names = new Set(
+          execFileSync('tar', ['-tzf', '-'], {
+            input: archive,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            maxBuffer: maximum,
+            timeout: 30000,
+          })
+            .trimEnd()
+            .split('\n'),
+        );
         const location = `dependencies/${createHash('sha256').update(selected.owner).digest('hex')}.tgz`;
         await mkdir(join(directory, 'dependencies'), { recursive: true, mode: 0o700 });
         await writeFile(join(directory, location), archive, { flag: 'wx', mode: 0o600 });
         const saved = {
           archive,
+          names,
           record: {
             path: selected.owner,
             archive: location,
@@ -369,7 +382,27 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
       dependencyLoads.set(selected.owner, pending);
     }
     const saved = await pending;
-    for (const path of [`${selected.owner}/package.json`, name]) {
+    const directories = name
+      .slice(selected.owner.length + 1)
+      .split('/')
+      .slice(0, -1);
+    const metadata = Array.from(
+      { length: directories.length + 1 },
+      (_, n) => selected.owner + '/' + [...directories.slice(0, n), 'package.json'].join('/'),
+    );
+    const checked = [name];
+    for (const path of metadata) {
+      const member = 'package/' + path.slice(selected.owner.length + 1);
+      if (saved.names.has(member)) checked.push(path);
+      else {
+        const info = await lstat(join(root, path)).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error;
+          return null;
+        });
+        assert.equal(info, null, 'copy_dependency_metadata_injected');
+      }
+    }
+    for (const path of checked) {
       const expected =
         sourceBytes.get(path) ??
         archivedDependencyFile(saved.archive, path.slice(selected.owner.length + 1));
