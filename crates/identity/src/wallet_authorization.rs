@@ -23,6 +23,12 @@ enum Phase {
     },
     Closed,
 }
+struct Staged {
+    holder: PublicJwk,
+    nonce: Zeroizing<String>,
+    proof: Zeroizing<String>,
+    until: u64,
+}
 pub struct Authorization {
     issuer: Url,
     client: String,
@@ -35,6 +41,7 @@ pub struct Authorization {
     holder: Option<PublicJwk>,
     age_pool: Option<crate::age_pool::Budget>,
     received_holders: Vec<String>,
+    staged: Vec<Staged>,
     until: u64,
     phase: Phase,
 }
@@ -182,6 +189,7 @@ impl Authorization {
             holder,
             age_pool: None,
             received_holders: Vec::new(),
+            staged: Vec::new(),
             until: now.saturating_add(180),
             phase: Phase::Par,
         })
@@ -204,7 +212,8 @@ impl Authorization {
     /// prior key identities so the next slot cannot replace/reuse an earlier key.
     pub fn finish_receipt(&mut self, holder: &PublicJwk, now: u64) -> Result<(), String> {
         self.live(now)?;
-        if !matches!(self.phase, Phase::Token { until, .. } if now < until)
+        if self.is_batch()
+            || !matches!(self.phase, Phase::Token { until, .. } if now < until)
             || self.holder.as_ref() != Some(holder)
         {
             return Err("wallet_transaction_unavailable".into());
@@ -222,6 +231,9 @@ impl Authorization {
     }
     pub fn holder_binding_available(&self, now: u64) -> Result<(), String> {
         self.live(now)?;
+        if self.is_batch() && self.staged.len() >= self.age_pool.as_ref().unwrap().size {
+            return Err("wallet_transaction_unavailable".into());
+        }
         match self.phase {
             Phase::Token { until, .. } if now < until && self.holder.is_none() => Ok(()),
             _ => Err("wallet_transaction_unavailable".into()),
@@ -233,6 +245,7 @@ impl Authorization {
         holder.verifying_key().map_err(str::to_owned)?;
         if holder == self.instance
             || holder == self.dpop
+            || self.staged.iter().any(|s| s.holder == holder)
             || self
                 .received_holders
                 .contains(&holder.thumbprint().map_err(str::to_string)?)
@@ -484,6 +497,70 @@ impl Authorization {
         let proof = signer.sign(header, claims)?;
         Ok(json!({"credential_configuration_id":self.configuration,"proofs":{"jwt":[proof]}}))
     }
+    pub fn is_batch(&self) -> bool {
+        self.age_pool
+            .as_ref()
+            .is_some_and(|b| b.mode == crate::age_pool::Mode::Batch)
+    }
+    /// Keep proofs private until every independently attested key is ready.
+    pub fn stage_credential_proof(
+        &mut self,
+        nonce: &str,
+        attestation: &str,
+        trust: &key_attestation::Trust,
+        signer: &impl Signer,
+        now: u64,
+    ) -> Result<(), String> {
+        if !self.is_batch()
+            || self.staged.len() >= self.age_pool.as_ref().unwrap().size
+            || self.staged.first().is_some_and(|s| *s.nonce != nonce)
+        {
+            return Err("invalid_age_pool".into());
+        }
+        let payload = self.credential_request(nonce, attestation, trust, signer, now)?;
+        let verified = key_attestation::verify(attestation, nonce, trust, true, now)
+            .map_err(str::to_string)?;
+        self.staged.push(Staged {
+            holder: self.holder.take().ok_or("wallet_transaction_unavailable")?,
+            nonce: Zeroizing::new(nonce.into()),
+            proof: Zeroizing::new(
+                payload["proofs"]["jwt"][0]
+                    .as_str()
+                    .ok_or("invalid_proof")?
+                    .into(),
+            ),
+            until: verified.expires_at,
+        });
+        Ok(())
+    }
+    /// Recheck all short-lived attestations immediately before each dispatch.
+    pub fn batch_credential_request(&self, now: u64) -> Result<Value, String> {
+        self.authorization_header(now)?;
+        if !self.is_batch()
+            || self.holder.is_some()
+            || self.staged.len() != self.age_pool.as_ref().unwrap().size
+            || self.staged.iter().any(|s| now >= s.until)
+        {
+            return Err("wallet_transaction_unavailable".into());
+        }
+        Ok(
+            json!({"credential_configuration_id":self.configuration,"proofs":{"jwt":self.staged.iter().map(|s| s.proof.as_str()).collect::<Vec<_>>()}}),
+        )
+    }
+    /// Acknowledge only after every returned credential has passed validation.
+    pub fn finish_batch(&mut self, holders: &[PublicJwk], now: u64) -> Result<(), String> {
+        self.batch_credential_request(now)?;
+        if holders.len() != self.staged.len()
+            || holders
+                .iter()
+                .zip(&self.staged)
+                .any(|(h, s)| h != &s.holder)
+        {
+            return Err("invalid_proof".into());
+        }
+        self.cancel();
+        Ok(())
+    }
     pub fn authorization_header(&self, now: u64) -> Result<Zeroizing<String>, String> {
         self.live(now)?;
         match &self.phase {
@@ -497,5 +574,6 @@ impl Authorization {
         self.phase = Phase::Closed;
         self.state.zeroize();
         self.verifier.zeroize();
+        self.staged.clear();
     }
 }

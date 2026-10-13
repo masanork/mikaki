@@ -105,6 +105,11 @@ pub async fn start_identity_wallet_issuance(
         let context = issuer::metadata(&guard, &configuration).await?;
         let budget = if requested_count > 1 {
             Some(mikaki_identity::age_pool::Budget {
+                mode: if context.age_batch {
+                    mikaki_identity::age_pool::Mode::Batch
+                } else {
+                    mikaki_identity::age_pool::Mode::Sequential
+                },
                 size: requested_count,
                 claims_json: context
                     .age_pool_claims
@@ -211,50 +216,107 @@ pub async fn receive_identity_wallet_credential(
             .context
             .take()
             .ok_or("wallet_transaction_unavailable")?;
-        let mut receipts = Vec::with_capacity(pending.requested_count);
-        for _ in 0..pending.requested_count {
+        let receipts = if pending.session.protocol.is_batch() {
             let nonce = issuer::credential_nonce(&guard).await?;
-            let attestation = pending
-                .session
-                .attest_holder(
-                    &app,
-                    &guard,
-                    &pending.attestation,
-                    &cfg.client_trust,
-                    &nonce,
-                    &cfg.key_trust,
-                )
-                .await?;
-            pending.session.distinct_encryption_key(
-                &context.encryption.request_key().map_err(str::to_string)?,
-            )?;
-            let payload =
-                pending
+            let mut keys = Vec::with_capacity(pending.requested_count);
+            for _ in 0..pending.requested_count {
+                let attestation = pending
                     .session
-                    .credential_request(&nonce, &attestation, &cfg.key_trust)?;
+                    .attest_holder(
+                        &app,
+                        &guard,
+                        &pending.attestation,
+                        &cfg.client_trust,
+                        &nonce,
+                        &cfg.key_trust,
+                    )
+                    .await?;
+                pending.session.distinct_encryption_key(
+                    &context.encryption.request_key().map_err(str::to_string)?,
+                )?;
+                pending.session.protocol.stage_credential_proof(
+                    &nonce,
+                    &attestation,
+                    &cfg.key_trust,
+                    pending
+                        .session
+                        .holder
+                        .as_ref()
+                        .ok_or("wallet_transaction_unavailable")?,
+                    now()?,
+                )?;
+                keys.push(
+                    pending
+                        .session
+                        .holder
+                        .take()
+                        .ok_or("wallet_transaction_unavailable")?,
+                );
+            }
+            let payload = pending.session.protocol.batch_credential_request(now()?)?;
             let issued =
                 issuer::credential(&pending.session, &guard, &context, payload, issuer::send)
                     .await?;
-            let receipt = verified_receipt(
+            let receipts = verified_batch(
                 issued,
                 &context,
-                pending
-                    .session
-                    .holder
-                    .take()
-                    .ok_or("wallet_transaction_unavailable")?,
+                keys,
                 &pending.configuration,
                 cfg.credential_trust.clone(),
             )?;
-            if let Some(claims) = &context.age_pool_claims {
-                batch::validate_age_receipt(&receipt, claims, now()?)?;
+            let holders = receipts
+                .iter()
+                .map(|r| r.key.public())
+                .collect::<Result<Vec<_>, _>>()?;
+            pending.session.protocol.finish_batch(&holders, now()?)?;
+            receipts
+        } else {
+            let mut receipts = Vec::with_capacity(pending.requested_count);
+            for _ in 0..pending.requested_count {
+                let nonce = issuer::credential_nonce(&guard).await?;
+                let attestation = pending
+                    .session
+                    .attest_holder(
+                        &app,
+                        &guard,
+                        &pending.attestation,
+                        &cfg.client_trust,
+                        &nonce,
+                        &cfg.key_trust,
+                    )
+                    .await?;
+                pending.session.distinct_encryption_key(
+                    &context.encryption.request_key().map_err(str::to_string)?,
+                )?;
+                let payload =
+                    pending
+                        .session
+                        .credential_request(&nonce, &attestation, &cfg.key_trust)?;
+                let issued =
+                    issuer::credential(&pending.session, &guard, &context, payload, issuer::send)
+                        .await?;
+                let receipt = verified_receipt(
+                    issued,
+                    &context,
+                    pending
+                        .session
+                        .holder
+                        .take()
+                        .ok_or("wallet_transaction_unavailable")?,
+                    &pending.configuration,
+                    cfg.credential_trust.clone(),
+                )?;
+                if let Some(claims) = &context.age_pool_claims {
+                    batch::validate_age_receipt(&receipt, claims, now()?)?;
+                }
+                pending
+                    .session
+                    .protocol
+                    .finish_receipt(&receipt.key.public()?, now()?)?;
+                receipts.push(receipt);
             }
-            pending
-                .session
-                .protocol
-                .finish_receipt(&receipt.key.public()?, now()?)?;
-            receipts.push(receipt);
-        }
+            receipts
+        };
         let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
         if s.generation != guard.generation {
             return Err("cancelled".into());
@@ -275,6 +337,36 @@ pub async fn receive_identity_wallet_credential(
         terminal(&guard, "failed");
     }
     result
+}
+
+pub(super) fn verified_batch(
+    issued: Value,
+    context: &issuer::Context,
+    keys: Vec<HolderKey>,
+    configuration: &str,
+    credential_trust: identity_wallet::CredentialTrust,
+) -> Result<Vec<Receipt>, String> {
+    let credentials = issued["credentials"]
+        .as_array()
+        .filter(|a| {
+            a.len() == keys.len() && (2..=mikaki_identity::age_batch::MAX_SIZE).contains(&a.len())
+        })
+        .ok_or("invalid_response")?;
+    let claims = context.age_pool_claims.as_ref().ok_or("invalid_metadata")?;
+    keys.into_iter()
+        .zip(credentials)
+        .map(|(key, value)| {
+            let receipt = verified_receipt(
+                json!({"credentials":[value]}),
+                context,
+                key,
+                configuration,
+                credential_trust.clone(),
+            )?;
+            batch::validate_age_receipt(&receipt, claims, now()?)?;
+            Ok(receipt)
+        })
+        .collect()
 }
 
 pub(super) fn verified_receipt(

@@ -221,6 +221,18 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
           },
         },
       })),
+      ...[false, true].map((changed) => ({
+        config: {
+          ...config,
+          name: changed ? 'identity-haip-age-batch-changed' : 'identity-haip-age-batch',
+          vars: {
+            ...haipVars,
+            IDENTITY_HAIP_AGE_POOL_ENABLED: 'true',
+            IDENTITY_HAIP_AGE_BATCH_ENABLED: 'true',
+            IDENTITY_ISSUANCE_CLAIMS: JSON.stringify([changed ? 'age_over_20' : 'age_over_18']),
+          },
+        },
+      })),
       {
         config: {
           ...config,
@@ -2076,6 +2088,8 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       JSON.stringify({ size: 1, claims_json: '["age_over_18"]' }),
       JSON.stringify({ size: 9, claims_json: '["age_over_18"]' }),
       JSON.stringify({ size: 2, claims_json: '["birthdate"]' }),
+      JSON.stringify({ size: 2, claims_json: '["age_over_18"]', mode: 'batch' }),
+      JSON.stringify({ size: 2, claims_json: '["age_over_18"]', mode: 'unknown' }),
     ]) {
       assert.equal(
         (
@@ -2096,171 +2110,334 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       400,
       'disabled/old issuer rejects scoped pool',
     );
-    for (const configuration of ['linked_document', 'linked_document_mdoc']) {
-      for (const size of [2, 8]) {
-        const budget = JSON.stringify({ size, claims_json: '["age_over_18"]' });
-        const pushed = await haipPush(await clientHeaders(), configuration, poolWorker, {
-          mikaki_age_pool: budget,
-          dpop_jkt: await calculateJwkThumbprint(dpopJwk),
-        });
-        assert.equal(pushed.status, 201, await pushed.clone().text());
-        const uri = ((await pushed.json()) as any).request_uri;
-        const reviewUrl = `${issuer}/authorize?${new URLSearchParams({ client_id: walletClient.client_id, request_uri: uri })}`;
-        assert.equal(
-          (
-            await poolWorker.fetch(
-              `${reviewUrl}&mikaki_age_pool=${encodeURIComponent(JSON.stringify({ size: 8, claims_json: '["age_over_18"]' }))}`,
-              { headers: ownerHeaders },
-            )
-          ).status,
-          400,
-          'browser cannot expand the frozen PAR budget',
-        );
-        const page = await poolWorker.fetch(reviewUrl, { headers: ownerHeaders });
-        assert.equal(page.status, 200);
-        const text = await page.text();
-        assert.ok(text.includes(`証明書を${size}件`) && text.includes('18歳以上である'));
-        assert.ok(!text.includes('最大16件') && !text.includes('身分証の氏名・住所・生年月日'));
-        const grant = /name=grant value='([^']+)'/.exec(text)![1];
-        const approval = await poolWorker.fetch(`${issuer}/authorize`, {
-          method: 'POST',
-          redirect: 'manual',
-          headers: {
-            ...ownerHeaders,
-            Origin: root,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            grant,
-            csrf: /name=csrf value='([^']+)'/.exec(text)![1],
-            document: parDocument.transaction_id,
-            decision: 'approve',
-          }).toString(),
-        });
-        assert.equal(approval.status, 303, await approval.clone().text());
-        const code = new URL(approval.headers.get('location')!).searchParams.get('code')!;
-        const dp = (endpoint: string, nonce?: string, access?: string) =>
-          new SignJWT({
-            htu: `${issuer}/${endpoint}`,
-            htm: 'POST',
-            iat: Math.floor(Date.now() / 1000),
-            jti: secret(),
-            ...(nonce ? { nonce } : {}),
-            ...(access ? { ath: hash(access) } : {}),
-          })
-            .setProtectedHeader({ typ: 'dpop+jwt', alg: 'ES256', jwk: dpopJwk })
-            .sign(dpopKey.privateKey);
-        const exchange = async (nonce?: string) =>
-          poolWorker.fetch(`${issuer}/token`, {
+    for (const [mode, batchEnabled] of [
+      ['sequential', false],
+      ['sequential', true],
+      ['batch', true],
+    ] as const) {
+      const poolWorker = harness.getWorker(
+        batchEnabled ? 'identity-haip-age-batch' : 'identity-haip-age-pool',
+      );
+      const metadata = (await (
+        await poolWorker.fetch(`${root}/.well-known/openid-credential-issuer/identity/issuer`)
+      ).json()) as any;
+      assert.equal(metadata.batch_credential_issuance, undefined);
+      assert.deepEqual(metadata.mikaki_age_batch, batchEnabled ? { batch_size: 8 } : undefined);
+      for (const configuration of ['linked_document', 'linked_document_mdoc']) {
+        for (const size of [2, 8]) {
+          const budget = JSON.stringify({
+            size,
+            claims_json: '["age_over_18"]',
+            ...(mode === 'batch' ? { mode } : {}),
+          });
+          const pushed = await haipPush(await clientHeaders(), configuration, poolWorker, {
+            mikaki_age_pool: budget,
+            dpop_jkt: await calculateJwkThumbprint(dpopJwk),
+          });
+          assert.equal(pushed.status, 201, await pushed.clone().text());
+          const uri = ((await pushed.json()) as any).request_uri;
+          const reviewUrl = `${issuer}/authorize?${new URLSearchParams({ client_id: walletClient.client_id, request_uri: uri })}`;
+          assert.equal(
+            (
+              await poolWorker.fetch(
+                `${reviewUrl}&mikaki_age_pool=${encodeURIComponent(JSON.stringify({ size: 8, claims_json: '["age_over_18"]' }))}`,
+                { headers: ownerHeaders },
+              )
+            ).status,
+            400,
+            'browser cannot expand the frozen PAR budget',
+          );
+          const page = await poolWorker.fetch(reviewUrl, { headers: ownerHeaders });
+          assert.equal(page.status, 200);
+          const text = await page.text();
+          assert.ok(text.includes(`証明書を${size}件`) && text.includes('18歳以上である'));
+          assert.ok(text.includes(mode === 'batch' ? '全件を一括で受け取り' : '1件ずつ受け取り'));
+          assert.ok(!text.includes('最大16件') && !text.includes('身分証の氏名・住所・生年月日'));
+          const grant = /name=grant value='([^']+)'/.exec(text)![1];
+          const approval = await poolWorker.fetch(`${issuer}/authorize`, {
             method: 'POST',
+            redirect: 'manual',
             headers: {
+              ...ownerHeaders,
+              Origin: root,
               'Content-Type': 'application/x-www-form-urlencoded',
-              ...(await clientHeaders()),
-              DPoP: await dp('token', nonce),
             },
             body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              code,
-              client_id: walletClient.client_id,
-              redirect_uri: haipRedirect,
-              code_verifier: verifier,
+              grant,
+              csrf: /name=csrf value='([^']+)'/.exec(text)![1],
+              document: parDocument.transaction_id,
+              decision: 'approve',
             }).toString(),
           });
-        const challenge = await exchange();
-        assert.equal(challenge.status, 400);
-        const token = await exchange(challenge.headers.get('dpop-nonce')!);
-        assert.equal(token.status, 200, await token.clone().text());
-        const access = ((await token.json()) as any).access_token;
-        let rsNonce: string | undefined;
-        let previous:
-          | {
-              proof: string;
-              nonce: string;
-              privateKey: Parameters<SignJWT['sign']>[0];
-              holder: typeof externalHolder;
-            }
-          | undefined;
-        for (let slot = 0; slot < size; slot++) {
-          const holderKeys = await generateKeyPair('ES256', { extractable: true });
-          const holder = await exportJWK(holderKeys.publicKey);
-          const nonce = (
-            (await (await poolWorker.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
-          ).c_nonce;
-          const attestation = await keyAttestation(nonce, [holder], {
-            exp: Math.floor(Date.now() / 1000) + 60,
-          });
-          const proof = await new SignJWT({
-            iss: walletClient.client_id,
-            aud: issuer,
-            iat: Math.floor(Date.now() / 1000),
-            nonce,
-          })
-            .setProtectedHeader({
-              typ: 'openid4vci-proof+jwt',
-              alg: 'ES256',
-              jwk: holder,
-              key_attestation: attestation,
-            })
-            .sign(holderKeys.privateKey);
-          const issue = async (proofValue = proof, target = poolWorker) =>
-            post(
-              '/identity/issuer/credential',
-              { credential_configuration_id: configuration, proofs: { jwt: [proofValue] } },
-              { Authorization: `DPoP ${access}`, DPoP: await dp('credential', rsNonce, access) },
-              target,
-            );
-          if (slot === 0) {
-            assert.equal(
-              (await issue(proof, haip)).status,
-              401,
-              'withdrawal/old policy cannot load the pool grant',
-            );
-            assert.equal(
-              (await issue(proof, harness.getWorker('identity-haip-age-pool-changed'))).status,
-              401,
-              'profile change cannot load the pool grant',
-            );
-            const challenge = await issue();
-            assert.equal(challenge.status, 401);
-            rsNonce = challenge.headers.get('dpop-nonce')!;
-            const noAttestation = await new SignJWT({
-              iss: walletClient.client_id,
-              aud: issuer,
+          assert.equal(approval.status, 303, await approval.clone().text());
+          const code = new URL(approval.headers.get('location')!).searchParams.get('code')!;
+          const dp = (endpoint: string, nonce?: string, access?: string) =>
+            new SignJWT({
+              htu: `${issuer}/${endpoint}`,
+              htm: 'POST',
               iat: Math.floor(Date.now() / 1000),
-              nonce,
+              jti: secret(),
+              ...(nonce ? { nonce } : {}),
+              ...(access ? { ath: hash(access) } : {}),
             })
-              .setProtectedHeader({ typ: 'openid4vci-proof+jwt', alg: 'ES256', jwk: holder })
-              .sign(holderKeys.privateKey);
-            assert.equal((await issue(noAttestation)).status, 400);
-            for (const role of [
-              { jwk: dpopJwk, privateKey: dpopKey.privateKey },
-              {
-                jwk: await exportJWK(attestedInstance.publicKey),
-                privateKey: attestedInstance.privateKey,
+              .setProtectedHeader({ typ: 'dpop+jwt', alg: 'ES256', jwk: dpopJwk })
+              .sign(dpopKey.privateKey);
+          const exchange = async (nonce?: string) =>
+            poolWorker.fetch(`${issuer}/token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                ...(await clientHeaders()),
+                DPoP: await dp('token', nonce),
               },
-            ]) {
-              const reusedRole = await new SignJWT({
+              body: new URLSearchParams({
+                grant_type: 'authorization_code',
+                code,
+                client_id: walletClient.client_id,
+                redirect_uri: haipRedirect,
+                code_verifier: verifier,
+              }).toString(),
+            });
+          const challenge = await exchange();
+          assert.equal(challenge.status, 400);
+          const token = await exchange(challenge.headers.get('dpop-nonce')!);
+          assert.equal(token.status, 200, await token.clone().text());
+          const access = ((await token.json()) as any).access_token;
+          if (mode === 'batch') {
+            const nonce = (
+              (await (await poolWorker.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
+            ).c_nonce;
+            const keys = await Promise.all(
+              Array.from({ length: size }, () => generateKeyPair('ES256', { extractable: true })),
+            );
+            const holders = await Promise.all(keys.map((k) => exportJWK(k.publicKey)));
+            const proof = async (
+              i: number,
+              n = nonce,
+              attested = true,
+              role?: { jwk: any; privateKey: Parameters<SignJWT['sign']>[0] },
+            ) => {
+              const jwk = role?.jwk ?? holders[i];
+              return new SignJWT({
                 iss: walletClient.client_id,
                 aud: issuer,
                 iat: Math.floor(Date.now() / 1000),
-                nonce,
+                nonce: n,
               })
                 .setProtectedHeader({
                   typ: 'openid4vci-proof+jwt',
                   alg: 'ES256',
-                  jwk: role.jwk,
-                  key_attestation: await keyAttestation(nonce, [role.jwk]),
+                  jwk,
+                  ...(attested
+                    ? {
+                        key_attestation: await keyAttestation(n, [jwk], {
+                          exp: Math.floor(Date.now() / 1000) + 60,
+                        }),
+                      }
+                    : {}),
                 })
-                .sign(role.privateKey);
+                .sign(role?.privateKey ?? keys[i].privateKey);
+            };
+            const proofs = await Promise.all(keys.map((_, i) => proof(i)));
+            const recipient = await generateKeyPair('ECDH-ES', { extractable: true });
+            const jwk = {
+              ...(await exportJWK(recipient.publicKey)),
+              kid: 'haip-batch-response',
+              alg: 'ECDH-ES',
+              use: 'enc',
+            };
+            const requestJwk = metadata.credential_request_encryption.jwks.keys[0];
+            let rsNonce: string | undefined;
+            const issue = async (values = proofs, target = poolWorker, type = 'jwt') => {
+              const wire = await new CompactEncrypt(
+                Buffer.from(
+                  JSON.stringify({
+                    credential_configuration_id: configuration,
+                    proofs: { [type]: values },
+                    credential_response_encryption: { jwk, enc: 'A256GCM' },
+                  }),
+                ),
+              )
+                .setProtectedHeader({
+                  alg: 'ECDH-ES',
+                  enc: 'A256GCM',
+                  kid: requestJwk.kid,
+                  cty: 'json',
+                })
+                .encrypt(await importJWK(requestJwk, 'ECDH-ES'));
+              return target.fetch(`${issuer}/credential`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/jwt',
+                  Authorization: `DPoP ${access}`,
+                  DPoP: await dp('credential', rsNonce, access),
+                },
+                body: wire,
+              });
+            };
+            assert.equal(
+              (await issue([proofs[0]], haip)).status,
+              401,
+              'older policy cannot load batch grant',
+            );
+            assert.equal(
+              (await issue([proofs[0]], harness.getWorker('identity-haip-age-pool'))).status,
+              401,
+              'batch flag withdrawal blocks grant',
+            );
+            assert.equal(
+              (await issue(proofs, harness.getWorker('identity-haip-age-batch-changed'))).status,
+              401,
+              'profile change blocks grant',
+            );
+            const challenge = await issue();
+            assert.equal(challenge.status, 401);
+            rsNonce = challenge.headers.get('dpop-nonce')!;
+            for (const values of [
+              proofs.slice(0, -1),
+              [...proofs, proofs[0]],
+              [...proofs.slice(0, -1), proofs[0]],
+              [...proofs.slice(0, -1), await proof(size - 1, secret())],
+              [...proofs.slice(0, -1), await proof(size - 1, nonce, false)],
+              [
+                ...proofs.slice(0, -1),
+                await proof(size - 1, nonce, true, {
+                  jwk: dpopJwk,
+                  privateKey: dpopKey.privateKey,
+                }),
+              ],
+              [
+                ...proofs.slice(0, -1),
+                await proof(size - 1, nonce, true, {
+                  jwk: await exportJWK(attestedInstance.publicKey),
+                  privateKey: attestedInstance.privateKey,
+                }),
+              ],
+            ]) {
               assert.equal(
-                (await issue(reusedRole)).status,
+                (await issue(values)).status,
                 400,
-                'pooled holder must be separate from client-instance and DPoP keys',
+                'any invalid member rejects the whole batch',
               );
             }
+            const unspent = async () => {
+              const current = (await DB.prepare(
+                'SELECT issuance_count,state,holder_json FROM identity_wallet_grant WHERE grant_id=?',
+              )
+                .bind(grant)
+                .first()) as any;
+              assert.equal(current.issuance_count, 0);
+              assert.equal(current.state, 'token');
+              assert.deepEqual(JSON.parse(current.holder_json).holders, []);
+              assert.equal(
+                (
+                  (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
+                    .bind(hash(nonce))
+                    .first()) as any
+                ).used,
+                0,
+              );
+            };
+            await unspent();
+            if (size === 2) {
+              await DB.exec(
+                `CREATE TRIGGER fixture_batch_close BEFORE UPDATE OF state ON identity_wallet_grant WHEN NEW.grant_id='${grant}' AND NEW.state='issued' BEGIN SELECT RAISE(ABORT,'fixture rollback'); END`,
+              );
+              assert.equal((await issue()).status, 409);
+              await unspent();
+              await DB.exec('DROP TRIGGER fixture_batch_close');
+            }
+            // Exercise both registered proof forms, each with an independent attestation.
+            const values =
+              size === 2
+                ? await Promise.all(
+                    holders.map((h) =>
+                      keyAttestation(nonce, [h], { exp: Math.floor(Date.now() / 1000) + 60 }),
+                    ),
+                  )
+                : proofs;
+            const results = await Promise.all([
+              issue(values, poolWorker, size === 2 ? 'attestation' : 'jwt'),
+              issue(values, poolWorker, size === 2 ? 'attestation' : 'jwt'),
+            ]);
+            const resultDetails = (
+              await Promise.all(
+                results.map(async (r) => (r.status === 200 ? 'success' : await r.clone().text())),
+              )
+            ).join(',');
+            assert.equal(results.filter((r) => r.status === 200).length, 1, resultDetails);
+            assert.ok(results.every((r) => [200, 401, 409].includes(r.status)));
+            const received = JSON.parse(
+              Buffer.from(
+                (
+                  await compactDecrypt(
+                    await results.find((r) => r.status === 200)!.text(),
+                    recipient.privateKey,
+                  )
+                ).plaintext,
+              ).toString(),
+            );
+            assert.equal(received.credentials.length, size);
+            for (let i = 0; i < size; i++) {
+              const credential = received.credentials[i].credential;
+              if (configuration === 'linked_document') {
+                const { payload } = await jwtVerify(credential.split('~')[0], op.publicKey, {
+                  issuer,
+                });
+                assert.deepEqual((payload.cnf as any).jwk, holders[i]);
+                assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 60);
+                assert.equal(
+                  JSON.parse(Buffer.from(credential.split('~')[1], 'base64url').toString())[1],
+                  'age_over_18',
+                );
+              } else
+                assert.deepEqual(
+                  verifyMdocIssuer(credential, holders[i], await exportJWK(op.publicKey)).values,
+                  { age_over_18: true },
+                );
+            }
+            const current = (await DB.prepare(
+              'SELECT issuance_count,state,holder_json,access_hash FROM identity_wallet_grant WHERE grant_id=?',
+            )
+              .bind(grant)
+              .first()) as any;
+            assert.equal(current.issuance_count, 1);
+            assert.equal(current.state, 'issued');
+            assert.equal(current.access_hash, null);
+            const binding = JSON.parse(current.holder_json);
+            assert.equal(binding.age_pool_version, 2);
+            assert.equal(binding.holders.length, size);
+            assert.equal(new Set(binding.holders).size, size);
+            assert.equal(
+              (
+                (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
+                  .bind(hash(nonce))
+                  .first()) as any
+              ).used,
+              1,
+            );
+            assert.equal((await issue()).status, 401, 'one batch closes the entire grant');
+            continue;
           }
-          if (previous) {
-            const reused = await new SignJWT({
+          let rsNonce: string | undefined;
+          let previous:
+            | {
+                proof: string;
+                nonce: string;
+                privateKey: Parameters<SignJWT['sign']>[0];
+                holder: typeof externalHolder;
+              }
+            | undefined;
+          for (let slot = 0; slot < size; slot++) {
+            const holderKeys = await generateKeyPair('ES256', { extractable: true });
+            const holder = await exportJWK(holderKeys.publicKey);
+            const nonce = (
+              (await (await poolWorker.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
+            ).c_nonce;
+            const attestation = await keyAttestation(nonce, [holder], {
+              exp: Math.floor(Date.now() / 1000) + 60,
+            });
+            const proof = await new SignJWT({
               iss: walletClient.client_id,
               aud: issuer,
               iat: Math.floor(Date.now() / 1000),
@@ -2269,99 +2446,195 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               .setProtectedHeader({
                 typ: 'openid4vci-proof+jwt',
                 alg: 'ES256',
-                jwk: previous.holder,
-                key_attestation: await keyAttestation(nonce, [previous.holder]),
+                jwk: holder,
+                key_attestation: attestation,
               })
-              .sign(previous.privateKey);
+              .sign(holderKeys.privateKey);
+            const issue = async (proofValue = proof, target = poolWorker) =>
+              post(
+                '/identity/issuer/credential',
+                { credential_configuration_id: configuration, proofs: { jwt: [proofValue] } },
+                { Authorization: `DPoP ${access}`, DPoP: await dp('credential', rsNonce, access) },
+                target,
+              );
+            if (slot === 0) {
+              assert.equal(
+                (await issue(proof, haip)).status,
+                401,
+                'withdrawal/old policy cannot load the pool grant',
+              );
+              assert.equal(
+                (await issue(proof, harness.getWorker('identity-haip-age-pool-changed'))).status,
+                401,
+                'profile change cannot load the pool grant',
+              );
+              const challenge = await issue();
+              assert.equal(challenge.status, 401);
+              rsNonce = challenge.headers.get('dpop-nonce')!;
+              if (batchEnabled) {
+                assert.equal(
+                  (
+                    await post(
+                      '/identity/issuer/credential',
+                      {
+                        credential_configuration_id: configuration,
+                        proofs: { jwt: [proof, proof] },
+                      },
+                      {
+                        Authorization: `DPoP ${access}`,
+                        DPoP: await dp('credential', rsNonce, access),
+                      },
+                      poolWorker,
+                    )
+                  ).status,
+                  400,
+                  'sequential consent cannot be expanded into a batch',
+                );
+              }
+              const noAttestation = await new SignJWT({
+                iss: walletClient.client_id,
+                aud: issuer,
+                iat: Math.floor(Date.now() / 1000),
+                nonce,
+              })
+                .setProtectedHeader({ typ: 'openid4vci-proof+jwt', alg: 'ES256', jwk: holder })
+                .sign(holderKeys.privateKey);
+              assert.equal((await issue(noAttestation)).status, 400);
+              for (const role of [
+                { jwk: dpopJwk, privateKey: dpopKey.privateKey },
+                {
+                  jwk: await exportJWK(attestedInstance.publicKey),
+                  privateKey: attestedInstance.privateKey,
+                },
+              ]) {
+                const reusedRole = await new SignJWT({
+                  iss: walletClient.client_id,
+                  aud: issuer,
+                  iat: Math.floor(Date.now() / 1000),
+                  nonce,
+                })
+                  .setProtectedHeader({
+                    typ: 'openid4vci-proof+jwt',
+                    alg: 'ES256',
+                    jwk: role.jwk,
+                    key_attestation: await keyAttestation(nonce, [role.jwk]),
+                  })
+                  .sign(role.privateKey);
+                assert.equal(
+                  (await issue(reusedRole)).status,
+                  400,
+                  'pooled holder must be separate from client-instance and DPoP keys',
+                );
+              }
+            }
+            if (previous) {
+              const reused = await new SignJWT({
+                iss: walletClient.client_id,
+                aud: issuer,
+                iat: Math.floor(Date.now() / 1000),
+                nonce,
+              })
+                .setProtectedHeader({
+                  typ: 'openid4vci-proof+jwt',
+                  alg: 'ES256',
+                  jwk: previous.holder,
+                  key_attestation: await keyAttestation(nonce, [previous.holder]),
+                })
+                .sign(previous.privateKey);
+              assert.equal(
+                (await issue(reused)).status,
+                400,
+                'even a fresh attestation cannot reuse a pooled holder key',
+              );
+            }
+            if (previous)
+              assert.equal(
+                (await issue(previous.proof)).status,
+                400,
+                'consumed nonce/key cannot replenish another slot',
+              );
+            if (slot === size - 1 && size === 2) {
+              // Force the second statement to abort: the first counter/nonce/key
+              // write must roll back rather than leave a partially spent grant.
+              await DB.exec(
+                `CREATE TRIGGER fixture_pool_close BEFORE UPDATE OF state ON identity_wallet_grant WHEN NEW.grant_id='${grant}' AND NEW.state='issued' BEGIN SELECT RAISE(ABORT,'fixture rollback'); END`,
+              );
+              assert.equal((await issue()).status, 409);
+              const rolled = (await DB.prepare(
+                'SELECT issuance_count,state FROM identity_wallet_grant WHERE grant_id=?',
+              )
+                .bind(grant)
+                .first()) as any;
+              assert.deepEqual(rolled, { issuance_count: slot, state: 'token' });
+              assert.equal(
+                (
+                  (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
+                    .bind(hash(nonce))
+                    .first()) as any
+                ).used,
+                0,
+              );
+              await DB.exec('DROP TRIGGER fixture_pool_close');
+            }
+            const issued =
+              slot === size - 1 && size === 8
+                ? await Promise.all([issue(), issue()])
+                : [await issue()];
             assert.equal(
-              (await issue(reused)).status,
-              400,
-              'even a fresh attestation cannot reuse a pooled holder key',
+              issued.filter((r) => r.status === 200).length,
+              1,
+              'each slot has one winner',
             );
-          }
-          if (previous)
-            assert.equal(
-              (await issue(previous.proof)).status,
-              400,
-              'consumed nonce/key cannot replenish another slot',
-            );
-          if (slot === size - 1 && size === 2) {
-            // Force the second statement to abort: the first counter/nonce/key
-            // write must roll back rather than leave a partially spent grant.
-            await DB.exec(
-              `CREATE TRIGGER fixture_pool_close BEFORE UPDATE OF state ON identity_wallet_grant WHEN NEW.grant_id='${grant}' AND NEW.state='issued' BEGIN SELECT RAISE(ABORT,'fixture rollback'); END`,
-            );
-            assert.equal((await issue()).status, 409);
-            const rolled = (await DB.prepare(
-              'SELECT issuance_count,state FROM identity_wallet_grant WHERE grant_id=?',
+            assert.ok(issued.every((r) => [200, 401, 409].includes(r.status)));
+            const receipt = ((await issued.find((r) => r.status === 200)!.json()) as any)
+              .credentials;
+            assert.equal(receipt.length, 1);
+            if (configuration === 'linked_document') {
+              const credential = receipt[0].credential;
+              const { payload } = await jwtVerify(credential.split('~')[0], op.publicKey, {
+                issuer,
+              });
+              assert.deepEqual((payload.cnf as any).jwk, holder);
+              assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 60);
+              assert.equal(
+                JSON.parse(Buffer.from(credential.split('~')[1], 'base64url').toString())[1],
+                'age_over_18',
+              );
+            } else {
+              assert.deepEqual(
+                verifyMdocIssuer(receipt[0].credential, holder, await exportJWK(op.publicKey))
+                  .values,
+                { age_over_18: true },
+              );
+            }
+            const current = (await DB.prepare(
+              'SELECT issuance_count,state,holder_json,access_hash FROM identity_wallet_grant WHERE grant_id=?',
             )
               .bind(grant)
               .first()) as any;
-            assert.deepEqual(rolled, { issuance_count: slot, state: 'token' });
+            assert.equal(current.issuance_count, slot + 1);
+            assert.equal(current.state, slot === size - 1 ? 'issued' : 'token');
+            const binding = JSON.parse(current.holder_json);
+            assert.equal(binding.budget.size, size);
+            assert.equal(binding.holders.length, slot + 1);
+            assert.equal(new Set(binding.holders).size, slot + 1);
             assert.equal(
               (
                 (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
                   .bind(hash(nonce))
                   .first()) as any
               ).used,
-              0,
+              1,
             );
-            await DB.exec('DROP TRIGGER fixture_pool_close');
-          }
-          const issued =
-            slot === size - 1 && size === 8
-              ? await Promise.all([issue(), issue()])
-              : [await issue()];
-          assert.equal(
-            issued.filter((r) => r.status === 200).length,
-            1,
-            'each slot has one winner',
-          );
-          assert.ok(issued.every((r) => [200, 401, 409].includes(r.status)));
-          const receipt = ((await issued.find((r) => r.status === 200)!.json()) as any).credentials;
-          assert.equal(receipt.length, 1);
-          if (configuration === 'linked_document') {
-            const credential = receipt[0].credential;
-            const { payload } = await jwtVerify(credential.split('~')[0], op.publicKey, { issuer });
-            assert.deepEqual((payload.cnf as any).jwk, holder);
-            assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 60);
-            assert.equal(
-              JSON.parse(Buffer.from(credential.split('~')[1], 'base64url').toString())[1],
-              'age_over_18',
-            );
-          } else {
-            assert.deepEqual(
-              verifyMdocIssuer(receipt[0].credential, holder, await exportJWK(op.publicKey)).values,
-              { age_over_18: true },
-            );
-          }
-          const current = (await DB.prepare(
-            'SELECT issuance_count,state,holder_json,access_hash FROM identity_wallet_grant WHERE grant_id=?',
-          )
-            .bind(grant)
-            .first()) as any;
-          assert.equal(current.issuance_count, slot + 1);
-          assert.equal(current.state, slot === size - 1 ? 'issued' : 'token');
-          const binding = JSON.parse(current.holder_json);
-          assert.equal(binding.budget.size, size);
-          assert.equal(binding.holders.length, slot + 1);
-          assert.equal(new Set(binding.holders).size, slot + 1);
-          assert.equal(
-            (
-              (await DB.prepare('SELECT used FROM identity_nonce WHERE nonce_hash=?')
-                .bind(hash(nonce))
-                .first()) as any
-            ).used,
-            1,
-          );
-          previous = { proof, nonce, privateKey: holderKeys.privateKey, holder };
-          if (slot === size - 1) {
-            assert.equal(current.access_hash, null);
-            assert.equal(
-              (await issue()).status,
-              401,
-              'exact budget is closed below the legacy sixteen-slot ceiling',
-            );
+            previous = { proof, nonce, privateKey: holderKeys.privateKey, holder };
+            if (slot === size - 1) {
+              assert.equal(current.access_hash, null);
+              assert.equal(
+                (await issue()).status,
+                401,
+                'exact budget is closed below the legacy sixteen-slot ceiling',
+              );
+            }
           }
         }
       }

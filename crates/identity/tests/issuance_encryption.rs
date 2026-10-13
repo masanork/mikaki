@@ -160,3 +160,70 @@ fn wallet_metadata_never_silently_downgrades_required_or_malformed_encryption() 
         json!([f["requestJwk"], f["requestJwk"]]);
     assert!(WalletEncryption::from_metadata(&bad, [0x22; 32], "native-fixture").is_err());
 }
+
+#[test]
+fn batch_envelopes_are_explicitly_bounded_without_expanding_single_request_limits() {
+    use mikaki_identity::issuance_encryption::*;
+    let f: Value = serde_json::from_str(include_str!("fixtures/wallet-jwe.json")).unwrap();
+    let wallet = WalletEncryption::from_metadata(
+        &wallet_metadata(&f, "A256GCM", true),
+        [0x22; 32],
+        "native-fixture",
+    )
+    .unwrap()
+    .unwrap();
+    // Use a known private fixture key for the issuer-side request round trip.
+    let request_fixture = fixture();
+    let issuer_key = RequestKey::parse(&request_fixture["privateKey"].to_string()).unwrap();
+    let mut metadata = wallet_metadata(&f, "A256GCM", true);
+    metadata["credential_request_encryption"]["jwks"]["keys"] =
+        json!([issuer_key.public().metadata()]);
+    let sender = WalletEncryption::from_metadata(&metadata, [0x22; 32], "native-fixture")
+        .unwrap()
+        .unwrap();
+    let payload = json!({"proofs":{"jwt":vec!["p".repeat(16472);8]}});
+    assert!(
+        sender
+            .prepare_request(payload.clone(), [1; 32], [2; 12])
+            .is_err()
+    );
+    let compact = sender
+        .prepare_batch_request(payload, [1; 32], [2; 12])
+        .unwrap();
+    assert!(decrypt_request(&compact, &issuer_key).is_err());
+    let plain = decrypt_batch_request(&compact, &issuer_key).unwrap();
+    let parsed: Value = serde_json::from_slice(&plain).unwrap();
+    assert_eq!(parsed["proofs"]["jwt"].as_array().unwrap().len(), 8);
+    assert!(
+        sender
+            .prepare_batch_request(
+                json!({"padding":"p".repeat(BATCH_REQUEST_PLAIN_LIMIT)}),
+                [1; 32],
+                [2; 12]
+            )
+            .is_err()
+    );
+    let recipient: ResponseEncryption =
+        serde_json::from_value(parsed["credential_response_encryption"].clone()).unwrap();
+    for size in [65537, BATCH_RESPONSE_PLAIN_LIMIT] {
+        let plain = vec![b'p'; size];
+        assert!(encrypt_response(&plain, &recipient, [3; 32], [4; 12]).is_err());
+        let compact = encrypt_batch_response(&plain, &recipient, [3; 32], [4; 12]).unwrap();
+        assert!(wallet.decrypt_response(&compact).is_err());
+        assert_eq!(&*wallet.decrypt_batch_response(&compact).unwrap(), &plain);
+    }
+    assert!(
+        encrypt_batch_response(
+            &vec![0; BATCH_RESPONSE_PLAIN_LIMIT + 1],
+            &recipient,
+            [3; 32],
+            [4; 12]
+        )
+        .is_err()
+    );
+    assert!(
+        wallet
+            .decrypt_batch_response(&"a".repeat(BATCH_RESPONSE_WIRE_LIMIT + 1))
+            .is_err()
+    );
+}

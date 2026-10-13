@@ -10,6 +10,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
+pub const BATCH_REQUEST_PLAIN_LIMIT: usize = 144 * 1024;
+pub const BATCH_REQUEST_WIRE_LIMIT: usize = 208 * 1024;
+pub const BATCH_RESPONSE_PLAIN_LIMIT: usize = 128 * 1024;
+pub const BATCH_RESPONSE_WIRE_LIMIT: usize = 192 * 1024;
 const ERROR: &str = "invalid_encryption_parameters";
 #[derive(Clone, Deserialize)]
 pub struct EncryptionKey {
@@ -170,6 +174,19 @@ pub fn decrypt_request(
 ) -> Result<Zeroizing<Vec<u8>>, &'static str> {
     decrypt_message(compact, key, 32768, 20480, None, false)
 }
+pub fn decrypt_batch_request(
+    compact: &str,
+    key: &RequestKey,
+) -> Result<Zeroizing<Vec<u8>>, &'static str> {
+    decrypt_message(
+        compact,
+        key,
+        BATCH_REQUEST_WIRE_LIMIT,
+        BATCH_REQUEST_PLAIN_LIMIT,
+        None,
+        false,
+    )
+}
 fn decrypt_message(
     compact: &str,
     key: &RequestKey,
@@ -259,8 +276,25 @@ pub fn encrypt_response(
     entropy: [u8; 32],
     iv: [u8; 12],
 ) -> Result<String, &'static str> {
+    encrypt_bounded(plain, recipient, entropy, iv, 65536)
+}
+pub fn encrypt_batch_response(
+    plain: &[u8],
+    recipient: &ResponseEncryption,
+    entropy: [u8; 32],
+    iv: [u8; 12],
+) -> Result<String, &'static str> {
+    encrypt_bounded(plain, recipient, entropy, iv, BATCH_RESPONSE_PLAIN_LIMIT)
+}
+fn encrypt_bounded(
+    plain: &[u8],
+    recipient: &ResponseEncryption,
+    entropy: [u8; 32],
+    iv: [u8; 12],
+    limit: usize,
+) -> Result<String, &'static str> {
     recipient.validate()?;
-    if plain.len() > 65536 {
+    if plain.len() > limit {
         return Err(ERROR);
     }
     let entropy = Zeroizing::new(entropy);
@@ -391,9 +425,33 @@ impl WalletEncryption {
     }
     pub fn prepare_request(
         &self,
+        payload: Value,
+        entropy: [u8; 32],
+        iv: [u8; 12],
+    ) -> Result<String, &'static str> {
+        self.prepare_bounded_request(payload, entropy, iv, 20480, 32768)
+    }
+    pub fn prepare_batch_request(
+        &self,
+        payload: Value,
+        entropy: [u8; 32],
+        iv: [u8; 12],
+    ) -> Result<String, &'static str> {
+        self.prepare_bounded_request(
+            payload,
+            entropy,
+            iv,
+            BATCH_REQUEST_PLAIN_LIMIT,
+            BATCH_REQUEST_WIRE_LIMIT,
+        )
+    }
+    fn prepare_bounded_request(
+        &self,
         mut payload: Value,
         entropy: [u8; 32],
         iv: [u8; 12],
+        plain_limit: usize,
+        wire_limit: usize,
     ) -> Result<String, &'static str> {
         let object = payload.as_object_mut().ok_or(ERROR)?;
         if object.contains_key("credential_response_encryption") {
@@ -405,7 +463,7 @@ impl WalletEncryption {
         }
         object.insert("credential_response_encryption".into(), parameters);
         let plain = Zeroizing::new(serde_json::to_vec(&payload).map_err(|_| ERROR)?);
-        if plain.len() > 20480 {
+        if plain.len() > plain_limit {
             return Err(ERROR);
         }
         let recipient = ResponseEncryption {
@@ -414,11 +472,24 @@ impl WalletEncryption {
             zip: None,
             extra: Default::default(),
         };
-        let compact = encrypt_response(&plain, &recipient, entropy, iv)?;
-        if compact.len() > 32768 {
+        let compact = encrypt_bounded(&plain, &recipient, entropy, iv, plain_limit)?;
+        if compact.len() > wire_limit {
             return Err(ERROR);
         }
         Ok(compact)
+    }
+    pub fn decrypt_batch_response(
+        &self,
+        compact: &str,
+    ) -> Result<Zeroizing<Vec<u8>>, &'static str> {
+        decrypt_message(
+            compact,
+            &self.recipient,
+            BATCH_RESPONSE_WIRE_LIMIT,
+            BATCH_RESPONSE_PLAIN_LIMIT,
+            Some(&self.enc),
+            self.deflate,
+        )
     }
     pub fn decrypt_response(&self, compact: &str) -> Result<Zeroizing<Vec<u8>>, &'static str> {
         decrypt_message(

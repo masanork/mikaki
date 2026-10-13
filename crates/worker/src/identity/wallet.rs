@@ -234,6 +234,11 @@ fn clients(ctx: &RouteContext<()>) -> worker::Result<(Vec<Client>, String)> {
     } else {
         binding_policy
     };
+    let binding_policy = if age_batch_enabled(ctx)? {
+        format!("{binding_policy}:haip-age-batch-v2")
+    } else {
+        binding_policy
+    };
     Ok((clients, hash(&format!("{raw}:{binding_policy}"))))
 }
 pub(super) fn age_pool_enabled(ctx: &RouteContext<()>) -> worker::Result<bool> {
@@ -244,6 +249,13 @@ pub(super) fn age_pool_enabled(ctx: &RouteContext<()>) -> worker::Result<bool> {
             .is_ok_and(|v| v.to_string() == "true")
         && claim_profile(ctx)?.is_age_only())
 }
+pub(super) fn age_batch_enabled(ctx: &RouteContext<()>) -> worker::Result<bool> {
+    Ok(age_pool_enabled(ctx)?
+        && ctx
+            .env
+            .var("IDENTITY_HAIP_AGE_BATCH_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true"))
+}
 fn requested_pool(
     ctx: &RouteContext<()>,
     raw: Option<&str>,
@@ -252,7 +264,10 @@ fn requested_pool(
         return Ok(None);
     };
     let budget = mikaki_identity::age_pool::Budget::parse(raw).map_err(|_| server_error())?;
-    if !age_pool_enabled(ctx)? || budget.claims_json != claim_profile(ctx)?.to_json() {
+    if !age_pool_enabled(ctx)?
+        || budget.claims_json != claim_profile(ctx)?.to_json()
+        || (budget.mode == mikaki_identity::age_pool::Mode::Batch && !age_batch_enabled(ctx)?)
+    {
         return Err(server_error());
     }
     Ok(Some(budget))
@@ -270,7 +285,10 @@ pub(super) fn pool_state(
     state
         .validate(row.issuance_count)
         .map_err(|_| server_error())?;
-    if !age_pool_enabled(ctx)? || state.budget.claims_json != claim_profile(ctx)?.to_json() {
+    if !age_pool_enabled(ctx)?
+        || state.budget.claims_json != claim_profile(ctx)?.to_json()
+        || (state.budget.mode == mikaki_identity::age_pool::Mode::Batch && !age_batch_enabled(ctx)?)
+    {
         return Err(server_error());
     }
     Ok(Some(state))
@@ -284,7 +302,11 @@ pub(super) fn fresh_pool_holder(
         return Ok(true);
     };
     let thumbprint = holder.thumbprint().map_err(|_| server_error())?;
-    if state.next(holder).is_err() || row.dpop_jkt.as_deref() == Some(&thumbprint) {
+    if (state.budget.mode == mikaki_identity::age_pool::Mode::Sequential
+        && state.next(holder).is_err())
+        || state.holders.contains(&thumbprint)
+        || row.dpop_jkt.as_deref() == Some(&thumbprint)
+    {
         return Ok(false);
     }
     let (registry, _) = clients(ctx)?;
@@ -560,8 +582,13 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
         ),
         if let Some(pool) = &pool {
             format!(
-                "walletインスタンスのClient Attestationを検証しています。別々の端末鍵に、年齢専用の証明書を{}件発行することを許可します。token取得から120秒以内に1件ずつ受け取り、全件の検証後にまとめて保存します。",
-                pool.size
+                "walletインスタンスのClient Attestationを検証しています。別々の端末鍵に、年齢専用の証明書を{}件発行することを許可します。token取得から120秒以内に{}、全件の検証後にまとめて保存します。",
+                pool.size,
+                if pool.mode == mikaki_identity::age_pool::Mode::Batch {
+                    "全件を一括で受け取り"
+                } else {
+                    "1件ずつ受け取り"
+                }
             )
         } else if haip(&ctx) {
             "walletインスタンスのClient Attestationを検証しています。同じ形式・属性を、token取得から120秒以内に最大16件発行することを許可します。".to_owned()
@@ -781,18 +808,27 @@ pub(super) async fn commit(
     row: &Row,
     access: &str,
     nonce: &str,
-    holder: &PublicJwk,
+    holders: &[PublicJwk],
     expires_at: u64,
 ) -> worker::Result<bool> {
     let (_, client_policy) = clients(ctx)?;
     if let Some(state) = pool_state(ctx, row)? {
-        let next = state.next(holder).map_err(|_| server_error())?;
+        let batch = state.budget.mode == mikaki_identity::age_pool::Mode::Batch;
+        let next = if batch {
+            state.batch(holders)
+        } else if let [holder] = holders {
+            state.next(holder)
+        } else {
+            Err("invalid_proof")
+        }
+        .map_err(|_| server_error())?;
+        let operations = if batch { 1 } else { state.budget.size };
         let encoded = serde_json::to_string(&next)?;
         let db = ctx.env.d1("DB")?;
         let consume = db.prepare("UPDATE identity_wallet_grant SET issuance_count=issuance_count+1,proof_nonce_hash=?1,holder_json=?2 WHERE grant_id=?3 AND access_hash=?4 AND state='token' AND issuance_count=?8 AND issuance_count<?9 AND holder_json=?10 AND token_expires_at>unixepoch() AND client_policy_hash=?5 AND policy_hash=?6 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=identity_wallet_grant.document_id AND d.account_id=identity_wallet_grant.account_id AND d.revoked=0 AND d.valid_until>=?7 AND unixepoch()<?7 AND d.policy_hash=?6 AND a.active=1 AND a.epoch=d.epoch AND a.epoch=identity_wallet_grant.epoch)")
-            .bind(&[js(&hash(nonce)),js(&encoded),js(&row.tx_id),js(&hash(access)),js(&client_policy),js(&row.policy_hash),JsValue::from_f64(expires_at as f64),JsValue::from_f64(row.issuance_count as f64),JsValue::from_f64(state.budget.size as f64),js(&row.holder_json)])?;
+            .bind(&[js(&hash(nonce)),js(&encoded),js(&row.tx_id),js(&hash(access)),js(&client_policy),js(&row.policy_hash),JsValue::from_f64(expires_at as f64),JsValue::from_f64(row.issuance_count as f64),JsValue::from_f64(operations as f64),js(&row.holder_json)])?;
         let close = db.prepare("UPDATE identity_wallet_grant SET state='issued',access_hash=NULL WHERE grant_id=?1 AND access_hash=?2 AND state='token' AND issuance_count=?3 AND holder_json=?4")
-            .bind(&[js(&row.tx_id),js(&hash(access)),JsValue::from_f64(state.budget.size as f64),js(&encoded)])?;
+            .bind(&[js(&row.tx_id),js(&hash(access)),JsValue::from_f64(operations as f64),js(&encoded)])?;
         // D1 batches are transactional. Check the consume result, never the close
         // result alone, so a concurrent stale response cannot dispatch a receipt.
         let result = db.batch(vec![consume, close]).await;
@@ -800,6 +836,9 @@ pub(super) async fn commit(
             matches!(result,Ok(r) if r.first().and_then(|r|r.meta().ok().flatten()).and_then(|m|m.changes).unwrap_or(0)>0),
         );
     }
+    let [holder] = holders else {
+        return Ok(false);
+    };
     let result = ctx.env.d1("DB")?.prepare("UPDATE identity_wallet_grant SET issuance_count=issuance_count+1,state=CASE WHEN issuance_count+1=issuance_limit THEN 'issued' ELSE 'token' END,proof_nonce_hash=?1,holder_json=?2,access_hash=CASE WHEN issuance_count+1=issuance_limit THEN NULL ELSE access_hash END WHERE grant_id=?3 AND access_hash=?4 AND state='token' AND issuance_count<issuance_limit AND token_expires_at>unixepoch() AND client_policy_hash=?5 AND policy_hash=?6 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=identity_wallet_grant.document_id AND d.account_id=identity_wallet_grant.account_id AND d.revoked=0 AND d.valid_until>=?7 AND unixepoch()<?7 AND d.policy_hash=?6 AND a.active=1 AND a.epoch=d.epoch AND a.epoch=identity_wallet_grant.epoch)")
         .bind(&[js(&hash(nonce)),js(&serde_json::to_string(holder)?),js(&row.tx_id),js(&hash(access)),js(&client_policy),js(&row.policy_hash),JsValue::from_f64(expires_at as f64)])?.run().await;
     Ok(matches!(result,Ok(r) if r.meta().ok().flatten().and_then(|m|m.changes).unwrap_or(0)>0))

@@ -198,6 +198,7 @@ fn context() -> Context {
         issuer_key: key(4).public().unwrap(),
         issuer_kid: "issuer".into(),
         age_pool_claims: None,
+        age_batch: false,
     }
 }
 #[test]
@@ -402,136 +403,281 @@ fn eight_fresh_attested_holders_are_verified_before_one_trusted_inventory_instal
     use mikaki_identity::{
         age_pool::Budget, claim_profile::ClaimProfile, evidence::VerifiedDocument,
     };
-    for (configuration, format) in [
-        (issuance::CONFIGURATION, "dc+sd-jwt"),
-        (mdoc::CONFIGURATION, "mso_mdoc"),
+    for mode in [
+        mikaki_identity::age_pool::Mode::Sequential,
+        mikaki_identity::age_pool::Mode::Batch,
     ] {
-        let at = now().unwrap();
-        let profile = ClaimProfile::age_only();
-        let mut protocol = Authorization::new_pending_holder(
-            ISSUER,
-            "native",
-            CALLBACK,
-            configuration,
-            [1; 32],
-            [2; 32],
-            key(1).public().unwrap(),
-            key(2).public().unwrap(),
-            at,
-        )
-        .unwrap();
-        protocol
-            .request_age_pool(
-                Budget {
-                    size: 8,
-                    claims_json: profile.to_json(),
-                },
-                at,
-            )
-            .unwrap();
-        let parameters = protocol.par_parameters(at).unwrap();
-        protocol.accept_par(&json!({"request_uri":format!("urn:ietf:params:oauth:request_uri:{}",B64.encode([3;32])),"expires_in":90}),at).unwrap();
-        let mut callback = url::Url::parse(CALLBACK).unwrap();
-        callback
-            .query_pairs_mut()
-            .append_pair("state", parameters["state"].as_str().unwrap())
-            .append_pair("iss", ISSUER)
-            .append_pair("code", &B64.encode([4; 32]));
-        protocol.accept_callback(callback.as_str(), at).unwrap();
-        protocol.accept_token(json!({"access_token":B64.encode([9;32]),"token_type":"DPoP","scope":configuration,"expires_in":120}),at).unwrap();
-        let mut session = Session {
-            protocol,
-            instance: key(1),
-            dpop: key(2),
-            holder: None,
-        };
-        let authority = SigningKey::from_slice(&[5; 32]).unwrap();
-        let issuer = SigningKey::from_slice(&[4; 32]).unwrap();
-        let trust = Trust {
-            trust_anchors: vec![cert("root")],
-            key_storage: None,
-            user_authentication: None,
-        };
-        let document:VerifiedDocument=serde_json::from_value(json!({"attributes":{"name":"Fixture","address":"Private","birth_date":"1990-02-28","gender":"1","verification":"issuer_signed_static_data","document_type":"my_number_card","expiry_date":null,"backend_verifiable":true},"trusted_key_id":"fixture","verified_at":at,"assurance":"issuer_signed_static_data","attributes_source":"input_support_ef"})).unwrap();
-        let ctx = context();
-        let mut receipts = Vec::new();
-        let mut nonces = std::collections::HashSet::new();
-        for seed in 10..18 {
-            let holder = key(seed);
-            let public = holder.public().unwrap();
-            session.protocol.bind_holder(public.clone(), at).unwrap();
-            session.holder = Some(holder);
-            let nonce = B64.encode([seed; 32]);
-            assert!(nonces.insert(nonce.clone()));
-            let attestation=issuance::sign_jwt(&authority,json!({"typ":"key-attestation+jwt","alg":"ES256","x5c":[cert("attester"),cert("intermediate")]}),json!({"iat":at,"exp":at+60,"nonce":nonce,"attested_keys":[public]})).unwrap();
-            let payload = session
-                .credential_request(&nonce, &attestation, &trust)
-                .unwrap();
-            let (bound, _) = issuance::verify_attested_wallet_proof(
-                payload["proofs"]["jwt"][0].as_str().unwrap(),
+        for (configuration, format) in [
+            (issuance::CONFIGURATION, "dc+sd-jwt"),
+            (mdoc::CONFIGURATION, "mso_mdoc"),
+        ] {
+            let at = now().unwrap();
+            let profile = ClaimProfile::age_only();
+            let mut protocol = Authorization::new_pending_holder(
                 ISSUER,
-                &nonce,
                 "native",
-                &trust,
+                CALLBACK,
+                configuration,
+                [1; 32],
+                [2; 32],
+                key(1).public().unwrap(),
+                key(2).public().unwrap(),
                 at,
             )
             .unwrap();
-            assert_eq!(bound, public);
-            let validity = issuance::Validity::new(&document, at, at + 50).unwrap();
-            let credential = if format == "dc+sd-jwt" {
-                issuance::issue_with_certificate_trust_and_profile(
-                    &issuer,
-                    "issuer",
-                    ISSUER,
-                    &public,
-                    &document,
-                    validity,
-                    &[[seed; 16], [seed + 1; 16]],
-                    &mikaki_identity::credential_certificate::SigningTrust {
-                        chain: vec![credential_cert("sd-signer")],
-                        trust_anchors: vec![credential_cert("sd-ca")],
-                        revocation: None,
+            protocol
+                .request_age_pool(
+                    Budget {
+                        mode,
+                        size: 8,
+                        claims_json: profile.to_json(),
                     },
-                    &profile,
+                    at,
                 )
-                .unwrap()
-            } else {
-                mdoc::issue_with_profile(
-                    &issuer,
-                    &STANDARD.decode(credential_cert("mdoc-signer")).unwrap(),
-                    &public,
-                    &document,
-                    validity,
-                    &[[seed; 16], [seed + 1; 16]],
-                    &profile,
-                )
-                .unwrap()
-            };
-            let receipt = super::super::flow::verified_receipt(
-                json!({"credentials":[{"credential":credential}]}),
-                &ctx,
-                session.holder.take().unwrap(),
-                configuration,
-                credential_trust(),
-            )
-            .unwrap();
-            batch::validate_age_receipt(&receipt, &profile.to_json(), at).unwrap();
-            session
-                .protocol
-                .finish_receipt(&receipt.key.public().unwrap(), at)
                 .unwrap();
-            receipts.push(receipt);
+            let parameters = protocol.par_parameters(at).unwrap();
+            protocol.accept_par(&json!({"request_uri":format!("urn:ietf:params:oauth:request_uri:{}",B64.encode([3;32])),"expires_in":90}),at).unwrap();
+            let mut callback = url::Url::parse(CALLBACK).unwrap();
+            callback
+                .query_pairs_mut()
+                .append_pair("state", parameters["state"].as_str().unwrap())
+                .append_pair("iss", ISSUER)
+                .append_pair("code", &B64.encode([4; 32]));
+            protocol.accept_callback(callback.as_str(), at).unwrap();
+            protocol.accept_token(json!({"access_token":B64.encode([9;32]),"token_type":"DPoP","scope":configuration,"expires_in":120}),at).unwrap();
+            let mut session = Session {
+                protocol,
+                instance: key(1),
+                dpop: key(2),
+                holder: None,
+            };
+            let authority = SigningKey::from_slice(&[5; 32]).unwrap();
+            let issuer = SigningKey::from_slice(&[4; 32]).unwrap();
+            let trust = Trust {
+                trust_anchors: vec![cert("root")],
+                key_storage: None,
+                user_authentication: None,
+            };
+            let document:VerifiedDocument=serde_json::from_value(json!({"attributes":{"name":"Fixture","address":"Private","birth_date":"1990-02-28","gender":"1","verification":"issuer_signed_static_data","document_type":"my_number_card","expiry_date":null,"backend_verifiable":true},"trusted_key_id":"fixture","verified_at":at,"assurance":"issuer_signed_static_data","attributes_source":"input_support_ef"})).unwrap();
+            let mut ctx = context();
+            ctx.age_pool_claims = Some(profile.to_json());
+            ctx.age_batch = mode == mikaki_identity::age_pool::Mode::Batch;
+            let mut credentials = Vec::new();
+            let mut keys = Vec::new();
+            let mut receipts = Vec::new();
+            let mut nonces = std::collections::HashSet::new();
+            for seed in 10..18 {
+                let holder = key(seed);
+                let public = holder.public().unwrap();
+                session.protocol.bind_holder(public.clone(), at).unwrap();
+                session.holder = Some(holder);
+                let nonce = B64.encode([if ctx.age_batch { 10 } else { seed }; 32]);
+                if !ctx.age_batch {
+                    assert!(nonces.insert(nonce.clone()));
+                }
+                let attestation=issuance::sign_jwt(&authority,json!({"typ":"key-attestation+jwt","alg":"ES256","x5c":[cert("attester"),cert("intermediate")]}),json!({"iat":at,"exp":at+60,"nonce":nonce,"attested_keys":[public]})).unwrap();
+                if ctx.age_batch {
+                    session
+                        .protocol
+                        .stage_credential_proof(
+                            &nonce,
+                            &attestation,
+                            &trust,
+                            session.holder.as_ref().unwrap(),
+                            at,
+                        )
+                        .unwrap();
+                } else {
+                    let payload = session
+                        .credential_request(&nonce, &attestation, &trust)
+                        .unwrap();
+                    let (bound, _) = issuance::verify_attested_wallet_proof(
+                        payload["proofs"]["jwt"][0].as_str().unwrap(),
+                        ISSUER,
+                        &nonce,
+                        "native",
+                        &trust,
+                        at,
+                    )
+                    .unwrap();
+                    assert_eq!(bound, public);
+                }
+                let validity = issuance::Validity::new(&document, at, at + 50).unwrap();
+                let credential = if format == "dc+sd-jwt" {
+                    issuance::issue_with_certificate_trust_and_profile(
+                        &issuer,
+                        "issuer",
+                        ISSUER,
+                        &public,
+                        &document,
+                        validity,
+                        &[[seed; 16], [seed + 1; 16]],
+                        &mikaki_identity::credential_certificate::SigningTrust {
+                            chain: vec![credential_cert("sd-signer")],
+                            trust_anchors: vec![credential_cert("sd-ca")],
+                            revocation: None,
+                        },
+                        &profile,
+                    )
+                    .unwrap()
+                } else {
+                    mdoc::issue_with_profile(
+                        &issuer,
+                        &STANDARD.decode(credential_cert("mdoc-signer")).unwrap(),
+                        &public,
+                        &document,
+                        validity,
+                        &[[seed; 16], [seed + 1; 16]],
+                        &profile,
+                    )
+                    .unwrap()
+                };
+                if ctx.age_batch {
+                    credentials.push(json!({"credential":credential}));
+                    keys.push(session.holder.take().unwrap());
+                    continue;
+                }
+                let receipt = super::super::flow::verified_receipt(
+                    json!({"credentials":[{"credential":credential}]}),
+                    &ctx,
+                    session.holder.take().unwrap(),
+                    configuration,
+                    credential_trust(),
+                )
+                .unwrap();
+                batch::validate_age_receipt(&receipt, &profile.to_json(), at).unwrap();
+                session
+                    .protocol
+                    .finish_receipt(&receipt.key.public().unwrap(), at)
+                    .unwrap();
+                receipts.push(receipt);
+            }
+            if ctx.age_batch {
+                let payload = session.protocol.batch_credential_request(at).unwrap();
+                let state = IdentityState::default();
+                let guard = gate(&state).unwrap();
+                let calls = Mutex::new(0);
+                let issued = tauri::async_runtime::block_on(credential(
+                    &session,
+                    &guard,
+                    &ctx,
+                    payload,
+                    |r| {
+                        let r = r.build().unwrap();
+                        let compact =
+                            std::str::from_utf8(r.body().unwrap().as_bytes().unwrap()).unwrap();
+                        let mut private = request_jwk();
+                        private["d"] = json!(B64.encode([0x11; 32]));
+                        let plain = mikaki_identity::issuance_encryption::decrypt_batch_request(
+                            compact,
+                            &RequestKey::parse(&private.to_string()).unwrap(),
+                        )
+                        .unwrap();
+                        let request: Value = serde_json::from_slice(&plain).unwrap();
+                        let proofs = request["proofs"]["jwt"].as_array().unwrap();
+                        assert_eq!(proofs.len(), 8);
+                        for (i, proof) in proofs.iter().enumerate() {
+                            let (holder, _) = issuance::verify_attested_wallet_proof(
+                                proof.as_str().unwrap(),
+                                ISSUER,
+                                &B64.encode([10; 32]),
+                                "native",
+                                &trust,
+                                at,
+                            )
+                            .unwrap();
+                            assert_eq!(holder, keys[i].public().unwrap());
+                        }
+                        let mut calls = calls.lock().unwrap();
+                        *calls += 1;
+                        // Only an explicit DPoP nonce challenge permits a retry.
+                        let result = if *calls == 1 {
+                            response(401, json!({"error":"use_dpop_nonce"}), Some("batch-nonce"))
+                        } else {
+                            let recipient: ResponseEncryption = serde_json::from_value(
+                                request["credential_response_encryption"].clone(),
+                            )
+                            .unwrap();
+                            let wire =
+                                mikaki_identity::issuance_encryption::encrypt_batch_response(
+                                    &serde_json::to_vec(&json!({"credentials":credentials}))
+                                        .unwrap(),
+                                    &recipient,
+                                    [3; 32],
+                                    [4; 12],
+                                )
+                                .unwrap();
+                            openidconnect::http::Response::builder()
+                                .status(200)
+                                .header("content-type", "application/jwt")
+                                .body(wire)
+                                .unwrap()
+                                .into()
+                        };
+                        std::future::ready(Ok(result))
+                    },
+                ))
+                .unwrap();
+                assert_eq!(*calls.lock().unwrap(), 2);
+                let make_keys = || (10..18).map(key).collect();
+                let mut partial = issued.clone();
+                partial["credentials"].as_array_mut().unwrap().pop();
+                assert!(super::super::flow::verified_batch(
+                    partial,
+                    &ctx,
+                    make_keys(),
+                    configuration,
+                    credential_trust()
+                )
+                .is_err());
+                let mut reordered = issued.clone();
+                reordered["credentials"].as_array_mut().unwrap().swap(0, 7);
+                assert!(super::super::flow::verified_batch(
+                    reordered,
+                    &ctx,
+                    make_keys(),
+                    configuration,
+                    credential_trust()
+                )
+                .is_err());
+                let mut tampered = issued.clone();
+                tampered["credentials"][7]["credential"] = json!("invalid");
+                assert!(super::super::flow::verified_batch(
+                    tampered,
+                    &ctx,
+                    make_keys(),
+                    configuration,
+                    credential_trust()
+                )
+                .is_err());
+                receipts = super::super::flow::verified_batch(
+                    issued,
+                    &ctx,
+                    keys,
+                    configuration,
+                    credential_trust(),
+                )
+                .unwrap();
+                let holders = receipts
+                    .iter()
+                    .map(|r| r.key.public().unwrap())
+                    .collect::<Vec<_>>();
+                session
+                    .protocol
+                    .finish_batch(&holders, now().unwrap())
+                    .unwrap();
+            }
+            assert!(session.protocol.authorization_header(at).is_err());
+            let mut writes = 0;
+            let installed = batch::install(&[], receipts, at, |all| {
+                writes += 1;
+                assert_eq!(all.len(), 8);
+                assert!(all.iter().all(|r| r.credential_trust.is_some()));
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(writes, 1);
+            assert_eq!(installed.len(), 8);
         }
-        assert!(session.protocol.authorization_header(at).is_err());
-        let mut writes = 0;
-        let installed = batch::install(&[], receipts, at, |all| {
-            writes += 1;
-            assert_eq!(all.len(), 8);
-            assert!(all.iter().all(|r| r.credential_trust.is_some()));
-            Ok(())
-        })
-        .unwrap();
-        assert_eq!(writes, 1);
-        assert_eq!(installed.len(), 8);
     }
 }
