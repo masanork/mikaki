@@ -154,7 +154,18 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
     inside && !inside.startsWith('..') && !inside.startsWith('/'),
     'copy_packet_output_denied',
   );
-  await mkdir(parent, { recursive: true, mode: 0o700 });
+  // Refuse an existing linked ancestor before creating any directory through it.
+  let ancestor = root;
+  for (const part of relative(root, parent).split('/')) {
+    ancestor = join(ancestor, part);
+    const info = await lstat(ancestor).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    if (info)
+      assert.ok(info.isDirectory() && !info.isSymbolicLink(), 'copy_packet_output_link_denied');
+    else await mkdir(ancestor, { mode: 0o700 });
+  }
   assert.equal(await realpath(parent), parent, 'copy_packet_output_link_denied');
   execFileSync('git', ['check-ignore', '--quiet', parent], { cwd: root, stdio: 'pipe' });
   const directory = await mkdtemp(join(parent, 'companions-'));
@@ -168,6 +179,7 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
     'crates/worker/src/work_store/copy_job.rs',
   ]);
   const sourceBytes = new Map<string, Buffer>();
+  let inputBytes = 0;
   const committed = async (name: string) => {
     memberPath(name);
     const bytes = await packetFile(join(root, name));
@@ -177,6 +189,11 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
       maxBuffer: maximum,
     });
     assert.deepEqual(bytes, gitBytes, 'copy_packet_source_changed');
+    if (!sourceBytes.has(name)) inputBytes += bytes.length;
+    assert.ok(
+      sourceBytes.size < 512 && inputBytes <= 64 * 1024 * 1024,
+      'copy_packet_inputs_too_large',
+    );
     sourceBytes.set(name, bytes);
     return bytes;
   };

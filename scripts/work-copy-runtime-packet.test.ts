@@ -15,6 +15,17 @@ import {
 const root = fileURLToPath(new URL('../', import.meta.url));
 const parent = join(root, 'local/generated/copy-runtime-tests');
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+const privatePaths: Record<string, string> = {
+  copy: '/start',
+  initial: '/initial',
+  'initial-reconcile': '/reconcile',
+  mint: '/mint',
+  'mint-reconcile': '/reconcile-mint',
+  'mint-close': '/close-mint',
+  git: '/git',
+  'git-transport': '/git-exchange',
+  preparation: '/verify-preparation',
+};
 
 test('committed companion packet loads real bundles cold and rejects substitution, extra members and links', async (t) => {
   const packet = await prepareCopyRuntimePacket(parent);
@@ -46,9 +57,9 @@ test('committed companion packet loads real bundles cold and rejects substitutio
                 modules: true,
                 compatibilityDate: '2026-10-10',
                 script: `export default { async fetch(request, env) {
-            const binding = new URL(request.url).pathname.slice(1);
-            return env[binding].fetch(new Request('https://private.invalid/initial', {
-              method: 'POST', body: '{}'
+            const [binding, ...path] = new URL(request.url).pathname.slice(1).split('/');
+            return env[binding].fetch(new Request('https://private.invalid/' + path.join('/'), {
+              method: 'POST', body: JSON.stringify({attempt_id:'a'.repeat(43)})
             }));
           }};`,
                 serviceBindings: bindings,
@@ -64,7 +75,8 @@ test('committed companion packet loads real bundles cold and rejects substitutio
             assert.equal(await r.text(), '');
           }
           for (const id of Object.keys(bindings)) {
-            const r = await mf.dispatchFetch(`https://probe.invalid/${id}`);
+            const path = privatePaths[id.replaceAll('_', '-')] ?? '/';
+            const r = await mf.dispatchFetch(`https://probe.invalid/${id}${path}`);
             assert.ok([404, 409, 503].includes(r.status), `${id}: ${r.status}`);
             assert.ok((await r.text()).length <= 4096);
           }
