@@ -84,6 +84,7 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
       ['rp', 'openid profile'],
       ['openid-only', 'openid'],
       ['other-rp', 'openid profile'],
+      ['age-rp', 'openid profile'],
     ]) {
       const code = secret(),
         access = secret();
@@ -184,11 +185,15 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
     };
     const discovery = await op.fetch(`${root}/.well-known/openid-configuration`);
     assert.equal(discovery.status, 200);
-    assert.ok(
-      ((await discovery.json()) as { claims_supported: string[] }).claims_supported.includes(
-        'mikaki_linked_document',
-      ),
-    );
+    const capabilities = (await discovery.json()) as {
+      claims_supported: string[];
+      claims_parameter_supported: boolean;
+      transformed_claims_functions_supported?: string[];
+    };
+    assert.ok(capabilities.claims_supported.includes('mikaki_linked_document'));
+    assert.equal(capabilities.claims_parameter_supported, false);
+    assert.equal(capabilities.claims_supported.includes('verified_claims'), false);
+    assert.equal(capabilities.transformed_claims_functions_supported, undefined);
     const disabledDiscovery = await disabled.fetch(`${root}/.well-known/openid-configuration`);
     assert.equal(disabledDiscovery.status, 200);
     assert.equal(
@@ -204,6 +209,8 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /アプリへの属性公開/);
+    assert.match(html, /name=age_over_18 value=on>18歳以上か（生年月日の値は公開しない）/);
+    assert.match(html, /name=age_over_20 value=on>20歳以上か（生年月日の値は公開しない）/);
     const form = /<form method=post action=\/identity\/release>(.*?)<\/form>/s.exec(html)![1];
     const csrf = /name=csrf value='([^']+)'/.exec(form)![1];
     const release = async (
@@ -269,6 +276,64 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
     );
     assert.deepEqual(await call('other-rp'), { sub: 'pairwise-other-rp' });
     assert.deepEqual(await call('rp', disabled), { sub: 'pairwise-rp' });
+    // Derivation consent is RP-specific and does not imply release of the raw birthdate.
+    assert.equal((await release(['age-rp', 1, 1, 0], { age_over_18: 'true' })).status, 400);
+    assert.equal((await release(['age-rp', 1, 1, 0], { birthdate: 'on' })).status, 303);
+    assert.deepEqual(((await call('age-rp')).mikaki_linked_document as any).attributes, {
+      birthdate: '1990-02-28',
+    });
+    assert.equal((await release(['age-rp', 1, 1, 1], { age_over_18: 'on' })).status, 303);
+    const ageResponse = await call('age-rp');
+    const age = ageResponse.mikaki_linked_document as any;
+    assert.deepEqual(age.attributes, { age_over_18: true });
+    assert.equal(age.evidence.assurance, 'issuer_signed_static_data');
+    assert.equal(age.evidence.live_possession_verified, false);
+    assert.equal(age.evidence.government_credential, false);
+    assert.equal(age.evidence.predicate_source, 'birthdate');
+    assert.ok(age.evidence.predicate_verified_at >= now);
+    assert.equal(age.evidence.consumer_record._mikaki.verifier, 'consumer');
+    assert.equal(age.evidence.consumer_record._mikaki.trusted_key_id, 'fixture');
+    assert.equal(age.evidence.consumer_record._mikaki.revocation_checked, false);
+    assert.equal(ageResponse.verified_claims, undefined);
+    for (const raw of ['試験 太郎', '東京都', '1990-02-28'])
+      assert.equal(JSON.stringify(ageResponse).includes(raw), false);
+    assert.deepEqual(await call('age-rp', disabled), { sub: 'pairwise-age-rp' });
+    const changeBirthday = (date: string) =>
+      DB.prepare(
+        "UPDATE identity_document SET document_json=json_set(document_json,'$.attributes.birth_date',?) WHERE document_id=?",
+      )
+        .bind(date, doc)
+        .run();
+    await changeBirthday('2020-01-01');
+    assert.deepEqual(((await call('age-rp')).mikaki_linked_document as any).attributes, {
+      age_over_18: false,
+    });
+    for (const bad of ['0000-01-01', '2008-02-30', '3000-01-01']) {
+      await changeBirthday(bad);
+      assert.deepEqual(await call('age-rp'), { sub: 'pairwise-age-rp' });
+    }
+    await changeBirthday('1990-02-28');
+    for (const [set, restore] of [
+      [
+        "UPDATE identity_claim_release SET expires_at=unixepoch() WHERE client_id='age-rp'",
+        "UPDATE identity_claim_release SET expires_at=unixepoch()+600 WHERE client_id='age-rp'",
+      ],
+      [
+        `UPDATE identity_document SET policy_hash='changed' WHERE document_id='${doc}'`,
+        `UPDATE identity_document SET policy_hash='${hash(policy)}' WHERE document_id='${doc}'`,
+      ],
+    ]) {
+      await DB.prepare(set).run();
+      assert.deepEqual(await call('age-rp'), { sub: 'pairwise-age-rp' });
+      await DB.prepare(restore).run();
+    }
+    assert.equal((await release(['age-rp', 1, 1, 2], { age_over_20: 'on' })).status, 303);
+    assert.deepEqual(((await call('age-rp')).mikaki_linked_document as any).attributes, {
+      age_over_20: true,
+    });
+    assert.equal((await release(['age-rp', 0, 0, 3], {}, 'revoke')).status, 303);
+    assert.deepEqual(await call('age-rp'), { sub: 'pairwise-age-rp' });
+    assert.equal((await release(['age-rp', 1, 1, 0], { age_over_18: 'on' })).status, 409);
     assert.equal((await release(['openid-only', 1, 1, 0], { address: 'on' })).status, 303);
     assert.deepEqual(await call('openid-only'), { sub: 'pairwise-openid-only' });
     const row = await DB.prepare(

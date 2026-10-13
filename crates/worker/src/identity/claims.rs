@@ -4,12 +4,14 @@ use crate::vault_http::Owner;
 use worker::D1Database;
 
 pub(crate) const CLAIM: &str = "mikaki_linked_document";
-const FIELDS: [(&str, &str); 5] = [
+const FIELDS: [(&str, &str); 7] = [
     ("name", "氏名"),
     ("address", "住所"),
     ("birthdate", "生年月日"),
     ("gender", "性別"),
     ("document_expiry_date", "身分証の有効期限"),
+    ("age_over_18", "18歳以上か（生年月日の値は公開しない）"),
+    ("age_over_20", "20歳以上か（生年月日の値は公開しない）"),
 ];
 pub(crate) fn enabled(env: &worker::Env) -> bool {
     env.var("IDENTITY_USERINFO_ENABLED")
@@ -59,7 +61,7 @@ pub(crate) async fn userinfo(
     let document: VerifiedDocument =
         serde_json::from_str(&row.document_json).map_err(|_| server_error())?;
     let fields: Vec<String> = serde_json::from_str(&row.fields_json).map_err(|_| server_error())?;
-    if fields.is_empty() || fields.len() > 5 {
+    if fields.is_empty() || fields.len() > FIELDS.len() {
         return Err(server_error());
     }
     let a = &document.attributes;
@@ -79,7 +81,22 @@ pub(crate) async fn userinfo(
     }
 
     let mut attributes = serde_json::Map::new();
+    let mut predicates = false;
     for field in fields {
+        if attributes.contains_key(&field) {
+            return Err(server_error());
+        }
+        if matches!(field.as_str(), "age_over_18" | "age_over_20") {
+            let threshold = if field == "age_over_18" { 18 } else { 20 };
+            let Some(value) =
+                mikaki_identity::claim_profile::age_over(&a.birth_date, time, threshold)
+            else {
+                return Ok(None);
+            };
+            predicates = true;
+            attributes.insert(field, json!(value));
+            continue;
+        }
         let value = match field.as_str() {
             "name" => Some(a.name.as_str()),
             "address" => Some(a.address.as_str()),
@@ -88,18 +105,25 @@ pub(crate) async fn userinfo(
             "document_expiry_date" => a.expiry_date.as_deref(),
             _ => return Err(server_error()),
         };
-        if attributes.contains_key(&field) {
-            return Err(server_error());
-        }
         if let Some(value) = value {
             attributes.insert(field, json!(value));
         }
     }
-    Ok(Some(json!({"attributes":attributes,"evidence":{
+    let mut evidence = json!({
         "document_type":a.document_type,"assurance":document.assurance,
         "attributes_source":document.attributes_source,"verified_at":document.verified_at,
         "live_possession_verified":false,"government_credential":false
-    }})))
+    });
+    if predicates {
+        if document.assurance != "issuer_signed_static_data" || document.verified_at > time {
+            return Ok(None);
+        }
+        evidence["predicate_source"] = json!("birthdate");
+        evidence["predicate_verified_at"] = json!(time);
+        evidence["consumer_record"] = mikaki_identity::op_age::consumer_evidence(&document, time)
+            .map_err(|_| server_error())?;
+    }
+    Ok(Some(json!({"attributes":attributes,"evidence":evidence})))
 }
 
 #[derive(Deserialize)]
@@ -232,6 +256,8 @@ struct ReleaseForm {
     birthdate: Option<String>,
     gender: Option<String>,
     document_expiry_date: Option<String>,
+    age_over_18: Option<String>,
+    age_over_20: Option<String>,
 }
 pub(crate) async fn release_post(
     mut req: Request,
@@ -281,6 +307,8 @@ pub(crate) async fn release_post(
         body.birthdate,
         body.gender,
         body.document_expiry_date,
+        body.age_over_18,
+        body.age_over_20,
     ];
     if values.iter().flatten().any(|v| v != "on") {
         return error(400, "invalid_request");
