@@ -13,6 +13,7 @@ pub mod issuance;
 pub mod issuance_encryption;
 pub mod key_attestation;
 pub mod mdoc;
+pub mod op_age;
 pub mod presentation;
 pub mod wallet_authorization;
 pub mod wallet_profile;
