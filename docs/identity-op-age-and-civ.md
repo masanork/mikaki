@@ -4,9 +4,9 @@ Follow-up to #208 / PR #212. The existing, disabled-by-default Identity UserInfo
 
 The OP checks the token's profile scope and current RP/account/connection/document consent, key policy and document deadlines before calculating the predicate on the UTC response date. An invalid/future birthdate makes the linked-document response unavailable. Only granted fields are returned. Predicate evidence preserves the original source verification time, adds `predicate_verified_at` for the calculation and a consumer-authored `electronic_record` description. It contains no raw attributes, card signature, DF31/32/33, PIN, reader identifier or personal document number. Static assurance, lack of live-card possession and `government_credential=false` remain explicit. A current key-policy check is not a card revocation check.
 
-This is the existing custom UserInfo claim over HTTPS. It is **not an enabled ASC/OID4IDA wire profile**. Discovery continues to report `claims_parameter_supported=false`; it does not advertise transformed-claim functions or `verified_claims`. The [Identity Assurance adoption boundary](identity-assurance-adoption.md) remains in force.
+The existing JSON path remains a custom UserInfo claim over HTTPS. A second, **experimental custom-claim ASC subset** now accepts authenticated PAR requests and returns signed UserInfo, described below. Neither path is a qualified ASC/OID4IDA `verified_claims` profile. Discovery continues to report `claims_parameter_supported=false`; it does not advertise general transformed-claim functions or `verified_claims`. The [Identity Assurance adoption boundary](identity-assurance-adoption.md) remains in force.
 
-Other independently consented `profile` claims, such as an owner-entered Vault name, retain their existing release rules. Predicate-only Identity permission removes raw values from `mikaki_linked_document`; exact request-only filtering of the entire UserInfo response requires the future authorization-request binding described below.
+Other independently consented `profile` claims, such as an owner-entered Vault name, retain their existing release rules in the legacy JSON path. A token bound to an experimental age request selects only the requested predicates across the entire signed UserInfo response; it never invokes Vault name delivery or falls back to broader JSON after withdrawal.
 
 ## ASC request preparation
 
@@ -30,7 +30,38 @@ Other independently consented `profile` claims, such as an owner-entered Vault n
 
 This is an internal request/projection API and test vector, not a request accepted by `/authorize`. It supports the canonical 18/20-year aliases, exactly two functions per definition, at most two definitions/requested predicates, and boolean `value`/`essential` constraints. It rejects duplicate/escaped duplicate JSON members, unknown functions, aliases, source claims, raw-attribute requests, caller-selected reference dates, unsupported constraints, ID Token delivery, SAO and excessive input. Projection needs the exact predicate consent fields and returns no partial result if any requested predicate is unavailable or lacks permission.
 
-Before connecting this parser to the wire, bind the full validated request to an authenticated PAR and then to the one-use authorization code/token. ASC requires integrity protection for custom transformations; an unprotected browser query must not select a transformation or change an age threshold. The current OP's ordinary authorization adapter does not do this binding. Advertise only `years_ago`/`gte`, depth 2 and count 2 after the complete wire path passes the intended RP's tests; request-parser tests alone do not establish support.
+The `verified_claims` shape above remains internal and is rejected by the wire adapter. The experimental adapter uses the same bounded transformation validation at a custom claim location. ASC requires integrity protection for custom transformations; an unprotected browser query must not select a transformation or change an age threshold. General Discovery support remains gated on a named RP/profile qualification, including function metadata (`years_ago`/`gte`, depth 2, count 2).
+
+## Authenticated request and signed response
+
+Opt in only for a test deployment with `IDENTITY_ENABLED=true`, `IDENTITY_USERINFO_ENABLED=true`, `IDENTITY_AGE_REQUESTS_ENABLED=true` and `MIKAKI_PAR_MODE=required` (or the existing FAPI mode). None of these flags is enabled in production by this change. Migration `0004_identity_age_requests.sql` adds immutable code-bound request rows, a current-eligibility view and response audit records; the owner readiness and exact schema/byte inventory gates include this additive migration. The immediately preceding waitlist binary has the narrow complete-ledger bridge. Older fourteen/fifteen-migration authority packets remain verifiable without acquiring new migration bytes or capabilities.
+
+Send this `claims` JSON as a form parameter at `/par`, using the RP's current registered `private_key_jwt` authentication and existing redirect/PKCE controls:
+
+```json
+{
+  "userinfo": {
+    "mikaki_linked_document": {
+      "attributes": {":age_over_18": null}
+    }
+  },
+  "_asc": {
+    "transformed_claims": {
+      "age_over_18": {"claim":"birthdate","fn":["years_ago",["gte",18]]}
+    }
+  }
+}
+```
+
+The source location is relative to `mikaki_linked_document.attributes`. Only `openid profile` / `profile openid` are accepted. Both 18/20 aliases may be defined/requested within the two-definition/two-claim limit; unsupported locations, raw fields, duplicate members, custom thresholds and ID Token delivery fail closed. The authenticated PAR query is authoritative, consumed once, and never overridden by browser parameters. Browser `claims` parameters are rejected, including alongside a valid `request_uri`.
+
+Authorization requires the exact predicate's current RP release; birthdate disclosure consent does not authorize derivation. Missing permission yields `consent_required`; unavailable evidence or an unsatisfied boolean constraint yields `access_denied`. The exact request JSON/hash, requested fields, document and release version are inserted atomically with the code and PAR consumption. A later replacement of the release requires a new authorization, even if the same fields remain granted.
+
+The bound access token selects a minimal `application/jwt` response with `iss`, the RP `aud`, the ID Token's pairwise `sub`, `iat`, `exp` and `mikaki_linked_document`. Requested attribute names retain the `:` reference prefix. Evidence remains consumer-authored static-source metadata without a trust-framework/person-binding assertion. No separately granted name/birthdate or other profile attributes are included. The OP's registered active ES256/RS256 key signs the response. Lifetime is at most 300 seconds and clipped to access-token, parent-session, release, document, trusted source-key and source-document expiry. An RP must check the signature, issuer, audience, times, exact requested predicates and `sub` equality with its ID Token; see [OIDC signed UserInfo validation](https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse).
+
+After signing, a conditional D1 insert rechecks current permissions, account/client/connection revisions, token/session validity, the exact request/release/document snapshot, policy and signing-key generation/public JWK. It stores a digest of the signed response, request hash, RP/document/release identifiers, signing generation, static assurance and time bounds **before** returning the response. It stores no token bytes, raw attributes, full JWT or card bytes. Audit failure suppresses the response. Each code permits at most 100 audited responses; exceeding the bound fails closed and needs a new authorization. Audits record prepared-and-authorized responses, not confirmed network receipt. The source policy hash is the existing deployment policy check, not a card-derived public identifier.
+
+Permission/feature withdrawal, unavailable predicates, stale policy or replaced releases yield no signed claims; a bound token never downgrades to the legacy JSON path. Bearer and DPoP token validation retain their existing rules, including proof replay protection and refusal of Bearer access with a DPoP-bound token. This local test profile does not add `userinfo_signed_response_alg` client registration or claim general OIDC claims/ASC conformance. Production activation, named RP integration, real cards and a qualified person/account binding remain separate work.
 
 ## Consent, framework and response decisions
 
@@ -38,7 +69,7 @@ Reuse `identity_claim_release` for predicate calculation/release permission, wit
 
 `jp_mikaki_card_static` is a **candidate identifier**, not a qualified or advertised trust framework. Its required scope would distinguish independently verified static document data, account-owner linkage, current source/key checks and predicate calculation from proof that the human account owner is the named cardholder. Current static linkage does not establish that last binding. OID4IDA defines verified claims in relation to a verified person/account binding; a civ holder-device verdict or owner click cannot supply it. The [OID4IDA schema](https://openid.net/specs/openid-ida-verified-claims-1_0.html) also permits a verification metadata object outside a `verified_claims` assertion, which is useful while retaining this boundary.
 
-Choose **signed UserInfo**, rather than identity attributes in an ID Token, for a future qualified ASC response. Include the RP audience, pairwise subject, issuer, creation/expiration times and exact requested predicate/evidence projection; use an operator-controlled OP signing key. Bound its expiry to consent, token, document and key deadlines. Persist the exact request/release version and response digest in an audit before returning it; the RP can retain the signature as evidence. This signing/audit/request-binding path is a follow-up, not implemented by the current custom JSON response. Signing alone would not qualify the candidate framework or strengthen the source assurance.
+The experimental adapter implements signed UserInfo, request/release binding and audit at the custom claim location. Identity predicates stay out of the ID Token. The legacy JSON response remains available for tokens without an age request. Signing does not qualify the candidate framework or strengthen the static source assurance; a future qualified `verified_claims` response still needs the person/account binding and named RP/profile gates above.
 
 ## What civ contributes
 
@@ -68,10 +99,11 @@ cargo test --locked -p mikaki-identity
 cargo clippy --locked -p mikaki-identity --all-targets -- -D warnings
 worker-build --release crates/worker
 worker-build --release crates/userinfo-claim-worker
-node --test --test-concurrency=1 local/conformance/identity-userinfo.test.ts
+npm run build:policy
+node --test --test-concurrency=1 local/conformance/identity-userinfo.test.ts local/conformance/identity-age-request.test.ts local/conformance/dpop-worker.test.ts
 ```
 
-The shared tests cover request bounds, substitution/duplicate JSON, function/source/framework/reference-date rejection, exact derivation consent, UTC birthday boundaries, unavailable values and attribute-free consumer evidence. The workerd test exercises actual RP-specific owner consent and UserInfo, including raw-to-predicate replacement, true/false values, disabled policy, invalid/future dates, stale policy, withdrawn/expired consent and stale-form rejection. Existing token/DPoP/account/document revocation regressions remain applicable. These are synthetic host tests; no real card, production activation or external civ runtime is qualified by them.
+The shared tests cover request bounds, substitution/duplicate JSON, function/source/framework/reference-date rejection, exact derivation consent, UTC birthday boundaries, unavailable values and attribute-free consumer evidence. The workerd test exercises actual RP-specific owner consent and UserInfo, including raw-to-predicate replacement, true/false values, disabled policy, invalid/future dates, stale policy, withdrawn/expired consent and stale-form rejection. The new end-to-end workerd suite executes authenticated PAR, owner consent, authorization, token exchange, independent Node JOSE ID Token/UserInfo verification, both OP signing algorithms, request substitution/replay rejection, response lifetime clipping, mandatory-audit failure, consent replacement/withdrawal, false predicates, unsatisfied boolean constraints, source/policy expiry and account revocation. Existing token/DPoP/account/document revocation regressions remain applicable. These are synthetic host tests; no real card, production activation or external civ runtime is qualified by them.
 
 ### Opt-in comparison against the committed civ verifier
 

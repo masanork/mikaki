@@ -373,6 +373,53 @@ enum WorkerTokenSigner {
 
 #[cfg(target_arch = "wasm32")]
 impl WorkerTokenSigner {
+    #[allow(clippy::too_many_arguments)]
+    async fn sign_userinfo(
+        &self,
+        issuer: &str,
+        subject: &str,
+        audience: &str,
+        issued_at: u64,
+        expires_at: u64,
+        linked: &serde_json::Value,
+    ) -> worker::Result<String> {
+        let input = mikaki_oidc::UserInfoSigningInput::new(
+            self.algorithm(),
+            self.kid(),
+            issuer,
+            subject,
+            audience,
+            issued_at,
+            expires_at,
+            linked,
+        )
+        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+        match self {
+            Self::Es256(key) => key
+                .sign_userinfo(input)
+                .map_err(|_| worker::Error::RustError("server_error".into())),
+            Self::Rs256 { key, crypto_key } => {
+                let crypto = js_sys::Reflect::get(&js_sys::global(), &"crypto".into())?
+                    .dyn_into::<web_sys::Crypto>()
+                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
+                let signature = wasm_bindgen_futures::JsFuture::from(
+                    crypto.subtle().sign_with_str_and_u8_array(
+                        "RSASSA-PKCS1-v1_5",
+                        crypto_key,
+                        input.as_bytes(),
+                    )?,
+                )
+                .await?;
+                let signature = js_sys::Uint8Array::new(&signature).to_vec();
+                if signature.len() != key.modulus_bytes() {
+                    return Err(worker::Error::RustError("server_error".into()));
+                }
+                input
+                    .finish(&signature)
+                    .map_err(|_| worker::Error::RustError("server_error".into()))
+            }
+        }
+    }
     async fn from_secret(input: &str) -> worker::Result<Self> {
         let value: serde_json::Value = serde_json::from_str(input)
             .map_err(|_| worker::Error::RustError("server_error".into()))?;
@@ -1042,6 +1089,7 @@ async fn authorize_route(
             || reference.duplicates.contains("client_id")
             || reference.duplicates.contains("request_uri")
             || reference.values.contains_key("request")
+            || reference.values.contains_key("claims")
         {
             return oauth_error_response("invalid_request", 400, false);
         }
@@ -1217,6 +1265,19 @@ async fn authorize_route(
     if let Some(error) = oauth_error {
         return authorization_error_response(redirect_uri, state, &issuer, error);
     }
+
+    let age_request = if let Some(raw) = parameters.get("claims") {
+        if pushed.is_none() {
+            return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
+        }
+        let Some(request) = identity::age_request::parse(&context.env, raw, &parameters["scope"])
+        else {
+            return authorization_error_response(redirect_uri, state, &issuer, "invalid_request");
+        };
+        Some(request)
+    } else {
+        None
+    };
 
     let raw = mikaki_oidc::Authorization {
         client_id: client_id.clone(),
@@ -1396,6 +1457,33 @@ async fn authorize_route(
         }
     }
 
+    let age_snapshot = if let Some(age) = &age_request {
+        use identity::age_request::AuthorizationSnapshot;
+        match identity::age_request::authorization_snapshot(
+            &context.env,
+            &db,
+            &sso.account_id,
+            client_id,
+            age,
+        )
+        .await?
+        {
+            AuthorizationSnapshot::Granted(snapshot) => Some(snapshot),
+            AuthorizationSnapshot::Unavailable => {
+                return authorization_error_response(redirect_uri, state, &issuer, "access_denied");
+            }
+            AuthorizationSnapshot::ConsentRequired => {
+                return authorization_error_response(
+                    redirect_uri,
+                    state,
+                    &issuer,
+                    "consent_required",
+                );
+            }
+        }
+    } else {
+        None
+    };
     let mut random = WorkersCryptoRandom;
     let prepared = validated
         .prepare_code(
@@ -1474,6 +1562,9 @@ async fn authorize_route(
                 JsValue::from_str(parameters["scope"].as_str()),
             ])?,
     ];
+    if let (Some(snapshot), Some(age)) = (age_snapshot, age_request.as_ref()) {
+        statements.push(snapshot.insert(&db, code_hash, &parameters["claims"], age)?);
+    }
     if let Some(pushed) = &pushed {
         statements.push(
             db.prepare(
@@ -1520,6 +1611,10 @@ async fn authorize_route(
                 JsValue::from_str(&now.to_string()),
             ])?,
     );
+    if age_request.is_some() {
+        statements.push(db.prepare("UPDATE atomic_guard SET passed=CASE WHEN EXISTS (SELECT 1 FROM identity_age_request WHERE code_hash=?1 AND request_hash=?2) THEN 1 ELSE 0 END WHERE operation_id=?1")
+            .bind(&[JsValue::from_str(code_hash),JsValue::from_str(&URL_SAFE_NO_PAD.encode(Sha256::digest(parameters["claims"].as_bytes())))])?);
+    }
     if let Some(pushed) = &pushed {
         statements.push(
             db.prepare(
@@ -2108,6 +2203,11 @@ async fn userinfo_route_inner(
         else {
             return invalid_proof();
         };
+        if let Some(response) =
+            identity::age_request::userinfo(&context.env, &db, &token_hash, &sub).await?
+        {
+            return Ok(response);
+        }
         let name = userinfo_name(&context.env, &db, &token_hash).await?;
         return worker::Response::builder()
             .with_header("Cache-Control", "no-store")?
@@ -2134,6 +2234,11 @@ async fn userinfo_route_inner(
     let Some(subject) = subject else {
         return unauthorized();
     };
+    if let Some(response) =
+        identity::age_request::userinfo(&context.env, &db, &token_hash, &subject.sub).await?
+    {
+        return Ok(response);
+    }
     let name = userinfo_name(&context.env, &db, &token_hash).await?;
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?

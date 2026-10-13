@@ -9,7 +9,9 @@ export const productionWorkPacket = () => ({
   format_version: 1,
   target: PRODUCTION_WORK_TARGET,
   administration: PRODUCTION_WORK_ADMINISTRATION,
-  owner_migrations: OWNER_MIGRATIONS,
+  // This existing authority was bootstrapped against the three-file Owner chain.
+  // Later additive product migrations cannot change its retained identity.
+  owner_migrations: OWNER_MIGRATIONS.slice(0, 3),
   work_migrations: WORK_MIGRATIONS,
 });
 export const productionWorkPacketDigest = () =>

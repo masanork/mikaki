@@ -247,3 +247,27 @@ fn consumer_evidence_has_only_provenance_and_preserves_static_assurance() {
         assert!(evidence.get("_civ").is_none());
     }
 }
+
+#[test]
+fn linked_delivery_is_separate_from_unqualified_verified_claims() {
+    let mut linked = claims();
+    linked["userinfo"] = json!({"mikaki_linked_document":{"attributes":{":age_over_18":null}}});
+    let request = AgeRequest::parse_linked(&serde_json::to_vec(&linked).unwrap()).unwrap();
+    assert_eq!(
+        request
+            .project(&document(), &["age_over_18".into()], NOW)
+            .unwrap(),
+        json!({":age_over_18":true})
+    );
+    assert!(AgeRequest::parse(&serde_json::to_vec(&linked).unwrap()).is_err());
+    assert!(AgeRequest::parse_linked(&serde_json::to_vec(&claims()).unwrap()).is_err());
+    for pointer in ["/userinfo/mikaki_linked_document/attributes", "/userinfo"] {
+        let mut bad = linked.clone();
+        *bad.pointer_mut(pointer).unwrap() = json!({"birthdate":null});
+        assert!(AgeRequest::parse_linked(&serde_json::to_vec(&bad).unwrap()).is_err());
+    }
+    let duplicate = serde_json::to_string(&linked)
+        .unwrap()
+        .replace("\"attributes\":", "\"attributes\":{},\"attributes\":");
+    assert!(AgeRequest::parse_linked(duplicate.as_bytes()).is_err());
+}

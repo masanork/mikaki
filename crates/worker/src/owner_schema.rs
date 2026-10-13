@@ -3,6 +3,7 @@
 const BASELINE: &str = "0001_owner_vault_initial.sql";
 const WRAPPERS: &str = "0002_owner_key_wrap_operations.sql";
 const WAITLIST: &str = "0003_enrollment_waitlist.sql";
+const AGE_REQUESTS: &str = "0004_identity_age_requests.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -11,7 +12,11 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == format!("{BASELINE},{WRAPPERS}")
                 || ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}")
         }
-        WAITLIST => ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}"),
+        WAITLIST => {
+            ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}")
+                || ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}")
+        }
+        AGE_REQUESTS => ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}"),
         _ => false,
     }
 }
@@ -68,6 +73,21 @@ mod tests {
             format!("{ledger},0004_unknown.sql"),
         ] {
             assert!(!ready(&invalid, WRAPPERS));
+        }
+    }
+
+    #[test]
+    fn age_request_chain_bridges_only_the_immediately_previous_binary() {
+        let ledger = format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}");
+        assert!(ready(&ledger, WAITLIST));
+        assert!(ready(&ledger, AGE_REQUESTS));
+        assert!(!ready(&ledger, WRAPPERS));
+        for invalid in [
+            format!("{BASELINE},{WRAPPERS},{WAITLIST}"),
+            format!("{BASELINE},{WRAPPERS},{AGE_REQUESTS}"),
+            format!("{ledger},{AGE_REQUESTS}"),
+        ] {
+            assert!(!ready(&invalid, AGE_REQUESTS));
         }
     }
 }

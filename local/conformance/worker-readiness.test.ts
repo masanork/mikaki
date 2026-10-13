@@ -125,6 +125,10 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
       .bind('0003_enrollment_waitlist.sql')
       .run();
+    await check(503);
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0004_identity_age_requests.sql')
+      .run();
     await check(204);
     assert.equal((await VAULT_BLOBS.list()).objects.length, 0, 'Probe writes no sentinel');
     await check(503, `Bearer ${readyToken}`, 'error');
