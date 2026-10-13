@@ -13,6 +13,7 @@ import {
 } from '../../scripts/production-work-copy-graph.ts';
 import { PRODUCTION_WORK_TARGET } from '../../scripts/production-work-adoption.ts';
 import type { CopyBindingTarget } from '../../scripts/work-copy-binding-plan.ts';
+import { disclosureProjectionDigest } from '../../scripts/work-disclosure-digest.ts';
 
 test('an exact Native disclosure changes only the six OP gates and its activation selector', async () => {
   const f = await copyJobFixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
@@ -51,6 +52,10 @@ test('an exact Native disclosure changes only the six OP gates and its activatio
       },
     };
     const before = structuredClone(baseline);
+    assert.equal(
+      disclosureProjectionDigest(f.nativeDisclosure.manifest),
+      f.nativeDisclosure.digest,
+    );
     const candidate = copyOPActivationConfiguration(baseline, f.nativeDisclosure, target);
     assert.deepEqual(baseline, before);
     const expected = structuredClone(baseline);
@@ -111,6 +116,42 @@ test('an exact Native disclosure changes only the six OP gates and its activatio
       },
     ])
       assert.throws(() => copyOPActivationConfiguration(baseline, altered, target));
+    // Each presentation field is bound, including a future expiry and values
+    // changed alongside the caller's baseline so its scalar checks still match.
+    for (const mutate of [
+      (d: any) => (d.owner = 'substitute'),
+      (d: any) => d.owner_epoch++,
+      (d: any) => d.policy_revision++,
+      (d: any) => (d.policy_projection = '0'.repeat(64)),
+      (d: any) => (d.recipient = 'substitute'),
+      (d: any) => (d.workload = 'substitute'),
+      (d: any) => (d.expires_at += 60),
+      (d: any) => (d.code.commit = '0'.repeat(40)),
+      (d: any) => (d.code.tree = '0'.repeat(40)),
+      (d: any) => d.code.commits++,
+      (d: any) => (d.code.history_digest = '0'.repeat(64)),
+      (d: any) => d.code.objects++,
+      (d: any) => d.code.object_bytes++,
+      (d: any) => d.code.head_files++,
+      (d: any) => (d.contexts[0].files[0].path = '別の文脈.txt'),
+      (d: any) => (d.contexts[0].files[0].snapshot_path = '別の文脈.txt'),
+      (d: any) => (d.contexts[0].files[0].sha256 = '0'.repeat(64)),
+      (d: any) => (d.snapshot.repository = 'substitute'),
+      (d: any) => (d.snapshot.commit = '0'.repeat(40)),
+      (d: any) => (d.snapshot.tree = '0'.repeat(40)),
+      (d: any) => d.registered_sources[0].source_revision++,
+      (d: any) => d.registered_sources[0].access_revision++,
+    ]) {
+      const altered = structuredClone(f.nativeDisclosure);
+      mutate(altered.manifest);
+      const changedBaseline = structuredClone(baseline);
+      changedBaseline.vars.WORK_COPY_RECIPIENT = altered.manifest.recipient;
+      changedBaseline.vars.WORK_COPY_WORKLOAD = altered.manifest.workload;
+      assert.throws(
+        () => copyOPActivationConfiguration(changedBaseline, altered, target),
+        /disclosure_manifest_changed/,
+      );
+    }
     for (const change of [
       { account_id: '0'.repeat(32) },
       { authority_id: 'substitute' },

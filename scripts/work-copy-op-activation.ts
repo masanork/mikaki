@@ -9,6 +9,7 @@ import {
   PRODUCTION_COPY_PREFIX,
 } from './production-work-copy-graph.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
+import { disclosureProjectionDigest } from './work-disclosure-digest.ts';
 
 type OPConfig = {
   name: string;
@@ -34,6 +35,11 @@ export function copyOPActivationConfiguration(
   targetInput: CopyBindingTarget,
 ) {
   const record = recordSchema.parse(recordInput);
+  assert.equal(
+    disclosureProjectionDigest(record.manifest),
+    record.digest,
+    'copy_op_disclosure_manifest_changed',
+  );
   const target = copyBindingTargetSchema.parse(targetInput);
   assert.equal(target.account_id, PRODUCTION_WORK_TARGET.account, 'copy_op_account_changed');
   assert.equal(target.authority_id, PRODUCTION_WORK_TARGET.authority, 'copy_op_authority_changed');

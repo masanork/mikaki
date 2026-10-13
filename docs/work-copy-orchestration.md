@@ -158,8 +158,11 @@ Native disclosure. It changes only the six copy gates and these two activation
 selectors, preserving all routes, bindings, storage, secret names and other
 variables. Its verifier reconstructs that exact delta. The projection must still
 be in time and match the host disclosure, recipient, workload, account, namespace,
-checkpoint and wrapping-key selection. Its result is an offline review candidate;
-it includes no provider transport or proof of live authority. Ordinary production
+checkpoint and wrapping-key selection. Its result is an offline review candidate.
+the manifest must recompute to the declared digest using Native's v2 domain,
+field order and length-prefixed encoding, including owner, expiry and source
+revisions. Rewriting presentation fields while retaining the digest is refused.
+It includes no provider transport or proof of live authority. Ordinary production
 promotion continues to reject productive selectors and gates. Actual use requires
 the independently verified, source-matched OP bundle and private graph, current
 provider versions/resources/custody and live owner approval immediately before
