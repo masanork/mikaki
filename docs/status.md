@@ -8,7 +8,7 @@ and the remaining user/operational acceptance work.
 
 ## Recorded deployment and evidence
 
-The latest recorded product source is
+The verified product/deployment baseline for this review is
 `d549fa3072107eb343cb17dfee0f3b122efad0cf` ([PR #198](https://github.com/masanork/mikaki/pull/198)).
 [Main run 38326750131](https://github.com/masanork/mikaki/actions/runs/38326750131)
 completed all 20 jobs successfully, including OP/Claims/Docs promotion and the
