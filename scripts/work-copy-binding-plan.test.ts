@@ -1,10 +1,22 @@
 /** Frozen graph portability, privilege substitution and real companion cold admission. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import {
   COPY_BINDING_EDGES,
@@ -14,6 +26,10 @@ import {
   type CopyBindingTarget,
 } from './work-copy-binding-plan.ts';
 import { copyRuntimeInventory, prepareCopyRuntimePacket } from './work-copy-runtime-packet.ts';
+import {
+  prepareClosedCopyConfigurations,
+  verifyClosedCopyConfigurations,
+} from './work-copy-worker-configs.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const parent = join(root, 'local/generated/copy-binding-tests');
@@ -67,6 +83,7 @@ test('retained private binding plan qualifies real companion bytes and refuses p
     sha(targetBytes),
     parent,
   );
+  let closed: Awaited<ReturnType<typeof prepareClosedCopyConfigurations>> | undefined;
   try {
     await t.test(
       'portable child preserves exact parent bytes, declared scope and closed execution',
@@ -170,6 +187,166 @@ test('retained private binding plan qualifies real companion bytes and refuses p
           }
         } finally {
           await mf.dispose();
+        }
+      },
+    );
+    await t.test(
+      'portable closed configurations keep checkpoint and OP out of deployment and pass pinned Wrangler dry runs',
+      async () => {
+        closed = await prepareClosedCopyConfigurations(
+          packet.directory,
+          packet.manifest_sha256,
+          parent,
+        );
+        assert.equal(closed.workers, 13);
+        const moved = packet.directory + '-held';
+        await rename(packet.directory, moved);
+        try {
+          await verifyClosedCopyConfigurations(closed.directory, closed.manifest_sha256);
+        } finally {
+          await rename(moved, packet.directory);
+        }
+        const ids = await readdir(join(closed.directory, 'configs'));
+        assert.equal(ids.length, 13);
+        assert.ok(!ids.includes('checkpoint') && !ids.includes('op'));
+        const dry = await mkdtemp(join(parent, 'dry-'));
+        const run = promisify(execFile);
+        try {
+          for (const id of ids) {
+            const configPath = join(closed.directory, 'configs', id, 'wrangler.json');
+            const config = JSON.parse(await readFile(configPath, 'utf8'));
+            assert.equal(config.no_bundle, true);
+            assert.equal(config.account_id, target.account_id);
+            assert.equal(config.compatibility_date, '2026-10-13');
+            assert.deepEqual(config.routes, []);
+            assert.deepEqual(config.triggers.crons, []);
+            assert.equal(config.workers_dev, false);
+            assert.equal(config.preview_urls, false);
+            assert.equal(config.observability.traces.enabled, true);
+            if (id === 'git-host') {
+              assert.equal(
+                config.containers[0].images.host.image,
+                `registry.cloudflare.com/${target.account_id}/${target.worker_prefix}-git-host@${target.host.image_digest}`,
+              );
+              assert.equal(config.containers[0].ssh.enabled, false);
+              assert.equal(config.vars.WORK_GIT_DISCLOSURE_DIGEST, target.host.disclosure_digest);
+              assert.equal(config.r2_buckets[0].remote, false);
+            }
+            const output = join(dry, id);
+            await run(
+              process.execPath,
+              [
+                join(root, 'node_modules/wrangler/bin/wrangler.js'),
+                'deploy',
+                '--dry-run',
+                '--containers-rollout',
+                'none',
+                '--config',
+                configPath,
+                '--outdir',
+                output,
+              ],
+              {
+                cwd: root,
+                timeout: 30000,
+                maxBuffer: 1024 * 1024,
+                env: {
+                  ...process.env,
+                  CI: 'true',
+                  CLOUDFLARE_API_TOKEN: '',
+                  CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:1',
+                  WRANGLER_SEND_METRICS: 'false',
+                },
+              },
+            );
+            const modulePaths = (await readdir(output)).filter((name) =>
+              /\.(?:js|mjs)$/.test(name),
+            );
+            assert.equal(modulePaths.length, 1);
+            assert.deepEqual(
+              await readFile(join(output, modulePaths[0]!)),
+              await readFile(join(closed.directory, 'binding/runtime/workers', id + '.mjs')),
+            );
+          }
+          await run(
+            process.execPath,
+            [
+              join(root, 'node_modules/wrangler/bin/wrangler.js'),
+              'types',
+              '--config',
+              join(closed.directory, 'configs/git-host/wrangler.json'),
+              '--include-runtime=false',
+              '--strict-vars=false',
+              join(dry, 'git-host-env.d.ts'),
+            ],
+            {
+              cwd: root,
+              timeout: 30000,
+              maxBuffer: 1024 * 1024,
+              env: {
+                ...process.env,
+                CI: 'true',
+                CLOUDFLARE_API_TOKEN: '',
+                CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:1',
+                WRANGLER_SEND_METRICS: 'false',
+              },
+            },
+          );
+          const types = await readFile(join(dry, 'git-host-env.d.ts'), 'utf8');
+          assert.match(types, /GIT_SOURCES: R2Bucket/);
+          assert.match(types, /GIT_HOST: DurableObjectNamespace/);
+        } finally {
+          await rm(dry, { recursive: true, force: true });
+        }
+      },
+    );
+    await t.test(
+      'rewritten configuration inventory cannot grant bootstrap, open ingress or substitute image bytes',
+      async () => {
+        assert.ok(closed);
+        const manifestPath = join(closed.directory, 'manifest.json');
+        const configPath = join(closed.directory, 'configs/git-host/wrangler.json');
+        const savedManifest = await readFile(manifestPath);
+        const savedConfig = await readFile(configPath);
+        for (const mutate of [
+          (config: any) => {
+            config.services.push({
+              binding: 'ADMIN',
+              service: target.checkpoint.service,
+              entrypoint: 'WorkCheckpointBootstrap',
+            });
+          },
+          (config: any) => {
+            config.vars.WORK_GIT_HOST_ENABLED = 'true';
+          },
+          (config: any) => {
+            config.workers_dev = true;
+          },
+          (config: any) => {
+            config.containers[0].images.host.image =
+              'registry.cloudflare.com/' + target.account_id + '/unreviewed:latest';
+          },
+          (config: any) => {
+            config.main = '/tmp/unreviewed.mjs';
+          },
+        ]) {
+          const config = JSON.parse(savedConfig.toString());
+          mutate(config);
+          await writeFile(configPath, bytes(config));
+          await assert.rejects(
+            verifyClosedCopyConfigurations(closed.directory, closed.manifest_sha256),
+            /members_changed/,
+          );
+          const manifest = JSON.parse(savedManifest.toString());
+          manifest.members = await copyRuntimeInventory(closed.directory);
+          const updated = bytes(manifest);
+          await writeFile(manifestPath, updated);
+          await assert.rejects(
+            verifyClosedCopyConfigurations(closed.directory, sha(updated)),
+            /capabilities_changed/,
+          );
+          await writeFile(configPath, savedConfig);
+          await writeFile(manifestPath, savedManifest);
         }
       },
     );
@@ -281,6 +458,7 @@ test('retained private binding plan qualifies real companion bytes and refuses p
       await writeFile(planPath, saved);
     });
   } finally {
+    if (closed) await rm(closed.directory, { recursive: true, force: true });
     await rm(runtime.directory, { recursive: true, force: true });
     await rm(packet.directory, { recursive: true, force: true });
   }
