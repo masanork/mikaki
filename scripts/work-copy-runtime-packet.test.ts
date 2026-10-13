@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import {
   COPY_RUNTIME_MODULES,
+  COPY_PACKET_LIMITS,
   prepareCopyRuntimePacket,
   verifyCopyRuntimePacket,
 } from './work-copy-runtime-packet.ts';
@@ -149,6 +150,63 @@ test('committed companion packet loads real bundles cold and rejects substitutio
           /authority_denied/,
         );
         await writeFile(path, original);
+      },
+    );
+    await t.test(
+      'lock integrity still rejects patched dependency inputs after file hashes are rewritten',
+      async () => {
+        const manifestPath = join(packet.directory, 'manifest.json');
+        const original = await readFile(manifestPath);
+        const manifest = JSON.parse(original.toString());
+        const dependency = manifest.dependencies[0];
+        const name = dependency.inputs.find((p: string) => p.endsWith('.js'));
+        assert.ok(name);
+        const path = join(packet.directory, 'inputs', name);
+        const input = await readFile(path);
+        const changed = Buffer.concat([input, Buffer.from('\n// locally patched dependency\n')]);
+        try {
+          await writeFile(path, changed);
+          const member = manifest.members.find(
+            (m: { path: string }) => m.path === 'inputs/' + name,
+          );
+          member.digest = { bytes: changed.length, sha256: sha(changed) };
+          const updated = Buffer.from(JSON.stringify(manifest) + '\n');
+          await writeFile(manifestPath, updated);
+          await assert.rejects(
+            verifyCopyRuntimePacket(packet.directory, {
+              ...expected,
+              manifest_sha256: sha(updated),
+            }),
+            /dependency_input_changed/,
+          );
+        } finally {
+          await writeFile(path, input);
+          await writeFile(manifestPath, original);
+        }
+      },
+    );
+    await t.test(
+      'untrusted packet traversal stops at count, depth and total-byte limits',
+      async () => {
+        const junk = join(packet.directory, 'junk');
+        try {
+          await mkdir(junk);
+          for (let n = 0; n <= COPY_PACKET_LIMITS.entries; n++)
+            await writeFile(join(junk, String(n)), '');
+          await assert.rejects(verifyCopyRuntimePacket(packet.directory, expected), /entry_limit/);
+          await rm(junk, { recursive: true, force: true });
+          await mkdir(join(junk, ...Array<string>(COPY_PACKET_LIMITS.depth + 1).fill('deep')), {
+            recursive: true,
+          });
+          await assert.rejects(verifyCopyRuntimePacket(packet.directory, expected), /depth_limit/);
+          await rm(junk, { recursive: true, force: true });
+          await mkdir(junk);
+          for (let n = 0; n < 5; n++)
+            await writeFile(join(junk, String(n)), Buffer.alloc(16 * 1024 * 1024));
+          await assert.rejects(verifyCopyRuntimePacket(packet.directory, expected), /total_limit/);
+        } finally {
+          await rm(junk, { recursive: true, force: true });
+        }
       },
     );
   } finally {

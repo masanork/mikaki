@@ -2,8 +2,17 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  opendir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, version as esbuildVersion } from 'esbuild';
 import { releaseSource } from './release-inventory.ts';
@@ -13,8 +22,17 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const kind = 'mikaki-work-copy-companions-v1';
 const stage = 'offline-inputs-not-deployed-or-authorized';
 const maximum = 16 * 1024 * 1024;
+export const COPY_PACKET_LIMITS = { entries: 768, depth: 12, bytes: 64 * 1024 * 1024 } as const;
 type Digest = { bytes: number; sha256: string };
 type Member = { path: string; digest: Digest };
+type Dependency = {
+  path: string;
+  archive: string;
+  integrity: string;
+  resolved: string;
+  inputs: string[];
+};
+type Lock = { packages: Record<string, { integrity?: string; resolved?: string }> };
 export type CopyRuntimeReceipt = { source_commit: string; manifest_sha256: string };
 
 export const COPY_RUNTIME_MODULES = [
@@ -59,21 +77,30 @@ function digest(bytes: Uint8Array): Digest {
   return { bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 function memberPath(path: unknown): asserts path is string {
-  assert.ok(typeof path === 'string' && /^[A-Za-z0-9_.\/-]+$/.test(path));
+  assert.ok(typeof path === 'string' && /^[A-Za-z0-9_@.\/-]+$/.test(path));
   assert.ok(!path.startsWith('/') && path.split('/').every((p) => p && p !== '.' && p !== '..'));
 }
-async function members(directory: string, prefix = ''): Promise<Member[]> {
+async function members(
+  directory: string,
+  prefix = '',
+  budget = { entries: 0, bytes: 0 },
+): Promise<Member[]> {
+  assert.ok(prefix.split('/').length <= COPY_PACKET_LIMITS.depth, 'copy_packet_depth_limit');
   const found: Member[] = [];
-  for (const name of (await readdir(join(directory, prefix))).sort()) {
-    const path = prefix ? `${prefix}/${name}` : name;
+  const entries = await opendir(join(directory, prefix));
+  for await (const entry of entries) {
+    assert.ok(++budget.entries <= COPY_PACKET_LIMITS.entries, 'copy_packet_entry_limit');
+    const path = prefix ? `${prefix}/${entry.name}` : entry.name;
     memberPath(path);
     if (path === 'manifest.json') continue;
     const location = join(directory, path);
     const info = await lstat(location);
     assert.ok(!info.isSymbolicLink(), 'copy_packet_link_denied');
-    if (info.isDirectory()) found.push(...(await members(directory, path)));
+    if (info.isDirectory()) found.push(...(await members(directory, path, budget)));
     else {
       assert.ok(info.isFile() && info.nlink === 1, 'copy_packet_member_denied');
+      budget.bytes += info.size;
+      assert.ok(budget.bytes <= COPY_PACKET_LIMITS.bytes, 'copy_packet_total_limit');
       found.push({ path, digest: digest(await packetFile(location, maximum)) });
     }
   }
@@ -85,6 +112,91 @@ async function json(path: string, value: unknown) {
 }
 function decode(bytes: Buffer): unknown {
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+}
+
+function dependencyIntegrity(archive: Buffer, integrity: string) {
+  assert.match(integrity, /^sha512-[A-Za-z0-9+/]{86}==$/, 'copy_dependency_integrity_required');
+  assert.equal(
+    'sha512-' + createHash('sha512').update(archive).digest('base64'),
+    integrity,
+    'copy_dependency_archive_changed',
+  );
+}
+function archivedDependencyFile(archive: Buffer, path: string): Buffer {
+  memberPath(path);
+  return execFileSync('tar', ['-xzOf', '-', '--', `package/${path}`], {
+    input: archive,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    maxBuffer: maximum,
+    timeout: 30000,
+  });
+}
+function lockedDependency(lock: Lock, path: string) {
+  memberPath(path);
+  const owner = Object.keys(lock.packages)
+    .filter((key) => key.startsWith('node_modules/') && path.startsWith(key + '/'))
+    .sort((a, b) => b.length - a.length)[0];
+  assert.ok(owner, 'copy_dependency_unlocked');
+  const record = lock.packages[owner]!;
+  assert.ok(record.resolved && record.integrity, 'copy_dependency_unlocked');
+  const url = new URL(record.resolved);
+  assert.ok(
+    url.origin === 'https://registry.npmjs.org' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash,
+    'copy_dependency_registry_denied',
+  );
+  return { owner, integrity: record.integrity, resolved: record.resolved };
+}
+
+async function verifyDependencies(directory: string, value: unknown) {
+  assert.ok(
+    Array.isArray(value) && value.length > 0 && value.length <= 32,
+    'copy_dependencies_denied',
+  );
+  const lock = decode(await packetFile(join(directory, 'inputs/package-lock.json'))) as Lock;
+  const owners: string[] = [];
+  for (const item of value as Dependency[]) {
+    assert.deepEqual(Object.keys(item).sort(), [
+      'archive',
+      'inputs',
+      'integrity',
+      'path',
+      'resolved',
+    ]);
+    memberPath(item.path);
+    memberPath(item.archive);
+    assert.equal(
+      item.archive,
+      `dependencies/${createHash('sha256').update(item.path).digest('hex')}.tgz`,
+    );
+    assert.ok(
+      !owners.includes(item.path) && Array.isArray(item.inputs) && item.inputs.length <= 512,
+    );
+    owners.push(item.path);
+    const expected = lockedDependency(lock, item.path + '/package.json');
+    assert.deepEqual(expected, {
+      owner: item.path,
+      integrity: item.integrity,
+      resolved: item.resolved,
+    });
+    const archive = await packetFile(join(directory, item.archive));
+    dependencyIntegrity(archive, item.integrity);
+    assert.ok(item.inputs.includes(`${item.path}/package.json`));
+    assert.deepEqual(item.inputs, [...new Set(item.inputs)].sort());
+    for (const path of item.inputs) {
+      memberPath(path);
+      assert.equal(lockedDependency(lock, path).owner, item.path);
+      assert.deepEqual(
+        await packetFile(join(directory, 'inputs', path)),
+        archivedDependencyFile(archive, path.slice(item.path.length + 1)),
+        'copy_dependency_input_changed',
+      );
+    }
+  }
+  return value as Dependency[];
 }
 
 export async function verifyCopyRuntimePacket(
@@ -103,6 +215,7 @@ export async function verifyCopyRuntimePacket(
   assert.ok(value && typeof value === 'object' && !Array.isArray(value));
   const manifest = value as Record<string, unknown>;
   assert.deepEqual(Object.keys(manifest).sort(), [
+    'dependencies',
     'kind',
     'members',
     'modules',
@@ -122,7 +235,12 @@ export async function verifyCopyRuntimePacket(
   assert.deepEqual(manifest.modules, modules, 'copy_packet_modules_denied');
   const actual = await members(directory);
   assert.deepEqual(manifest.members, actual, 'copy_packet_members_changed');
-  const required = [...modules.map((m) => m.bundle), 'build.json'];
+  const dependencies = await verifyDependencies(directory, manifest.dependencies);
+  const required = [
+    ...modules.map((m) => m.bundle),
+    'build.json',
+    ...dependencies.map((d) => d.archive),
+  ];
   for (const path of required)
     assert.ok(
       actual.some((m) => m.path === path),
@@ -180,6 +298,91 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
   ]);
   const sourceBytes = new Map<string, Buffer>();
   let inputBytes = 0;
+  const retainInput = (name: string, bytes: Buffer) => {
+    if (!sourceBytes.has(name)) inputBytes += bytes.length;
+    assert.ok(
+      sourceBytes.size + (sourceBytes.has(name) ? 0 : 1) <= 512 &&
+        inputBytes <= COPY_PACKET_LIMITS.bytes,
+      'copy_packet_inputs_too_large',
+    );
+    sourceBytes.set(name, bytes);
+    inputs.add(name);
+    return bytes;
+  };
+  const lock = decode(await packetFile(join(root, 'package-lock.json'))) as Lock;
+  const dependencies = new Map<string, { record: Dependency; archive: Buffer }>();
+  const dependencyLoads = new Map<string, Promise<{ record: Dependency; archive: Buffer }>>();
+  const dependencyFile = async (name: string) => {
+    const selected = lockedDependency(lock, name);
+    let pending = dependencyLoads.get(selected.owner);
+    if (!pending) {
+      pending = (async () => {
+        assert.ok(dependencyLoads.size < 32, 'copy_dependencies_denied');
+        const scratch = await mkdtemp(join(directory, 'npm-cache-'));
+        let archive: Buffer;
+        try {
+          const packed = JSON.parse(
+            execFileSync(
+              'npm',
+              [
+                'pack',
+                '--offline',
+                '--ignore-scripts',
+                '--json',
+                '--pack-destination',
+                scratch,
+                selected.resolved,
+              ],
+              {
+                cwd: scratch,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'pipe'],
+                maxBuffer: maximum,
+                timeout: 30000,
+              },
+            ),
+          );
+          assert.ok(Array.isArray(packed) && packed.length === 1);
+          const filename = packed[0]?.filename;
+          assert.ok(typeof filename === 'string' && basename(filename) === filename);
+          archive = await packetFile(join(scratch, filename));
+        } finally {
+          await rm(scratch, { recursive: true, force: true });
+        }
+        dependencyIntegrity(archive, selected.integrity);
+        const location = `dependencies/${createHash('sha256').update(selected.owner).digest('hex')}.tgz`;
+        await mkdir(join(directory, 'dependencies'), { recursive: true, mode: 0o700 });
+        await writeFile(join(directory, location), archive, { flag: 'wx', mode: 0o600 });
+        const saved = {
+          archive,
+          record: {
+            path: selected.owner,
+            archive: location,
+            integrity: selected.integrity,
+            resolved: selected.resolved,
+            inputs: [] as string[],
+          },
+        };
+        dependencies.set(selected.owner, saved);
+        return saved;
+      })();
+      dependencyLoads.set(selected.owner, pending);
+    }
+    const saved = await pending;
+    for (const path of [`${selected.owner}/package.json`, name]) {
+      const expected =
+        sourceBytes.get(path) ??
+        archivedDependencyFile(saved.archive, path.slice(selected.owner.length + 1));
+      assert.deepEqual(
+        await packetFile(join(root, path)),
+        expected,
+        'copy_dependency_input_changed',
+      );
+      retainInput(path, expected);
+      if (!saved.record.inputs.includes(path)) saved.record.inputs.push(path);
+    }
+    return sourceBytes.get(name)!;
+  };
   const committed = async (name: string) => {
     memberPath(name);
     const bytes = await packetFile(join(root, name));
@@ -189,13 +392,7 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
       maxBuffer: maximum,
     });
     assert.deepEqual(bytes, gitBytes, 'copy_packet_source_changed');
-    if (!sourceBytes.has(name)) inputBytes += bytes.length;
-    assert.ok(
-      sourceBytes.size < 512 && inputBytes <= 64 * 1024 * 1024,
-      'copy_packet_inputs_too_large',
-    );
-    sourceBytes.set(name, bytes);
-    return bytes;
+    return retainInput(name, bytes);
   };
   const outputs = [];
   for (const [id, input, entrypoint] of COPY_RUNTIME_MODULES) {
@@ -216,13 +413,14 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
         {
           name: 'committed-project-inputs',
           setup(builder) {
-            builder.onLoad({ filter: /\.(ts|json)$/ }, async ({ path }) => {
+            builder.onLoad({ filter: /\.[cm]?[tj]sx?$|\.json$/ }, async ({ path }) => {
               const name = relative(root, path).replaceAll('\\', '/');
-              if (name.startsWith('node_modules/')) return;
-              const bytes = await committed(name);
+              const bytes = name.startsWith('node_modules/')
+                ? await dependencyFile(name)
+                : await committed(name);
               return {
                 contents: bytes,
-                loader: extname(name) === '.json' ? 'json' : 'ts',
+                loader: extname(name) === '.json' ? 'json' : /\.[cm]?ts$/.test(name) ? 'ts' : 'js',
                 resolveDir: dirname(path),
               };
             });
@@ -237,7 +435,7 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
     assert.ok(output[0]!.imports.every((i) => i.external && i.path === 'cloudflare:workers'));
     for (const name of Object.keys(result.metafile.inputs)) {
       memberPath(name);
-      if (!name.startsWith('node_modules/')) inputs.add(name);
+      inputs.add(name);
     }
     const bundle = `workers/${id}.mjs`;
     await mkdir(join(directory, 'workers'), { recursive: true, mode: 0o700 });
@@ -249,7 +447,11 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
   }
   for (const name of [...inputs].sort()) {
     memberPath(name);
-    execFileSync('git', ['ls-files', '--error-unmatch', '--', name], { cwd: root, stdio: 'pipe' });
+    if (!name.startsWith('node_modules/'))
+      execFileSync('git', ['ls-files', '--error-unmatch', '--', name], {
+        cwd: root,
+        stdio: 'pipe',
+      });
     const path = join(directory, 'inputs', name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(path, sourceBytes.get(name) ?? (await committed(name)), {
@@ -274,6 +476,10 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
     source,
     tools,
     modules: outputs,
+    dependencies: [...dependencies.values()].map(({ record }) => ({
+      ...record,
+      inputs: record.inputs.sort(),
+    })),
     prerequisites,
     members: await members(directory),
   });
