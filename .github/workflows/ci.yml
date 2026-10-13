@@ -58,6 +58,7 @@ jobs:
           npm run test:work-authority-deployment
           node --test scripts/work-authority-completion.test.ts
           node --test scripts/prepare-work-code-source.test.ts
+          npm run test:work-copy-runtime
           node scripts/check-upstream-pins.ts
           npm run test:worker-budgets
           node --test scripts/publish-metrics.test.mjs
