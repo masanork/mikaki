@@ -1,6 +1,15 @@
 # Work delegation implementation plan
 
-**Status:** M1–M4, M5 owner inspection/composition/consent/copy progress and M6a–M6f credential custody, recovery/refusal, fixed Git copies, evidence composition and sealed private Git-host provisioning are locally integrated. Product source `5cf46162a08b3496ae1b49eda1a7e9f024e6a0e6` combines Workflow, public composition, session-bound approval and partial-progress authority checks. Isolated Git-host source `0b47be3` verifies private cold/warm readiness and R2 supply on Cloudflare; extension `1e0ef8e` verifies an independent stopped-state restart, natural shutdown and retained results. Source `c8f26a1` verifies the original IDs and all-state token inventories of the six protected Artifacts allocations, 2026-10-10 JST. The original third host outcome and three initial-effect outcomes remain unknown. Current remote OP has no Work/checkpoint bindings. Enrolled remote authority, productive Artifacts exchange and delegation retain their gates. No production activation is included.
+**Status reviewed 2026-10-13 JST:** Retained portable rules, storage/checkpoint,
+initial-effect gates, owner composition/copy consent and sealed-host contracts
+are integrated on main. Production now enables authenticated source/preparation
+review, composition and separate copy consent. Source `d549fa3` (PR #198)
+passed all 20 jobs, including deployment and source-matched public smoke in
+[run 38326750131](https://github.com/masanork/mikaki/actions/runs/38326750131).
+Current Native disclosure export and code-only host preparation are connected.
+Productive copy execution, issuer/launcher qualification, AI execution and exact
+owner adoption remain pending. Historical local and allocation entries below
+retain their original source identities and unknown outcomes.
 
 Keep [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) as rationale, [authorization](workload-authorization.md), [domain profile](workload-profile-v1.md) and [UI](work-request-ui.md) as contracts, and this file as delivery/qualification order.
 
@@ -15,12 +24,28 @@ enrolled without resetting existing Owner accounts, Passkeys or Vault keys.
 preparation review; final CI, deployment and checkpoint equality passed.
 The earlier statements about an unbound production OP below are historical.
 
-The next increment adds [operator code registration](work-code-source-registration.md)
-and owner composition/explicit copy consent. The user selected mikaki as the
-first source. Its original history exceeds the bounded Work capacity, so this
-trial uses the exact selected main tree in a separately labeled parentless code
-snapshot. No old protected Artifacts resource or unknown effect is reused.
-Productive copy and real AI issuer/launcher qualification remain separate work.
+PR #192 adds [operator code registration](work-code-source-registration.md)
+and enables composition/explicit copy consent. PR #197 prepares sealed code-only
+host inputs from the retained Native disclosure and original source packet;
+PR #198 adds owner/WebMCP export of that exact current record. The user selected
+mikaki as the first source. Its original history exceeds the bounded Work
+capacity, so the trial uses the selected main tree in a labeled parentless
+snapshot. No protected unknown Artifacts effect is reused.
+
+## First complete journey, 2026-10-13 JST
+
+Track the first usable outcome in [#199](https://github.com/masanork/mikaki/issues/199):
+
+| Order | Tracking | Next deliverable | Acceptance boundary |
+| --- | --- | --- | --- |
+| 1 | [#200 productive copy](https://github.com/masanork/mikaki/issues/200), WD-03/05/08 | Exact code-only host/provider/Workflow deployment inputs and runtime observations from the current disclosure/source packet. | Real owner copy consent, independent actual-provider readback and all credential closures; lost replies retain original operation identities. |
+| 2 | [#201 authenticated run](https://github.com/masanork/mikaki/issues/201), WD-04/06/08 | One concrete client/launcher profile and product delegation/start/stop path. Local Codex CLI is the initial candidate pending client choice and qualification. | Current owner delegation, verified actor/instance/run/proof key, bounded task-only access, real run and provenance-bound candidate; authority/execution/credential stops are distinct. |
+| 3 | [#202 exact adoption](https://github.com/masanork/mikaki/issues/202), WD-06/07/08 | Exact candidate/diff review, independent checks and fresh owner adoption into one test target. | Current target/ref/head and immutable operation receipt, one dispatch and independent reconciliation; producer revocation never reactivates old authority. |
+
+Current `WORK_COPY_EXECUTION_ENABLED=false` is retained until the corresponding
+productive profile qualifies. Operator source registration and disclosure export
+supply neither owner consent nor execution permission. Vault/Identity physical
+device tests remain in their separate, deferred acceptance track.
 
 ## Main delivery, 2026-10-11 JST
 

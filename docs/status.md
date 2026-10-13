@@ -1,61 +1,94 @@
 # Project status
 
-This page distinguishes deployed behavior, local verification and planned work.
-The latest recorded production source is
-`1c7c7318a4fd9ca54b6e9a355ecb093f541395e9` (PR #142), promoted by
-[main CI run 37418559797](https://github.com/masanork/mikaki/actions/runs/37418559797).
-All production promotions and the source/version-matched public smoke passed.
-The [2026-10-05 cutover record](production-reset-2026-10-05.md) gives exact Worker
-versions, fresh database ledgers, empty-data checks and retired resources.
+**Reviewed 2026-10-13 JST.** Mikaki has deployed Passkey/OIDC and encrypted
+Owner Vault foundations, and production Work preparation/review/copy-consent
+screens. Productive repository copying and AI execution remain disabled.
+This page separates deployed code, enabled capabilities, scoped local evidence
+and the remaining user/operational acceptance work.
 
-On 2026-10-10, local Work delegation development connects owner preparation
-composition and explicit copy approval to the retained Native job, Workflow
-and sealed private Git host. Both copies and all six credential closures are
-verified locally; delegation and production activation remain pending. See the
-[selected sources, checks and next gates](work-delegation-implementation.md#integrated-composition-consent-workflow-and-sealed-host).
+## Recorded deployment and evidence
 
-PRs #125–#129 retired legacy browser/API, native Vault OAuth and Agent v1
-authority, consolidated the fresh Owner Vault baseline and deployed the Docs RP.
-The old production accounts, credentials, sessions and ciphertext were deleted;
-no participant data was migrated. September device/legacy-Vault observations
-below apply to their recorded builds and do not qualify this fresh deployment.
+The verified product/deployment baseline for this review is
+`d549fa3072107eb343cb17dfee0f3b122efad0cf` ([PR #198](https://github.com/masanork/mikaki/pull/198)).
+[Main run 38326750131](https://github.com/masanork/mikaki/actions/runs/38326750131)
+completed all 20 jobs successfully, including OP/Claims/Docs promotion and the
+source/version-matched production smoke. At that run, OP version
+`650990b8-757a-4cba-bd39-626050b12c96`, Claims version
+`17a08823-d079-4b69-bfef-e727001dbd7b` and Docs version
+`2ac81e23-33cf-4eb3-9ba5-01129ec2fdd7` were promoted at 100% traffic.
+This is retained deployment evidence, not continuous monitoring or a physical-device result.
+Main `67dcba7` subsequently updates metrics only.
 
-| Capability                 | Evidence                                                                                                                                                                                                                                                                                             | Limit                                                                                                                                                                                                                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Portable WebAuthn verifier | Latest recorded native and Wasm runs passed 167 cases with all optional checkboxes selected in FIDO2 Server Conformance Tools 1.9.2 (2026-09-29), using explicit MDS 3.0 compatibility.                                                                                                              | No formal FIDO certification or MDS 3.1.1 qualification; ES256K is not executed by that installed suite. See the [latest test record](../local/conformance/results-2026-09-28.md) and [certification preparation](webauthn-certification-readiness.md).                      |
-| Local login slice          | Disposable local Workers and D1 exercise invitation enrollment, discoverable passkey login, OIDC Code + PKCE, RP session creation, and logout.                                                                                                                                                       | A test harness, not a production deployment. See [local development](getting-started.md).                                                                                                                                                                                    |
-| Helpdesk RP                | A separate Rust/Wasm and Worker app serves public help and authenticated tickets. A local browser test exercises passkey enrollment, OIDC callback, ticket access, staff access, and lease revocation.                                                                                               | No production registration or deployment; staff provisioning, abuse controls, and ticket retention are unfinished. See [RP README](../crates/helpdesk-rp/README.md).                                                                                                         |
-| Rust OIDC Worker           | Local workerd probes cover selected code exchange, UserInfo, replay, concurrency, and client authentication.                                                                                                                                                                                         | A probe is not full interoperability or production readiness. See [OIDC conformance](oidc-core-conformance.md).                                                                                                                                                              |
-| OIDC conformance           | A local OIDF Config OP plan passed. A local Basic OP plan finished with 21 passed, 8 skipped, 4 manual review, 2 warning, and 0 failed modules.                                                                                                                                                      | Manual review and warnings remain; there is no formal certification or hosted conformance deployment.                                                                                                                                                                        |
-| Normal-profile Worker      | The OP and Claims are deployed from PR #129 via the attested main pipeline. Public health, Discovery/JWKS, readiness, source/version, login assets, Web signin, protected Vault entry and Android association passed [run 37256255769](https://github.com/masanork/mikaki/actions/runs/37256255769). | The fresh environment requires new account/passkey registration. Older Pixel login evidence does not establish a new physical-device ceremony, callback, logout or recovery result.                                                                                          |
-| Runtime policy             | D1 contains an active versioned policy; selected Worker projections and a change CLI exist.                                                                                                                                                                                                          | Not every example TOML field has a complete product loader or enforcement path. See [runtime configuration](runtime-configuration.md).                                                                                                                                       |
-| Vault                      | The fresh Owner Vault baseline and empty R2 were verified before reopening on 2026-10-05. Legacy attribute routes/schema, native Vault OAuth and Agent v1 authority are retired. Current encrypted records, local search, bounded retention and candidate GC are in the deployed source.             | Fresh intended-device PRF use and recovery remain open under [#112](https://github.com/masanork/mikaki/issues/112) and [#114](https://github.com/masanork/mikaki/issues/114). Sharing/approval and real conversation ingestion remain integration work under #113/#115.      |
-| UserInfo recipient keys    | The deployed Claim Worker has only the OP ClaimStore service authority and its retained Secrets Store key; no D1/R2 bindings. Record-v2 release and legacy denial have local live-secret/service-boundary qualification.                                                                             | No old recipient authorization was restored. Production recipient registration, explicit owner/RP consent and sharing policy activation remain unqualified; key retention alone grants no release authority.                                                                 |
-| Identity Wallet            | PR #105 implementation and retained Identity schema are included in the fresh deployed baseline. The product issues Mikaki linked-document credentials, rather than government PID/mDL.                                                                                                              | Identity profiles remain disabled: keys, trust, verifier/rate-limit bindings and profile activation are still required under [#116](https://github.com/masanork/mikaki/issues/116). Physical-card/device, interoperability and certification gates #117–#120 remain open.    |
-| Post-quantum cryptography  | ML-KEM-768 Vault recipient sender and receiver candidate modules are in product source. Node, Chromium, and independent RustCrypto tests exercise their HPKE envelope and binding checks. A D1-disabled owner sharing path stores an envelope and Grant atomically; local workerd tests exercise it. | No post-quantum algorithm is enabled for product passkeys, OIDC signing, or production Vault sharing. UserInfo profile claim delivery has local implementation and qualification; production sharing and RP release remain disabled. See the [rollout plan](pqc-rollout.md). |
-| Supply-chain attestations  | The current OP, Claims and Docs versions were promoted from verified source-attested main artifacts; version-matched public smoke passed. See the [cutover record](production-reset-2026-10-05.md).                                                                                                  | Build attestations and public smoke do not establish physical-device or formal standards certification.                                                                                                                                                                      |
+The [2026-10-05 cutover record](production-reset-2026-10-05.md) remains the
+record of the fresh Owner Vault baseline, old-data deletion and retired
+resources. Later Work adoption added its separate schema/checkpoint without
+resetting the existing Owner account, Passkey or Vault keys.
 
-| Docs RP | Public bilingual guides and FAQ are deployed at `https://docs.mikaki.org`, with a separate DB/client/key and source-matched health/version checks. The local RP journey passes enrollment, callback, session/lease and logout. | Real-device production callback/logout completion and future private E2EE inquiries remain separate; no inquiry submission service is enabled. |
+| Capability | Current evidence | Remaining acceptance or activation |
+| --- | --- | --- |
+| Passkeys, OIDC and Docs RP | Product login/client/session/logout code and bilingual Docs are deployed. Reviewed enrollment uses one invitation email. Local Rust Worker/browser journeys exercise enrollment, callback, lease and logout. | Fresh owner-device Docs callback/UserInfo and logout E2E, browser automatic-Passkey/cancellation behavior: #4/#5/#6. |
+| Logout delivery | Durable outbox and Queue delivery are deployed. After PR #173, the three retained production events all reached delivered/HTTP 200. | Mixed/sustained load, fanout, latency, capacity and owner E2E remain under #106/#109/#6; delivery of three events is not capacity qualification. |
+| Owner Vault and key access | Encrypted names/notes/thread archives, local SQLite search, display/session locks, retention/GC and additional-Passkey wrappers are in deployed source. | Intended-device PRF and reopening under #112; all-wrapper-loss recovery and staged key-generation rotation under #114. Account recovery alone cannot decrypt the Vault. |
+| Selected sharing and AI proposals | Separate name UserInfo approvals, selected name/OwnerNote Agent grants, proposal capability/review and exact approved saves are connected to the Owner UI. Synthetic v2 name/note local Codex reads are qualified. | Production sharing policy and hosted Agent remain disabled. Real-owner use, persistent-client revocation and conversation excerpts remain under #113. |
+| Conversation integration | JSON thread archive import, encrypted storage and browser-local full-text search are implemented. | A named real-source adapter and stable edit/delete/reimport semantics remain under #115. Live messaging is separate future work. |
+| Work preparation | Production schema/checkpoint, authenticated source/review, composition and separate copy consent are enabled. PR #198 exports the current Native disclosure record; PR #197 prepares sealed code-only host inputs from it. | Actual provider copy/readback/credential closure #200; concrete authenticated AI run #201; candidate review/exact owner adoption #202. `WORK_COPY_EXECUTION_ENABLED=false`. Track the first complete journey in #199. |
+| Identity Wallet | Linked-document issuer/Wallet implementation and schema are in deployed source. Pinned local selected-Issuer qualification reached 84/84 PASS on main snapshot `50dc17c`; later signed-metadata cases gave two SKIPs and cross-client PAR cases two REVIEWs. | Profiles remain disabled pending keys/trust/bindings and #116 activation. Physical cards/devices #117, external wallets #118, remaining suite/human review/certification #119 and ISO transports #120 are open. Local selected cases do not qualify the latest production profile or full HAIP. |
+| Portable WebAuthn | Recorded native/Wasm FIDO2 Server Conformance Tools 1.9.2 run passed 167 cases with MDS 3.0 compatibility. | Formal certification, MDS 3.1.1 and intended-device coverage remain separate. See [certification readiness](webauthn-certification-readiness.md). |
+| Capacity and storage | Ingress/retention, bounded GC and service ownership are deployed; selected local RP/Agent/UserInfo measurements exist. | Representative mixed/sustained remote load, cost and alerts #106; storage contracts #107; measured adoption decisions for DO #108, audit delivery #110 and PostgreSQL #111. |
+| Build and release | Required native, Worker/browser, Android, dependency and Work lanes passed before the source-attested promotion above. | Production backup/restore, recovery fencing, monitoring and device/standards acceptance remain independent. Native coverage is not whole-product coverage. |
+| Other profiles | Local FAPI/DPoP, recipient HPKE/ML-KEM and Helpdesk fixtures retain their scoped evidence. | No full FAPI certification, productive PQC sharing or production Helpdesk registration is claimed. |
 
-The 2026-09-29 [OID4VP presentation](oid4vp-probe.md) and [OID4VCI receipt](oid4vci-probe.md) component probes pass 28 and 42 synthetic scenarios respectively against independent pinned protocol libraries. The shared receipt → encrypted import → minimal presentation path succeeds; original artifacts and disposable holder keys are encrypted separately in memory. This is not a product wallet/issuer, full external-application/network test, real-device qualification, or standards certification. Holder recovery and product adoption remain open.
+Evidence owners: [client operations](rp-client-operations.md),
+[Queue delivery](logout-delivery-queue.md) and
+[#109 production delivery](https://github.com/masanork/mikaki/issues/109#issuecomment-6074975302),
+[Owner keys](vault-owner-key-contract.md), [selected record grants](vault-record-agent-grants.md),
+[code source and copy preparation](work-code-source-registration.md),
+[Work integration](work-delegation-implementation.md),
+[Identity](identity-card-issuance.md) and
+[#119 selected-Issuer evidence](https://github.com/masanork/mikaki/issues/119#issuecomment-6115002752),
+[signed-metadata SKIPs](https://github.com/masanork/mikaki/issues/119#issuecomment-6125870830) and
+[cross-client PAR REVIEWs](https://github.com/masanork/mikaki/issues/119#issuecomment-6126644830).
 
-The subsequent [OIDF Suite 5.3.1 local HTTPS run](oidf-conformance-2026-09-29.md) repeats current-build Basic/Config OP and separately passes issuer metadata plus seven verifier-component negative modules; two valid PID presentations are accepted and await screenshot review. The emulated wallet and separate PID/`redirect_uri` test profile do not qualify membership receipt, full wallet applications or HAIP certification.
+## Current delivery order
 
-The [DPoP/FAPI readiness slice](fapi2-readiness.md) subsequently passes 45 component/policy plus 11 real loopback HTTPS cases, including sender-bound anonymous membership receipt → encrypted import → presentation. Certificate and hostname checks remain enabled. Product OP now has shared Rust/D1 DPoP token binding, AS/RS nonces, authenticated PAR and code-key binding; an isolated local `fapi2` profile requires issuer-audience assertions and DPoP token/UserInfo access. Worker regressions cover cross-instance replay, reload, cleanup, revocation and DB failures. No deployment, Final conformance or full independent wallet is claimed.
+1. Keep this status and each Issue's completed implementation, remaining acceptance,
+   evidence and next action distinct. A merged slice does not close a larger acceptance Issue.
+2. Complete [Work's first one-source/one-run/one-candidate/one-adoption journey](https://github.com/masanork/mikaki/issues/199):
+   productive copy #200, authenticated concrete execution #201, exact owner adoption #202.
+3. Keep intended-device acceptance in the deferred session requested in #112.
+   Reuse a fresh-account Docs login → Vault unlock/reopen → logout journey for
+   #4/#5/#6/#112, and include additional-Passkey checks from #114 where supported.
+4. Measure #106 before deciding on backend/distribution changes #108/#110/#111.
+   Retain #107's operation atomicity and revocation contracts in any candidate.
+
+Vault recovery, real conversation ingestion and Identity activation retain their
+own Issue acceptance conditions; the Work trial does not silently complete them.
+The [roadmap](roadmap.md) records dependencies and the
+[Work delivery backlog](work-delegation-implementation.md#product-delivery-backlog)
+records the bounded implementation increments.
 
 ## Release blockers
 
-Before use by real users, complete and exercise production RP integrations; qualify invitation and administrator operations beyond the recorded first enrollment; verify passkeys and PRF with intended devices; validate callback, session, and logout behavior end to end; exercise operational recovery and monitoring; and resolve the relevant conformance and security review gates. The [deployment guide](cloudflare-deployment.md) records the environment-specific state.
-
-Record-v2 claim delivery and encrypted archive import/search are implemented, with sharing policy still disabled. The deployed [Owner name-sharing panel](vault-owner-name-sharing.md) connects a saved name to separate system and RP approvals. The [OwnerNote proposal panel](vault-owner-note-proposals.md) connects existing proposals to review, approve/reject and separate approved saves. Its helper, paired Worker and browser tests cover exact retry/recovery and fresh current-head display; the production version is qualified through the attested main pipeline. Broader record sharing, grant/capability issuance UI, real conversation-service ingestion, live messaging, file APIs and hosted MCP activation remain work in the [roadmap](roadmap.md). A system Grant alone does not make UserInfo claim sharing available.
+Before use by real users, complete the intended-device/RP acceptance, invitation
+and administrator operations, an explicit Vault key-loss recovery policy,
+production recovery/monitoring, and the relevant security/conformance gates.
+Retain another trusted administrator before depending on the service for other
+users, as required by [account enrollment](account-enrollment.md); the single
+recorded administrator does not establish administration continuity. Additional-Passkey wrappers do not supply all-key-loss
+recovery. Sharing policy, hosted Agent, productive Work copy and Identity activation
+must each retain their separate reviewed configuration and qualification.
+See [release and recovery](release-and-recovery.md),
+[product quality](product-quality.md) and [deployment](cloudflare-deployment.md).
 
 ## Historical local and deployment evidence
 
-The dated September entries below preserve the evidence for earlier builds.
+The dated entries below preserve earlier builds and pre-cutover observations.
+Their then-pending deployment/feature statements are historical; the current
+capability table and linked Issue evidence above take precedence.
 The 2026-10-05 cutover record supersedes their production resource inventory;
 retired format-1 transfers and old client registrations are not current features.
 
-The [deployment record](cloudflare-deployment.md) records narashi's production client registration and migrations through `0013` on 2026-09-27; the owner passkey/callback flow remains unverified. The [logout conformance record](oidc-logout-conformance.md) records implemented OP logout, outbox, delivery, and local suite results; production delivery still needs verification. These later records supersede the corresponding earlier limits above without proving a completed production RP integration.
+The [deployment record](cloudflare-deployment.md) records narashi's production client registration and migrations through `0013` on 2026-09-27; the owner passkey/callback flow remains unverified. The [logout conformance record](oidc-logout-conformance.md) records implemented OP logout, outbox, delivery, and local suite results; production delivery was then unverified. The later PR #173 observation above establishes delivery of three events, while owner E2E and capacity acceptance remain open.
 
 A local stdio MCP adapter passes scope, expiry, revocation, audit-failure, and SDK-client integration tests. Vault selection/PRF export and a separate bearer-authenticated remote MCP Worker now pass local browser and workerd tests, including exact owner approval of private drafts and irreversible source/account/credential/recipient invalidation. Codex CLI completed a synthetic MCP read; Grok Build CLI completed handshake/tool discovery. Browser tests use mocked PRF output and real encryption. These are local results, not deployed agent access or real-device proof. Preregistered public-client OAuth now has the local qualification below; complete real remote client qualification and conversation import remain open. See [agent integration and remaining work](agent-integration.md).
 

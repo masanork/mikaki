@@ -1,6 +1,11 @@
 # Managed-work domain profile v1
 
-**Status:** Portable Rust core plus [fresh-schema D1/custody foundation](work-store-main-integration.md) locally qualified, 2026-10-08 JST, including main through `1f0dd3c`. Independent checkpoint/OP framing, owner/source transport and initial-effect maintenance are locally qualified. Product screens, productive upload/readback and remote activation remain pending; no endpoint, issuer or external effect is activated.
+**Status reviewed 2026-10-13 JST:** Portable rules and current-schema
+storage/checkpoint/effect/product contracts are integrated on main. Production
+source/review, composition and copy-consent screens are enabled. Productive
+provider copy and cryptographically authenticated AI execution remain disabled;
+[#199–#202](https://github.com/masanork/mikaki/issues/199) track the first complete
+journey. The original local qualification below retains its 2026-10-08 scope.
 
 This narrows [ADR 0016](adr/0016-personal-context-and-workload-delegation.md) and the [authorization contract](workload-authorization.md). The [integration plan](work-delegation-implementation.md) distinguishes current qualification from preserved pre-main evidence.
 
