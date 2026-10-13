@@ -2423,19 +2423,19 @@
   },
   {
     "date": "2026-10-13",
-    "commit": "7a1ae95",
+    "commit": "17c76ed",
     "code": {
-      "implementationLines": 80378,
+      "implementationLines": 80468,
       "testLines": 12297,
       "implementationFiles": 280,
       "testFiles": 36,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 36868,
+          "implementationLines": 36870,
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 36773,
+          "implementationLines": 36861,
           "testLines": 9559
         },
         "svelte": {
