@@ -85,6 +85,8 @@ jobs:
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
           tar -C artifacts/checkpoint -czf artifacts/mikaki-work-checkpoint.tar.gz worker/checkpoint.mjs
           tar -C . -czf artifacts/mikaki-docs-rp.tar.gz artifacts/docs-promotion apps/mikaki-docs/dist
+      - name: Freeze companion runtime inputs for separate attestation
+        run: npm run prepare:work-copy-release -- artifacts/work-copy-runtime
       - name: Bind release bytes and migrations to the clean source revision
         run: |
           npm run release:inventory

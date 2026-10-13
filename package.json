@@ -129,7 +129,9 @@
     "verify:work-copy-bindings": "node scripts/work-copy-binding-plan.ts verify",
     "test:work-copy-bindings": "node --test scripts/work-copy-binding-plan.test.ts",
     "prepare:work-copy-configs": "node scripts/work-copy-worker-configs.ts create",
-    "verify:work-copy-configs": "node scripts/work-copy-worker-configs.ts verify"
+    "verify:work-copy-configs": "node scripts/work-copy-worker-configs.ts verify",
+    "prepare:work-copy-release": "node scripts/work-copy-runtime-release.ts create",
+    "verify:work-copy-release": "node scripts/work-copy-runtime-release.ts verify"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
