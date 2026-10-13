@@ -116,6 +116,9 @@ impl WorkStore {
             owner.session(),
             &owner.environment(),
         )?;
+        // An unused expired reservation must not permanently hold the owner's
+        // single-copy byte budget. Recheck session/state/obligations at commit.
+        self.retire_owner_expired_reservations(session).await?;
         // Existing framed writes repeat all source/session/policy/budget guards.
         // A saved disclosure is safe retained metadata if reservation later fails.
         let d = self.save_disclosure(session, &d).await?;

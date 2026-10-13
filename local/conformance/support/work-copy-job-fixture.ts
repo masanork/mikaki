@@ -12,7 +12,11 @@ import { materializeGitRegistry } from '../../../scripts/work-git-registry.ts';
 import { gitHostBootstrap } from '../../../scripts/work-git-host-bootstrap.ts';
 export async function copyJobFixture(
   extra: Record<string, string> = {},
-  { composed = false, sealedHost = false }: { composed?: boolean; sealedHost?: boolean } = {},
+  {
+    composed = false,
+    sealedHost = false,
+    composedSeconds = 600,
+  }: { composed?: boolean; sealedHost?: boolean; composedSeconds?: number } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-copy-job-'));
   let executor: ((r: Request) => Promise<Response>) | undefined;
@@ -125,7 +129,7 @@ export async function copyJobFixture(
             paths: ['selected.md'],
           },
         ],
-        expires_at: Math.floor(Date.now() / 1000) + 600,
+        expires_at: Math.floor(Date.now() / 1000) + composedSeconds,
       });
       assert.equal(created.status, 200, JSON.stringify(created.body));
       const ack = created.body.record;

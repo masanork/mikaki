@@ -259,6 +259,155 @@ test('owner composition reserves Native metadata from pinned selections without 
     await f.close();
   }
 });
+test('expired unused reservations release the byte budget while retaining owner-scoped history', async () => {
+  const f = await setup();
+  try {
+    const bytes = f.codeSource.code.object_bytes;
+    await f.DB.prepare('UPDATE work_preparation_policy SET bytes_per_owner=? WHERE id=1')
+      .bind(bytes)
+      .run();
+    await f.register('foreign-code', f.foreign, {
+      ...f.codeSource,
+      repo_name: 'foreign-code-repo',
+      role: 'code',
+      label: 'Foreign synthetic code',
+      files: [],
+    });
+    const expires = Math.floor(Date.now() / 1000) + 5;
+    const input = { ...f.input, contexts: [], expires_at: expires };
+    const first = await f.request(input);
+    assert.equal(first.status, 200, await first.clone().text());
+    const old = ((await first.json()) as any).record;
+    const oldBody = await f.DB.prepare('SELECT body FROM work_preparation WHERE operation_id=?')
+      .bind(old.preparation_id)
+      .first('body');
+    const foreign = await f.request(
+      { ...input, code: { ...input.code, source_id: 'foreign-code' } },
+      f.worker,
+      f.foreign,
+    );
+    assert.equal(foreign.status, 200, await foreign.clone().text());
+    const foreignId = ((await foreign.json()) as any).record.preparation_id;
+    const next = { ...input, expires_at: expires + 600 };
+    assert.equal((await f.request(next)).status, 404, 'live reservation retains its charge');
+    await new Promise((resolve) => setTimeout(resolve, expires * 1000 - Date.now() + 50));
+    const r = await f.request(next);
+    assert.equal(r.status, 200, await r.clone().text());
+    const current = ((await r.json()) as any).record;
+    assert.notEqual(current.preparation_id, old.preparation_id);
+    assert.deepEqual(
+      await f.DB.prepare(
+        'SELECT body,state,revision,cleanup_receipt FROM work_preparation WHERE operation_id=?',
+      )
+        .bind(old.preparation_id)
+        .first(),
+      { body: oldBody, state: 'cleaned', revision: 2, cleanup_receipt: null },
+    );
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(foreignId)
+        .first('state'),
+      'reserved',
+    );
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT sum(reserved_bytes) AS n FROM work_preparation WHERE owner_id=? AND state!='cleaned'",
+      )
+        .bind(f.first.account)
+        .first('n'),
+      bytes,
+    );
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT count(*) AS n FROM work_audit WHERE action='preparation.cleanup'",
+      ).first('n'),
+      1,
+    );
+    for (const retry of await Promise.all([f.request(next), f.request(next, f.b)])) {
+      assert.equal(retry.status, 200, await retry.clone().text());
+      assert.deepEqual(((await retry.json()) as any).record, current);
+    }
+    assert.equal(await f.count('work_preparation'), 3);
+    for (const table of ['work_copy_consent', 'work_credential_attempt', 'work_grant', 'work_run'])
+      assert.equal(await f.count(table), 0, table);
+  } finally {
+    await f.close();
+  }
+});
+test('reservation retirement rolls back with its audit and retries the retained identity', async () => {
+  const f = await setup();
+  try {
+    const expires = Math.floor(Date.now() / 1000) + 2;
+    const input = { ...f.input, contexts: [], expires_at: expires };
+    const initial = await f.request(input);
+    assert.equal(initial.status, 200, await initial.clone().text());
+    const old = ((await initial.json()) as any).record;
+    await f.DB.exec(
+      "CREATE TRIGGER retire_audit_abort BEFORE INSERT ON work_audit WHEN NEW.action='preparation.cleanup' BEGIN SELECT RAISE(ABORT,'synthetic retirement audit abort'); END;",
+    );
+    await new Promise((resolve) => setTimeout(resolve, expires * 1000 - Date.now() + 50));
+    const next = { ...input, expires_at: expires + 600 };
+    assert.equal((await f.request(next)).status, 503);
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(old.preparation_id)
+        .first('state'),
+      'reserved',
+    );
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT count(*) AS n FROM work_audit WHERE action='preparation.cleanup'",
+      ).first('n'),
+      0,
+    );
+    assert.equal(await f.count('work_preparation'), 1);
+    await f.DB.exec('DROP TRIGGER retire_audit_abort');
+    const retry = await f.request(next);
+    assert.equal(retry.status, 200, await retry.clone().text());
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(old.preparation_id)
+        .first('state'),
+      'cleaned',
+    );
+    assert.equal(await f.count('work_preparation'), 2);
+  } finally {
+    await f.close();
+  }
+});
+test('invalid selections and revoked owner sessions cannot retire expired reservations', async () => {
+  const f = await setup();
+  try {
+    const expires = Math.floor(Date.now() / 1000) + 2;
+    const input = { ...f.input, contexts: [], expires_at: expires };
+    const initial = await f.request(input);
+    assert.equal(initial.status, 200, await initial.clone().text());
+    const old = ((await initial.json()) as any).record;
+    await new Promise((resolve) => setTimeout(resolve, expires * 1000 - Date.now() + 50));
+    const next = { ...input, expires_at: expires + 600 };
+    assert.equal(
+      (await f.request({ ...next, code: { ...next.code, source_revision: 2 } })).status,
+      409,
+    );
+    await f.revokeSession();
+    assert.equal((await f.request(next)).status, 401);
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(old.preparation_id)
+        .first('state'),
+      'reserved',
+    );
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT count(*) AS n FROM work_audit WHERE action='preparation.cleanup'",
+      ).first('n'),
+      0,
+    );
+    assert.equal(await f.count('work_preparation'), 1);
+  } finally {
+    await f.close();
+  }
+});
 for (const [fault, status] of [
   ['access-replace', 409],
   ['head-revoke', 404],

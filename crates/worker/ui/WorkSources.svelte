@@ -381,7 +381,13 @@
       >{m.source_more()}</button
     >{/if}
   <div class="source-review-action">
+    {#if composeEnabled}<p>
+        {codeSource
+          ? m.source_code_selected({ label: codeSource.label })
+          : m.source_code_unselected()}
+      </p>{/if}
     <p>{m.source_selection({ files: count, bytes: total })}</p>
+    {#if composeEnabled && count === 0}<p>{m.source_code_only_hint()}</p>{/if}
     <button
       class="source-primary"
       type="button"

@@ -59,6 +59,18 @@ their productive provider/host and launcher qualification.
 
 ## Prepare the code-only copy host
 
+On source review, select the registered repository with **Choose this code for
+copying**. The file/byte count refers only to optional context files. With no
+context, **Inspect selected files** stays disabled and **Prepare copy** is the
+next action after choosing the code.
+
+Composition retires only the current owner's expired, never-dispatched
+reservations that have no copy job, credential attempt, registered destination,
+prepared task or candidate payload. Native transitions and independently
+checkpointed audits retain the old identity/body while releasing its byte charge.
+An expired queued job or any external obligation keeps its reservation pending
+its existing reconciliation and cleanup protocol.
+
 After the owner creates a code-only preparation, open its review and use **Save
 disclosure record** under **Integrity records**. The browser rechecks the live
 owner session, exact selected preparation, current source revisions and expiry

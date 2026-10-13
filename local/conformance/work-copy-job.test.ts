@@ -34,6 +34,57 @@ test('public composition and explicit consent drive one Workflow through both se
   }
 });
 
+test('composition retains an expired queued copy and its unresolved reservation', async () => {
+  const f = await fixture(
+    { LOCAL_COPY_TRIGGER_DISABLED: 'true' },
+    { composed: true, composedSeconds: 8 },
+  );
+  try {
+    assert.equal((await f.approve()).status, 200);
+    assert.equal((await f.start()).status, 200);
+    const remote = await f.remote();
+    assert.equal(remote.counts.create ?? 0, 0);
+    const expires = await f.DB.prepare(
+      'SELECT expires_at FROM work_preparation WHERE operation_id=?',
+    )
+      .bind(f.p.id)
+      .first<number>('expires_at');
+    assert.ok(expires);
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, expires * 1000 - Date.now()) + 50),
+    );
+    const r = await f.product('/work/preparations', 'POST', {
+      format_version: 1,
+      code: { source_id: 'code', source_revision: 1, access_revision: 1 },
+      contexts: [],
+      expires_at: Math.floor(Date.now() / 1000) + 600,
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_preparation WHERE operation_id=?')
+        .bind(f.p.id)
+        .first('state'),
+      'reserved',
+    );
+    assert.equal(
+      await f.DB.prepare('SELECT state FROM work_copy_job WHERE preparation_id=?')
+        .bind(f.p.id)
+        .first('state'),
+      'queued',
+    );
+    assert.equal(
+      await f.DB.prepare(
+        "SELECT count(*) AS n FROM work_audit WHERE action='preparation.cleanup' AND entity_id=?",
+      )
+        .bind(f.p.id)
+        .first('n'),
+      0,
+    );
+    assert.deepEqual(await f.remote(), remote);
+  } finally {
+    await f.close();
+  }
+});
 for (const change of ['withdraw', 'floor', 'account', 'key', 'expiry'] as const)
   test('a partially completed job fences its next effect after ' + change, async () => {
     const f = await fixture({
