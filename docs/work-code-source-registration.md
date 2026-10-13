@@ -142,9 +142,7 @@ public and named cold admission in local workerd without provider bindings. It
 also qualifies retained-digest rejection of byte/manifest substitution, unknown
 members, symlinks and attempts to relabel the packet as execution authority.
 
-## Validation
-
-### Retain the private copy binding plan
+## Retain the private copy binding plan
 
 After freezing runtime bytes, use `copyBindingTargetSchema` in
 `scripts/work-copy-binding-plan.ts` to prepare a closed, secret-free target
@@ -184,6 +182,8 @@ active wrapping custody, actual bindings and owner consent remain required for
 substitution cases and loads every companion destination's named entrypoint in
 local workerd with disabled gates. Its OP transport is a closed fixture; this
 qualifies companion cold admission, not OP Wasm or any live owner/provider.
+
+## Validation
 
 The packet test restores real Git objects independently and proves history
 exclusion. The product test runs the actual Rust/Wasm, D1 and SQLite checkpoint:
