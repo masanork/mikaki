@@ -5,6 +5,7 @@ import {
   assertWaitlistMailKey,
   checkBindings,
   checkCheckpointExposure,
+  productionRuntimeSecrets,
   sourceIsCurrent,
 } from './deploy-production.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
@@ -78,6 +79,68 @@ test('mail provisioning rejects malformed or noncanonical keys without exposing 
   }
 });
 
+test('promotion preserves only reviewed runtime secrets and requires initial Work custody without leaking values', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const env = {
+    OP_PRIVATE_JWK: 'synthetic signing key',
+    MIKAKI_READY_TOKEN: 'synthetic readiness token',
+    WAITLIST_MAIL_KEY: Buffer.alloc(32, 1).toString('base64url'),
+    WORK_CREDENTIAL_KEY_V1: Buffer.alloc(32, 7).toString('base64url'),
+    UNREVIEWED_SECRET: 'never include this value',
+  };
+  assert.deepEqual(
+    Object.keys(productionRuntimeSecrets(config, env)).sort(),
+    [...config.secrets.required].sort(),
+  );
+  assert.equal(config.vars.WORK_COPY_EXECUTION_ENABLED, 'false');
+  assert.equal(config.vars.WORK_CREDENTIAL_KEY_ADMIN_ENABLED, 'true');
+  for (const value of [
+    undefined,
+    '',
+    Buffer.alloc(31).toString('base64url'),
+    Buffer.alloc(32).toString('base64'),
+    'do-not-print-this-secret',
+  ]) {
+    assert.throws(
+      () => productionRuntimeSecrets(config, { ...env, WORK_CREDENTIAL_KEY_V1: value }),
+      (error: unknown) =>
+        error instanceof Error && (value === '' || !error.message.includes(String(value))),
+    );
+  }
+  for (const floor of [undefined, '0', '2'])
+    assert.throws(
+      () =>
+        productionRuntimeSecrets(
+          { ...config, vars: { ...config.vars, WORK_CREDENTIAL_KEY_FLOOR: floor } },
+          env,
+        ),
+      /floor 1/,
+    );
+  assert.throws(
+    () =>
+      productionRuntimeSecrets(
+        { ...config, secrets: { required: [...config.secrets.required, 'UNREVIEWED_SECRET'] } },
+        env,
+      ),
+    /Unreviewed/,
+  );
+  assert.throws(
+    () =>
+      productionRuntimeSecrets(
+        {
+          ...config,
+          secrets: {
+            required: config.secrets.required.filter(
+              (name: string) => name !== 'WORK_CREDENTIAL_KEY_V1',
+            ),
+          },
+        },
+        env,
+      ),
+    /reviewed secret custody/,
+  );
+});
+
 test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {
   const production = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
   assert.deepEqual(production.queues.producers, [
@@ -135,6 +198,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
+    { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
     {
       name: 'ENROLLMENT_EMAIL',
       type: 'send_email',
@@ -165,6 +229,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'LOGOUT_QUEUE',
     'MIKAKI_READY_TOKEN',
     'WAITLIST_MAIL_KEY',
+    'WORK_CREDENTIAL_KEY_V1',
     'ENROLLMENT_EMAIL',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
   ]) {
@@ -209,6 +274,7 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
+    { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
     {
       name: 'ENROLLMENT_EMAIL',
       type: 'send_email',

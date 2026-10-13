@@ -32,13 +32,15 @@
     "WORK_COPY_WORKLOAD": "mikaki-work-test",
     "WORK_COPY_CONSENT_ENABLED": "true",
     "WORK_COPY_EXECUTION_ENABLED": "false",
-    "WORK_CREDENTIAL_KEY_ADMIN_ENABLED": "false"
+    "WORK_CREDENTIAL_KEY_ADMIN_ENABLED": "true",
+    "WORK_CREDENTIAL_KEY_FLOOR": "1"
   },
   "secrets": {
     "required": [
       "OP_PRIVATE_JWK",
       "MIKAKI_READY_TOKEN",
-      "WAITLIST_MAIL_KEY"
+      "WAITLIST_MAIL_KEY",
+      "WORK_CREDENTIAL_KEY_V1"
     ]
   },
   "send_email": [

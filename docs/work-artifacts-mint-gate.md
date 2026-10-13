@@ -14,7 +14,9 @@ The named `OpAuthorityAdmin` capability accepts `inspect-work-credential-key`
 with `key_version`, and `initialize-work-credential-key` with `key_version`
 and `expected_fingerprint`, through its existing private POST `/authority`.
 Both require enrolled, current independent authority and
-`WORK_CREDENTIAL_KEY_ADMIN_ENABLED=true`. Production keeps that flag false.
+`WORK_CREDENTIAL_KEY_ADMIN_ENABLED=true`. Production enables this private initial
+registration capability with version floor 1 and a required secret binding;
+copy execution remains disabled. Deployment does not register the key automatically.
 Public HTTP and raw Wasm RPC remain closed. The request never carries key bytes;
 Native reads only the already provisioned `WORK_CREDENTIAL_KEY_V<version>`
 secret and verifies its fingerprint and `WORK_CREDENTIAL_KEY_FLOOR`.

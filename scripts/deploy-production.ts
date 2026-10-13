@@ -198,6 +198,53 @@ export function assertWaitlistMailKey(value: unknown): asserts value is string {
   }
 }
 
+export function productionRuntimeSecrets(config: Config, env: Record<string, string | undefined>) {
+  const base = ['OP_PRIVATE_JWK', 'MIKAKI_READY_TOKEN', 'WAITLIST_MAIL_KEY'];
+  const required = config.secrets?.required ?? [];
+  assert.equal(new Set(required).size, required.length, 'Duplicate runtime secret selection');
+  assert.ok(
+    base.every((name) => required.includes(name)),
+    'Missing base runtime secret selection',
+  );
+  assert.ok(
+    required.every((name) => [...base, 'WORK_CREDENTIAL_KEY_V1'].includes(name)),
+    'Unreviewed runtime secret selection',
+  );
+  const withKey = required.includes('WORK_CREDENTIAL_KEY_V1');
+  assert.ok(
+    config.vars.WORK_CREDENTIAL_KEY_ADMIN_ENABLED !== 'true' || withKey,
+    'Key administration requires reviewed secret custody',
+  );
+  if (withKey)
+    assert.equal(
+      config.vars.WORK_CREDENTIAL_KEY_FLOOR,
+      '1',
+      'Initial key custody requires version floor 1',
+    );
+  const secrets: Record<string, string> = {};
+  for (const name of required) {
+    const value = env[name];
+    assert.ok(
+      typeof value === 'string' && value.length > 0,
+      'Required runtime secret is unavailable',
+    );
+    secrets[name] = value;
+  }
+  assertWaitlistMailKey(secrets.WAITLIST_MAIL_KEY);
+  if (withKey) {
+    const bytes = Buffer.from(secrets.WORK_CREDENTIAL_KEY_V1!, 'base64url');
+    try {
+      assert.ok(
+        bytes.length === 32 && bytes.toString('base64url') === secrets.WORK_CREDENTIAL_KEY_V1,
+        'Work wrapping key must be 32 bytes encoded as unpadded base64url',
+      );
+    } finally {
+      bytes.fill(0);
+    }
+  }
+  return secrets;
+}
+
 /** Explicit schema adoption is distinct from enabling any owner/effect capability. */
 export function productionWorkSchema(vars: Record<string, string>) {
   assert.ok(
@@ -372,19 +419,8 @@ async function main() {
       workSchema,
     );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
-  assert.ok(
-    process.env.OP_PRIVATE_JWK && process.env.MIKAKI_READY_TOKEN && process.env.WAITLIST_MAIL_KEY,
-  );
-  assertWaitlistMailKey(process.env.WAITLIST_MAIL_KEY);
-  writeFileSync(
-    secretFile,
-    JSON.stringify({
-      OP_PRIVATE_JWK: process.env.OP_PRIVATE_JWK,
-      MIKAKI_READY_TOKEN: process.env.MIKAKI_READY_TOKEN,
-      WAITLIST_MAIL_KEY: process.env.WAITLIST_MAIL_KEY,
-    }),
-    { mode: 0o600 },
-  );
+  const runtimeSecrets = productionRuntimeSecrets(reviewedOp, process.env);
+  writeFileSync(secretFile, JSON.stringify(runtimeSecrets), { mode: 0o600 });
   const record: { source: typeof source; workers: Record<string, unknown> } = {
     source,
     workers: {},
