@@ -363,11 +363,12 @@ fn encrypted_native_issuance_binds_dpop_attestation_receipt_and_rejects_plaintex
             })
             .await
             .unwrap();
-            let proofs = calls.lock().unwrap();
-            assert_eq!(proofs.len(), 2);
-            assert_ne!(proofs[0]["jti"], proofs[1]["jti"]);
-            assert_eq!(proofs[1]["nonce"], "rs-nonce");
-            drop(proofs);
+            {
+                let proofs = calls.lock().unwrap();
+                assert_eq!(proofs.len(), 2);
+                assert_ne!(proofs[0]["jti"], proofs[1]["jti"]);
+                assert_eq!(proofs[1]["nonce"], "rs-nonce");
+            }
             let holder_key = session.holder.take().unwrap();
             assert!(super::super::flow::verified_receipt(
                 received.clone(),

@@ -760,6 +760,8 @@ function presentationError(error) {
       verifier_not_configured: 'このアプリには提示先がまだ登録されていません。',
       untrusted_verifier: '登録済みの提示先と一致しません。',
       credential_required: '有効な証明書を受け取ってください。',
+      wallet_storage_unavailable: '証明書の使用状態を保存できないため、送信しませんでした。',
+      wallet_key_unavailable: '証明書の鍵を確認できません。新しい証明書を受け取ってください。',
       credential_query_unsatisfied: '提示に必要な証明書が揃っていません。',
       credential_changed: '同意した証明書を確認できませんでした。新しい要求でやり直してください。',
       credential_expired: '証明書の有効期限が切れました。受け取り直してください。',
@@ -804,6 +806,14 @@ $('#identity-wallet-restore').addEventListener('click', async () => {
   }
 });
 function appendPredicateSource(target, credential) {
+  if (credential.source?.single_use === true) {
+    const usage = document.createElement('dt');
+    usage.textContent = '1回限りの年齢証明';
+    const notice = document.createElement('dd');
+    notice.textContent =
+      '提示を承認すると、この証明書は送信前に使用済みになります。送信に失敗しても再利用できません。次の提示には新しい証明書が必要です。';
+    target.append(usage, notice);
+  }
   if (!Object.keys(credential.values).some((key) => key === 'age_over_18' || key === 'age_over_20'))
     return;
   const term = document.createElement('dt');

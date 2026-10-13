@@ -35,7 +35,7 @@ struct Inventory {
 #[serde(untagged)]
 enum Stored {
     Inventory(Inventory),
-    Single(Record),
+    Single(Box<Record>),
 }
 pub(super) fn encode(records: &[Record], configured: bool) -> Result<Zeroizing<Vec<u8>>, String> {
     #[derive(Serialize)]
@@ -45,7 +45,7 @@ pub(super) fn encode(records: &[Record], configured: bool) -> Result<Zeroizing<V
     }
     let plain = Zeroizing::new(
         serde_json::to_vec(&Envelope {
-            version: 3,
+            version: 4,
             receipts: records,
         })
         .map_err(|_| "wallet_storage_unavailable")?,
@@ -57,20 +57,27 @@ pub(super) fn decode(bytes: &[u8], configured: bool) -> Result<(Vec<Record>, boo
     if bytes.len() > MAX_BYTES {
         return Err("wallet_invalid".into());
     }
-    let (records, migrate) =
+    let (records, migrate, legacy) =
         match serde_json::from_slice::<Stored>(bytes).map_err(|_| "wallet_invalid")? {
-            Stored::Single(record) => (vec![record], true),
-            Stored::Inventory(inventory) if inventory.version == 3 => (inventory.receipts, false),
+            Stored::Single(record) => (vec![*record], true, true),
+            Stored::Inventory(inventory) if inventory.version == 4 => {
+                (inventory.receipts, false, false)
+            }
+            Stored::Inventory(inventory)
+                if inventory.version == 3 && !inventory.receipts.is_empty() =>
+            {
+                (inventory.receipts, true, false)
+            }
             _ => return Err("wallet_invalid".into()),
         };
-    if records.is_empty() || records.len() > 8 {
+    if records.len() > 8 {
         return Err("wallet_invalid".into());
     }
     let mut ids = std::collections::HashSet::new();
     let mut credentials = std::collections::HashSet::new();
     for record in &records {
         restoration_profile(record.version, record.haip, configured)?;
-        if (!migrate && record.version != 2)
+        if (!legacy && record.version != 2)
             || record.id.len() != 32
             || !record
                 .id
@@ -96,7 +103,7 @@ mod tests {
         json!({"version":2,"haip":true,"id":format!("{id:032x}"),"credential":format!("fixture-{id}"),"format":"dc+sd-jwt","issuer_key":PublicJwk::from_key(key.verifying_key()),"issuer_kid":"issuer","holder":PublicJwk::from_key(key.verifying_key()),"expires_at":2000})
     }
     #[test]
-    fn identity_inventory_codec_migrates_legacy_and_preserves_all_v3_slots() {
+    fn identity_inventory_codec_migrates_legacy_and_v3_and_preserves_all_slots() {
         let single = record(1);
         let (records, migrate) = decode(&serde_json::to_vec(&single).unwrap(), true).unwrap();
         assert!(migrate);
@@ -116,7 +123,7 @@ mod tests {
             true,
         )
         .unwrap();
-        assert!(!migrate);
+        assert!(migrate);
         let encoded = encode(&records, true).unwrap();
         assert!(!decode(&encoded, true).unwrap().1);
         assert_eq!(records.len(), 8);
@@ -126,7 +133,7 @@ mod tests {
     fn identity_inventory_codec_rejects_duplicates_downgrades_and_out_of_bounds_records() {
         for value in [
             json!({"version":3,"receipts":[]}),
-            json!({"version":4,"receipts":[record(1)]}),
+            json!({"version":5,"receipts":[record(1)]}),
             json!({"version":3,"receipts":[record(1),record(1)]}),
             json!({"version":3,"receipts":(1..=9).map(record).collect::<Vec<_>>()}),
         ] {
@@ -154,5 +161,27 @@ mod tests {
         assert!(decode(duplicate_version.as_bytes(), true).is_err());
         assert!(decode(&vec![b' '; MAX_BYTES + 1], true).is_err());
         assert!(decode(encoded.as_bytes(), false).is_err());
+    }
+    #[test]
+    fn empty_v4_inventory_is_a_durable_tombstone_and_old_envelopes_remain_strict() {
+        let encoded = encode(&[], true).unwrap();
+        let (records, migrate) = decode(&encoded, true).unwrap();
+        assert!(records.is_empty() && !migrate);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&encoded).unwrap(),
+            json!({"version":4,"receipts":[]})
+        );
+        for version in [3, 4] {
+            let mut legacy = record(1);
+            legacy["version"] = json!(1);
+            legacy.as_object_mut().unwrap().remove("haip");
+            assert!(decode(
+                &serde_json::to_vec(&json!({"version":version,"receipts":[legacy]})).unwrap(),
+                false
+            )
+            .is_err());
+        }
+        assert!(decode(br#"{"version":4,"version":4,"receipts":[]}"#, true).is_err());
+        assert!(decode(br#"{"version":4,"receipts":[],"single_use":false}"#, true).is_err());
     }
 }

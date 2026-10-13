@@ -212,8 +212,11 @@ pub struct Receipt {
 }
 impl Receipt {
     pub fn validate(&self, issuer: &str, now: u64) -> Result<u64, String> {
+        self.verified_values(issuer, now).map(|(expiry, _)| expiry)
+    }
+    fn verified_values(&self, issuer: &str, now: u64) -> Result<(u64, Value), String> {
         let holder = self.key.public()?;
-        let expiry = match self.format.as_str() {
+        let (expiry, values) = match self.format.as_str() {
             "dc+sd-jwt" => issuance::verify_receipt(
                 &self.credential,
                 &self.issuer_key,
@@ -222,12 +225,16 @@ impl Receipt {
                 issuer,
                 now,
             )
-            .map_err(str::to_string)?
-            .get("exp")
-            .and_then(|v| v.as_u64())
-            .ok_or("invalid_credential".into()),
+            .map_err(str::to_string)
+            .and_then(|values| {
+                let expiry = values
+                    .get("exp")
+                    .and_then(Value::as_u64)
+                    .ok_or("invalid_credential")?;
+                Ok((expiry, values))
+            }),
             "mso_mdoc" => mdoc::verify_receipt(&self.credential, &self.issuer_key, &holder, now)
-                .map(|r| r.expires_at)
+                .map(|r| (r.expires_at, r.values))
                 .map_err(str::to_string),
             _ => Err("invalid_credential".into()),
         }?;
@@ -240,15 +247,46 @@ impl Receipt {
                 expiry,
             )?;
         }
-        Ok(expiry)
+        Ok((expiry, values))
+    }
+    /// Policy is derived from the complete authenticated receipt, not selected
+    /// disclosures or a mutable persisted/UI marker. Mixed raw profiles stay reusable.
+    pub fn single_use(&self, issuer: &str, now: u64) -> Result<bool, String> {
+        let (_, values) = self.verified_values(issuer, now)?;
+        let fields: Vec<_> = values
+            .as_object()
+            .ok_or("invalid_credential")?
+            .keys()
+            .filter(|name| mikaki_identity::claim_profile::supported(name))
+            .collect();
+        Ok(!fields.is_empty()
+            && fields
+                .iter()
+                .all(|name| mikaki_identity::claim_profile::is_age_claim(name)))
     }
 }
+pub(crate) mod retirement;
 #[cfg(any(target_os = "android", test))]
 mod storage;
 pub fn save_inventory(app: &AppHandle, receipts: &[Receipt]) -> Result<(), String> {
     if receipts.is_empty() || receipts.len() > 8 {
         return Err("wallet_inventory_full".into());
     }
+    write_inventory(app, receipts, receipts.last().ok_or("credential_required")?)
+}
+/// Commit the complete remaining inventory, including a durable empty tombstone.
+/// The consumed key anchors this write and is destroyed only after it succeeds.
+pub(crate) fn save_retired_inventory(
+    app: &AppHandle,
+    receipts: &[Receipt],
+    anchor: &Receipt,
+) -> Result<(), String> {
+    if receipts.len() > 8 {
+        return Err("wallet_inventory_full".into());
+    }
+    write_inventory(app, receipts, anchor)
+}
+fn write_inventory(app: &AppHandle, receipts: &[Receipt], anchor: &Receipt) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
         let records: Result<Vec<_>, String> = receipts
@@ -270,7 +308,7 @@ pub fn save_inventory(app: &AppHandle, receipts: &[Receipt]) -> Result<(), Strin
             .collect();
         let plain = storage::encode(&records?, option_env!("MIKAKI_HAIP_WALLET").is_some())?;
         let encoded = Zeroizing::new(B64.encode(&*plain));
-        let HolderKey::Os(key) = &receipts.last().ok_or("credential_required")?.key;
+        let HolderKey::Os(key) = &anchor.key;
         app.native_dpop().store_wallet(&key.id, &encoded)?;
         for receipt in receipts {
             let HolderKey::Os(key) = &receipt.key;
@@ -279,7 +317,7 @@ pub fn save_inventory(app: &AppHandle, receipts: &[Receipt]) -> Result<(), Strin
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (app, receipts);
+        let _ = (app, receipts, anchor);
     }
     Ok(())
 }
@@ -345,7 +383,7 @@ pub fn restore_inventory(app: &AppHandle, issuer: &str, now: u64) -> Result<Vec<
         }
         // Validate every surviving record before atomically migrating/pruning storage.
         // Keys are removed only after the new complete inventory is committed.
-        if receipts.is_empty() {
+        if receipts.is_empty() && !expired.is_empty() {
             app.native_dpop().delete_wallet()?;
         } else if migrate || !expired.is_empty() {
             save_inventory(app, &receipts)?;

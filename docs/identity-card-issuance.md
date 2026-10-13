@@ -46,6 +46,8 @@ Return to the app and select 承認を確認して証明書を受け取る. Choo
 
 紐付けた属性を確認・解除する opens the owner-only `/identity` management page. Deletion erases normalized attributes from both the linked record and its transaction, and blocks further issuance. Already-issued credentials expire within five minutes; there is no live credential-status endpoint yet. Clearing a receipt in the app only deletes local state, not the server-side linkage.
 
+Age-only receipts now have a [single-use Wallet policy](identity-age-predicates.md#correlation-and-deferred-work). Owner approval retires the exact selected receipt before HTTP or proximity transmission, including an empty encrypted inventory after the last receipt. Failed/unknown delivery does not requeue it. Mixed raw/age profiles retain their existing reuse behavior; the server still issues at most one credential per grant.
+
 ## Evidence and guarantee boundary
 
 The shared [identity crate](../crates/identity/src/lib.rs) owns bounded APDU handling, strict parsers, issuer-signature verification and the issuance profile. Android transports `IsoDep` through the extracted madowi plugin. The licensed civ subset supplies APDU constants, four-attribute parsing, era conversion and JIS decoding. Its permissive driving-licence parser and guessed EF07 verifier are not used for verification.
