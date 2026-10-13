@@ -214,7 +214,7 @@ impl Receipt {
     pub fn validate(&self, issuer: &str, now: u64) -> Result<u64, String> {
         self.verified_values(issuer, now).map(|(expiry, _)| expiry)
     }
-    fn verified_values(&self, issuer: &str, now: u64) -> Result<(u64, Value), String> {
+    pub(crate) fn verified_values(&self, issuer: &str, now: u64) -> Result<(u64, Value), String> {
         let holder = self.key.public()?;
         let (expiry, values) = match self.format.as_str() {
             "dc+sd-jwt" => issuance::verify_receipt(

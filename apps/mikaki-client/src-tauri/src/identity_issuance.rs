@@ -1,5 +1,6 @@
 //! First-party OID4VCI flow. Evidence, grant secrets and separate holder keys stay in Rust.
 use p256::elliptic_curve::Generate;
+mod batch;
 mod completion;
 mod credential_transport;
 pub mod haip;
@@ -31,7 +32,8 @@ use mikaki_identity::wallet_profile::{ISSUER, ROOT};
 struct Flow {
     tx: String,
     secret: Zeroizing<String>,
-    key: HolderKey,
+    keys: Vec<HolderKey>,
+    batch_claims: Option<String>,
     created: Instant,
     configuration: String,
 }
@@ -82,30 +84,19 @@ impl Inner {
         Ok(())
     }
     fn install_receipt(&mut self, app: &AppHandle, receipt: Receipt) -> Result<(), String> {
+        self.install_receipts(app, vec![receipt])
+    }
+    fn install_receipts(&mut self, app: &AppHandle, receipts: Vec<Receipt>) -> Result<(), String> {
         self.restore_receipts(app)?;
         let at = now()?;
-        let mut inventory: Vec<_> = self
-            .receipts
-            .iter()
-            .filter(|r| r.expires_at > at)
-            .cloned()
-            .collect();
-        if inventory.len() >= 8 {
-            return Err("wallet_inventory_full".into());
-        }
-        if inventory
-            .iter()
-            .any(|r| credential_hash(&r.credential) == credential_hash(&receipt.credential))
-        {
-            return Err("credential_already_saved".into());
-        }
-        inventory.push(receipt.clone());
-        identity_wallet::save_inventory(app, &inventory)?;
+        let inventory = batch::install(&self.receipts, receipts, at, |all| {
+            identity_wallet::save_inventory(app, all)
+        })?;
         for old in self.receipts.iter().filter(|r| r.expires_at <= at) {
             let _ = old.key.destroy();
         }
+        self.receipt = inventory.last().cloned();
         self.receipts = inventory;
-        self.receipt = Some(receipt);
         self.presentation = None;
         Ok(())
     }
@@ -231,7 +222,7 @@ async fn body(mut response: Response) -> Result<Value, String> {
         }
         bytes.extend_from_slice(&chunk);
     }
-    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "invalid_response")?;
+    let value = mikaki_identity::wallet_profile::strict_json(&bytes)?;
     if !status.is_success() {
         let error = value["error"].as_str().unwrap_or("server_error");
         return Err(match error {
@@ -276,6 +267,8 @@ pub fn clear_identity_evidence(state: State<'_, IdentityState>) -> Result<(), St
 #[derive(Serialize)]
 pub struct LinkStarted {
     holder_thumbprint: String,
+    holder_thumbprints: Vec<String>,
+    credential_count: usize,
     expires_in: u64,
 }
 #[tauri::command]
@@ -283,6 +276,7 @@ pub async fn start_identity_link(
     app: AppHandle,
     state: State<'_, IdentityState>,
     configuration: Option<String>,
+    credential_count: Option<usize>,
 ) -> Result<LinkStarted, String> {
     if state
         .0
@@ -301,6 +295,41 @@ pub async fn start_identity_link(
         return Err("unsupported_credential_configuration".into());
     }
     let guard = gate(&state)?;
+    let count = credential_count.unwrap_or(1);
+    if !(1..=mikaki_identity::age_batch::MAX_SIZE).contains(&count) {
+        return Err("invalid_age_batch".into());
+    }
+    {
+        let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
+        s.restore_receipts(&app)?;
+        if s.receipts
+            .iter()
+            .filter(|r| r.expires_at > now().unwrap_or(u64::MAX))
+            .count()
+            + count
+            > mikaki_identity::age_batch::MAX_SIZE
+        {
+            return Err("wallet_inventory_full".into());
+        }
+    }
+    let http = client()?;
+    let batch_claims = if count > 1 {
+        let metadata = body(
+            http.get(format!(
+                "{ROOT}/.well-known/openid-credential-issuer/identity/issuer"
+            ))
+            .send()
+            .await
+            .map_err(|_| "network_error")?,
+        )
+        .await?;
+        if metadata["credential_issuer"] != ISSUER {
+            return Err("invalid_metadata".into());
+        }
+        Some(batch::metadata_claims(&metadata, &configuration)?)
+    } else {
+        None
+    };
     let (evidence, read_at) = state
         .0
         .lock()
@@ -311,18 +340,23 @@ pub async fn start_identity_link(
     if read_at.elapsed() > Duration::from_secs(600) {
         return Err("read_required".into());
     }
-    let key = HolderKey::create(&app)?; // Dedicated holder key, never login DPoP.
-    let holder = key.public()?;
-    let http = client()?;
+    let keys = (0..count)
+        .map(|_| HolderKey::create(&app))
+        .collect::<Result<Vec<_>, _>>()?;
+    let holders = keys
+        .iter()
+        .map(HolderKey::public)
+        .collect::<Result<Vec<_>, _>>()?;
+    let payload = if count == 1 {
+        json!({"evidence":evidence,"holder_jwk":holders[0]})
+    } else {
+        json!({"evidence":evidence,"holder_jwks":holders,"credential_configuration_id":configuration})
+    };
     let response = body(
-        json_request(
-            &http,
-            format!("{ROOT}/identity/intake"),
-            json!({"evidence":evidence,"holder_jwk":holder}),
-        )?
-        .send()
-        .await
-        .map_err(|_| "network_error")?,
+        json_request(&http, format!("{ROOT}/identity/intake"), payload)?
+            .send()
+            .await
+            .map_err(|_| "network_error")?,
     )
     .await?;
     let tx = response["transaction_id"]
@@ -338,10 +372,18 @@ pub async fn start_identity_link(
             .to_string(),
     );
     let url = format!("{ROOT}/identity/approve?tx={tx}");
-    let thumbprint = holder.thumbprint().map_err(str::to_string)?;
+    let thumbprints = holders
+        .iter()
+        .map(PublicJwk::thumbprint)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(str::to_string)?;
+    let thumbprint = thumbprints[0].clone();
     if response["approval_url"] != url
         || response["holder_thumbprint"] != thumbprint
         || response["expires_in"] != 600
+        || (count > 1
+            && (response["credential_count"] != count
+                || response["holder_thumbprints"] != json!(thumbprints)))
     {
         return Err("invalid_response".into());
     }
@@ -353,7 +395,8 @@ pub async fn start_identity_link(
         s.flow = Some(Flow {
             tx,
             secret,
-            key,
+            keys,
+            batch_claims,
             created: Instant::now(),
             configuration,
         });
@@ -363,6 +406,8 @@ pub async fn start_identity_link(
         .map_err(|_| "browser_unavailable")?;
     Ok(LinkStarted {
         holder_thumbprint: thumbprint,
+        holder_thumbprints: thumbprints,
+        credential_count: count,
         expires_in: 600,
     })
 }
@@ -374,6 +419,7 @@ fn valid_id(s: &str) -> bool {
 #[derive(Serialize)]
 pub struct ReceiveResult {
     state: &'static str,
+    credential_count: Option<usize>,
     expires_at: Option<u64>,
     format: Option<String>,
 }
@@ -413,6 +459,7 @@ pub async fn receive_identity_credential(
         s.flow = Some(flow);
         return Ok(ReceiveResult {
             state: "pending",
+            credential_count: None,
             expires_at: None,
             format: None,
         });
@@ -481,6 +528,11 @@ pub async fn receive_identity_credential(
     {
         return Err("invalid_metadata".into());
     }
+    if let Some(claims) = &flow.batch_claims {
+        if &batch::metadata_claims(&metadata, &flow.configuration)? != claims {
+            return Err("invalid_metadata".into());
+        }
+    }
     let jwks = body(
         http.get(format!("{ISSUER}/jwks"))
             .send()
@@ -516,7 +568,14 @@ pub async fn receive_identity_credential(
     .map_err(|_| "invalid_metadata")?;
     if let Some(encryption) = &encryption {
         let request_key = encryption.request_key().map_err(|_| "invalid_metadata")?;
-        if request_key == issuer_key || request_key == flow.key.public()? {
+        if request_key == issuer_key
+            || flow
+                .keys
+                .iter()
+                .map(HolderKey::public)
+                .collect::<Result<Vec<_>, _>>()?
+                .contains(&request_key)
+        {
             return Err("invalid_metadata".into());
         }
     }
@@ -567,9 +626,14 @@ pub async fn receive_identity_credential(
         .as_str()
         .filter(|s| valid_id(s))
         .ok_or("invalid_response")?;
-    let proof = Zeroizing::new(flow.key.proof(ISSUER, nonce, now()?, &random())?);
+    let proofs = Zeroizing::new(
+        flow.keys
+            .iter()
+            .map(|key| key.proof(ISSUER, nonce, now()?, &random()))
+            .collect::<Result<Vec<_>, _>>()?,
+    );
     let payload =
-        json!({"credential_configuration_id":flow.configuration,"proofs":{"jwt":[&*proof]}});
+        json!({"credential_configuration_id":flow.configuration,"proofs":{"jwt":&*proofs}});
     let request = if let Some(encryption) = &encryption {
         let mut entropy = Zeroizing::new([0u8; 32]);
         let mut iv = [0u8; 12];
@@ -620,50 +684,32 @@ pub async fn receive_identity_credential(
         }
         credential_transport::decode_success(&content_type, &wire, encryption.as_ref())?
     };
-    let credentials = issued["credentials"]
-        .as_array()
-        .filter(|a| a.len() == 1)
+    let receipts = batch::verify_response(
+        issued,
+        flow.keys,
+        &flow.configuration,
+        issuer_key,
+        kid.into(),
+        flow.batch_claims.as_deref(),
+        now()?,
+    )?;
+    let expires_at = receipts
+        .iter()
+        .map(|r| r.expires_at)
+        .min()
         .ok_or("invalid_response")?;
-    let credential = Zeroizing::new(
-        credentials[0]["credential"]
-            .as_str()
-            .ok_or("invalid_response")?
-            .to_string(),
-    );
-    let holder = flow.key.public()?;
-    let format = if flow.configuration == mdoc::CONFIGURATION {
-        "mso_mdoc"
-    } else {
-        "dc+sd-jwt"
-    };
-    let expires_at = if format == "mso_mdoc" {
-        mdoc::verify_receipt(&credential, &issuer_key, &holder, now()?)
-            .map_err(str::to_string)?
-            .expires_at
-    } else {
-        issuance::verify_receipt(&credential, &issuer_key, kid, &holder, ISSUER, now()?)
-            .map_err(str::to_string)?["exp"]
-            .as_u64()
-            .ok_or("invalid_credential")?
-    };
+    let format = receipts[0].format.clone();
     let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
     if s.generation != guard.generation {
         return Err("cancelled".into());
     }
-    let receipt = Receipt {
-        credential,
-        format: format.into(),
-        key: flow.key,
-        expires_at,
-        issuer_key,
-        issuer_kid: kid.to_string(),
-        credential_trust: None,
-    };
-    s.install_receipt(&app, receipt)?;
+    let credential_count = receipts.len();
+    s.install_receipts(&app, receipts)?;
     Ok(ReceiveResult {
         state: "received",
+        credential_count: Some(credential_count),
         expires_at: Some(expires_at),
-        format: Some(format.into()),
+        format: Some(format),
     })
 }
 #[tauri::command]

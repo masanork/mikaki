@@ -16,12 +16,12 @@ pub(super) fn decode_success(
         let plain = encryption
             .decrypt_response(compact)
             .map_err(|_| "invalid_response")?;
-        serde_json::from_slice(&plain).map_err(|_| "invalid_response")?
+        mikaki_identity::wallet_profile::strict_json(&plain)?
     } else {
         if !media.eq_ignore_ascii_case("application/json") || wire.len() > 48 * 1024 {
             return Err("invalid_response".into());
         }
-        serde_json::from_slice(wire).map_err(|_| "invalid_response")?
+        mikaki_identity::wallet_profile::strict_json(wire)?
     };
     Ok(value)
 }
@@ -62,6 +62,18 @@ mod tests {
             decode_success("application/json", b"{}", None).unwrap(),
             json!({})
         );
+        assert!(decode_success(
+            "application/json",
+            br#"{"credentials":[],"credentials":[{}]}"#,
+            None
+        )
+        .is_err());
+        assert!(decode_success(
+            "application/json",
+            br#"{"credentials":[{"credential":"a","credential":"b"}]}"#,
+            None
+        )
+        .is_err());
         assert!(decode_success("text/html", b"{}", None).is_err());
         assert!(decode_success("application/json", &vec![b' '; 48 * 1024 + 1], None).is_err());
     }

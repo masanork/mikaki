@@ -156,6 +156,7 @@ pub async fn receive_identity_wallet_credential(
         if s.haip.as_ref().is_some_and(|p| !p.ready) {
             return Ok(ReceiveResult {
                 state: "pending",
+                credential_count: None,
                 expires_at: None,
                 format: None,
             });
@@ -218,6 +219,7 @@ pub async fn receive_identity_wallet_credential(
         }
         let result = ReceiveResult {
             state: "received",
+            credential_count: Some(1),
             expires_at: Some(receipt.expires_at),
             format: Some(receipt.format.clone()),
         };

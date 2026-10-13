@@ -495,6 +495,9 @@ function issuanceError(error) {
       issuer_unavailable: 'サーバーの身分証検証・発行機能はまだ有効になっていません。',
       not_found: 'サーバーの身分証検証・発行機能はまだ有効になっていません。',
       access_denied: '紐付けと発行が拒否されました。',
+      age_batch_unavailable:
+        '年齢専用の複数件発行は、この発行者では有効になっていません。1件を選んでください。',
+      invalid_age_batch: '年齢専用の発行件数や鍵を確認できませんでした。読み取り直してください。',
       wallet_attestation_unavailable:
         '端末の鍵を確認できませんでした。この端末での発行設定を確認してください。',
       wallet_transaction_unavailable: '受取操作の有効期限が切れました。もう一度始めてください。',
@@ -521,12 +524,16 @@ $('#identity-link').addEventListener('click', async () => {
   $('#identity-issuance').hidden = false;
   $('#identity-issuance-status').textContent = '署名を検証しています。';
   try {
+    const count = Number($('#identity-credential-count').value);
     const result = await invoke('start_identity_link', {
       configuration: $('#identity-credential-format').value,
+      ...(count > 1 ? { credentialCount: count } : {}),
     });
     if (generation !== issuanceGeneration) return;
     clearIdentityPreview();
-    $('#identity-holder').textContent = '端末鍵の識別子: ' + result.holder_thumbprint;
+    $('#identity-holder').textContent =
+      `${result.credential_count ?? 1}件の端末鍵の識別子: ` +
+      (result.holder_thumbprints ?? [result.holder_thumbprint]).join(', ');
     $('#identity-issuance-status').textContent =
       'ブラウザで属性とアカウントを確認し、紐付けを承認してください。';
     $('#identity-receive').hidden = false;
@@ -700,7 +707,7 @@ $('#identity-receive').addEventListener('click', async () => {
     } else if (result.state === 'received' && ['dc+sd-jwt', 'mso_mdoc'].includes(result.format)) {
       $('#identity-issuance-status').textContent =
         (result.format === 'mso_mdoc' ? 'mdoc' : 'SD-JWT') +
-        '属性証明書を受け取り、署名を確認しました。有効期限: ' +
+        `属性証明書を${result.credential_count ?? 1}件受け取り、全件の署名を確認しました。有効期限: ` +
         new Date(result.expires_at * 1000).toLocaleTimeString();
       $('#identity-receive').hidden = true;
     } else throw 'invalid_response';

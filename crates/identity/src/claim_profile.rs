@@ -55,6 +55,14 @@ impl Default for ClaimProfile {
     }
 }
 impl ClaimProfile {
+    pub fn is_age_only(&self) -> bool {
+        self.0
+            .iter()
+            .all(|c| matches!(c, Claim::AgeOver18 | Claim::AgeOver20))
+    }
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self.0).expect("claim names serialize")
+    }
     pub fn new(claims: Vec<Claim>) -> Result<Self, &'static str> {
         if claims.is_empty()
             || claims.len() > 7

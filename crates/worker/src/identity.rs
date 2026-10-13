@@ -96,6 +96,26 @@ fn claim_profile(ctx: &RouteContext<()>) -> worker::Result<ClaimProfile> {
         Err(_) => Ok(ClaimProfile::default()),
     }
 }
+fn age_batch_enabled(ctx: &RouteContext<()>) -> worker::Result<bool> {
+    Ok(!wallet::haip(ctx)
+        && ctx
+            .env
+            .var("IDENTITY_AGE_BATCH_ENABLED")
+            .is_ok_and(|v| v.to_string() == "true")
+        && claim_profile(ctx)?.is_age_only())
+}
+fn intake_holders(
+    raw: &str,
+) -> worker::Result<(Vec<PublicJwk>, Option<mikaki_identity::age_batch::Grant>)> {
+    if let Ok(key) = serde_json::from_str::<PublicJwk>(raw) {
+        key.verifying_key().map_err(|_| server_error())?;
+        return Ok((vec![key], None));
+    }
+    let batch: mikaki_identity::age_batch::Grant =
+        serde_json::from_str(raw).map_err(|_| server_error())?;
+    batch.validate().map_err(|_| server_error())?;
+    Ok((batch.holder_jwks.clone(), Some(batch)))
+}
 fn encryption_key(
     ctx: &RouteContext<()>,
 ) -> worker::Result<Option<mikaki_identity::issuance_encryption::RequestKey>> {
@@ -224,7 +244,9 @@ async fn json_body<T: serde::de::DeserializeOwned>(
 #[serde(deny_unknown_fields)]
 struct Intake {
     evidence: Evidence,
-    holder_jwk: PublicJwk,
+    holder_jwk: Option<PublicJwk>,
+    holder_jwks: Option<Vec<PublicJwk>>,
+    credential_configuration_id: Option<String>,
 }
 pub async fn intake(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     if !enabled(&ctx) {
@@ -242,9 +264,30 @@ pub async fn intake(mut req: Request, ctx: RouteContext<()>) -> worker::Result<R
     let Some(body) = json_body::<Intake>(&mut req, 48 * 1024).await? else {
         return error(400, "invalid_request");
     };
-    if body.holder_jwk.verifying_key().is_err() {
-        return error(400, "invalid_key");
-    }
+    let (holder_json, holders) = match (
+        body.holder_jwk,
+        body.holder_jwks,
+        body.credential_configuration_id,
+    ) {
+        (Some(key), None, None) if key.verifying_key().is_ok() => {
+            (serde_json::to_string(&key)?, vec![key])
+        }
+        (None, Some(keys), Some(configuration)) if age_batch_enabled(&ctx)? => {
+            if configuration == mdoc::CONFIGURATION && mdoc_certificate(&ctx)?.is_none() {
+                return error(400, "unknown_credential_configuration");
+            }
+            let grant = match mikaki_identity::age_batch::Grant::new(
+                keys,
+                configuration,
+                &claim_profile(&ctx)?,
+            ) {
+                Ok(g) => g,
+                Err(_) => return error(400, "invalid_age_batch"),
+            };
+            (serde_json::to_string(&grant)?, grant.holder_jwks)
+        }
+        _ => return error(400, "invalid_key"),
+    };
     let Ok(document) = verify(&body.evidence, &trust, now()?) else {
         return error(422, "document_verification_failed");
     };
@@ -257,7 +300,7 @@ pub async fn intake(mut req: Request, ctx: RouteContext<()>) -> worker::Result<R
         .run()
         .await?;
     let result=db.prepare("INSERT INTO identity_transaction(tx_id,poll_hash,holder_json,document_json,policy_hash,created_at,expires_at,state) SELECT ?1,?2,?3,?4,?5,unixepoch(),unixepoch()+600,'pending' WHERE (SELECT count(*) FROM identity_transaction WHERE state='pending' AND expires_at>unixepoch())<10000")
-        .bind(&[js(&tx),js(&hash(&secret)),js(&serde_json::to_string(&body.holder_jwk)?),js(&serde_json::to_string(&document)?),js(&policy_hash)])?.run().await?;
+        .bind(&[js(&tx),js(&hash(&secret)),js(&holder_json),js(&serde_json::to_string(&document)?),js(&policy_hash)])?.run().await?;
     if result.meta()?.and_then(|m| m.changes).unwrap_or(0) == 0 {
         return error(429, "slow_down");
     }
@@ -265,7 +308,7 @@ pub async fn intake(mut req: Request, ctx: RouteContext<()>) -> worker::Result<R
         .trim_end_matches("/identity/issuer")
         .to_string();
     response(
-        json!({"transaction_id":tx,"poll_secret":secret,"approval_url":format!("{root}/identity/approve?tx={tx}"),"holder_thumbprint":body.holder_jwk.thumbprint().map_err(|_|server_error())?,"expires_in":600}),
+        json!({"transaction_id":tx,"poll_secret":secret,"approval_url":format!("{root}/identity/approve?tx={tx}"),"holder_thumbprint":holders[0].thumbprint().map_err(|_|server_error())?,"holder_thumbprints":holders.iter().map(PublicJwk::thumbprint).collect::<Result<Vec<_>,_>>().map_err(|_|server_error())?,"credential_count":holders.len(),"expires_in":600}),
     )
 }
 #[derive(Deserialize)]
@@ -318,17 +361,51 @@ pub async fn approve_get(req: Request, ctx: RouteContext<()>) -> worker::Result<
         .ok_or_else(server_error)?;
     let document: VerifiedDocument =
         serde_json::from_str(&row.document_json).map_err(|_| server_error())?;
-    let holder: PublicJwk = serde_json::from_str(&row.holder_json).map_err(|_| server_error())?;
+    let (holders, batch) = intake_holders(&row.holder_json)?;
+    let issuance_notice = if let Some(batch) = &batch {
+        if !age_batch_enabled(&ctx)? || batch.claims_json != claim_profile(&ctx)?.to_json() {
+            return error(403, "document_revalidation_required");
+        }
+        let format = if batch.credential_configuration_id == mdoc::CONFIGURATION {
+            "mdoc"
+        } else {
+            "SD-JWT"
+        };
+        let profile = batch.validate().map_err(|_| server_error())?;
+        let claims = profile
+            .metadata(None)
+            .as_array()
+            .ok_or_else(server_error)?
+            .iter()
+            .filter_map(|c| c["display"][0]["name"].as_str())
+            .collect::<Vec<_>>()
+            .join("、");
+        format!(
+            "年齢専用の証明書を{}件、形式{}、属性{}で発行します。各証明書には別の端末鍵を使い、この承認で一度だけまとめて受け取れます。",
+            holders.len(),
+            format,
+            claims
+        )
+    } else {
+        "証明書を1件発行します。".into()
+    };
+    let thumbprints = holders
+        .iter()
+        .map(PublicJwk::thumbprint)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| server_error())?
+        .join(", ");
     let a = &document.attributes;
     let escape = crate::i18n::html_escape;
     let html = format!(
-        "<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>身分証の紐付け</title><main><h1>このアカウントに身分証の属性を紐付けます</h1><p>発行者の署名を検証しました。カードの現在の所持、顔の一致、現在の免許状態は確認していません。免許証は交付時の記載情報を対象とし、署名の対象外である変更記録を含めません。政府発行の証明書ではなく、Mikakiの属性証明書をこの端末の鍵に発行します。</p><p>端末に表示された鍵の識別子と一致することを確認してください。</p><dl><dt>アカウント</dt><dd>{}</dd><dt>氏名</dt><dd>{}</dd><dt>住所</dt><dd>{}</dd><dt>生年月日</dt><dd>{}</dd><dt>カード種別</dt><dd>{:?}</dd><dt>端末鍵</dt><dd>{}</dd></dl><p>本籍・写真・暗証番号・個人番号は保存しません。属性は削除するまで保存され、再発行には24時間以内の読取が必要です。今回の証明書は最長5分で失効します。</p><form method=post action=/identity/approve><input type=hidden name=tx value='{}'><input type=hidden name=csrf value='{}'><button name=decision value=approve>紐付けとこの端末への発行を許可</button><button name=decision value=link>属性のみ紐付ける</button><button name=decision value=deny>拒否</button></form></main></html>",
+        "<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>身分証の紐付け</title><main><h1>このアカウントに身分証の属性を紐付けます</h1><p>発行者の署名を検証しました。カードの現在の所持、顔の一致、現在の免許状態は確認していません。免許証は交付時の記載情報を対象とし、署名の対象外である変更記録を含めません。政府発行の証明書ではなく、Mikakiの属性証明書をこの端末の鍵に発行します。</p><p>端末に表示された鍵の識別子と一致することを確認してください。</p><dl><dt>アカウント</dt><dd>{}</dd><dt>氏名</dt><dd>{}</dd><dt>住所</dt><dd>{}</dd><dt>生年月日</dt><dd>{}</dd><dt>カード種別</dt><dd>{:?}</dd><dt>端末鍵</dt><dd>{}</dd></dl><p>本籍・写真・暗証番号・個人番号は保存しません。属性は削除するまで保存され、再発行には24時間以内の読取が必要です。今回の証明書は最長5分で失効します。</p><p>{}</p><form method=post action=/identity/approve><input type=hidden name=tx value='{}'><input type=hidden name=csrf value='{}'><button name=decision value=approve>紐付けとこの端末への発行を許可</button><button name=decision value=link>属性のみ紐付ける</button><button name=decision value=deny>拒否</button></form></main></html>",
         escape(&owner.account_id),
         escape(&a.name),
         escape(&a.address),
         escape(&a.birth_date),
         a.document_type,
-        escape(&holder.thumbprint().map_err(|_| server_error())?),
+        escape(&thumbprints),
+        escape(&issuance_notice),
         tx,
         csrf
     );
@@ -399,8 +476,24 @@ pub async fn approve_post(mut req: Request, ctx: RouteContext<()>) -> worker::Re
     let Ok((_, policy_hash)) = policy(&ctx) else {
         return error(503, "issuer_unavailable");
     };
-    let r=db.prepare("UPDATE identity_transaction SET state=?1,csrf_hash=NULL,poll_hash=CASE WHEN ?7='link' THEN tx_id ELSE poll_hash END WHERE tx_id=?2 AND csrf_hash=?3 AND session_hash=?4 AND account_id=?5 AND state='pending' AND expires_at>unixepoch() AND policy_hash=?6")
-        .bind(&[js(state),js(&body.tx),js(&hash(&body.csrf)),js(&owner.secret_hash),js(&owner.account_id),js(&policy_hash),js(&body.decision)])?.run().await?;
+    let Some(snapshot) = db
+        .prepare("SELECT holder_json FROM identity_transaction WHERE tx_id=?1")
+        .bind(&[js(&body.tx)])?
+        .first::<Value>(None)
+        .await?
+    else {
+        return error(409, "transaction_unavailable");
+    };
+    let holder_json = snapshot["holder_json"].as_str().ok_or_else(server_error)?;
+    let (_, batch) = intake_holders(holder_json)?;
+    if batch.as_ref().is_some_and(|b| {
+        b.claims_json != claim_profile(&ctx).map(|p| p.to_json()).unwrap_or_default()
+    }) || (batch.is_some() && !age_batch_enabled(&ctx)?)
+    {
+        return error(403, "document_revalidation_required");
+    }
+    let r=db.prepare("UPDATE identity_transaction SET state=?1,csrf_hash=NULL,poll_hash=CASE WHEN ?7='link' THEN tx_id ELSE poll_hash END WHERE tx_id=?2 AND csrf_hash=?3 AND session_hash=?4 AND account_id=?5 AND state='pending' AND expires_at>unixepoch() AND policy_hash=?6 AND holder_json=?8")
+        .bind(&[js(state),js(&body.tx),js(&hash(&body.csrf)),js(&owner.secret_hash),js(&owner.account_id),js(&policy_hash),js(&body.decision),js(holder_json)])?.run().await?;
     if r.meta()?.and_then(|m| m.changes).unwrap_or(0) == 0 {
         return error(409, "transaction_unavailable");
     }
@@ -514,6 +607,10 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
         }
         Ok(None) => {}
         Err(_) => return error(503, "issuer_unavailable"),
+    }
+    if age_batch_enabled(&ctx)? {
+        metadata["mikaki_age_batch_intake"] =
+            json!({"batch_size":mikaki_identity::age_batch::MAX_SIZE});
     }
     response(metadata)
 }
@@ -738,12 +835,18 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     if !matches!(configuration, issuance::CONFIGURATION | mdoc::CONFIGURATION) {
         return error(400, "unknown_credential_configuration");
     }
-    let (proof, attestation_proof) = match body.proofs.as_ref() {
-        Some(CredentialProofs::Jwt(proofs)) if proofs.jwt.len() == 1 => (&proofs.jwt[0], false),
+    let (proofs, attestation_proof) = match body.proofs.as_ref() {
+        Some(CredentialProofs::Jwt(proofs))
+            if proofs.jwt.len() == 1
+                || (age_batch_enabled(&ctx)?
+                    && (2..=mikaki_identity::age_batch::MAX_SIZE).contains(&proofs.jwt.len())) =>
+        {
+            (&proofs.jwt, false)
+        }
         Some(CredentialProofs::Attestation(proofs))
             if proofs.attestation.len() == 1 && wallet::haip(&ctx) =>
         {
-            (&proofs.attestation[0], true)
+            (&proofs.attestation, true)
         }
         _ => return error(400, "invalid_proof"),
     };
@@ -774,6 +877,24 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     } else if dpop {
         return error(401, "invalid_token");
     }
+    let (intake_keys, batch) = if row.document_id.is_none() {
+        intake_holders(&row.holder_json)?
+    } else {
+        (Vec::new(), None)
+    };
+    if let Some(batch) = &batch {
+        if !age_batch_enabled(&ctx)?
+            || batch.credential_configuration_id != configuration
+            || batch.claims_json != claim_profile(&ctx)?.to_json()
+            || proofs.len() != intake_keys.len()
+            || attestation_proof
+        {
+            return error(400, "invalid_age_batch");
+        }
+    } else if proofs.len() != 1 {
+        return error(400, "invalid_proof");
+    }
+    let proof = &proofs[0];
     let iss = issuer(&ctx)?;
     let expected_format = if configuration == mdoc::CONFIGURATION {
         "mso_mdoc"
@@ -825,10 +946,7 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         if attestation_proof {
             return error(400, "invalid_proof");
         }
-        (
-            serde_json::from_str(&row.holder_json).map_err(|_| server_error())?,
-            None,
-        )
+        (intake_keys[0].clone(), None)
     };
     let document: VerifiedDocument =
         serde_json::from_str(&row.document_json).map_err(|_| server_error())?;
@@ -898,8 +1016,15 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     } else {
         validity
     };
+    let holders = if batch.is_some() {
+        intake_keys
+    } else {
+        vec![holder.clone()]
+    };
     if attestation_deadline.is_none()
-        && issuance::verify_proof(proof, &holder, &iss, &nonce, time).is_err()
+        && proofs.iter().zip(&holders).any(|(proof, holder)| {
+            issuance::verify_proof(proof, holder, &iss, &nonce, time).is_err()
+        })
     {
         return error(400, "invalid_proof");
     }
@@ -915,33 +1040,39 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     if count == 0 {
         return error(403, "document_revalidation_required");
     }
-    let mut salts = vec![[0; 16]; count];
-    for salt in &mut salts {
-        WorkersCryptoRandom.fill(salt).map_err(|_| server_error())?;
-    }
-    let credential = Zeroizing::new(
-        match certificate {
-            Some(cert) => mdoc::issue_with_profile(
-                &key, &cert, &holder, &document, validity, &salts, &profile,
-            ),
-            None if signing_trust.is_some() => issuance::issue_with_certificate_trust_and_profile(
-                &key,
-                &kid,
-                &iss,
-                &holder,
-                &document,
-                validity,
-                &salts,
-                signing_trust.as_ref().unwrap(),
-                &profile,
-            ),
-            None => issuance::issue_with_profile(
-                &key, &kid, &iss, &holder, &document, validity, &salts, &profile,
-            ),
+    let mut credentials = Vec::with_capacity(holders.len());
+    for holder in &holders {
+        let mut salts = vec![[0; 16]; count];
+        for salt in &mut salts {
+            WorkersCryptoRandom.fill(salt).map_err(|_| server_error())?;
         }
-        .map_err(|_| server_error())?,
-    );
-    let payload = json!({"credentials":[{"credential":&*credential}]});
+        let credential = Zeroizing::new(
+            match certificate.as_deref() {
+                Some(cert) => mdoc::issue_with_profile(
+                    &key, cert, holder, &document, validity, &salts, &profile,
+                ),
+                None if signing_trust.is_some() => {
+                    issuance::issue_with_certificate_trust_and_profile(
+                        &key,
+                        &kid,
+                        &iss,
+                        holder,
+                        &document,
+                        validity,
+                        &salts,
+                        signing_trust.as_ref().unwrap(),
+                        &profile,
+                    )
+                }
+                None => issuance::issue_with_profile(
+                    &key, &kid, &iss, holder, &document, validity, &salts, &profile,
+                ),
+            }
+            .map_err(|_| server_error())?,
+        );
+        credentials.push(json!({"credential":&*credential}));
+    }
+    let payload = json!({"credentials":credentials});
     // Prepare authenticated ciphertext before committing nonce/budget consumption.
     let encrypted_response = if let Some(parameters) = response_encryption {
         let plain = Zeroizing::new(serde_json::to_vec(&payload)?);
@@ -969,8 +1100,8 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     let committed = if row.document_id.is_some() {
         wallet::commit(&ctx, &row, &access, &nonce, &holder, validity.expires_at()).await?
     } else {
-        let result=db.prepare("UPDATE identity_transaction SET state='issued',proof_nonce_hash=?1,access_hash=NULL WHERE tx_id=?2 AND access_hash=?3 AND state='token' AND token_expires_at>unixepoch() AND policy_hash=?4 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=?2 AND d.revoked=0 AND d.valid_until>=?5 AND unixepoch()<?5 AND a.active=1 AND a.epoch=d.epoch)")
-        .bind(&[js(&hash(&nonce)),js(&row.tx_id),js(&hash(&access)),js(&policy_hash),JsValue::from_f64(validity.expires_at() as f64)])?.run().await;
+        let result=db.prepare("UPDATE identity_transaction SET state='issued',proof_nonce_hash=?1,access_hash=NULL WHERE tx_id=?2 AND access_hash=?3 AND state='token' AND token_expires_at>unixepoch() AND policy_hash=?4 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=?2 AND d.revoked=0 AND d.valid_until>=?5 AND unixepoch()<?5 AND a.active=1 AND a.epoch=d.epoch) AND holder_json=?6")
+        .bind(&[js(&hash(&nonce)),js(&row.tx_id),js(&hash(&access)),js(&policy_hash),JsValue::from_f64(validity.expires_at() as f64),js(&row.holder_json)])?.run().await;
         matches!(result,Ok(r) if r.meta().ok().flatten().and_then(|m|m.changes).unwrap_or(0)>0)
     };
     if !committed {
