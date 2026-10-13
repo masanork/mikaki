@@ -109,12 +109,9 @@ test('owner source review uses authenticated native records and actual Git file 
       async () => {
         await fresh();
         await expect(
-          page.getByText(
-            '3 ファイル · 2 コミット',
-            {
-              exact: true,
-            },
-          ),
+          page.getByText('3 ファイル · 2 コミット', {
+            exact: true,
+          }),
         ).toBeVisible();
         await expect(page.getByText('FOREIGN_ONLY', { exact: true })).toHaveCount(0);
         await expect(preview()).toBeDisabled();
