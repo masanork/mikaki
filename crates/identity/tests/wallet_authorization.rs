@@ -319,6 +319,7 @@ fn pending_holder_binds_once_only_after_token_and_before_expiry() {
 #[test]
 fn explicit_age_pool_advances_only_after_a_validated_receipt_and_closes_at_its_budget() {
     let budget = mikaki_identity::age_pool::Budget {
+        mode: mikaki_identity::age_pool::Mode::Sequential,
         size: 8,
         claims_json: mikaki_identity::claim_profile::ClaimProfile::age_only().to_json(),
     };
@@ -371,4 +372,100 @@ fn explicit_age_pool_advances_only_after_a_validated_receipt_and_closes_at_its_b
         .finish_receipt(&key(8).public().unwrap(), NOW + 2)
         .unwrap();
     assert!(single.authorization_header(NOW + 2).is_err());
+}
+
+#[test]
+fn wire_batch_stages_distinct_attested_keys_under_one_nonce_and_expires_as_a_unit() {
+    use mikaki_identity::age_pool::{Budget, Mode};
+    let trust = Trust {
+        trust_anchors: vec![cert("root")],
+        key_storage: None,
+        user_authentication: None,
+    };
+    let mut a = Authorization::new_pending_holder(
+        ISSUER,
+        "wallet",
+        CALLBACK,
+        "linked_document",
+        [1; 32],
+        [2; 32],
+        key(6).public().unwrap(),
+        key(7).public().unwrap(),
+        NOW,
+    )
+    .unwrap();
+    a.request_age_pool(
+        Budget {
+            size: 8,
+            claims_json: mikaki_identity::claim_profile::ClaimProfile::age_only().to_json(),
+            mode: Mode::Batch,
+        },
+        NOW,
+    )
+    .unwrap();
+    assert!(
+        a.par_parameters(NOW).unwrap()["mikaki_age_pool"]
+            .as_str()
+            .unwrap()
+            .contains("batch")
+    );
+    pushed(&mut a);
+    a.accept_callback(&callback(), NOW).unwrap();
+    a.accept_token(token(), NOW).unwrap();
+    let nonce = B64.encode([11; 32]);
+    let mut holders = Vec::new();
+    for seed in 10..18 {
+        let signer = key(seed);
+        let holder = signer.public().unwrap();
+        a.bind_holder(holder.clone(), NOW).unwrap();
+        let attest = |nonce: &str| {
+            issuance::sign_jwt(
+                &key(5).0,
+                chain("key-attestation+jwt"),
+                json!({"iat":NOW,"exp":NOW+60,"nonce":nonce,"attested_keys":[holder]}),
+            )
+            .unwrap()
+        };
+        assert!(a.finish_receipt(&holder, NOW).is_err());
+        if seed > 10 {
+            assert!(
+                a.stage_credential_proof("wrong", &attest("wrong"), &trust, &signer, NOW)
+                    .is_err()
+            );
+        }
+        a.stage_credential_proof(&nonce, &attest(&nonce), &trust, &signer, NOW)
+            .unwrap();
+        assert!(a.bind_holder(holder.clone(), NOW).is_err());
+        holders.push(holder);
+        if seed < 17 {
+            assert!(a.batch_credential_request(NOW).is_err());
+        }
+    }
+    assert!(a.bind_holder(key(20).public().unwrap(), NOW).is_err());
+    let payload = a.batch_credential_request(NOW).unwrap();
+    let proofs = payload["proofs"]["jwt"].as_array().unwrap();
+    assert_eq!(proofs.len(), 8);
+    for (proof, holder) in proofs.iter().zip(&holders) {
+        assert_eq!(
+            issuance::verify_attested_wallet_proof(
+                proof.as_str().unwrap(),
+                ISSUER,
+                &nonce,
+                "wallet",
+                &trust,
+                NOW
+            )
+            .unwrap()
+            .0,
+            *holder
+        );
+    }
+    assert!(a.finish_batch(&holders[..7], NOW).is_err());
+    let mut reversed = holders.clone();
+    reversed.reverse();
+    assert!(a.finish_batch(&reversed, NOW).is_err());
+    assert!(a.batch_credential_request(NOW + 60).is_err());
+    a.finish_batch(&holders, NOW + 1).unwrap();
+    assert!(a.authorization_header(NOW + 1).is_err());
+    assert!(a.batch_credential_request(NOW + 1).is_err());
 }

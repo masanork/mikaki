@@ -618,6 +618,10 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     }
     if wallet::age_pool_enabled(&ctx)? {
         metadata["mikaki_age_pool"] = json!({"max_size":mikaki_identity::age_batch::MAX_SIZE});
+        if wallet::age_batch_enabled(&ctx)? {
+            metadata["mikaki_age_batch"] =
+                json!({"batch_size":mikaki_identity::age_batch::MAX_SIZE});
+        }
     }
     response(metadata)
 }
@@ -795,17 +799,36 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
             .next()
             .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/jwt"))
     });
+    use mikaki_identity::issuance_encryption as envelope;
+    let allow_batch = wallet::age_batch_enabled(&ctx)?;
+    let mut large_request = false;
     let body = if encrypted_request {
         let Some(key) = encryption_key(&ctx)? else {
             return error(400, "invalid_encryption_parameters");
         };
-        let compact = Zeroizing::new(read_bounded_body(&mut req, 32768).await?);
-        let Ok(plain) = mikaki_identity::issuance_encryption::decrypt_request(&compact, &key)
-        else {
+        let compact = Zeroizing::new(
+            read_bounded_body(
+                &mut req,
+                if allow_batch {
+                    envelope::BATCH_REQUEST_WIRE_LIMIT
+                } else {
+                    32768
+                },
+            )
+            .await?,
+        );
+        let plain = if allow_batch {
+            envelope::decrypt_batch_request(&compact, &key)
+        } else {
+            envelope::decrypt_request(&compact, &key)
+        };
+        let Ok(plain) = plain else {
             return error(400, "invalid_encryption_parameters");
         };
+        large_request = compact.len() > 32768 || plain.len() > 20480;
         serde_json::from_slice::<CredentialRequest>(&plain).ok()
     } else {
+        // Multi-proof HAIP uses encrypted requests; preserve the plaintext limit.
         json_body::<CredentialRequest>(&mut req, 20 * 1024).await?
     };
     let Some(body) = body else {
@@ -845,13 +868,17 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     let (proofs, attestation_proof) = match body.proofs.as_ref() {
         Some(CredentialProofs::Jwt(proofs))
             if proofs.jwt.len() == 1
-                || (age_batch_enabled(&ctx)?
+                || ((age_batch_enabled(&ctx)? || allow_batch)
                     && (2..=mikaki_identity::age_batch::MAX_SIZE).contains(&proofs.jwt.len())) =>
         {
             (&proofs.jwt, false)
         }
         Some(CredentialProofs::Attestation(proofs))
-            if proofs.attestation.len() == 1 && wallet::haip(&ctx) =>
+            if wallet::haip(&ctx)
+                && (proofs.attestation.len() == 1
+                    || (allow_batch
+                        && (2..=mikaki_identity::age_batch::MAX_SIZE)
+                            .contains(&proofs.attestation.len()))) =>
         {
             (&proofs.attestation, true)
         }
@@ -889,6 +916,25 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     } else {
         (Vec::new(), None)
     };
+    let pool = match wallet::pool_state(&ctx, &row) {
+        Ok(state) => state,
+        Err(_) => return error(403, "document_revalidation_required"),
+    };
+    let wire_batch = pool
+        .as_ref()
+        .is_some_and(|s| s.budget.mode == mikaki_identity::age_pool::Mode::Batch);
+    if wire_batch {
+        let state = pool.as_ref().unwrap();
+        if !encrypted_request
+            || response_encryption.is_none()
+            || proofs.len() != state.budget.size
+            || state.validate(0).is_err()
+        {
+            return error(400, "invalid_age_batch");
+        }
+    } else if large_request {
+        return error(400, "invalid_credential_request");
+    }
     if let Some(batch) = &batch {
         if !age_batch_enabled(&ctx)?
             || batch.credential_configuration_id != configuration
@@ -898,7 +944,7 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         {
             return error(400, "invalid_age_batch");
         }
-    } else if proofs.len() != 1 {
+    } else if !wire_batch && proofs.len() != 1 {
         return error(400, "invalid_proof");
     }
     let proof = &proofs[0];
@@ -925,42 +971,60 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     let Ok(nonce) = issuance::proof_nonce(proof) else {
         return error(400, "invalid_proof");
     };
-    let (holder, attestation_deadline): (PublicJwk, Option<u64>) = if let Some(client) =
-        row.client_id.as_deref()
-    {
-        if wallet::haip(&ctx) {
-            let (policy, _) = wallet::key_attestation_policy(&ctx)?;
-            let verified = if attestation_proof {
-                mikaki_identity::key_attestation::verify(proof, &nonce, &policy, false, now()?)
-                    .map(|v| (v.holder, v.expires_at))
+    let mut holders = Vec::with_capacity(proofs.len());
+    let mut attestation_deadline = None;
+    if let Some(client) = row.client_id.as_deref() {
+        let key_policy = if wallet::haip(&ctx) {
+            Some(wallet::key_attestation_policy(&ctx)?.0)
+        } else {
+            None
+        };
+        for proof in proofs {
+            if issuance::proof_nonce(proof).ok().as_deref() != Some(&nonce) {
+                return error(400, "invalid_nonce");
+            }
+            let verified = if let Some(policy) = &key_policy {
+                if attestation_proof {
+                    mikaki_identity::key_attestation::verify(proof, &nonce, policy, false, now()?)
+                        .map(|v| (v.holder, Some(v.expires_at)))
+                } else {
+                    issuance::verify_attested_wallet_proof(
+                        proof,
+                        &iss,
+                        &nonce,
+                        client,
+                        policy,
+                        now()?,
+                    )
+                    .map(|(h, e)| (h, Some(e)))
+                }
             } else {
-                issuance::verify_attested_wallet_proof(proof, &iss, &nonce, client, &policy, now()?)
+                issuance::verify_wallet_proof(proof, &iss, &nonce, client, now()?)
+                    .map(|h| (h, None))
             };
             let (holder, expiry) = match verified {
                 Ok(value) => value,
                 Err("invalid_nonce") => return error(400, "invalid_nonce"),
                 Err(_) => return error(400, "invalid_proof"),
             };
-            (holder, Some(expiry))
-        } else {
-            let Ok(holder) = issuance::verify_wallet_proof(proof, &iss, &nonce, client, now()?)
-            else {
-                return error(400, "invalid_proof");
-            };
-            (holder, None)
+            if let Some(expiry) = expiry {
+                attestation_deadline = Some(attestation_deadline.unwrap_or(u64::MAX).min(expiry));
+            }
+            match wallet::fresh_pool_holder(&ctx, &row, &holder) {
+                Ok(false) => return error(400, "invalid_proof"),
+                Err(_) => return error(403, "document_revalidation_required"),
+                Ok(true) => {}
+            }
+            holders.push(holder);
         }
     } else {
         if attestation_proof {
             return error(400, "invalid_proof");
         }
-        (intake_keys[0].clone(), None)
-    };
-    if row.document_id.is_some() {
-        match wallet::fresh_pool_holder(&ctx, &row, &holder) {
-            Ok(false) => return error(400, "invalid_proof"),
-            Err(_) => return error(403, "document_revalidation_required"),
-            Ok(true) => {}
-        }
+        holders = intake_keys;
+    }
+    if wire_batch && pool.as_ref().unwrap().batch(&holders).is_err() {
+        return error(400, "invalid_proof");
     }
     let document: VerifiedDocument =
         serde_json::from_str(&row.document_json).map_err(|_| server_error())?;
@@ -1030,11 +1094,6 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     } else {
         validity
     };
-    let holders = if batch.is_some() {
-        intake_keys
-    } else {
-        vec![holder.clone()]
-    };
     if attestation_deadline.is_none()
         && proofs.iter().zip(&holders).any(|(proof, holder)| {
             issuance::verify_proof(proof, holder, &iss, &nonce, time).is_err()
@@ -1087,9 +1146,12 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         credentials.push(json!({"credential":&*credential}));
     }
     let payload = json!({"credentials":credentials});
+    let plain = Zeroizing::new(serde_json::to_vec(&payload)?);
+    if wire_batch && plain.len() > envelope::BATCH_RESPONSE_PLAIN_LIMIT {
+        return error(400, "invalid_age_batch");
+    }
     // Prepare authenticated ciphertext before committing nonce/budget consumption.
     let encrypted_response = if let Some(parameters) = response_encryption {
-        let plain = Zeroizing::new(serde_json::to_vec(&payload)?);
         let mut entropy = Zeroizing::new([0u8; 32]);
         let mut iv = [0u8; 12];
         WorkersCryptoRandom
@@ -1099,12 +1161,11 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
             .fill(&mut iv)
             .map_err(|_| server_error())?;
         Some(
-            mikaki_identity::issuance_encryption::encrypt_response(
-                &plain,
-                &parameters,
-                *entropy,
-                iv,
-            )
+            (if wire_batch {
+                envelope::encrypt_batch_response
+            } else {
+                envelope::encrypt_response
+            })(&plain, &parameters, *entropy, iv)
             .map_err(|_| server_error())?,
         )
     } else {
@@ -1112,7 +1173,7 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
     };
     // D1 triggers check the live account/document and consume nonce in the SAME atomic statement.
     let committed = if row.document_id.is_some() {
-        wallet::commit(&ctx, &row, &access, &nonce, &holder, validity.expires_at()).await?
+        wallet::commit(&ctx, &row, &access, &nonce, &holders, validity.expires_at()).await?
     } else {
         let result=db.prepare("UPDATE identity_transaction SET state='issued',proof_nonce_hash=?1,access_hash=NULL WHERE tx_id=?2 AND access_hash=?3 AND state='token' AND token_expires_at>unixepoch() AND policy_hash=?4 AND EXISTS(SELECT 1 FROM identity_nonce n WHERE n.nonce_hash=?1 AND n.used=0 AND n.expires_at>unixepoch()) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=?2 AND d.revoked=0 AND d.valid_until>=?5 AND unixepoch()<?5 AND a.active=1 AND a.epoch=d.epoch) AND holder_json=?6")
         .bind(&[js(&hash(&nonce)),js(&row.tx_id),js(&hash(&access)),js(&policy_hash),JsValue::from_f64(validity.expires_at() as f64),js(&row.holder_json)])?.run().await;

@@ -140,6 +140,7 @@ pub(super) struct Context {
     pub issuer_key: PublicJwk,
     pub issuer_kid: String,
     pub age_pool_claims: Option<String>,
+    pub age_batch: bool,
 }
 fn validate_metadata(metadata: &Value, oauth: &Value, configuration: &str) -> Result<(), String> {
     mikaki_identity::wallet_profile::validate_metadata(metadata, oauth, configuration)
@@ -189,11 +190,20 @@ pub(super) async fn metadata(guard: &Gate, configuration: &str) -> Result<Contex
     } else {
         None
     };
+    let age_batch = metadata.get("mikaki_age_batch").is_some();
+    if age_batch
+        && (age_pool_claims.is_none()
+            || metadata["mikaki_age_batch"]["batch_size"].as_u64()
+                != Some(mikaki_identity::age_batch::MAX_SIZE as u64))
+    {
+        return Err("invalid_metadata".into());
+    }
     Ok(Context {
         encryption,
         issuer_key: key,
         issuer_kid: kid,
         age_pool_claims,
+        age_batch,
     })
 }
 pub(super) async fn credential_nonce(guard: &Gate) -> Result<String, String> {
@@ -224,17 +234,32 @@ where
     Fut: Future<Output = Result<Response, String>>,
 {
     let mut current = None;
+    let batch = session.protocol.is_batch();
+    let wire_limit = if batch {
+        mikaki_identity::issuance_encryption::BATCH_RESPONSE_WIRE_LIMIT
+    } else {
+        98304
+    };
     for attempt in 0..2 {
         live(guard)?;
+        let payload = if batch {
+            session.protocol.batch_credential_request(now()?)?
+        } else {
+            payload.clone()
+        };
         let mut entropy = Zeroizing::new([0; 32]);
         let mut iv = [0; 12];
         UnwrapErr(SysRng).fill_bytes(&mut *entropy);
         UnwrapErr(SysRng).fill_bytes(&mut iv);
         let wire = Zeroizing::new(
-            context
-                .encryption
-                .prepare_request(payload.clone(), *entropy, iv)
-                .map_err(str::to_string)?,
+            (if batch {
+                context
+                    .encryption
+                    .prepare_batch_request(payload, *entropy, iv)
+            } else {
+                context.encryption.prepare_request(payload, *entropy, iv)
+            })
+            .map_err(str::to_string)?,
         );
         let r = send(
             client()?
@@ -257,12 +282,12 @@ where
                 .and_then(|h| h.to_str().ok())
                 .ok_or("invalid_response")?
                 .to_owned();
-            if r.content_length().is_some_and(|n| n > 98304) {
+            if r.content_length().is_some_and(|n| n > wire_limit as u64) {
                 return Err("invalid_response".into());
             }
             let mut bytes = Zeroizing::new(Vec::new());
             while let Some(chunk) = r.chunk().await.map_err(|_| "network_error")? {
-                if bytes.len() + chunk.len() > 98304 {
+                if bytes.len() + chunk.len() > wire_limit {
                     return Err("invalid_response".into());
                 }
                 bytes.extend_from_slice(&chunk);
@@ -277,10 +302,12 @@ where
                 return Err("invalid_response".into());
             }
             let compact = std::str::from_utf8(&bytes).map_err(|_| "invalid_response")?;
-            let plain = context
-                .encryption
-                .decrypt_response(compact)
-                .map_err(|_| "invalid_response")?;
+            let plain = (if batch {
+                context.encryption.decrypt_batch_response(compact)
+            } else {
+                context.encryption.decrypt_response(compact)
+            })
+            .map_err(|_| "invalid_response")?;
             let value = strict(&plain)?;
             live(guard)?;
             return Ok(value);
