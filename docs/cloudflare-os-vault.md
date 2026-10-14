@@ -85,15 +85,14 @@ Hosted origins, real Passkey devices, popup policy and independent-session
 behavior still require deployed qualification. This slice does not close #115
 or the live messaging gates.
 
-The workspace review and validator produce a served Vault script of 337,908
-raw bytes / 96,830 bytes under local level-9 gzip, versus 324,568/93,385 for
-the text-copy slice. Its budget moves from 327,680/94,208 to 344,064/98,304
-bytes for this concrete feature. After merging the Passkey login/Vault handoff
-from main on 2026-10-15, the combined Vault script measures **342,007 raw /
-97,871 gzip-estimate bytes**, within those existing snapshot ceilings. Login
-retains main's separately reviewed **104,448 raw / 32,768 gzip** ceilings; no
-further limits are raised for this merge. These are build-size measurements,
-not network timing.
+After merging the Passkey login/Vault handoff from main on 2026-10-15, the
+combined Vault script measures **342,007 raw bytes**. Its local level-9 gzip
+estimate is **97,871 bytes** on macOS / Node 26.11.1 and **98,339 bytes** in
+Ubuntu / Node 26.10.0 CI. The gzip ceiling is **99,328 bytes (97 KiB)**, raised
+by 1 KiB to cover the CI measurement; its **344,064-byte raw ceiling** stays
+unchanged. Login retains main's separately reviewed **104,448 raw / 32,768
+gzip** ceilings. See the [budget measurements](worker-budgets.md) for CI
+evidence. These are build-size estimates, not network timing.
 
 ## Workspace snapshots: local implementation
 

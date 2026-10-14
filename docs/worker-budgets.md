@@ -57,3 +57,16 @@ the Vault gzip ceiling increases by 1 KiB to **91 KiB**. Login gzip, Vault raw a
 all other resource ceilings remain unchanged. The freshly built OP and Claim
 Workers pass the complete budget gate. These local gzip estimates do not measure
 wire compression or device performance.
+
+## Workspace snapshots and Passkey handoff in CI, 2026-10-15
+
+The combined Vault script serves **342,007 raw bytes**. Level-9 gzip on the
+local macOS / Node 26.11.1 build measured **97,871 bytes**; the
+[Ubuntu / Node 26.10.0 Worker contracts job](https://github.com/masanork/mikaki/actions/runs/38645584100/job/116131487988)
+measured **98,339 bytes**, exceeding the 96 KiB ceiling by 35 bytes before any
+contract tests ran. Both builds have the same Vault SHA-256; the compression
+estimate differs between environments. The gzip ceiling increases by one KiB to **97 KiB
+(99,328 bytes)** using that CI measurement. The **336 KiB (344,064-byte) raw
+ceiling** and every other resource ceiling stay unchanged. The budget gate
+continues to check both encodings on CI and release builds; these gzip values
+are local compression estimates, not measured wire sizes.
