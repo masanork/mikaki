@@ -47,6 +47,7 @@ pub(super) async fn readiness(ctx: &RouteContext<()>) -> worker::Result<()> {
     }
     wallet::validate_haip(ctx)?;
     credential_trust(ctx, mikaki_identity::credential_certificate::Purpose::SdJwt)?;
+    mdoc_certificate(ctx)?;
     trust_policy(&ctx.env)?;
     let clients: Vec<Client> =
         serde_json::from_str(&ctx.env.var("IDENTITY_ATTESTER_CLIENTS")?.to_string())
