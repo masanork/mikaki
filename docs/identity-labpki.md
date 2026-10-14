@@ -112,3 +112,44 @@ Issuer thumbprint remained `aI1NQnj1WPnTUqYPXyQDj6ASntF1C8DMzfO-12bE7y4`.
 Private roots, secret files and generated public bundles are local ignored files.
 No Cloud Run/Worker deployment, CI secret provisioning, Android hardware
 attestation or HAIP runtime activation was performed by this checkpoint.
+
+## Server provisioning checkpoint — 2026-10-15
+
+The follow-up deployment uses Cloud Run project `ocspd-poc-masanork`, region
+`asia-northeast1`, service `mikaki-android-verifier`. The first qualified image is
+`sha256:99446ad01e76588e519b5cced1723020e329d55440d04700a2e012f7dc110455`,
+built from verifier source `15edd6b5ee4cccaf68e22a79f3f832e0e6b332e7`.
+The runtime service account can read only the dedicated verifier token secret;
+the container has no CA/Issuer/Attester private keys. Cloud Run IAM invocation
+checking is disabled for this shared-token transport; the JVM authenticates both
+`POST /verify` and `GET /readyz` before processing. Its policy is embedded in the
+immutable image; changes require recomputing and registering the policy hash.
+
+The selected app is `app.tossa.mikaki`, version code at least 1000, with signing
+certificate SHA-256
+`fc5138fe5c6e0555ad085e4d68daf9dbf67693631e72c941a17d17800deb0066`.
+Initial device thresholds follow the existing example: Android 14, September 2026
+OS/vendor/boot patches, TEE and locked Verified Boot. They are an operator test
+policy pending physical-device confirmation, not a hardware qualification result.
+The resulting verifier policy identifier is
+`q3js6eUGLqFvJvrrdkWs8pzbeH0vUMSo0EzCGSh6GBo`.
+
+The bridge production config pins the HTTPS `/verify` destination and policy/client
+identity. Its authenticated `/readyz` transport independently checks the JVM's
+current Google-status deadline. Platform logs/traces are enabled with query
+redaction and invocation logs disabled; application errors contain only a fixed
+availability event, never tokens, evidence, JWTs or account details.
+
+The OP adds a separate, ready-token-protected `/identity/ready` endpoint. It checks
+the source-selected certificate/key custody and the actual verifier dependency,
+returning 204 when available and 503 when policy, trust or status does not match.
+The base OP `/ready` remains independent. Main CI validates the public LabPKI
+bundle with the actual Rust validators and permits only the exact selected HAIP
+variables, secrets and service binding before promotion. Production smoke checks
+authorization-code-only metadata, PAR, client/key attestation, DPoP, encryption,
+age-only claims, dedicated public signing key and this protected readiness.
+
+Private receipts and the signed release APK are retained in ignored local output;
+their existence does not establish physical-device issuance. CRL snapshots still
+need reimport before their seven-day freshness deadline, and the previously
+approved card trust still expires at its original operator-selected deadline.

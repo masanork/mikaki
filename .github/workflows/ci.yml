@@ -412,6 +412,8 @@ jobs:
           git -C "$RUNNER_TEMP/android-keyattestation" checkout --detach "$revision"
       - name: JVM verifier unit tests and distribution
         run: services/android-attestation-verifier/gradlew --no-daemon -p services/android-attestation-verifier test installDist integrationClasspath
+      - name: Validate the source-bound LabPKI certificate and Wallet trust profile
+        run: cargo run -p mikaki-identity --locked --example check_haip_pki -- crates/worker/config/identity-haip-labpki.public.json
       - run: npm ci
       - name: Build broker and test the actual bridge/JVM chain
         run: |

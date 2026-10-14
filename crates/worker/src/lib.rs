@@ -2395,6 +2395,7 @@ pub async fn main(
         .post_async("/token", token_route)
         .post_async("/par", par::route)
         .get_async("/identity", identity::manage_get)
+        .get_async("/identity/ready", identity::ready)
         .post_async("/identity/erase", identity::manage_post)
         .post_async("/identity/intake", identity::intake)
         .get_async("/identity/approve", identity::approve_get)

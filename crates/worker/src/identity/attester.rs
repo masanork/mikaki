@@ -41,6 +41,49 @@ fn enabled(ctx: &RouteContext<()>) -> bool {
             .var("IDENTITY_ATTESTER_ENABLED")
             .is_ok_and(|v| v.to_string() == "true")
 }
+pub(super) async fn readiness(ctx: &RouteContext<()>) -> worker::Result<()> {
+    if !enabled(ctx) {
+        return Err(server_error());
+    }
+    wallet::validate_haip(ctx)?;
+    credential_trust(ctx, mikaki_identity::credential_certificate::Purpose::SdJwt)?;
+    trust_policy(&ctx.env)?;
+    let clients: Vec<Client> =
+        serde_json::from_str(&ctx.env.var("IDENTITY_ATTESTER_CLIENTS")?.to_string())
+            .map_err(|_| server_error())?;
+    if clients.len() != 1 {
+        return Err(server_error());
+    }
+    policy(ctx, &clients[0].client_id)?;
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Ready {
+        format: String,
+        client_id: String,
+        verifier_policy_hash: String,
+        status_valid_until: u64,
+    }
+    let mut response = ctx
+        .env
+        .service("IDENTITY_ANDROID_VERIFIER")?
+        .fetch("https://android-verifier.internal/readyz", None)
+        .await?;
+    if response.status_code() != 200 {
+        return Err(server_error());
+    }
+    // The reviewed bridge bounds the upstream JSON to 4 KiB and strips all caller headers.
+    let ready: Ready = response.json().await?;
+    let time = now()?;
+    if ready.format != "android-key-attestation-readiness-v1"
+        || ready.client_id != clients[0].client_id
+        || ready.verifier_policy_hash != clients[0].verifier_policy_hash
+        || ready.status_valid_until <= time
+        || ready.status_valid_until > time + 3600
+    {
+        return Err(server_error());
+    }
+    Ok(())
+}
 fn policy(ctx: &RouteContext<()>, client: &str) -> worker::Result<Policy> {
     ctx.env.service("IDENTITY_ANDROID_VERIFIER")?;
     let raw = ctx.env.var("IDENTITY_ATTESTER_CLIENTS")?.to_string();

@@ -12,8 +12,28 @@ import {
 import { productionWorkPacketDigest } from './production-work-packet.ts';
 import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
 
-function preparedIdentityConfig() {
+function legacyIdentityConfig() {
   const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const allowed = new Set([
+    'IDENTITY_ENABLED',
+    'IDENTITY_ISSUANCE_CLAIMS',
+    'IDENTITY_OPERATOR_CARD_KEY_SHA256',
+    'IDENTITY_TRUST_POLICY_SHA256',
+  ]);
+  for (const name of Object.keys(config.vars))
+    if (name.startsWith('IDENTITY_') && !allowed.has(name)) delete config.vars[name];
+  delete config.vars.MIKAKI_DPOP_NONCE_MODE;
+  config.services = config.services.filter(
+    (s: { binding: string }) => !s.binding.startsWith('IDENTITY_'),
+  );
+  config.secrets.required = config.secrets.required.filter(
+    (s: string) => !['IDENTITY_ATTESTER_SIGNING', 'IDENTITY_CREDENTIAL_ENCRYPTION_JWK'].includes(s),
+  );
+  return config;
+}
+
+function preparedIdentityConfig() {
+  const config = legacyIdentityConfig();
   config.vars.IDENTITY_ENABLED = 'false';
   delete config.vars.IDENTITY_ISSUANCE_ENABLED;
   delete config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256;
@@ -321,7 +341,7 @@ test('first-party age activation requires exact live licence trust, and keeps al
 });
 
 test('operator card activation is age-only and pins exactly one explicitly selected test card key', () => {
-  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const config = legacyIdentityConfig();
   assert.equal(productionIdentityTestProfile(config), 'operator-card-age');
   assert.equal(config.vars.IDENTITY_ISSUANCE_ENABLED, undefined);
   const { n, e } = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({
@@ -420,12 +440,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
-    { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
-    { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
-    { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
-    { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
-    { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
-    { name: 'IDENTITY_TRUSTED_KEYS', type: 'secret_text' },
+    ...config.secrets.required.map((name: string) => ({ name, type: 'secret_text' })),
     {
       name: 'IDENTITY_RATE_LIMIT',
       type: 'ratelimit',
@@ -465,6 +480,9 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'WORK_CREDENTIAL_KEY_V1',
     'IDENTITY_ISSUER_JWK',
     'IDENTITY_TRUSTED_KEYS',
+    'IDENTITY_ATTESTER_SIGNING',
+    'IDENTITY_CREDENTIAL_ENCRYPTION_JWK',
+    'IDENTITY_ANDROID_VERIFIER',
     'IDENTITY_RATE_LIMIT',
     'ENROLLMENT_EMAIL',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
@@ -507,12 +525,7 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
-    { name: 'OP_PRIVATE_JWK', type: 'secret_text' },
-    { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
-    { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
-    { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
-    { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
-    { name: 'IDENTITY_TRUSTED_KEYS', type: 'secret_text' },
+    ...config.secrets.required.map((name: string) => ({ name, type: 'secret_text' })),
     {
       name: 'IDENTITY_RATE_LIMIT',
       type: 'ratelimit',

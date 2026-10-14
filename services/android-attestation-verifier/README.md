@@ -78,3 +78,31 @@ Run the built launcher with `--policy-hash` to print the public 43-character pol
 Normal launch also requires `MIKAKI_ANDROID_VERIFIER_TOKEN`, a freshly generated canonical base64url 32-byte secret, shared only with the private bridge. The service binds `127.0.0.1:8080` by default; the container binds `0.0.0.0:8080` as a non-root UID. Put it behind an operator-controlled HTTPS ingress. Configure the bridge's `ANDROID_VERIFIER_URL` to the exact `https://your-verifier/verify` endpoint and provision `ANDROID_VERIFIER_TOKEN` as a Cloudflare secret. The bridge's Workers.dev and preview URLs are disabled. Bind that Worker as `IDENTITY_ANDROID_VERIFIER` in the Issuer; no public caller URL is selected by a request. The bridge accepts only POST `/verify`, strips caller authorization/cookies/client JWTs and inserts the dedicated bearer secret. It has an eight-second upstream timeout and enforces the broker's 64 KiB input / 4 KiB response bounds. No supplied request headers are forwarded.
 
 The JVM HTTP handler requires that secret before reading a body, permits only the exact POST `/verify`, caps JSON at 64 KiB and rejects duplicate/unknown fields. Its executor has four threads and an eight-request queue; request/response time limits are five seconds. Errors are fixed JSON with no certificate, challenge or exception details, and responses use no-store. Evidence is not logged or persisted. No service, binding, token, real signing digest or identity feature has been enabled in production by this checkpoint.
+
+## Cloud Run provisioning — 2026-10-15
+
+`policy.production.json` now selects the operator's verified release APK signing
+certificate, native client and initial Android 14 / September 2026 / TEE policy.
+`cloudbuild.yaml` builds the container; its immutable image includes this public
+policy. Runtime reads `MIKAKI_ANDROID_VERIFIER_TOKEN` from a dedicated Secret Manager
+version using a service account with access only to that secret. The standalone
+service is `mikaki-android-verifier` in `ocspd-poc-masanork`, `asia-northeast1`.
+
+`GET /readyz` requires the same dedicated bearer token and returns only format,
+client, policy hash and a fresh Google-status deadline. Status download failure or
+an expired snapshot returns 503. The bridge exposes this path only through its
+private Service Binding, validating exact policy/client identity and freshness.
+No evidence is needed for readiness, and readiness is not an Android attestation.
+Its production config enables filtered platform observability with no application
+logging of tokens, evidence or account data.
+
+Cloud Run invocation IAM checking is disabled for the current shared-token
+transport; the application enforces authentication before processing either
+endpoint. An IAM-based transport would additionally need Google ID-token support
+in the bridge. CPU is one, memory 512 MiB, concurrency four, minimum instances zero
+and maximum instances one. The bridge timeout remains eight seconds; initial
+authenticated readiness including Google fetch completed within it. Recheck cold
+startup after image, runtime or policy changes.
+
+The exact OP activation and physical-device qualification boundaries are recorded
+in [the current test profile](../../docs/identity-test-deployment.md).

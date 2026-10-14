@@ -1,5 +1,39 @@
 # Identity test-deployment checkpoint
 
+## Latest selected profile — HAIP operator age experiment, 2026-10-15
+
+The canonical configuration now selects `operator-card-haip-age`: the same
+operator-confirmed card trust and `age_over_18` claim, with authenticated HAIP
+authorization-code issuance in SD-JWT and mdoc formats. The source binds the
+purpose-separated LabPKI certificate bundle, Wallet registration and exact
+Android verifier policy through `IDENTITY_HAIP_POLICY_SHA256`. Public Wallet,
+UserInfo and batch variants are not separately selected. On this Issuer, HAIP
+disables pre-authorized token exchange and Bearer credential access.
+
+The Android verifier has been deployed to the dedicated Cloud Run service
+`mikaki-android-verifier` in project `ocspd-poc-masanork`, region
+`asia-northeast1`. Its authenticated readiness confirmed live Google status and
+policy `q3js6eUGLqFvJvrrdkWs8pzbeH0vUMSo0EzCGSh6GBo`; unauthenticated requests
+returned 401. The private bridge `mikaki-android-attestation-verifier` has
+Workers.dev and preview URLs disabled and holds only its dedicated verifier
+token. It reads no Issuer/Attester private signing key or account database.
+
+Ordinary main CI must still verify and promote the selected OP source; local
+configuration and dependent-service deployment alone do not establish OP
+activation. The production smoke workflow checks both public metadata and the
+token-protected `/identity/ready`, which validates local Issuer custody and the
+actual bridge/JVM/Google status path. This is separate from base OP readiness so
+an Identity dependency failure does not mark ordinary OP/Vault readiness failed.
+Source-matched deployment/smoke receipts establish which source is live.
+
+A release-signed Android APK with the public Wallet configuration has been built
+and its package/signature/App Link checked. No physical device was connected at
+this checkpoint; native hardware enrollment, owner approval, credential receipt
+and presentation remain separate evidence. See [LabPKI deployment details](identity-labpki.md).
+
+The sections below retain the earlier preparation and first-party activation
+history.
+
 Issue [#116](https://github.com/masanork/mikaki/issues/116) prepares the deployed
 test service for [#117's physical-card/device journey](https://github.com/masanork/mikaki/issues/117).
 The next completion boundary is one approved card read → one age-only credential

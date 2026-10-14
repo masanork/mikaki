@@ -72,6 +72,27 @@ fn enabled(ctx: &RouteContext<()>) -> bool {
         .var("IDENTITY_ENABLED")
         .is_ok_and(|v| v.to_string() == "true")
 }
+pub(crate) async fn ready(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
+    if !crate::authorized_ready(&req, &ctx.env) || !wallet::haip(&ctx) {
+        return Ok(Response::builder()
+            .with_status(404)
+            .with_header("Cache-Control", "no-store")?
+            .empty());
+    }
+    let result = match futures_util::future::select(
+        Box::pin(attester::readiness(&ctx)),
+        Box::pin(worker::Delay::from(std::time::Duration::from_secs(10))),
+    )
+    .await
+    {
+        futures_util::future::Either::Left((result, _)) => result,
+        futures_util::future::Either::Right(_) => Err(server_error()),
+    };
+    Ok(Response::builder()
+        .with_status(if result.is_ok() { 204 } else { 503 })
+        .with_header("Cache-Control", "no-store")?
+        .empty())
+}
 fn issuance_enabled(ctx: &RouteContext<()>) -> bool {
     ctx.env
         .var("IDENTITY_ISSUANCE_ENABLED")

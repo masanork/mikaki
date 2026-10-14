@@ -17,6 +17,7 @@ import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 import { productionWrangler } from './production-wrangler.ts';
 import { assertDedicatedIdentityKey } from './identity-issuer-key.ts';
 import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
+import { assertIdentityHaipSecrets } from './identity-haip-profile.ts';
 import {
   assertClosedProductionCopyGraph,
   assertCopyCompanionsPresent,
@@ -215,9 +216,14 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
   );
   assert.ok(
     required.every((name) =>
-      [...base, 'WORK_CREDENTIAL_KEY_V1', 'IDENTITY_ISSUER_JWK', 'IDENTITY_TRUSTED_KEYS'].includes(
-        name,
-      ),
+      [
+        ...base,
+        'WORK_CREDENTIAL_KEY_V1',
+        'IDENTITY_ISSUER_JWK',
+        'IDENTITY_TRUSTED_KEYS',
+        'IDENTITY_ATTESTER_SIGNING',
+        'IDENTITY_CREDENTIAL_ENCRYPTION_JWK',
+      ].includes(name),
     ),
     'Unreviewed runtime secret selection',
   );
@@ -246,7 +252,11 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
   assertWaitlistMailKey(secrets.WAITLIST_MAIL_KEY);
   if (withIdentity)
     assertDedicatedIdentityKey(secrets.IDENTITY_ISSUER_JWK!, secrets.OP_PRIVATE_JWK!);
-  if (identityProfile === 'first-party-age' || identityProfile === 'operator-card-age')
+  if (
+    identityProfile === 'first-party-age' ||
+    identityProfile === 'operator-card-age' ||
+    identityProfile === 'operator-card-haip-age'
+  )
     assert.equal(
       identityTestTrust(
         secrets.IDENTITY_TRUSTED_KEYS!,
@@ -256,6 +266,7 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
       config.vars.IDENTITY_TRUST_POLICY_SHA256,
       'Identity card trust differs from the reviewed policy',
     );
+  if (identityProfile === 'operator-card-haip-age') assertIdentityHaipSecrets(secrets);
   if (withKey) {
     const bytes = Buffer.from(secrets.WORK_CREDENTIAL_KEY_V1!, 'base64url');
     try {
