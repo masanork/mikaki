@@ -34,6 +34,14 @@ The isolated `feat/identity-wallet-qualification` branch starts from main `d3e02
 
 The integrated release Worker Wasm measures 5,689,749 raw bytes and a 2,063,146-byte gzip estimate. The [reviewed OP budget](worker-budgets.md#identity-integration-and-cloudflare-ceilings) is now 8 MiB raw / 3 MiB gzip, replacing the initial 4,500,000 / 1,600,000-byte regression limits. Wrangler dry-run measures the full upload at about 5.48 MiB raw, below Cloudflare's current 64 MiB uncompressed ceiling; gzip is an internal regression metric. Size is no longer a merge blocker under this policy. Full PR CI success and review remain required, with startup/memory qualification separate from size. No production deployment or feature activation is part of this draft.
 
+## Local USB card checkpoint — 2026-10-14
+
+A local macOS 27.0.1 PC/SC check used one physical My Number Card and the shared Rust reader. Selecting the input-support application with `P2=00` returned `6A86`; the same AID with `P2=0C` returned `9000`. Both shared My Number entry points now explicitly request no FCI. Regression transcripts assert the command bytes independently of the generic SELECT builder. Driving-licence selection is unchanged.
+
+After that correction, one explicit PIN verification succeeded and EF0002/EF0003 were read and parsed. The local `civ-kenmen` verifier at source `cf280d9dcd6ceddc810304167ccc5245ab0afa08` found a matching four-attribute hash using preimage framing 3. EF0004 was readable, but its parser did not extract a public key: `self_consistent=null`, `result=untrusted_key` with an empty trust set. This establishes local reading and hash consistency only; the issuer signature and trust provenance remain unqualified. The card generation was not established.
+
+The check never selected the personal-number EF, uploaded evidence, or saved PINs, raw EFs, attributes, DF31 or DF33. Only redacted outcomes were retained. It used a local helper rather than the Android application, so Android NFC, Keystore, deployed intake, issuance and presentation remain pending under [#117](https://github.com/masanork/mikaki/issues/117). Before another signature check, obtain an independently approved issuer key or diagnose the unsupported EF0004 structure locally; a card-supplied key alone cannot establish trust. The [DF31 real-intake decision](identity-age-predicates.md#my-number-evidence-decision-before-real-intake) and disabled deployment profile remain in force.
+
 ## User flow
 
 In Settings → Diagnostics → 身分証の読取, select the document and enter its four-digit PIN. A driving licence can be previewed with PIN1, but linking requires PIN2 as well. Both PINs are verified once per explicit read; a failed VERIFY is never retried automatically. PINs are cleared immediately from the form and never sent to the backend.

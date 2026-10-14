@@ -157,6 +157,18 @@ fn select_ef(t: &mut impl CardTransport, ef: &[u8]) -> Result<(), CardFailure> {
     .map(|_| ())
 }
 
+fn select_input_support(t: &mut impl CardTransport) -> Result<(), CardFailure> {
+    // Request no FCI. A physical My Number card rejected P2=00 with 6A86
+    // before PIN verification, while P2=0C succeeded.
+    checked(
+        t,
+        ApduCommand::new(0, 0xa4, 4, 0x0c)
+            .with_data(&file_ids::DF_INPUT_SUPPORT)
+            .to_bytes(),
+    )
+    .map(|_| ())
+}
+
 pub fn read_ef(t: &mut impl CardTransport, ef: &[u8]) -> Result<Zeroizing<Vec<u8>>, CardFailure> {
     select_ef(t, ef)?;
     let mut data = Zeroizing::new(Vec::new());
@@ -190,10 +202,7 @@ pub fn read_ef(t: &mut impl CardTransport, ef: &[u8]) -> Result<Zeroizing<Vec<u8
 /// A single PIN verification attempt. Never retries a failed VERIFY command.
 pub fn read_mnc(t: &mut impl CardTransport, pin: &str) -> Result<CardPreview, CardFailure> {
     validate_pin(pin)?;
-    checked(
-        t,
-        ApduCommand::select(&file_ids::DF_INPUT_SUPPORT).to_bytes(),
-    )?;
+    select_input_support(t)?;
     select_ef(t, &file_ids::EF_INPUT_SUPPORT_PIN)?;
     let mut verify = Zeroizing::new(vec![0, 0x20, 0, 0x80, 4]);
     verify.extend_from_slice(pin.as_bytes());
@@ -436,7 +445,9 @@ mod tests {
         Script {
             steps: VecDeque::from([
                 (
-                    ApduCommand::select(&file_ids::DF_INPUT_SUPPORT).to_bytes(),
+                    vec![
+                        0, 0xa4, 4, 0x0c, 10, 0xd3, 0x92, 0x10, 0, 0x31, 0, 1, 1, 4, 8,
+                    ],
                     Ok(vec![0x90, 0]),
                 ),
                 (vec![0, 0xa4, 2, 0x0c, 2, 0, 0x11], Ok(vec![0x90, 0])),
@@ -461,6 +472,26 @@ mod tests {
         assert_eq!(result.name, "試験 太郎");
         assert_eq!(result.birth_date, "1990-02-28");
         assert_eq!(result.verification, "unverified");
+        assert!(script.steps.is_empty());
+    }
+
+    #[test]
+    fn signed_my_number_read_selects_without_requesting_fci() {
+        let mut script = steps_after_pin(vec![0x90, 0]);
+        let raw = attributes();
+        let signature = vec![0x30, 0];
+        for (id, mut data) in [(2, raw.clone()), (3, signature.clone())] {
+            script
+                .steps
+                .push_back((vec![0, 0xa4, 2, 0x0c, 2, 0, id], Ok(vec![0x90, 0])));
+            data.extend([0x62, 0x82]);
+            script.steps.push_back((vec![0, 0xb0, 0, 0, 0], Ok(data)));
+        }
+        let (preview, evidence) =
+            read_document(&mut script, DocumentType::MyNumberCard, "1234", None).unwrap();
+        assert_eq!(preview.verification, "unverified");
+        assert_eq!(evidence.attributes, raw);
+        assert_eq!(evidence.signature, signature);
         assert!(script.steps.is_empty());
     }
 
@@ -540,7 +571,9 @@ mod tests {
 
     #[test]
     fn cancellation_and_truncated_native_response_stop_protocol() {
-        let command = ApduCommand::select(&file_ids::DF_INPUT_SUPPORT).to_bytes();
+        let command = vec![
+            0, 0xa4, 4, 0x0c, 10, 0xd3, 0x92, 0x10, 0, 0x31, 0, 1, 1, 4, 8,
+        ];
         for response in [Err(FailureCode::Cancelled.into()), Ok(vec![0x90])] {
             let mut script = Script {
                 steps: VecDeque::from([(command.clone(), response)]),
@@ -589,10 +622,7 @@ pub fn read_document(
     let mut evidence = crate::evidence::Evidence::new(kind);
     match kind {
         DocumentType::MyNumberCard => {
-            checked(
-                t,
-                ApduCommand::select(&file_ids::DF_INPUT_SUPPORT).to_bytes(),
-            )?;
+            select_input_support(t)?;
             select_ef(t, &file_ids::EF_INPUT_SUPPORT_PIN)?;
             verify_pin(t, pin)?;
             evidence.attributes = read_ef(t, &[0, 2])?.to_vec();
