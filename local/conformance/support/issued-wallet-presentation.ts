@@ -17,6 +17,7 @@ export async function issuedWalletVerifier(
   issuerJwk: JWK,
   root: string,
   responseUri = 'https://verifier.example/issued-wallet',
+  ageOnly = false,
 ) {
   const signing = await generateKeyPair('ES256', { extractable: true });
   const reader = await readerPki(await exportJWK(signing.privateKey));
@@ -91,7 +92,7 @@ export async function issuedWalletVerifier(
               format === 'dc+sd-jwt'
                 ? { vct_values: [`${issuer}/types/linked-document`] }
                 : { doctype_value: namespace },
-            claims: ['name', 'birthdate'].map((name) => ({
+            claims: (ageOnly ? ['age_over_18'] : ['name', 'birthdate']).map((name) => ({
               path: format === 'dc+sd-jwt' ? [name] : [namespace, name],
             })),
           },
@@ -151,7 +152,11 @@ export async function issuedWalletVerifier(
       assert.ok(Date.parse(cert.validFrom) <= now && now < Date.parse(cert.validTo));
     }
   };
-  const accept = async (response: string, claims: JWTPayload, holder: JWK) => {
+  const accept = async (
+    response: string,
+    claims: JWTPayload,
+    holder: JWK,
+  ): Promise<Record<string, unknown>> => {
     await assert.rejects(compactDecrypt(response, otherRecipient.privateKey));
     const recipient = recipients.get(String(claims.nonce));
     assert.ok(recipient, 'response must match a request');
@@ -273,6 +278,10 @@ export async function issuedWalletVerifier(
         signatureValid(String(claims.nonce), thumbprint, 'https://other.example/response'),
         false,
       );
+    }
+    if (ageOnly) {
+      assert.deepEqual(values, { age_over_18: true });
+      return values;
     }
     assert.deepEqual(Object.keys(values).sort(), ['birthdate', 'name']);
     assert.equal(typeof values.name, 'string');

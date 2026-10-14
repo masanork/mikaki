@@ -214,6 +214,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         config: {
           ...config,
           name: changed ? 'identity-haip-age-pool-changed' : 'identity-haip-age-pool',
+          services: [
+            { binding: 'IDENTITY_ANDROID_VERIFIER', service: 'identity-fixture-android-verifier' },
+          ],
           vars: {
             ...haipVars,
             IDENTITY_HAIP_AGE_POOL_ENABLED: 'true',
@@ -225,6 +228,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         config: {
           ...config,
           name: changed ? 'identity-haip-age-batch-changed' : 'identity-haip-age-batch',
+          services: [
+            { binding: 'IDENTITY_ANDROID_VERIFIER', service: 'identity-fixture-android-verifier' },
+          ],
           vars: {
             ...haipVars,
             IDENTITY_HAIP_AGE_POOL_ENABLED: 'true',
@@ -2709,7 +2715,23 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
     }
     // The Rust wallet owns PKCE/state and all three private signing keys throughout.
     // The synthetic fixture attester only receives public keys and a nonce.
-    for (const configuration of ['linked_document', 'linked_document_mdoc']) {
+    for (const { configuration, poolMode } of ['linked_document', 'linked_document_mdoc'].flatMap(
+      (configuration) => [
+        { configuration, poolMode: undefined },
+        { configuration, poolMode: 'sequential' },
+        { configuration, poolMode: 'batch' },
+      ],
+    )) {
+      const haip = harness.getWorker(
+        poolMode === 'batch'
+          ? 'identity-haip-age-batch'
+          : poolMode === 'sequential'
+            ? 'identity-haip-age-pool'
+            : 'identity-haip',
+      );
+      const agePool = poolMode
+        ? { size: 8, claims_json: '["age_over_18"]', mode: poolMode }
+        : undefined;
       const metadata = await (
         await haip.fetch(`${root}/.well-known/openid-credential-issuer/identity/issuer`)
       ).json();
@@ -2729,7 +2751,23 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
           signingCertificates[configuration === 'linked_document' ? 'sd_jwt' : 'mdoc']
             .trust_anchors[0],
           http.uri('/response'),
+          !!agePool,
         );
+        const peers = agePool
+          ? [
+              peer,
+              await issuedWalletVerifier(
+                format,
+                issuer,
+                issuerPublic,
+                signingCertificates[configuration === 'linked_document' ? 'sd_jwt' : 'mdoc']
+                  .trust_anchors[0],
+                http.uri('/response'),
+                true,
+              ),
+            ]
+          : [peer];
+        if (agePool) assert.notEqual(peers[0].registry.client_id, peers[1].registry.client_id);
         const walletRun = async (official?: {
           registry: unknown;
           completion: unknown;
@@ -2743,12 +2781,16 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               callback: haipRedirect,
               configuration,
               metadata,
+              ...(agePool ? { age_pool: agePool } : {}),
               client_trust: [{ issuer: attesterIssuer, trust_anchors: [attesterRoot] }],
               key_trust: { trust_anchors: [attesterRoot] },
               credential_trust: credentialTrust,
               issuer_key: issuerPublic,
               issuer_kid: privateJwk.kid,
-              verifiers: [peer.registry, ...(official ? [official.registry] : [])],
+              verifiers: [
+                ...peers.map((p) => p.registry),
+                ...(official ? [official.registry] : []),
+              ],
               completion_uris: official ? [official.completion] : [],
             },
             async (keys, command) => {
@@ -2848,6 +2890,128 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               while (minuteOffset >= 30000) {
                 await new Promise((resolve) => setTimeout(resolve, 60000 - minuteOffset));
                 minuteOffset = Date.now() % 60000;
+              }
+              if (agePool) {
+                assert.equal(keys.holders.length, agePool.size);
+                assert.equal(
+                  new Set(
+                    await Promise.all(keys.holders.map((h: any) => calculateJwkThumbprint(h))),
+                  ).size,
+                  agePool.size,
+                );
+                let rsNonce: string | undefined;
+                let issued: any;
+                const commonNonce =
+                  poolMode === 'batch'
+                    ? (
+                        (await (
+                          await haip.fetch(`${issuer}/nonce`, { method: 'POST' })
+                        ).json()) as any
+                      ).c_nonce
+                    : undefined;
+                const issuePool = async (credential_nonce?: string, attestation?: string) => {
+                  const request = await command({
+                    command: 'credential',
+                    credential_nonce,
+                    attestation,
+                    nonce: rsNonce,
+                  });
+                  return haip.fetch(`${issuer}/credential`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/jwt', ...request.headers },
+                    body: request.body,
+                  });
+                };
+                for (let index = 0; index < agePool.size; index++) {
+                  const credentialNonce =
+                    commonNonce ??
+                    (
+                      (await (
+                        await haip.fetch(`${issuer}/nonce`, { method: 'POST' })
+                      ).json()) as any
+                    ).c_nonce;
+                  const attestation = await enroll('holder', clientAttestation, credentialNonce);
+                  if (poolMode === 'batch') {
+                    assert.equal(
+                      (
+                        await command({
+                          command: 'stage',
+                          credential_nonce: credentialNonce,
+                          attestation,
+                        })
+                      ).staged,
+                      index + 1,
+                    );
+                    continue;
+                  }
+                  let response = await issuePool(credentialNonce, attestation);
+                  if (response.status === 401) {
+                    assert.equal(((await response.json()) as any).error, 'use_dpop_nonce');
+                    rsNonce = response.headers.get('dpop-nonce')!;
+                    response = await issuePool(credentialNonce, attestation);
+                  }
+                  assert.equal(response.status, 200, await response.clone().text());
+                  issued = await command({ command: 'received', response: await response.text() });
+                  assert.equal(issued.state, index + 1 === agePool.size ? 'received' : 'buffered');
+                }
+                if (poolMode === 'batch') {
+                  const challenge = await issuePool();
+                  assert.equal(challenge.status, 401);
+                  assert.equal(((await challenge.json()) as any).error, 'use_dpop_nonce');
+                  rsNonce = challenge.headers.get('dpop-nonce')!;
+                  const response = await issuePool();
+                  assert.equal(response.status, 200, await response.clone().text());
+                  issued = await command({ command: 'received', response: await response.text() });
+                }
+                assert.equal(issued.credentials.length, agePool.size);
+                for (let index = 0; index < agePool.size; index++) {
+                  const credential = issued.credentials[index].credential;
+                  if (format === 'dc+sd-jwt') {
+                    const { payload } = await jwtVerify(credential.split('~')[0], op.publicKey, {
+                      issuer,
+                    });
+                    assert.deepEqual((payload.cnf as any).jwk, keys.holders[index]);
+                  } else
+                    assert.deepEqual(
+                      verifyMdocIssuer(credential, keys.holders[index], issuerPublic).values,
+                      { age_over_18: true },
+                    );
+                  const verifier = peers[index % peers.length];
+                  const signed = await verifier.request();
+                  const presented = await command({
+                    command: 'present',
+                    index,
+                    request: signed.jwt,
+                    consent: true,
+                  });
+                  assert.equal(presented.state, 'presented');
+                  http.onResponse(async (response) => {
+                    assert.deepEqual(
+                      await verifier.accept(response, signed.claims, keys.holders[index]),
+                      { age_over_18: true },
+                    );
+                  });
+                  assert.deepEqual(
+                    await http.command({
+                      command: 'deliver',
+                      uri: http.uri('/response'),
+                      response: presented.response,
+                    }),
+                    { status: 200 },
+                  );
+                  const nextRequest = await peers[(index + 1) % peers.length].request();
+                  assert.deepEqual(
+                    await command({
+                      command: 'present',
+                      index,
+                      request: nextRequest.jwt,
+                      consent: true,
+                    }),
+                    { state: 'rejected' },
+                    'volatile host slot is used once; native durable retirement is qualified separately',
+                  );
+                }
+                return;
               }
               const credentialNonce = (
                 (await (await haip.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
@@ -3054,7 +3218,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             },
           );
         };
-        if (process.env.MIKAKI_OIDF_WALLET_SUITE === '1') {
+        if (!agePool && process.env.MIKAKI_OIDF_WALLET_SUITE === '1') {
           await withOfficialWalletSuite(
             format,
             issuer,

@@ -678,6 +678,64 @@ fn eight_fresh_attested_holders_are_verified_before_one_trusted_inventory_instal
             .unwrap();
             assert_eq!(writes, 1);
             assert_eq!(installed.len(), 8);
+            let mut inventory = Inner {
+                receipt: installed.last().cloned(),
+                receipts: installed,
+                ..Default::default()
+            };
+            let original = inventory
+                .receipts
+                .iter()
+                .map(|r| credential_hash(&r.credential))
+                .collect::<Vec<_>>();
+            assert!(inventory
+                .retire_age_receipts_with(
+                    &original[..1],
+                    at,
+                    |_, _| Err("storage failure".into()),
+                    |_| panic!("storage must commit first")
+                )
+                .is_err());
+            assert_eq!(inventory.receipts.len(), 8);
+            let mut retire_writes = 0;
+            let destroyed = std::cell::RefCell::new(std::collections::HashSet::new());
+            for index in 0..8 {
+                inventory
+                    .retire_age_receipts_with(
+                        &original[index..=index],
+                        at,
+                        |remaining, _| {
+                            retire_writes += 1;
+                            assert_eq!(remaining.len(), 7 - index);
+                            // Encode/decode the complete committed snapshot, including
+                            // the final v4 tombstone, with the production storage codec.
+                            assert_eq!(
+                                identity_wallet::roundtrip_host_snapshot(remaining)?,
+                                remaining.len()
+                            );
+                            Ok(())
+                        },
+                        |key| {
+                            assert!(destroyed
+                                .borrow_mut()
+                                .insert(key.public()?.thumbprint().unwrap()));
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                // Lost/failed delivery has no path to replenish a spent slot.
+                assert!(inventory
+                    .retire_age_receipts_with(
+                        &original[index..=index],
+                        at,
+                        |_, _| panic!("no second persistence"),
+                        |_| panic!("no second destruction")
+                    )
+                    .is_err());
+            }
+            assert_eq!(retire_writes, 8);
+            assert_eq!(destroyed.borrow().len(), 8);
+            assert!(inventory.receipts.is_empty() && inventory.receipt.is_none());
         }
     }
 }

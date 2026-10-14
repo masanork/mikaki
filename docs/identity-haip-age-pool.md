@@ -40,6 +40,31 @@ Each group is checked against the existing explicit-purpose attester roots, sign
 
 The grouped verifier is a separate API used only by direct proofs under an explicit batch grant. Ordinary/sequential grants and JWT proof attestations still require exactly one attested key, including when the batch feature flag is enabled. The Android broker and native Wallet continue to enroll and attest each holder independently; this change does not infer a grouped hardware attestation or modify that enrollment policy. Synthetic JOSE/workerd tests verify both formats, single eight-key groups, mixed groups, every returned holder binding and all-or-nothing rejection/commit. External full-app/device interoperability and official conformance qualification remain pending.
 
+## Completion boundary and repeatable checks
+
+The implementation boundary is the opt-in age-only receive pool: an explicit two-to-eight-receipt authorization, independently attested distinct keys, sequential or encrypted batch receiving, complete validation before native installation, and local single-use retirement. Grouped direct attestations are an issuer input option under that same budget. The global ordinary-grant batch profile is outside this boundary.
+
+| Contract | Executable coverage |
+| --- | --- |
+| Exact consent, format/claims, flag/profile changes and key-role separation | `local/conformance/identity-issuance.test.ts`: both formats, two/eight receipts, sequential and batch grants; no grant/nonce consumption on invalid members. |
+| Multi-proof and grouped direct attestations | Same workerd test: per-key JWT/direct proofs, one group with two/eight keys, and ordered one/three/four-key groups; duplicates, excess/missing keys and bad later groups fail as a whole. |
+| Atomic close and concurrent requests | Same workerd test: one winner; injected closing failure rolls back count, holders and common nonce. |
+| Actual Rust Wallet ↔ Worker ↔ verifier journey | Same workerd test: software keys stay in the Rust bridge through client enrollment, PAR, owner approval, code/DPoP exchange, eight holder enrollments, issuance and receipt validation. Eight age-only presentations alternate between two registered independent verifier identities and use the actual native HTTPS delivery adapter. Both formats and both receive modes run. |
+| Native complete installation and retirement | `eight_fresh_attested_holders_are_verified_before_one_trusted_inventory_install`: both modes/formats, partial/reordered/bad-final responses, one complete install, storage failure before retirement, eight complete retirement snapshots through the storage codec, distinct key destruction and final empty v4 tombstone. A spent receipt cannot be selected again after a simulated unknown delivery. |
+| Limits, deadlines, cancellation, UI and existing OP behavior | Shared identity suite, native library tests, the three identity UI suites and age/UserInfo workerd regressions. |
+
+The Rust host bridge uses production authorization, encryption, credential-trust and presentation primitives with synthetic PKI and **volatile software-key custody**. Its consumed-slot check is a host-fixture rule. Actual native installation/retirement/storage-codec checks run separately in the native library; this combination is not an Android filesystem, Keystore or crash qualification. The Node protocol peer is an independent verifier, not an external full Wallet app. The custom age flows are separate from the opt-in official Wallet suite and do not add official PASS results.
+
+After the existing dependency/policy/browser-Wasm and Worker build prerequisites, run the complete local boundary on a host with the native client's desktop build dependencies (macOS is the CI native target):
+
+```sh
+npm run test:identity-age-pool
+```
+
+This runs shared Rust checks, the Worker issuance/presentation and age/UserInfo tests, all three relevant UI suites, and the native library suite. CI runs those underlying checks in its existing Worker/core/native jobs. No test command enables production flags, installs public trust, uses a real card or publishes credentials. The fixture remains bounded to 128 commands, a 60-second process deadline and its existing byte limits. Real issuer nonce, attestation and credential expiry checks remain enabled; the live journey may wait for the first half of a minute so positive presentations complete within rounded credential validity.
+
+The next acceptance work is the configured deployment/profile (#116), real card/Android lifecycle and crash behavior (#117), an external full Wallet (#118), and official HAIP coverage (#119). Those are separate acceptance targets; the scoped host implementation has a finite executable boundary above.
+
 ## Qualification and privacy
 
 Tests cover both formats, sequential and encrypted wire receiving with eight independently attested keys in the native protocol, exact two/eight-slot server budgets, concurrent final requests, D1 rollback on close failure, sender/holder-role separation, key reuse with a fresh attestation, disabled/changed policy, UI consent/count locking and existing receipt/consent regressions. Real Android Keystore, card and crash qualification remains under #117; the DF31 intake decision remains under #116/#208.

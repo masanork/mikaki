@@ -410,3 +410,33 @@ pub fn erase(app: &AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+pub(crate) fn roundtrip_host_snapshot(receipts: &[Receipt]) -> Result<usize, String> {
+    let records = receipts
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            Ok(storage::Record {
+                version: 2,
+                haip: Some(r.credential_trust.is_some()),
+                id: format!("{:032x}", i + 1),
+                credential: r.credential.to_string(),
+                format: r.format.clone(),
+                issuer_key: r.issuer_key.clone(),
+                issuer_kid: r.issuer_kid.clone(),
+                holder: r.key.public()?,
+                expires_at: r.expires_at,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let encoded = storage::encode(&records, true)?;
+    let (restored, migrate) = storage::decode(&encoded, true)?;
+    assert!(!migrate);
+    for (saved, receipt) in restored.iter().zip(receipts) {
+        assert_eq!(saved.credential, receipt.credential.as_str());
+        assert_eq!(saved.holder, receipt.key.public()?);
+        assert_eq!(saved.expires_at, receipt.expires_at);
+    }
+    Ok(restored.len())
+}
