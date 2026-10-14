@@ -319,8 +319,13 @@ pub(super) async fn get(
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let expires_in_ms = (login.expires_at - now as i64).clamp(0, 300) * 1000;
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}" data-login-scope="{login_scope}" data-expires-in-ms="{expires_in_ms}" data-connection-review-required="{review_required}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}" data-vault-login="{vault_login}" data-login-scope="{login_scope}" data-expires-in-ms="{expires_in_ms}" data-connection-review-required="{review_required}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
         review_required = if login.connection_review_required == 1 {
+            "true"
+        } else {
+            "false"
+        },
+        vault_login = if login.owner_login == 2 {
             "true"
         } else {
             "false"
@@ -351,7 +356,7 @@ pub(super) async fn get(
         .with_header("Referrer-Policy", "no-referrer")?
         .with_header(
             "Content-Security-Policy",
-            "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         )?
         .from_html(html)
 }

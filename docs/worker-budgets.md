@@ -46,3 +46,14 @@ npm run check:worker-budgets
 ```
 
 Unit regressions cover equality at the limit, independent over-limit rejection, invalid limits, empty inputs, and missing or duplicate resource coverage. The command itself checks actual built responses; it does not infer their size from source files or unused build-directory assets.
+
+## Passkey login and Vault handoff, 2026-10-15
+
+The combined first-party login adds a bounded PRF ticket, a document-local Vault
+handoff and same-credential legacy-wrapper adoption. Measured served Login
+JavaScript is **103,911 raw / 31,849 gzip-estimate bytes** and Vault JavaScript is
+**321,359 / 92,294**. The Login raw ceiling increases by 1 KiB to **102 KiB**, and
+the Vault gzip ceiling increases by 1 KiB to **91 KiB**. Login gzip, Vault raw and
+all other resource ceilings remain unchanged. The freshly built OP and Claim
+Workers pass the complete budget gate. These local gzip estimates do not measure
+wire compression or device performance.

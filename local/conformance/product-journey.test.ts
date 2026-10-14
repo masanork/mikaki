@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { chromium, expect } from '@playwright/test';
 import { exportJWK, generateKeyPair } from 'jose';
+import { build } from 'esbuild';
+import type { OwnerKeyEnvelope } from '../../crates/worker/ui/vault-owner-crypto.ts';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
@@ -88,9 +90,23 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       publicJwk,
       (url, init) => worker.fetch(url, init),
     );
+    const cryptoFixture = await build({
+      stdin: {
+        contents: "export { rewrapOwnerKey } from './crates/worker/ui/vault-owner-crypto.ts';",
+        resolveDir: new URL('../..', import.meta.url).pathname,
+      },
+      bundle: true,
+      write: false,
+      format: 'esm',
+      platform: 'browser',
+    });
     let callback = '';
     dispatch = async (url, init) => {
       const target = new URL(url);
+      if (target.origin === issuer && target.pathname === '/__test/owner-crypto.js')
+        return new Response(cryptoFixture.outputFiles[0]!.text, {
+          headers: { 'Content-Type': 'text/javascript' },
+        });
       if (target.origin === issuer) return worker.fetch(url, { ...init, redirect: 'manual' });
       if (target.origin === rpOrigin) {
         if (target.pathname === '/callback') callback = url;
@@ -285,10 +301,25 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       null,
     );
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+    const beforeWebLogin = ownerAssertions;
     await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
     await page.waitForURL(`${issuer}/vault?lang=en`);
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
+    assert.equal(
+      ownerAssertions,
+      beforeWebLogin + 1,
+      'Fresh web login also opens Vault in one assertion',
+    );
+    await expect(page.locator('#unlock')).toHaveCount(0);
+    // The in-document handoff retains the existing lock, ordinary-save and
+    // history rules; the login result cannot reopen a newly locked scope.
+    await page.getByRole('button', { name: 'Lock Vault', exact: true }).click();
+    await page.getByRole('button', { name: 'Check session and reopen', exact: true }).click();
+    await expect(page.locator('#name')).toHaveCount(0);
+    assert.equal(ownerAssertions, beforeWebLogin + 1);
     await page.locator('#unlock').click();
     await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
+    assert.equal(ownerAssertions, beforeWebLogin + 2, 'Manual reopen requires a fresh assertion');
     assert.equal(
       (await DB.prepare('SELECT COUNT(*) AS n FROM app_connection').first()).n,
       connectionsBefore,
@@ -360,6 +391,150 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
         })
       ).status,
       302,
+    );
+    // A browser/credential without PRF still completes actual server login.
+    // Strip only the discoverable sign-in extension, retaining real WebAuthn.
+    await context.addInitScript(() => {
+      const get = navigator.credentials.get.bind(navigator.credentials);
+      navigator.credentials.get = (options) => {
+        if (
+          (window as unknown as { omitLoginPrf: boolean }).omitLoginPrf &&
+          options?.publicKey?.extensions?.prf &&
+          !options.publicKey.allowCredentials?.length
+        ) {
+          const { extensions: _extensions, ...publicKey } = options.publicKey;
+          return get({ ...options, publicKey });
+        }
+        return get(options);
+      };
+      (window as unknown as { omitLoginPrf: boolean }).omitLoginPrf = true;
+    });
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+    await page.goto(`${issuer}/signin?lang=ja`);
+    await page.waitForURL(`${issuer}/vault?lang=ja`);
+    await expect(page.locator('#name')).toHaveCount(0);
+    await expect(page.locator('[role=status]')).toContainText('ログイン済みですが');
+    await expect(page.locator('#unlock')).toBeEnabled();
+    assert.ok((await context.cookies(issuer)).find((cookie) => cookie.name === '__Host-op-sso'));
+    // Build a historical random-input wrapper of the SAME root using actual
+    // virtual PRF outputs. Only the disposable fixture's wrapper is changed;
+    // every saved record/ciphertext and the authority revision stays intact.
+    const legacyEnvelope = await page.evaluate(async () => {
+      const moduleUrl = '/__test/owner-crypto.js';
+      const { rewrapOwnerKey } = await import(moduleUrl);
+      const current = (await (await fetch('/vault/owner-key')).json()) as {
+        origin: string;
+        owner_id: string;
+        vault_id: string;
+        key_generation: number;
+        owner_envelope: OwnerKeyEnvelope;
+      };
+      const decode = (value: string) =>
+        Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) =>
+          char.charCodeAt(0),
+        );
+      const id = decode(current.owner_envelope.credential_id);
+      const input = crypto.getRandomValues(new Uint8Array(32));
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          allowCredentials: [{ type: 'public-key', id }],
+          userVerification: 'required',
+          extensions: {
+            prf: { eval: { first: decode(current.owner_envelope.prf_input), second: input } },
+          },
+        },
+      });
+      if (!(credential instanceof PublicKeyCredential))
+        throw new Error('Fixture credential missing');
+      const result = credential.getClientExtensionResults().prf?.results;
+      if (!(result?.first instanceof ArrayBuffer) || !(result.second instanceof ArrayBuffer))
+        throw new Error('Fixture two-input PRF unavailable');
+      const first = new Uint8Array(result.first),
+        second = new Uint8Array(result.second);
+      const temporary = crypto.getRandomValues(new Uint8Array(32));
+      const temporaryOutput = crypto.getRandomValues(new Uint8Array(32));
+      const context = {
+        origin: current.origin,
+        ownerId: current.owner_id,
+        vaultId: current.vault_id,
+        keyGeneration: current.key_generation,
+      };
+      try {
+        const bridge = await rewrapOwnerKey(
+          current.owner_envelope,
+          context,
+          id,
+          first,
+          temporary,
+          crypto.getRandomValues(new Uint8Array(32)),
+          temporaryOutput.slice(),
+        );
+        return await rewrapOwnerKey(bridge, context, temporary, temporaryOutput, id, input, second);
+      } finally {
+        first.fill(0);
+        second.fill(0);
+        temporaryOutput.fill(0);
+      }
+    });
+    const beforeLegacy = await DB.prepare(
+      'SELECT vault_id,key_generation,revision FROM vault_owner_key_head',
+    ).first();
+    const ciphertextsBefore = await DB.prepare(
+      'SELECT record_id,revision,ciphertext_sha256,key_envelope FROM vault_owner_record_head ORDER BY record_id',
+    )
+      .all()
+      .then((result: { results: Record<string, unknown>[] }) => result.results);
+    await DB.prepare('UPDATE vault_owner_key_wrap SET envelope=? WHERE credential_id=?')
+      .bind(JSON.stringify(legacyEnvelope), legacyEnvelope.credential_id)
+      .run();
+    await page.reload();
+    await page.locator('#unlock').click();
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
+    assert.equal(
+      (await DB.prepare('SELECT count(*) AS n FROM vault_owner_login_wrap').first()).n,
+      1,
+    );
+    assert.deepEqual(
+      await DB.prepare('SELECT vault_id,key_generation,revision FROM vault_owner_key_head').first(),
+      beforeLegacy,
+    );
+    assert.deepEqual(
+      await DB.prepare(
+        'SELECT record_id,revision,ciphertext_sha256,key_envelope FROM vault_owner_record_head ORDER BY record_id',
+      )
+        .all()
+        .then((result: { results: Record<string, unknown>[] }) => result.results),
+      ciphertextsBefore,
+    );
+    const cookies = (await context.cookies(issuer))
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join('; ');
+    const root = await worker.fetch(`${issuer}/vault/owner-key`, { headers: { cookie: cookies } });
+    assert.deepEqual(
+      ((await root.json()) as { owner_envelope: unknown }).owner_envelope,
+      legacyEnvelope,
+    );
+    await page.getByRole('link', { name: 'ログアウト', exact: false }).click();
+    await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
+    // Remove the no-PRF test shim for this login, then exercise adopted custody.
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
+    await page.goto(`${issuer}/signin?lang=ja`);
+    await page.evaluate(() => {
+      (window as unknown as { omitLoginPrf: boolean }).omitLoginPrf = false;
+    });
+    const beforeAdoptedLogin = ownerAssertions;
+    await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+    await page.getByRole('button', { name: 'Passkeyでサインイン', exact: true }).click();
+    await page.waitForURL(`${issuer}/vault?lang=ja`);
+    await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
+    await expect(page.locator('#owner-note-text')).toHaveValue(
+      'One unlock protects both supported records.',
+    );
+    assert.equal(
+      ownerAssertions,
+      beforeAdoptedLogin + 1,
+      'Adopted random-input Vault opens in one real assertion',
     );
     assert.deepEqual(errors, []);
   } catch (error) {

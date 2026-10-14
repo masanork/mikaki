@@ -10,7 +10,8 @@ test('browser WebCrypto owner lease opens many records once and rejects late unl
     stdin: {
       resolveDir: fileURLToPath(new URL('../../', import.meta.url)),
       contents: `
-import { createOwnerKey, rewrapOwnerKey, rewrapOwnerRecord, openOwnerKey, openOwnerRecord } from './crates/worker/ui/vault-owner-crypto.ts';
+import { createOwnerKey, rewrapOwnerKey, wrapOwnerKeyForLogin, rewrapOwnerRecord, openOwnerKey, openOwnerRecord } from './crates/worker/ui/vault-owner-crypto.ts';
+import { OwnerLoginPrf, ownerLoginPrfInput } from './crates/worker/ui/vault-login-prf.ts';
 import { OwnerKeySession } from './crates/worker/ui/vault-owner-session.ts';
 import { VaultScope } from './crates/worker/ui/vault-lifecycle.ts';
 import { encodeBase64Url } from './crates/worker/ui/vault-crypto.ts';
@@ -44,6 +45,31 @@ window.ownerKeyProbe = async () => {
   const targetWrap=await rewrapOwnerKey(envelope,context,credential,secret.slice(),target,bytes(),targetSecret.slice());
   const targetKey=await openOwnerKey(targetWrap,context,target,targetSecret.slice());
   const targetOpened=await openOwnerRecord(record,targetKey,context,item);require(targetOpened.length>0,'additional key');targetOpened.fill(0);
+  const loginSecret=bytes(), sourceConsumed=secret.slice(), loginConsumed=loginSecret.slice();
+  const loginWrap=await wrapOwnerKeyForLogin(envelope,context,credential,sourceConsumed,loginConsumed);
+  require(sourceConsumed.every(x=>x===0)&&loginConsumed.every(x=>x===0),'login wrap consumes both outputs');
+  const loginKey=await openOwnerKey(loginWrap,context,credential,loginSecret.slice());
+  const loginOpened=await openOwnerRecord(record,loginKey,context,item);
+  require(loginOpened.length>0,'same root login custody');loginOpened.fill(0);
+  const ticketOutput=loginSecret.slice(),ticket=new OwnerLoginPrf(credential,ticketOutput);
+  require(ticket.supported,'ticket available');
+  const accepted=ticket.consume(credential,ownerLoginPrfInput(),scope.signal);
+  require(accepted?.output===ticketOutput&&!ticket.supported,'single document handoff');
+  require(ticket.consume(credential,ownerLoginPrfInput(),scope.signal)===null,'ticket cannot replay');
+  accepted.output.fill(0);
+  const wrongOutput=loginSecret.slice(),wrong=new OwnerLoginPrf(credential,wrongOutput);
+  await rejected(()=>wrong.consume(target,ownerLoginPrfInput(),scope.signal),'different SSO credential');
+  require(wrongOutput.every(x=>x===0),'wrong identity clears output');
+  const hiddenOutput=loginSecret.slice(),hidden=new OwnerLoginPrf(credential,hiddenOutput);
+  Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+  document.dispatchEvent(new Event('visibilitychange'));
+  require(hiddenOutput.every(x=>x===0)&&!hidden.supported,'hidden document clears handoff');
+  delete document.visibilityState;
+  const expiredOutput=loginSecret.slice(),expired=new OwnerLoginPrf(credential,expiredOutput);
+  const now=Date.now;Date.now=()=>now()+60001;
+  try {await rejected(()=>expired.consume(credential,ownerLoginPrfInput(),scope.signal),'expired handoff');}
+  finally {Date.now=now;expired.dispose();}
+  require(expiredOutput.every(x=>x===0),'expired output cleared');
   const nextContext={...context,keyGeneration:2};
   const next=await createOwnerKey(nextContext,credential,bytes(),secret.slice());
   const rotated=await rewrapOwnerRecord(record,targetKey,context,next.key,nextContext,item);

@@ -182,7 +182,8 @@ fn outcome(previous: Mutation, hash: &str) -> worker::Result<Response> {
     if previous.request_hash != hash {
         return error(409, "operation_id_reused");
     }
-    Response::builder().with_header("Cache-Control", "no-store")?
+    // Preserve the strong revision validator through edge compression.
+    Response::builder().with_header("Cache-Control", "no-store, no-transform")?
         .with_header("ETag", &format!("\"{}\"", previous.result_revision))?
         .from_json(&serde_json::json!({"revision":previous.result_revision,"deleted":previous.deleted != 0}))
 }
@@ -190,7 +191,7 @@ fn not_found(revision: Option<i64>) -> worker::Result<Response> {
     if let Some(revision) = revision {
         return Response::builder()
             .with_status(404)
-            .with_header("Cache-Control", "no-store")?
+            .with_header("Cache-Control", "no-store, no-transform")?
             .with_header("ETag", &format!("\"{revision}\""))?
             .from_json(&serde_json::json!({"error":"not_found","deleted":true}));
     }
@@ -267,7 +268,7 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     {
         return error(409, "record_changed");
     }
-    Response::builder().with_header("Cache-Control","no-store")?
+    Response::builder().with_header("Cache-Control","no-store, no-transform")?
         .with_header("ETag", &format!("\"{}\"",selected.revision))?
         .from_json(&serde_json::json!({
             "format_version":2,"owner_id":owner.account_id,"origin":root.origin,"vault_id":root.vault_id,

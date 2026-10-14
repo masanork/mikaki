@@ -32,6 +32,8 @@
   "adminMailUnavailable": "Invitation email is currently unavailable.",
   "adminManual": "Share an invitation code directly",
   "ownerPasskeysHeading": "Passkey access",
+  "ownerVaultLoginPrfUnsupported": "You are signed in, but this passkey did not provide the PRF output needed to open Vault. Use a PRF-compatible passkey with Vault access.",
+  "ownerVaultLoginAccessMissing": "You are signed in, but this passkey does not have Vault access. Sign in with a passkey that can open this Vault to manage access.",
   "ownerPasskeysExplanation": "Register a login passkey, then allow it to open this Vault using your current and added passkeys. Changing access revokes existing shares and Agent permissions; approve them again afterward. The Vault locks after a change.",
   "ownerPasskeysRecovery": "If every usable Vault passkey is lost, this data cannot be recovered. Removing access cannot recall keys or plaintext already copied. Removing Vault access leaves login settings unchanged.",
   "ownerPasskeysEnroll": "Register a login passkey",

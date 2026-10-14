@@ -43,6 +43,7 @@ struct Head {
     operation_id: String,
     request_hash: String,
     envelope: Option<String>,
+    login_envelope: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -55,6 +56,8 @@ struct KeyResponse<'a> {
     key_generation: i64,
     revision: i64,
     owner_envelope: Envelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    login_envelope: Option<Envelope>,
 }
 
 fn canonical(value: &str, min: usize, max: usize) -> bool {
@@ -100,13 +103,23 @@ async fn head(
     account: &str,
     credential: &str,
 ) -> worker::Result<Option<Head>> {
-    db.prepare("SELECT h.vault_id,h.origin,h.key_generation,h.revision,h.format_version,h.suite,h.operation_id,h.request_hash,w.envelope \
+    db.prepare("SELECT h.vault_id,h.origin,h.key_generation,h.revision,h.format_version,h.suite,h.operation_id,h.request_hash,w.envelope,l.envelope AS login_envelope \
         FROM vault_owner_key_head h LEFT JOIN vault_owner_key_wrap w ON w.account_id=h.account_id \
-        AND w.key_generation=h.key_generation AND w.credential_id=?2 WHERE h.account_id=?1")
+        AND w.key_generation=h.key_generation AND w.credential_id=?2 \
+        LEFT JOIN vault_owner_login_wrap l ON l.account_id=w.account_id AND l.key_generation=w.key_generation AND l.credential_id=w.credential_id WHERE h.account_id=?1")
         .bind(&[JsValue::from_str(account),JsValue::from_str(credential)])?.first::<Head>(None).await
 }
 
 fn response(head: Head, account: &str, origin: &str) -> worker::Result<Response> {
+    key_response(head, account, origin, false)
+}
+
+fn key_response(
+    head: Head,
+    account: &str,
+    origin: &str,
+    include_login: bool,
+) -> worker::Result<Response> {
     if head.format_version != 2 || head.suite != SUITE {
         return error(409, "unsupported_owner_key_format");
     }
@@ -119,8 +132,16 @@ fn response(head: Head, account: &str, origin: &str) -> worker::Result<Response>
     let Ok(envelope) = serde_json::from_str(&encoded) else {
         return error(503, "storage_unavailable");
     };
+    let login_envelope = match head.login_envelope.filter(|_| include_login) {
+        Some(encoded) => match serde_json::from_str(&encoded) {
+            Ok(envelope) => Some(envelope),
+            Err(_) => return error(503, "storage_unavailable"),
+        },
+        None => None,
+    };
     Response::builder()
-        .with_header("Cache-Control", "no-store")?
+        // Edge compression must not weaken the revision ETag checked by the owner UI.
+        .with_header("Cache-Control", "no-store, no-transform")?
         .with_header("ETag", &format!("\"{}\"", head.revision))?
         .from_json(&KeyResponse {
             format_version: head.format_version,
@@ -131,7 +152,106 @@ fn response(head: Head, account: &str, origin: &str) -> worker::Result<Response>
             key_generation: head.key_generation,
             revision: head.revision,
             owner_envelope: envelope,
+            login_envelope,
         })
+}
+
+// Only add an immutable alternate wrap for the already authorized session
+// credential. Never replace the original wrapper or grant another credential.
+pub async fn add_login_wrap(
+    mut request: Request,
+    context: RouteContext<()>,
+) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    if !same_origin(&request)? {
+        return error(403, "origin_required");
+    }
+    let Some(revision) = expected_revision(&request)?.filter(|revision| *revision > 0) else {
+        return error(428, "revision_required");
+    };
+    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+        return error(415, "json_required");
+    }
+    let db = context.env.d1("DB")?;
+    let Some(actor) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    let body = match read_bounded_body(&mut request, MAX_BODY).await {
+        Ok(body) => body,
+        Err(_) => return error(413, "body_too_large_or_invalid"),
+    };
+    let Ok(value) = serde_json::from_str::<Create>(&body) else {
+        return error(400, "invalid_body");
+    };
+    if value.format_version != 2
+        || value.suite != SUITE
+        || !value.owner_envelope.valid(&actor.credential_id)
+        || value.owner_envelope.prf_input
+            != URL_SAFE_NO_PAD.encode(b"mikaki-vault-signin-prf-input-v1")
+    {
+        return error(400, "invalid_login_wrapper");
+    }
+    let origin = request.url()?.origin().ascii_serialization();
+    let encoded = serde_json::to_string(&value.owner_envelope)
+        .map_err(|_| worker::Error::RustError("server_error".into()))?;
+    db.prepare("INSERT INTO vault_owner_login_wrap(account_id,key_generation,credential_id,envelope) \
+        SELECT h.account_id,h.key_generation,c.credential_id,?1 FROM vault_owner_key_head h \
+        JOIN vault_owner_key_wrap w ON w.account_id=h.account_id AND w.key_generation=h.key_generation \
+        JOIN credential c ON c.credential_id=w.credential_id AND c.account_id=h.account_id \
+        JOIN sso_context sx ON sx.secret_hash=?2 JOIN sso_session ss ON ss.sso_id=sx.sso_id \
+        JOIN account_security a ON a.account_id=ss.account_id \
+        WHERE h.account_id=?3 AND h.vault_id=?4 AND h.key_generation=?5 AND h.revision=?6 AND h.origin=?7 \
+        AND h.format_version=2 AND h.suite=?8 AND ss.account_id=h.account_id AND ss.credential_id=c.credential_id \
+        AND c.credential_id=?9 AND c.active=1 AND a.active=1 AND a.epoch=ss.epoch AND ss.revoked=0 AND ss.expires_at>unixepoch() \
+        ON CONFLICT(account_id,key_generation,credential_id) DO NOTHING")
+        .bind(&[JsValue::from_str(&encoded),JsValue::from_str(&actor.secret_hash),JsValue::from_str(&actor.account_id),
+            JsValue::from_str(&value.vault_id),JsValue::from_f64(value.key_generation as f64),JsValue::from_f64(revision as f64),
+            JsValue::from_str(&origin),JsValue::from_str(SUITE),JsValue::from_str(&actor.credential_id)])?.run().await?;
+    let Some(current) = head(&db, &actor.account_id, &actor.credential_id).await? else {
+        return error(409, "owner_key_changed");
+    };
+    if current.vault_id != value.vault_id
+        || current.key_generation != value.key_generation
+        || current.revision != revision
+        || current.login_envelope.as_deref() != Some(encoded.as_str())
+    {
+        return error(409, "login_wrapper_unconfirmed");
+    }
+    // Revalidate after the write, including exact retries after a lost response.
+    if owner(&request, &db).await?.is_none() {
+        return error(401, "authentication_required");
+    }
+    key_response(current, &actor.account_id, &origin, true)
+}
+
+pub async fn get_login_wrap(
+    request: Request,
+    context: RouteContext<()>,
+) -> worker::Result<Response> {
+    if context.env.bucket("VAULT_BLOBS").is_err() {
+        return error(404, "not_found");
+    }
+    let db = context.env.d1("DB")?;
+    let Some(actor) = owner(&request, &db).await? else {
+        return error(401, "authentication_required");
+    };
+    let Some(current) = head(&db, &actor.account_id, &actor.credential_id).await? else {
+        return error(404, "owner_key_missing");
+    };
+    if current.envelope.is_none() {
+        return error(409, "credential_not_wrapped");
+    }
+    if current.login_envelope.is_none() {
+        return error(404, "login_wrapper_missing");
+    }
+    key_response(
+        current,
+        &actor.account_id,
+        &request.url()?.origin().ascii_serialization(),
+        true,
+    )
 }
 
 pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
@@ -281,7 +401,7 @@ fn receipt_response(value: WrapReceipt, hash: &str) -> worker::Result<Response> 
         return error(409, "operation_id_reused");
     }
     Response::builder()
-        .with_header("Cache-Control", "no-store")?
+        .with_header("Cache-Control", "no-store, no-transform")?
         .with_header("ETag", &format!("\"{}\"", value.revision))?
         .from_json(&value)
 }
@@ -319,7 +439,7 @@ pub async fn wrappers(request: Request, context: RouteContext<()>) -> worker::Re
     if credentials.len() > 10 {
         return error(503, "storage_unavailable");
     }
-    Response::builder().with_header("Cache-Control","no-store")?
+    Response::builder().with_header("Cache-Control","no-store, no-transform")?
       .with_header("ETag", &format!("\"{}\"",head.revision))?
       .from_json(&serde_json::json!({"vault_id":head.vault_id,"key_generation":head.key_generation,"revision":head.revision,"credentials":credentials}))
 }

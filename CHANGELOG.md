@@ -6,6 +6,10 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Combine first-party web sign-in and Vault opening in one Passkey/PRF assertion with a document-local handoff. Keep non-PRF login usable, require fresh unlock after lock/navigation, and adopt existing random-input roots through an immutable same-credential login wrapper without changing data or grants.
+
+- Preserve strong Vault revision ETags with `no-transform` so Cloudflare compression cannot stop Passkey unlock, record operations or access changes. The Workspace browser regression models edge ETag weakening.
+
 - Refreshed invitation administration, registration completion, and logout screens with the login visual language; localized logout in Japanese and English and added Worker browser checks for responsive layout and language switching.
 
 - Refreshed the Vault profile and connections layout with shared product navigation, responsive cards, and visible lock state in both supported languages.

@@ -1,10 +1,12 @@
 // New-format bootstrap only; no legacy imports or implicit key reset/rotation.
 import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { ownerLoginPrfInput } from './vault-login-prf.ts';
 import {
   OWNER_KEY_SUITE,
   ownerKeyContext,
   parseOwnerKeyEnvelope,
+  wrapOwnerKeyForLogin,
   type OwnerKeyContext,
   type OwnerKeyEnvelope,
 } from './vault-owner-crypto.ts';
@@ -14,7 +16,16 @@ export type StoredOwnerKey = Readonly<{
   context: OwnerKeyContext;
   revision: number;
   envelope: OwnerKeyEnvelope;
+  loginEnvelope?: OwnerKeyEnvelope;
 }>;
+export function sameOwnerAuthority(a: StoredOwnerKey, b: StoredOwnerKey): boolean {
+  // Adding same-credential login custody cannot change existing leases/grants.
+  return (
+    a.revision === b.revision &&
+    JSON.stringify(a.context) === JSON.stringify(b.context) &&
+    JSON.stringify(a.envelope) === JSON.stringify(b.envelope)
+  );
+}
 const endpoint = '/vault/owner-key';
 const wrappersEndpoint = '/vault/owner-key/wrappers';
 
@@ -220,11 +231,27 @@ function parse(value: unknown, origin: string, scope: VaultScope): StoredOwnerKe
   const envelope = parseOwnerKeyEnvelope(item['owner_envelope']);
   if (envelope.credential_id !== scope.identity?.credential_id)
     throw new Error('wrong stored credential');
-  return Object.freeze({ context, revision: item['revision'], envelope });
+  const loginEnvelope =
+    item['login_envelope'] === undefined
+      ? undefined
+      : parseOwnerKeyEnvelope(item['login_envelope']);
+  if (
+    loginEnvelope &&
+    (loginEnvelope.credential_id !== envelope.credential_id ||
+      loginEnvelope.prf_input !== encodeBase64Url(ownerLoginPrfInput()))
+  )
+    throw new Error('invalid login wrapper');
+  return Object.freeze({
+    context,
+    revision: item['revision'],
+    envelope,
+    ...(loginEnvelope ? { loginEnvelope } : {}),
+  });
 }
 export async function readOwnerKey(
   scope: VaultScope,
   origin: string,
+  includeLogin = false,
 ): Promise<StoredOwnerKey | null> {
   const response = await scope.request(endpoint, { cache: 'no-store' });
   const value: unknown = await response.json();
@@ -236,10 +263,42 @@ export async function readOwnerKey(
     value.error === 'owner_key_missing'
   )
     return null;
-  if (!response.ok) throw new Error('owner-key read unavailable');
+  if (!response.ok)
+    throw new Error(
+      response.status === 409 &&
+        value &&
+        typeof value === 'object' &&
+        'error' in value &&
+        value.error === 'credential_not_wrapped'
+        ? 'credential_not_wrapped'
+        : 'owner-key read unavailable',
+    );
   const stored = parse(value, origin, scope);
   if (response.headers.get('etag') !== `"${stored.revision}"`)
     throw new Error('owner-key revision mismatch');
+  // Keep the primary representation/ETag unchanged by additive login custody.
+  // Load the separate immutable resource only for old random-input wrappers.
+  if (includeLogin && stored.envelope.prf_input !== encodeBase64Url(ownerLoginPrfInput())) {
+    const login = await scope.request('/vault/owner-key/login-wrap', { cache: 'no-store' });
+    const value: unknown = await login.json();
+    if (
+      login.status === 404 &&
+      value &&
+      typeof value === 'object' &&
+      'error' in value &&
+      value.error === 'login_wrapper_missing'
+    )
+      return stored;
+    if (!login.ok) throw new Error('login-wrapper read unavailable');
+    const current = parse(value, origin, scope);
+    if (
+      !current.loginEnvelope ||
+      !sameOwnerAuthority(current, stored) ||
+      login.headers.get('etag') !== `"${stored.revision}"`
+    )
+      throw new Error('owner_key_changed');
+    return current;
+  }
   return stored;
 }
 export async function openOwnerVault(
@@ -247,16 +306,80 @@ export async function openOwnerVault(
   origin: string,
   evaluate: OwnerPrfEvaluator,
   assertCurrent: () => void = () => scope.assert(),
+  preferLogin = false,
 ): Promise<{ session: OwnerKeySession; stored: StoredOwnerKey; created: boolean }> {
   await scope.ensure();
   assertCurrent();
-  const current = await readOwnerKey(scope, origin);
+  const current = await readOwnerKey(scope, origin, true);
   assertCurrent();
   if (current) {
     const session = new OwnerKeySession(scope, current.context);
     try {
-      await session.unlock(current.envelope, evaluate);
+      let loginEnvelope: OwnerKeyEnvelope | undefined;
+      await session.unlock(
+        (preferLogin ? current.loginEnvelope : undefined) ?? current.envelope,
+        async (credential, input, signal) => {
+          const result = await evaluate(credential, input, signal);
+          try {
+            assertCurrent();
+            if (
+              !current.loginEnvelope &&
+              result.loginOutput &&
+              current.envelope.prf_input !== encodeBase64Url(ownerLoginPrfInput())
+            ) {
+              loginEnvelope = await wrapOwnerKeyForLogin(
+                current.envelope,
+                current.context,
+                result.credentialId,
+                result.output.slice(),
+                result.loginOutput.slice(),
+              );
+              assertCurrent();
+            }
+            return result;
+          } catch (error) {
+            result.output.fill(0);
+            throw error;
+          } finally {
+            result.loginOutput?.fill(0);
+          }
+        },
+      );
       assertCurrent();
+      if (loginEnvelope) {
+        // An additive, immutable same-credential wrap. Exact candidate retries
+        // never overwrite either envelope or change grants/record revisions.
+        const body = JSON.stringify({
+          format_version: 2,
+          suite: OWNER_KEY_SUITE,
+          vault_id: current.context.vaultId,
+          key_generation: current.context.keyGeneration,
+          owner_envelope: loginEnvelope,
+        });
+        try {
+          assertCurrent();
+          await scope.request('/vault/owner-key/login-wrap', {
+            method: 'PUT',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json', 'If-Match': `"${current.revision}"` },
+            body,
+          });
+        } catch {
+          // Reconcile a lost response; ordinary unlock remains usable if the
+          // optional upgrade was not admitted. Never regenerate the root.
+        }
+        assertCurrent();
+        const observed = await readOwnerKey(scope, origin, true);
+        assertCurrent();
+        if (
+          !observed ||
+          JSON.stringify(observed.context) !== JSON.stringify(current.context) ||
+          observed.revision !== current.revision ||
+          JSON.stringify(observed.envelope) !== JSON.stringify(current.envelope)
+        )
+          throw new Error('owner_key_changed');
+        return { session, stored: observed, created: false };
+      }
       return { session, stored: current, created: false };
     } catch (error) {
       session.dispose();
