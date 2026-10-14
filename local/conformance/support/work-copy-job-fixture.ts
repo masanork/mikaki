@@ -83,8 +83,13 @@ export async function copyJobFixture(
       ...extra,
     };
     const transport = (r: Request) => {
-      const next = () =>
-        executor ? executor(r) : Promise.resolve(new Response(null, { status: 409 }));
+      const next = async () => {
+        if (r.url === 'https://private.invalid/git-prepare') {
+          const p = (await r.json()) as { disclosure_digest: string };
+          return Response.json({ ready: true, disclosure_digest: p.disclosure_digest });
+        }
+        return executor ? executor(r) : new Response(null, { status: 409 });
+      };
       return hook ? hook(r, next) : next();
     };
     let op = (opResource = await preparationFixture(

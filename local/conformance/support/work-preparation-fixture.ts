@@ -75,6 +75,7 @@ export async function preparationFixture(
         WORK_COPY_RECONCILER: { name: 'mint-reconcile', entrypoint: 'WorkMintReconciler' },
         WORK_COPY_CLOSER: { name: 'mint-closure', entrypoint: 'WorkMintCloser' },
         WORK_COPY_VERIFIER: { name: 'work-preparation', entrypoint: 'WorkPreparationGate' },
+        WORK_GIT_TRANSPORT: { name: 'work-git-transport', entrypoint: 'WorkGitTransport' },
       }
     : {};
   const mf = new Miniflare(

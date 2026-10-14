@@ -276,6 +276,27 @@ impl WorkStore {
             return Ok(());
         }
         if step == 0 {
+            let disclosure = self.preparation(id).await?.disclosure_digest().to_hex();
+            let ready = gate(
+                env,
+                "WORK_GIT_TRANSPORT",
+                "/git-prepare",
+                json!({"disclosure_digest":disclosure}),
+            )
+            .await?;
+            if ready != json!({"ready":true,"disclosure_digest":disclosure}) {
+                return Err(Denied::BindingMismatch.into());
+            }
+            // Startup/provisioning can await provider I/O. Recheck owner and
+            // operator authority before reserving the first credential slot.
+            self.require_copy_activation(env, id).await?;
+            self.require_current_authority().await?;
+            self.require_copy_consent(id, Some(&copy_account(env)?))
+                .await?;
+            let current = self.copy_job(id).await?;
+            if current.state != "running" || current.next_step != 0 || current.inflight != 1 {
+                return Err(Denied::StaleAuthority.into());
+            }
             self.dispatch_preparation(id).await?;
         }
         let a = if matches!(phase, Phase::Initial | Phase::Mint) {
