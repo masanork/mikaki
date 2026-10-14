@@ -80,6 +80,17 @@ configuration. Do not substitute repository fixtures for approved card issuer tr
 Record the source-matched public observation after promotion; this section alone
 records the requested configuration, not a successful deployment.
 
+The first main promotion (`871fc9c`, run `38589090581`) passed every verification
+lane after one browser-test rerun, then stopped before Worker upload because the
+production Owner ledger already contained `0006_owner_login_wrap.sql`. That
+additive Vault migration was applied by the separate PR #242 workflow before its
+feature merge. The alignment follow-up imports only the exact migration bytes,
+schema pin and runtime/readiness recognition. It does not activate that PR's
+login/Vault behavior or apply another DB migration. The fresh read-only check
+reconstructs and verifies the complete Owner/Work schema, ordered ledgers and
+unchanged empty supplemental table. Keep exact schema checks rather than admitting
+an unknown ledger entry. A new source-qualified main promotion is required.
+
 ### Signing custody preparation — 2026-10-14
 
 PR [#228](https://github.com/masanork/mikaki/pull/228) merged as `da96679`.
@@ -189,7 +200,9 @@ attester and both batch extensions disabled until their own inputs are ready.
 The owner DB is `mikaki-auth-owner` (`d0258938-0d27-4110-8aa9-c82e20f3885b`).
 Recheck its current migration ledger/schema with the existing deployment checks;
 this read-only checkpoint did not requalify it. Its checked-in Owner migration
-chain is `0001`–`0005`, including the integrated Identity baseline and the additive login-review schema. Never apply the
+chain is `0001`–`0006`, including the integrated Identity baseline, additive
+login-review schema and the already-applied supplemental login-wrapper table.
+Never apply the
 historical `0036`–`0046` migration sequence to this DB.
 
 Before activation, retain the exact source, active and staged version IDs, selected

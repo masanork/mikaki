@@ -5,6 +5,7 @@ const WRAPPERS: &str = "0002_owner_key_wrap_operations.sql";
 const WAITLIST: &str = "0003_enrollment_waitlist.sql";
 const AGE_REQUESTS: &str = "0004_identity_age_requests.sql";
 const LOGIN_REVIEW: &str = "0005_login_connection_review.sql";
+const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -24,6 +25,16 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
         }
         LOGIN_REVIEW => {
             ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW}")
+                || ledger
+                    == format!(
+                        "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP}"
+                    )
+        }
+        LOGIN_WRAP => {
+            ledger
+                == format!(
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP}"
+                )
         }
         _ => false,
     }
@@ -116,6 +127,25 @@ mod tests {
         ] {
             assert!(!ready(&invalid, AGE_REQUESTS));
             assert!(!ready(&invalid, LOGIN_REVIEW));
+        }
+    }
+    #[test]
+    fn login_wrap_upgrade_requires_the_complete_chain() {
+        let previous = format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW}");
+        let upgraded = format!("{previous},{LOGIN_WRAP}");
+        assert!(ready(&previous, LOGIN_REVIEW));
+        assert!(ready(&upgraded, LOGIN_REVIEW));
+        assert!(ready(&upgraded, LOGIN_WRAP));
+        assert!(!ready(&previous, LOGIN_WRAP));
+        assert!(!ready(&upgraded, AGE_REQUESTS));
+        for invalid in [
+            format!("{BASELINE},{WRAPPERS},{LOGIN_WRAP}"),
+            format!("{upgraded},{LOGIN_WRAP}"),
+            format!("{previous},0006_unknown.sql"),
+            format!("{upgraded},0007_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, LOGIN_REVIEW));
+            assert!(!ready(&invalid, LOGIN_WRAP));
         }
     }
 }
