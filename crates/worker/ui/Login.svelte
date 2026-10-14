@@ -1,12 +1,24 @@
 <script lang="ts">
   import { restoreActionFocus } from './action-focus.js';
   import { publishVaultLock } from './session-events.js';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
   import WovenGate from './WovenGate.svelte';
+  import ConnectionReview from './ConnectionReview.svelte';
   import { weaveProfile } from './woven-gate.js';
   import type { Locale } from './paraglide/runtime.js';
+  import {
+    loginCredential,
+    loginDestination,
+    loginScope,
+    readLoginHistory,
+    recognizeLogin,
+    rememberLogin,
+    type LoginConnection,
+    type LoginHistory,
+    type LoginRecognition,
+  } from './login-history.js';
 
   let {
     tx,
@@ -16,6 +28,8 @@
     client,
     enrollment,
     ownerLogin,
+    scope = 'openid',
+    expiresInMs = 300_000,
     locale,
   }: {
     tx: string;
@@ -25,6 +39,8 @@
     client: string;
     enrollment: boolean;
     ownerLogin: boolean;
+    scope?: string;
+    expiresInMs?: number;
     locale: Locale;
   } = $props();
   let busy = $state(false);
@@ -35,8 +51,29 @@
   const destination = $derived(new URL(rpUri));
   const pageProfile = weaveProfile(page.origin);
   const rpProfile = $derived(weaveProfile(destination.origin));
+  const connection = $derived<LoginConnection>({
+    issuer: page.origin,
+    client,
+    destination: loginDestination(rpUri),
+    scope: loginScope(scope),
+  });
+  const transactionStarted = performance.now();
+  const transactionDeadline = $derived(
+    transactionStarted + Math.max(0, Math.min(expiresInMs, 300_000)),
+  );
+  let recognition = $state<LoginRecognition>({ kind: 'first' });
+  let disposed = false;
+  let generation = 0;
+  let reviewTimer: ReturnType<typeof setTimeout> | undefined;
+  type Pending = {
+    endpoint: '/login/finish' | '/register/finish';
+    response: Record<string, string | null>;
+    credential: string | null;
+    deadline: number;
+  };
+  let pending = $state<Pending | null>(null);
   let passkeyPending = $state(false);
-  let errorKind = $state<'required' | 'operation' | 'link' | null>(null);
+  let errorKind = $state<'required' | 'operation' | 'link' | 'expired' | null>(null);
   let invitation = $state('');
   let linkedInvitation = $state(false);
   let checkingInvitation = $state(false);
@@ -44,11 +81,173 @@
   let authentication: AbortController | null = null;
 
   onMount(() => {
+    recognition = recognizeLogin(readHistory(), connection);
     registrationOpen = enrollment;
     if (enrollment) void prepareInvitation();
     else if (typeof PublicKeyCredential !== 'undefined') void authenticate(true);
-    return () => authentication?.abort();
+    const discard = () => {
+      disposed = true;
+      generation += 1;
+      authentication?.abort();
+      clearTimeout(reviewTimer);
+      pending = null;
+    };
+    const resume = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        disposed = false;
+        authentication = null;
+        busy = false;
+        passkeyPending = false;
+        errorKind = 'expired';
+      }
+    };
+    window.addEventListener('pagehide', discard);
+    window.addEventListener('pageshow', resume);
+    return () => {
+      disposed = true;
+      discard();
+      window.removeEventListener('pagehide', discard);
+      window.removeEventListener('pageshow', resume);
+    };
   });
+
+  function current(operation: number): boolean {
+    return !disposed && operation === generation;
+  }
+
+  function readHistory(): LoginHistory {
+    try {
+      return readLoginHistory(localStorage);
+    } catch {
+      return { available: false, records: [] };
+    }
+  }
+
+  function historyLabel(): string {
+    if (recognition.kind === 'unavailable') return m.loginHistoryUnavailable();
+    if (recognition.kind === 'first') return m.loginHistoryFirst();
+    if (recognition.kind === 'changed') return m.loginHistoryChanged();
+    const date = new Date(recognition.previous!.last).toLocaleString(locale, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return m.loginHistoryKnown({ date });
+  }
+
+  async function complete(p: Pending): Promise<void> {
+    const operation = generation;
+    if (!current(operation)) return;
+    clearTimeout(reviewTimer);
+    pending = null;
+    if (performance.now() >= p.deadline) {
+      busy = false;
+      errorKind = 'expired';
+      return;
+    }
+    busy = true;
+    try {
+      const result = await fetch(p.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tx, consent: true, response: p.response }),
+      });
+      if (!result.ok) throw new Error('rejected');
+      const body: unknown = await result.json();
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        !('location' in body) ||
+        typeof body.location !== 'string'
+      )
+        throw new Error('invalid response');
+      const next = new URL(body.location);
+      if (next.origin !== page.origin || next.username || next.password)
+        throw new Error('invalid continuation');
+      if (!current(operation)) return;
+      // Storage failure affects recognition only, never authentication or Vault keys.
+      try {
+        if (p.credential) rememberLogin(localStorage, connection, p.credential);
+      } catch {
+        /* unavailable */
+      }
+      invitation = '';
+      publishVaultLock();
+      location.assign(next.href);
+    } catch {
+      if (!current(operation)) return;
+      authentication = null;
+      busy = false;
+      errorKind = 'operation';
+      await restoreActionFocus(null, () =>
+        document.getElementById(enrollment ? 'register' : 'passkey'),
+      );
+    }
+  }
+
+  async function prepareCompletion(
+    endpoint: Pending['endpoint'],
+    response: Pending['response'],
+    id: string,
+  ): Promise<void> {
+    const operation = generation;
+    let fingerprint: string | null = null;
+    try {
+      fingerprint = await loginCredential(page.origin, id);
+    } catch {
+      /* recognition is optional */
+    }
+    if (!current(operation)) return;
+    // Re-read after Passkey selection: a different Passkey on a shared browser
+    // must not inherit another credential's recognition or skip its review.
+    recognition = fingerprint
+      ? recognizeLogin(readHistory(), connection, fingerprint)
+      : { kind: 'unavailable' };
+    const proof: Pending = {
+      endpoint,
+      response,
+      credential: fingerprint,
+      deadline: Math.min(transactionDeadline, performance.now() + 120_000),
+    };
+    if (!enrollment && !ownerLogin && recognition.kind !== 'known') {
+      pending = proof;
+      busy = false;
+      registrationOpen = false;
+      reviewTimer = setTimeout(
+        () => {
+          pending = null;
+          errorKind = 'expired';
+          void restoreActionFocus(null, () => document.getElementById('passkey'));
+        },
+        Math.max(0, proof.deadline - performance.now()),
+      );
+      await tick();
+      if (current(operation)) document.getElementById('connection-review-title')?.focus();
+    } else await complete(proof);
+  }
+
+  async function cancelConnection(): Promise<void> {
+    const operation = generation;
+    clearTimeout(reviewTimer);
+    pending = null;
+    authentication?.abort();
+    busy = true;
+    try {
+      // Consume the existing transaction without sending the retained proof.
+      await fetch('/login/deny', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tx }),
+      });
+    } catch {
+      // The discarded proof cannot be submitted; any unconsumed transaction expires.
+    } finally {
+      // Stay with mikaki; do not send a suspicious connection back to its RP.
+      if (current(operation)) location.assign(`/?lang=${locale}`);
+    }
+  }
 
   async function prepareInvitation(): Promise<void> {
     checkingInvitation = true;
@@ -84,8 +283,9 @@
   }
 
   async function authenticate(automatic = false): Promise<void> {
-    if (busy) return;
+    if (busy || pending) return;
     if (automatic && authentication) return;
+    const operation = generation;
     const previousFocus = document.activeElement;
     authentication?.abort();
     const controller = new AbortController();
@@ -103,7 +303,7 @@
           timeout: 120000,
         },
       });
-      if (authentication !== controller) return;
+      if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
       busy = true;
       if (
@@ -119,25 +319,9 @@
         signature: encode(credential.response.signature),
         user_handle: credential.response.userHandle ? encode(credential.response.userHandle) : null,
       };
-      const result = await fetch('/login/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tx, consent: true, response }),
-      });
-      if (!result.ok) throw new Error('rejected');
-      const body: unknown = await result.json();
-      if (
-        typeof body !== 'object' ||
-        body === null ||
-        !('location' in body) ||
-        typeof body.location !== 'string'
-      ) {
-        throw new Error('invalid response');
-      }
-      publishVaultLock();
-      location.assign(body.location);
+      await prepareCompletion('/login/finish', response, credential.id);
     } catch {
-      if (authentication !== controller) return;
+      if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
@@ -148,7 +332,8 @@
   }
 
   async function register(): Promise<void> {
-    if (busy) return;
+    if (busy || pending) return;
+    const operation = generation;
     const previousFocus = document.activeElement;
     if (!linkedInvitation && !invitation.trim()) {
       errorKind = 'required';
@@ -179,6 +364,7 @@
         typeof options.rp_id !== 'string'
       )
         throw new Error('invalid registration options');
+      if (!current(operation)) return;
       const credential = await navigator.credentials.create({
         publicKey: {
           challenge: decode(options.challenge),
@@ -197,32 +383,18 @@
         credential.getClientExtensionResults().credProps?.rk !== true
       )
         throw new Error('discoverable passkey required');
-      const result = await fetch('/register/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tx,
-          consent: true,
-          response: {
-            id: credential.id,
-            client_data: encode(credential.response.clientDataJSON),
-            attestation: encode(credential.response.attestationObject),
-          },
-        }),
-      });
-      if (!result.ok) throw new Error('registration failed');
-      const body: unknown = await result.json();
-      if (
-        typeof body !== 'object' ||
-        body === null ||
-        !('location' in body) ||
-        typeof body.location !== 'string'
-      )
-        throw new Error('invalid response');
-      invitation = '';
-      publishVaultLock();
-      location.assign(body.location);
+      if (!current(operation)) return;
+      await prepareCompletion(
+        '/register/finish',
+        {
+          id: credential.id,
+          client_data: encode(credential.response.clientDataJSON),
+          attestation: encode(credential.response.attestationObject),
+        },
+        credential.id,
+      );
     } catch {
+      if (!current(operation)) return;
       errorKind = 'operation';
       busy = false;
       await restoreActionFocus(previousFocus, () => document.getElementById('register'));
@@ -278,12 +450,31 @@
       class="item origin destination"
       style={`--grain-step:${rpProfile.spacing / 2}px;--grain-angle:${rpProfile.grainAngle}deg`}
     >
-      <span>{m.authRpOriginLabel()}</span><strong>{destination.host}</strong>
+      <span>{m.authRpOriginLabel()}</span><strong
+        >{destination.host || connection.destination}</strong
+      >
     </div>
   </div>
+  {#if !enrollment}
+    <div class="connection-memory" data-recognition={recognition.kind}>
+      <p>{historyLabel()}</p>
+      <p class="connection-hint">{m.loginAddressHint()}</p>
+    </div>
+  {/if}
   <main class="entry">
     <h1 class="sr-only">{enrollment ? m.enrollHeading() : m.login()}</h1>
-    {#if enrollment}
+    {#if pending}
+      <ConnectionReview
+        {connection}
+        {recognition}
+        label={historyLabel()}
+        {busy}
+        onapprove={() => {
+          if (pending) void complete(pending);
+        }}
+        oncancel={cancelConnection}
+      />
+    {:else if enrollment}
       <section class="registration enrollment-form" aria-label={m.enrollHeading()}>
         {@render invitationForm()}
         <a class="quiet" href={`/waitlist?lang=${locale}`}>{m.waitlistHeading()}</a>
@@ -306,21 +497,24 @@
     {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
         {m.error()}
       </p>{/if}
+    {#if errorKind === 'expired'}<p class="auth-alert" role="alert">
+        {m.loginReviewExpired()}
+      </p>{/if}
     {#if errorKind === 'link'}<p class="auth-alert" role="alert">{m.enrollLinkUnavailable()}</p>
       <a class="quiet" href={`/signin?lang=${locale}`}>{m.enrollSignIn()}</a>{/if}
   </main>
   <footer>
-    {#if !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}
+    {#if !pending && !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}
         >{m.homeEnroll()}</a
       >
-    {:else if !enrollment}<details class="registration" bind:open={registrationOpen}>
+    {:else if !pending && !enrollment}<details class="registration" bind:open={registrationOpen}>
         <summary>{m.authRegisterHeading()}</summary>
         {@render invitationForm()}
       </details>{/if}
     <WovenGate
       pageOrigin={page.origin}
       rpOrigin={destination.origin}
-      paused={busy || passkeyPending}
+      paused={busy || passkeyPending || pending !== null}
     />
     <select
       class="language"

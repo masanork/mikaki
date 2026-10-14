@@ -18,6 +18,7 @@ const child = spawn(
     '--test-reporter=lcov',
     '--test-reporter-destination=artifacts/frontend-coverage.lcov',
     ...[
+      'login-history',
       'vault-crypto',
       'vault-note',
       'vault-freshness',

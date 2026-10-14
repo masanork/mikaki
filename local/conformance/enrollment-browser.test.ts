@@ -98,7 +98,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     });
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
         protocol: 'ctap2',
         ctap2Version: 'ctap2_1',
@@ -315,6 +315,16 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     assert.ok(passkeyEvents.includes('passkey-test:auto-aborted'));
     assert.ok(passkeyEvents.includes('passkey-test:button-cancelled'));
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
+    await page.getByRole('heading', { name: '接続先を確認してください' }).waitFor();
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) AS n FROM app_connection WHERE client_id='test-client'",
+        ).first()
+      ).n,
+      0,
+    );
+    await page.getByRole('button', { name: 'この接続を続ける' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.ok(passkeyEvents.includes('passkey-test:button-retry'));
     const secondSso = (await context.cookies(issuer)).find(
@@ -366,6 +376,24 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       1,
     );
     await context.clearCookies();
+    // Recover the credential whose registration response was lost, rather than
+    // relying on the virtual authenticator's unspecified multi-account selection.
+    const lostCredential = (JSON.parse(lostFinishBody!) as { response: { id: string } }).response
+      .id;
+    const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
+    assert.ok(
+      credentials.some(
+        (credential) =>
+          Buffer.from(credential.credentialId, 'base64').toString('base64url') === lostCredential,
+      ),
+    );
+    for (const credential of credentials) {
+      if (Buffer.from(credential.credentialId, 'base64').toString('base64url') !== lostCredential)
+        await cdp.send('WebAuthn.removeCredential', {
+          authenticatorId,
+          credentialId: credential.credentialId,
+        });
+    }
     const afterLostResponse = await worker.fetch(authorize.href, { redirect: 'manual' });
     const recoveryBrowserCookie = requiredHeader(afterLostResponse, 'set-cookie').split(';')[0];
     await context.addCookies([
@@ -384,6 +412,8 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     // The injected cancellation occurs on the first button attempt after every navigation.
     await page.getByRole('alert').waitFor();
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
+    await page.getByRole('heading', { name: '接続先を確認してください' }).waitFor();
+    await page.getByRole('button', { name: 'この接続を続ける' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.deepEqual(errors, []);
   } catch (error) {

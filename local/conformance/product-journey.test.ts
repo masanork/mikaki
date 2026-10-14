@@ -191,6 +191,8 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
     await page.goto(rpOrigin);
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('heading', { name: 'Review this connection', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Continue this connection', exact: true }).click();
     // Chromium's virtual authenticator can satisfy the normal automatic login.
     // Leave the actual credential ceremony and PRF implementation intact.
     await expect(
