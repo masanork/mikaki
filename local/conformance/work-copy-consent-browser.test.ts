@@ -10,6 +10,7 @@ import { auditAccessibility } from './support/accessibility-audit.ts';
 test('copy approval is explicit, scoped, bilingual and discarded when the owner view locks', async (t) => {
   const f = await createSourceFixture(undefined, true, 'product', true);
   const s = await seedPreparationReview(f);
+  const destination = JSON.parse(s.reserved.body).data.plan;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
   const page = await context.newPage();
@@ -74,11 +75,18 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
       'review and actual text inspection do not automatically authorize copying',
       async () => {
         await page.goto('https://work.test/work/preparation-review?lang=ja');
+        await expect(choose()).toContainText(destination.task_name);
         await choose().click();
         await expect(approve()).toHaveCount(0);
         await expect(checkbox()).toHaveCount(0);
         await expect(page.getByText('Cloudflare Artifacts', { exact: true })).toBeVisible();
         await expect(page.locator('.work-record-details')).not.toHaveAttribute('open');
+        await expect(page.locator('.work-destination')).toContainText(
+          destination.task_namespace + ' / ' + destination.task_name,
+        );
+        await expect(page.locator('.work-destination')).toContainText(
+          destination.snapshot_namespace + ' / ' + destination.snapshot_name,
+        );
         await page.locator('.work-record-details > summary').click();
         await expect(page.getByText('a'.repeat(32), { exact: true })).toBeVisible();
         await page.locator('.work-record-details > summary').click();
@@ -110,6 +118,8 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
           true,
         );
         await auditAccessibility(page, 'work-copy-consent-mobile');
+        await page.locator('main').focus();
+        await page.evaluate(() => scrollTo(0, 0));
         await page.screenshot({ path: shots + '/review-en-mobile.png', fullPage: true });
       },
     );
@@ -158,6 +168,12 @@ test('copy approval is explicit, scoped, bilingual and discarded when the owner 
         });
         const p = await s.reserve('late-copy-task', d.digest);
         await page.goto('https://work.test/work/preparation-review?lang=ja');
+        await expect(page.locator(`[data-preparation-id="${s.reserved.id}"]`)).toContainText(
+          destination.task_name,
+        );
+        await expect(page.locator(`[data-preparation-id="${p.id}"]`)).toContainText(
+          JSON.parse(p.body).data.plan.task_name,
+        );
         await page.locator(`[data-preparation-id="${p.id}"]`).click();
         await inspect().click();
         await checkbox().check();
