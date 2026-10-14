@@ -16,6 +16,7 @@ const legacyFlags = new Set([
   '--key-attestation',
   '--encrypted',
   '--positive',
+  '--authorization-lifecycle',
 ]);
 const officialModuleName =
   /^(?:oid4vci-1_0-issuer|fapi2-security-profile-final)-[a-z0-9_]+(?:-[a-z0-9_]+)*$/;
