@@ -2568,10 +2568,10 @@
   },
   {
     "date": "2026-10-14",
-    "commit": "b53a077",
+    "commit": "41206e9",
     "code": {
-      "implementationLines": 82474,
-      "testLines": 13195,
+      "implementationLines": 82546,
+      "testLines": 13325,
       "implementationFiles": 286,
       "testFiles": 38,
       "byLanguage": {
@@ -2580,8 +2580,8 @@
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 38685,
-          "testLines": 10457
+          "implementationLines": 38757,
+          "testLines": 10587
         },
         "svelte": {
           "implementationLines": 6861,
@@ -2695,19 +2695,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 11806,
-        "count": 13363,
-        "percent": 88.3484247549203
+        "covered": 11839,
+        "count": 13395,
+        "percent": 88.38372527062337
       },
       "regions": {
-        "covered": 19112,
-        "count": 22539,
-        "percent": 84.79524379963618
+        "covered": 19159,
+        "count": 22587,
+        "percent": 84.82312834816486
       },
       "functions": {
-        "covered": 1081,
-        "count": 1261,
-        "percent": 85.72561459159397
+        "covered": 1083,
+        "count": 1263,
+        "percent": 85.74821852731591
       }
     }
   }
