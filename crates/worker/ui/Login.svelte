@@ -63,6 +63,7 @@
   );
   let recognition = $state<LoginRecognition>({ kind: 'first' });
   let disposed = false;
+  let generation = 0;
   let reviewTimer: ReturnType<typeof setTimeout> | undefined;
   type Pending = {
     endpoint: '/login/finish' | '/register/finish';
@@ -86,6 +87,7 @@
     else if (typeof PublicKeyCredential !== 'undefined') void authenticate(true);
     const discard = () => {
       disposed = true;
+      generation += 1;
       authentication?.abort();
       clearTimeout(reviewTimer);
       pending = null;
@@ -108,6 +110,10 @@
       window.removeEventListener('pageshow', resume);
     };
   });
+
+  function current(operation: number): boolean {
+    return !disposed && operation === generation;
+  }
 
   function readHistory(): LoginHistory {
     try {
@@ -132,6 +138,8 @@
   }
 
   async function complete(p: Pending): Promise<void> {
+    const operation = generation;
+    if (!current(operation)) return;
     clearTimeout(reviewTimer);
     pending = null;
     if (performance.now() >= p.deadline) {
@@ -158,7 +166,7 @@
       const next = new URL(body.location);
       if (next.origin !== page.origin || next.username || next.password)
         throw new Error('invalid continuation');
-      if (disposed) return;
+      if (!current(operation)) return;
       // Storage failure affects recognition only, never authentication or Vault keys.
       try {
         if (p.credential) rememberLogin(localStorage, connection, p.credential);
@@ -169,7 +177,7 @@
       publishVaultLock();
       location.assign(next.href);
     } catch {
-      if (disposed) return;
+      if (!current(operation)) return;
       authentication = null;
       busy = false;
       errorKind = 'operation';
@@ -184,13 +192,14 @@
     response: Pending['response'],
     id: string,
   ): Promise<void> {
+    const operation = generation;
     let fingerprint: string | null = null;
     try {
       fingerprint = await loginCredential(page.origin, id);
     } catch {
       /* recognition is optional */
     }
-    if (disposed) return;
+    if (!current(operation)) return;
     // Re-read after Passkey selection: a different Passkey on a shared browser
     // must not inherit another credential's recognition or skip its review.
     recognition = fingerprint
@@ -215,11 +224,12 @@
         Math.max(0, proof.deadline - performance.now()),
       );
       await tick();
-      document.getElementById('connection-review-title')?.focus();
+      if (current(operation)) document.getElementById('connection-review-title')?.focus();
     } else await complete(proof);
   }
 
   async function cancelConnection(): Promise<void> {
+    const operation = generation;
     clearTimeout(reviewTimer);
     pending = null;
     authentication?.abort();
@@ -235,7 +245,7 @@
       // The discarded proof cannot be submitted; any unconsumed transaction expires.
     } finally {
       // Stay with mikaki; do not send a suspicious connection back to its RP.
-      location.assign(`/?lang=${locale}`);
+      if (current(operation)) location.assign(`/?lang=${locale}`);
     }
   }
 
@@ -275,6 +285,7 @@
   async function authenticate(automatic = false): Promise<void> {
     if (busy || pending) return;
     if (automatic && authentication) return;
+    const operation = generation;
     const previousFocus = document.activeElement;
     authentication?.abort();
     const controller = new AbortController();
@@ -292,7 +303,7 @@
           timeout: 120000,
         },
       });
-      if (authentication !== controller) return;
+      if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
       busy = true;
       if (
@@ -310,7 +321,7 @@
       };
       await prepareCompletion('/login/finish', response, credential.id);
     } catch {
-      if (authentication !== controller) return;
+      if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
       authentication = null;
       if (!automatic && !controller.signal.aborted) errorKind = 'operation';
@@ -322,6 +333,7 @@
 
   async function register(): Promise<void> {
     if (busy || pending) return;
+    const operation = generation;
     const previousFocus = document.activeElement;
     if (!linkedInvitation && !invitation.trim()) {
       errorKind = 'required';
@@ -352,6 +364,7 @@
         typeof options.rp_id !== 'string'
       )
         throw new Error('invalid registration options');
+      if (!current(operation)) return;
       const credential = await navigator.credentials.create({
         publicKey: {
           challenge: decode(options.challenge),
@@ -370,6 +383,7 @@
         credential.getClientExtensionResults().credProps?.rk !== true
       )
         throw new Error('discoverable passkey required');
+      if (!current(operation)) return;
       await prepareCompletion(
         '/register/finish',
         {
@@ -380,6 +394,7 @@
         credential.id,
       );
     } catch {
+      if (!current(operation)) return;
       errorKind = 'operation';
       busy = false;
       await restoreActionFocus(previousFocus, () => document.getElementById('register'));

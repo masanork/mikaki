@@ -71,12 +71,14 @@ test(
         const errors: string[] = [];
         page.on('pageerror', (error) => errors.push(error.message));
         const requests: { path: string; body: Record<string, unknown> }[] = [];
+        let releaseFinish: (() => void) | undefined;
         const config = {
           destination: 'https://rp.example/callback',
           scope: 'openid',
           status: 200,
           location: `${issuer}/done`,
           expires: 300_000,
+          holdFinish: false,
         };
         await page.route(`${issuer}/**`, async (route) => {
           const request = route.request();
@@ -108,6 +110,10 @@ test(
               path: url.pathname,
               body: request.postDataJSON() as Record<string, unknown>,
             });
+            if (config.holdFinish && url.pathname.endsWith('/finish'))
+              await new Promise<void>((resolve) => {
+                releaseFinish = resolve;
+              });
             await route.fulfill({ status: config.status, json: { location: config.location } });
           } else {
             await route.fulfill({
@@ -161,6 +167,7 @@ test(
           authenticator,
           addAuthenticator,
           stored,
+          releaseFinish: () => releaseFinish?.(),
         };
       }
 
@@ -384,6 +391,36 @@ test(
             assert.equal(f.requests.length, 0);
             assert.deepEqual(f.errors, []);
           } finally {
+            await f.context.close();
+          }
+        },
+      );
+
+      await t.test(
+        'late finish responses cannot update history or navigate a resumed page',
+        async () => {
+          const f = await fixture();
+          try {
+            await f.page.goto(`${issuer}/login`);
+            await expect(f.page.locator('#connection-approve')).toBeVisible();
+            f.config.holdFinish = true;
+            await f.page.locator('#connection-approve').click();
+            await expect.poll(() => f.requests.length).toBe(1);
+            await f.page.evaluate(() => {
+              window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+              window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            });
+            const finished = f.page.waitForResponse(`${issuer}/login/finish`);
+            f.releaseFinish();
+            await (await finished).finished();
+            // Let the fetch continuation and any resulting navigation settle.
+            await f.page.waitForTimeout(100);
+            assert.equal(f.page.url(), `${issuer}/login`);
+            assert.equal(await f.stored(), null);
+            await expect(f.page.getByRole('alert')).toContainText('有効時間');
+            assert.deepEqual(f.errors, []);
+          } finally {
+            f.releaseFinish();
             await f.context.close();
           }
         },
