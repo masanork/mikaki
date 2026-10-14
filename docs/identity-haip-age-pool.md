@@ -58,10 +58,12 @@ The Rust host bridge uses production authorization, encryption, credential-trust
 After the existing dependency/policy/browser-Wasm and Worker build prerequisites, run the complete local boundary on a host with the native client's desktop build dependencies (macOS is the CI native target):
 
 ```sh
+GITHUB_SHA="$(git rev-parse HEAD)" worker-build --release crates/worker
+worker-build --release crates/userinfo-claim-worker
 npm run test:identity-age-pool
 ```
 
-This runs shared Rust checks, the Worker issuance/presentation and age/UserInfo tests, all three relevant UI suites, and the native library suite. CI runs those underlying checks in its existing Worker/core/native jobs. No test command enables production flags, installs public trust, uses a real card or publishes credentials. The fixture remains bounded to 128 commands, a 60-second process deadline and its existing byte limits. Real issuer nonce, attestation and credential expiry checks remain enabled; the live journey may wait for the first half of a minute so positive presentations complete within rounded credential validity.
+The command first requires the Worker artifact to identify the current clean checkout and satisfy the byte budgets. Setting `GITHUB_SHA` to that checkout refreshes cached local build provenance; a stale binary is rejected before qualification. This runs shared Rust checks, the Worker issuance/presentation and age/UserInfo tests, all three relevant UI suites, and the native library suite. CI runs those underlying checks in its existing Worker/core/native jobs. No test command enables production flags, installs public trust, uses a real card or publishes credentials. The fixture remains bounded to 128 commands, a 60-second process deadline and its existing byte limits. Real issuer nonce, attestation and credential expiry checks remain enabled; the live journey may wait for the first half of a minute so positive presentations complete within rounded credential validity.
 
 The next acceptance work is the configured deployment/profile (#116), real card/Android lifecycle and crash behavior (#117), an external full Wallet (#118), and official HAIP coverage (#119). Those are separate acceptance targets; the scoped host implementation has a finite executable boundary above.
 

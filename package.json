@@ -69,7 +69,7 @@
     "test:website": "node --test website/website.test.ts",
     "test:vault-disclosure": "node --test --test-concurrency=1 local/conformance/vault-owner-disclosure.test.ts local/conformance/vault-record-userinfo.test.ts local/conformance/vault-record-approval.test.ts",
     "test:identity": "cargo test -p mikaki-identity --locked && node --test local/conformance/identity-issuance.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-presentation.test.ts local/conformance/identity-proximity.test.ts",
-    "test:identity-age-pool": "cargo test -p mikaki-identity --locked && node --test --test-concurrency=1 local/conformance/identity-issuance.test.ts local/conformance/identity-userinfo.test.ts local/conformance/identity-age-request.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts local/conformance/native-mobile-ui.test.ts && cargo test --locked --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib",
+    "test:identity-age-pool": "npm run check:worker-budgets && cargo test -p mikaki-identity --locked && node --test --test-concurrency=1 local/conformance/identity-issuance.test.ts local/conformance/identity-userinfo.test.ts local/conformance/identity-age-request.test.ts local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts local/conformance/native-mobile-ui.test.ts && cargo test --locked --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib",
     "test:identity-wallet-suite": "MIKAKI_OIDF_WALLET_SUITE=1 node --test local/conformance/identity-issuance.test.ts",
     "check:identity-wallet-device": "node scripts/check-identity-wallet-device.ts",
     "test:identity-wallet-eudi": "node --test local/conformance/eudi-wallet.test.ts",
