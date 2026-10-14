@@ -1,6 +1,6 @@
 /** Identity-checked private bridge to a separately provisioned Git executor. */
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { gitPlan, gitResult } from './protocol';
+import { closed, hex, gitPlan, gitResult } from './protocol';
 import type { GitPlan, MintRecord } from './protocol';
 import { productiveScope, expiry, jsonBody } from './worker';
 import { inventory } from './maintenance';
@@ -18,6 +18,38 @@ export class WorkGitTransport extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
     let repo: ArtifactsRepo | undefined;
     try {
+      // Native calls this once, after current consent and before any repo or
+      // credential admission. It carries no Git plan or bearer.
+      if (request.url === 'https://private.invalid/git-prepare') {
+        if (
+          this.env.WORK_GIT_TRANSPORT_ENABLED !== 'true' ||
+          request.method !== 'POST' ||
+          request.headers.has('Authorization')
+        )
+          throw new Error('git_denied');
+        const p: unknown = await jsonBody(request);
+        if (!closed(p, ['disclosure_digest']) || !hex(p.disclosure_digest))
+          throw new Error('git_denied');
+        const response = await this.env.GIT_EXECUTOR.fetch('https://private.invalid/git-prepare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+          redirect: 'manual',
+          signal: AbortSignal.timeout(60000),
+        });
+        if (response.status !== 200) {
+          await response.body?.cancel();
+          throw new Error('git_denied');
+        }
+        const value: unknown = await jsonBody(response);
+        if (
+          !closed(value, ['ready', 'disclosure_digest']) ||
+          value.ready !== true ||
+          value.disclosure_digest !== p.disclosure_digest
+        )
+          throw new Error('git_denied');
+        return Response.json(value, { headers: { 'Cache-Control': 'no-store' } });
+      }
       const auth = request.headers.get('Authorization');
       if (
         this.env.WORK_GIT_TRANSPORT_ENABLED !== 'true' ||

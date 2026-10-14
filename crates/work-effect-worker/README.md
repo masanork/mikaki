@@ -14,6 +14,12 @@ private capability.
 - `git.ts` / `git-transport.ts`: independently admitted fixed Git exchanges using
   encrypted Native custody and a separately provisioned private Git host. See
   the [Git contract and deployment limits](../../docs/work-artifacts-git-gate.md).
+  At the first Native copy step, the existing named transport performs one
+  bearer-free host preflight before repository creation or credential reservation.
+  The host retains the admission and checks its pinned image and sealed source
+  readiness. Failure or a lost reply blocks that copy without replay; an existing
+  unknown host attempt cannot acquire another preflight. Readiness is infrastructure
+  evidence and does not count as Git upload, readback or credential closure.
 - `preparation.ts`: opaque composition trigger; Native validates the read-only
   independent evidence and six closed custody records before recording verified
   preparation. See the [composition contract](../../docs/work-preparation-evidence.md).

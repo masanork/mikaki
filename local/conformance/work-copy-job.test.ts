@@ -5,6 +5,98 @@ import { test } from 'node:test';
 import { copyJobFixture as fixture } from './support/work-copy-job-fixture.ts';
 import { copyHttpPort } from '../../crates/worker/ui/work-copy-view.ts';
 
+for (const failure of ['not-ready', 'lost-reply', 'wrong-disclosure'] as const)
+  test(`host preflight ${failure} blocks before any repository or credential and never replays`, async () => {
+    const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+    let calls = 0;
+    try {
+      f.setExecutionHook(async (request, next) => {
+        assert.equal(request.url, 'https://private.invalid/git-prepare');
+        assert.equal(request.headers.has('Authorization'), false);
+        calls++;
+        if (failure === 'not-ready') return new Response(null, { status: 409 });
+        if (failure === 'lost-reply') throw new Error('synthetic lost readiness reply');
+        await next();
+        return Response.json({ ready: true, disclosure_digest: 'f'.repeat(64) });
+      });
+      assert.equal((await f.approve()).status, 200);
+      assert.equal((await f.start()).status, 200);
+      assert.equal((await f.advance(0)).body.state, 'blocked');
+      assert.equal((await f.copy()).body.record.job.next_step, 0);
+      assert.equal((await f.remote()).repos.length, 0);
+      assert.equal(
+        await f.DB.prepare('SELECT count(*) AS n FROM work_credential_attempt').first('n'),
+        0,
+      );
+      assert.equal(f.http.counts.pushes, 0);
+      await f.restart();
+      assert.equal((await f.advance(0)).body.state, 'blocked');
+      assert.equal(calls, 1);
+      assert.equal((await f.remote()).repos.length, 0);
+    } finally {
+      await f.close();
+    }
+  });
+
+test('a stop while host readiness is awaited prevents the first credential reservation', async () => {
+  const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+  try {
+    f.setExecutionHook(async (_request, next) => {
+      assert.equal((await f.stop()).status, 200);
+      return next();
+    });
+    assert.equal((await f.approve()).status, 200);
+    assert.equal((await f.start()).status, 200);
+    assert.equal((await f.advance(0)).body.state, 'blocked');
+    assert.equal((await f.remote()).repos.length, 0);
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_credential_attempt').first('n'),
+      0,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+for (const change of ['source', 'session'] as const)
+  test(`a changed ${change} during readiness prevents the first provider effect`, async () => {
+    const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
+    try {
+      f.setExecutionHook(async (_request, next) => {
+        const ready = await next();
+        if (change === 'source') {
+          await f.DB.prepare(
+            "UPDATE work_source_access SET active=0,access_revision=access_revision+1 WHERE owner_id=? AND source_id='personal'",
+          )
+            .bind(f.account)
+            .run();
+        } else {
+          const revoked = await f.fixtureFetch('/authority-fixture', {
+            action: 'revoke-session',
+            session: 'delivery-sso',
+            account: f.account,
+            expected_epoch: 0,
+            actor: 'copy-job-qualification',
+            reason: 'synthetic SSO withdrawal',
+          });
+          assert.equal(revoked.status, 200);
+          await revoked.text();
+        }
+        return ready;
+      });
+      assert.equal((await f.approve()).status, 200);
+      assert.equal((await f.start()).status, 200);
+      assert.equal((await f.advance(0)).body.state, 'blocked');
+      assert.equal((await f.remote()).repos.length, 0);
+      assert.equal(
+        await f.DB.prepare('SELECT count(*) AS n FROM work_credential_attempt').first('n'),
+        0,
+      );
+    } finally {
+      await f.close();
+    }
+  });
+
 test('operator activation cannot replace current consent and refuses another disclosure before queuing', async () => {
   const f = await fixture({ LOCAL_COPY_TRIGGER_DISABLED: 'true' });
   try {

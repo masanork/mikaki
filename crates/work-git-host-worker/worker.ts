@@ -1,6 +1,6 @@
 /** Private Linux host routing. Native and permanent effect gates retain authority. */
 import { DurableObject, WorkerEntrypoint } from 'cloudflare:workers';
-import { gitPlan, gitResult } from '../work-effect-worker/protocol';
+import { closed, gitPlan, gitResult } from '../work-effect-worker/protocol';
 import type { GitPlan } from '../work-effect-worker/protocol';
 import { jsonBody } from '../work-effect-worker/worker';
 import { gitRegistrySchema } from './registry';
@@ -46,6 +46,12 @@ export function initializeGitHostStorage(storage: DurableObjectStorage) {
     CREATE TRIGGER IF NOT EXISTS host_frame_no_delete BEFORE DELETE ON host_frame BEGIN SELECT RAISE(ABORT,'retained'); END;
     CREATE TRIGGER IF NOT EXISTS host_attempt_no_update BEFORE UPDATE ON host_attempt BEGIN SELECT RAISE(ABORT,'immutable'); END;
     CREATE TRIGGER IF NOT EXISTS host_attempt_no_delete BEFORE DELETE ON host_attempt BEGIN SELECT RAISE(ABORT,'retained'); END;
+    CREATE TABLE IF NOT EXISTS host_preflight(id INTEGER PRIMARY KEY CHECK(id=1));
+    CREATE TABLE IF NOT EXISTS host_ready(id INTEGER PRIMARY KEY CHECK(id=1));
+    CREATE TRIGGER IF NOT EXISTS host_preflight_no_update BEFORE UPDATE ON host_preflight BEGIN SELECT RAISE(ABORT,'immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS host_preflight_no_delete BEFORE DELETE ON host_preflight BEGIN SELECT RAISE(ABORT,'retained'); END;
+    CREATE TRIGGER IF NOT EXISTS host_ready_no_update BEFORE UPDATE ON host_ready BEGIN SELECT RAISE(ABORT,'immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS host_ready_no_delete BEFORE DELETE ON host_ready BEGIN SELECT RAISE(ABORT,'retained'); END;
   `);
 }
 export async function retainGitHostAttempt(
@@ -82,6 +88,25 @@ export class WorkGitHost extends WorkerEntrypoint<GitHostEnv> {
   async fetch(request: Request) {
     if (this.env.WORK_GIT_HOST_ENABLED !== 'true') return new Response(null, { status: 404 });
     try {
+      if (request.url === 'https://private.invalid/git-prepare') {
+        if (
+          !enabled(this.env) ||
+          request.method !== 'POST' ||
+          request.headers.has('Authorization') ||
+          request.headers.get('Content-Type') !== 'application/json'
+        )
+          throw new Error('git_host_denied');
+        const p: unknown = await jsonBody(request);
+        if (
+          !closed(p, ['disclosure_digest']) ||
+          p.disclosure_digest !== this.env.WORK_GIT_DISCLOSURE_DIGEST
+        )
+          throw new Error('git_host_denied');
+        const ready = await this.env.GIT_HOST.getByName(
+          `${this.env.WORK_AUTHORITY_ID}:${this.env.WORK_GIT_DISCLOSURE_DIGEST}`,
+        ).prepare();
+        return Response.json(ready, { headers: { 'Cache-Control': 'no-store' } });
+      }
       const p = await checkedGitHostPlan(request, this.env);
       // Stable across image rollouts. Registry changes cannot erase old attempts.
       return await this.env.GIT_HOST.getByName(
@@ -106,11 +131,56 @@ export class GitHostContainer extends DurableObject<GitHostEnv> {
     super(ctx, env);
     if (enabled(env)) initializeGitHostStorage(ctx.storage);
   }
+  /** One retained readiness admission, no bearer and no Git exchange. */
+  async prepare(...args: unknown[]) {
+    if (args.length || !enabled(this.env) || this.#busy) throw new Error('git_host_denied');
+    this.#busy = true;
+    let stage: GitHostReadinessStage | 'admission' = 'admission';
+    try {
+      const frame = JSON.stringify([
+        this.env.WORK_ARTIFACTS_ACCOUNT,
+        this.env.WORK_ARTIFACTS_NAMESPACE,
+        this.env.WORK_AUTHORITY_ID,
+        this.env.WORK_GIT_DISCLOSURE_DIGEST,
+        this.env.WORK_GIT_REGISTRY_SHA256,
+      ]);
+      this.ctx.storage.transactionSync(() => {
+        // An old/unknown host attempt can never acquire a new preflight.
+        if (this.ctx.storage.sql.exec('SELECT attempt FROM host_attempt LIMIT 1').toArray().length)
+          throw new Error('git_host_denied');
+        this.ctx.storage.sql.exec('INSERT OR IGNORE INTO host_frame VALUES(1,?)', frame);
+        if (
+          this.ctx.storage.sql.exec<{ frame: string }>('SELECT frame FROM host_frame').one()
+            .frame !== frame
+        )
+          throw new Error('git_host_denied');
+        this.ctx.storage.sql.exec('INSERT INTO host_preflight VALUES(1)');
+      });
+      await this.ctx.storage.sync();
+      await readyGitHost(this.env, this.ctx.container, true, (current) => {
+        stage = current;
+      });
+      this.ctx.storage.sql.exec('INSERT INTO host_ready VALUES(1)');
+      await this.ctx.storage.sync();
+      return { ready: true, disclosure_digest: this.env.WORK_GIT_DISCLOSURE_DIGEST };
+    } catch {
+      // Fixed vocabulary only: no provider message, plan, source or credential.
+      console.warn({ event: 'git_host_preflight_failed', stage });
+      throw new Error('git_host_denied');
+    } finally {
+      this.#busy = false;
+    }
+  }
   async fetch(request: Request) {
     if (this.env.WORK_GIT_HOST_ENABLED !== 'true') return new Response(null, { status: 404 });
     try {
       const p = await checkedGitHostPlan(request, this.env);
       if (this.#busy) throw new Error('git_host_busy');
+      if (
+        !this.ctx.container?.running ||
+        this.ctx.storage.sql.exec('SELECT id FROM host_ready').toArray().length !== 1
+      )
+        throw new Error('git_host_not_ready');
       this.#busy = true;
       try {
         // A fresh primary attempt cannot repeat the same role/purpose here.
@@ -132,7 +202,7 @@ export class GitHostContainer extends DurableObject<GitHostEnv> {
   }
   /** Only readiness GETs retry. The productive port POST is called exactly once. */
   async #exchange(authorization: string, p: GitPlan) {
-    const { port } = await readyGitHost(this.env, this.ctx.container);
+    const { port } = await readyGitHost(this.env, this.ctx.container, true, () => {}, false);
     return port.fetch('http://localhost/git-execute', {
       method: 'POST',
       headers: {
@@ -146,16 +216,22 @@ export class GitHostContainer extends DurableObject<GitHostEnv> {
   }
 }
 /** Trusted host startup only: no Git POST, bearer, source selector or authority claim. */
+type GitHostReadinessStage = 'inspect' | 'start' | 'inactivity' | 'health' | 'provision' | 'verify';
 export async function readyGitHost(
   env: Omit<GitHostEnv, 'GIT_HOST' | 'WORK_GIT_HOST_ENABLED'>,
   c: Container | undefined,
   enableInternet = true,
+  observeStage: (stage: GitHostReadinessStage) => void = () => {},
+  allowStart = true,
 ) {
+  observeStage('inspect');
   const started = !c?.running;
   if (!c || !c.images.host) throw new Error('git_host_unavailable');
   if (c.running) {
     if ((await c.inspect())?.image !== c.images.host) throw new Error('git_host_old_image');
   } else {
+    if (!allowStart) throw new Error('git_host_not_ready');
+    observeStage('start');
     c.start({
       image: c.images.host,
       instance: 'standard-1',
@@ -168,7 +244,9 @@ export async function readyGitHost(
       },
     });
   }
+  observeStage('inactivity');
   await c.setInactivityTimeout(60000);
+  observeStage('health');
   const port = c.getTcpPort(8080),
     deadline = Date.now() + 20000;
   for (;;) {
@@ -188,10 +266,12 @@ export async function readyGitHost(
   }
   let ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
   if (ready.status === 503) {
+    observeStage('provision');
     await ready.body?.cancel();
     await provisionGitHost(env, port);
     ready = await port.fetch('http://localhost/ready', { signal: AbortSignal.timeout(2000) });
   }
+  observeStage('verify');
   if (ready.status !== 200) {
     await ready.body?.cancel();
     throw new Error('git_host_not_ready');
