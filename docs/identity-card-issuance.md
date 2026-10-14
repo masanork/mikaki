@@ -6,7 +6,11 @@ The [age-predicate profile](identity-age-predicates.md) can issue and present on
 
 **Source status, 2026-10-05:** PR #105 merged on 2026-10-04. Main includes Identity migrations `0036`–`0044` and the subsequent GC/resource migrations `0045`–`0046`. The preparation and integration checkpoints below record pre-merge work. They do not establish the current production migration ledger, feature activation or physical-device qualification; see [current source and deployment evidence](status.md).
 
-## Latest selected HAIP run — 2026-10-09
+## Latest selected HAIP run — 2026-10-14
+
+The [2026-10-14 checkpoint](identity-wallet-progress-20261014.md) fixes the 60-second HAIP authorization-code bound and SD-JWT type-metadata display labels. The clean-source extended Issuer selection passes 94/94; selected Wallet results are 22 official passes plus four host rejections awaiting actual error screens. Profiles remain disabled, with an exact first-party age-only activation path prepared. Full conformance, physical-device qualification and certification remain open.
+
+### Historical selected HAIP run — 2026-10-09
 
 The exact-source results are recorded in [the 2026-10-09 report](haip-conformance-20261009.md). The notification-tolerance module passed in both formats; the unchanged positive Issuer selection recorded 83/84 passes and one SD-JWT connect timeout at `CallCredentialIssuerNonceEndpoint`. The Issuer checkpoint is incomplete, and the transport root cause is unconfirmed. Selected host Wallet results remain 22 official passes plus four host-only rejections pending real Wallet error-screen evidence. This is not full HAIP conformance, physical Wallet qualification or certification.
 
@@ -688,7 +692,7 @@ The automated preflight tests use actual Rust validation with synthetic public P
 
 ### Remaining Issuer plan applicability inventory
 
-The pinned 5.3.1 plan has 19 entries outside the 84-run checkpoint. They remain unexecuted, not passing or automatically exempt. Conditional features must be checked against the official module and certification rules before recording N/A. Ordinary FAPI inherited modules must keep their official variants and exercise the actual HAIP protocol; a generic resource response is not evidence of successful credential issuance.
+This historical 84-run inventory has 19 entries outside its selected checkpoint. The [2026-10-14 inventory](identity-wallet-progress-20261014.md#issuer-modules-outside-this-checkpoint) records the current 14 entries outside the extended 94-run checkpoint, preserving historical SKIP/REVIEW outcomes separately. They remain unexecuted, not passing or automatically exempt. Conditional features must be checked against the official module and certification rules before recording N/A. Ordinary FAPI inherited modules must keep their official variants and exercise the actual HAIP protocol; a generic resource response is not evidence of successful credential issuance.
 
 | Official module (FAPI prefix shortened to `fapi2-…`)                     | Current condition / next verification                                                                                                                 |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |

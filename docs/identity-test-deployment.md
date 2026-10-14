@@ -45,6 +45,16 @@ Do not turn off Work or bypass this guard to activate Identity. Coordinate a
 reviewed configuration retaining the active Work profile before any OP promotion;
 the separate website deployment can publish the callback fix independently.
 
+## Follow-up observation — 2026-10-14 14:13 UTC
+
+The [Wallet progress checkpoint](identity-wallet-progress-20261014.md) observes
+OP version `1c73f5cf-5073-45fd-8442-ee38feff10f4` at 100%, with source annotation
+`30b0aa92f3899a9e10bc1dd8d4cc87c30074a4cb`. The dedicated Identity secret and
+rate-limit **bindings** are now present; Identity remains explicitly disabled
+with age-only claims selected. The public preflight confirms both Android
+association and the issuance callback fallback, while Identity metadata/JWKS
+remain 404. Key values, real card trust and a physical device were not qualified.
+
 ## Required inputs and the smallest activation
 
 ### Signing custody preparation — 2026-10-14
@@ -135,7 +145,7 @@ the actual activation config, named RP and physical device remain required input
 | Profile / requirement | Remaining concrete input or work |
 | --- | --- |
 | Card trust | Operator-validated issuer policies in `IDENTITY_TRUSTED_KEYS`: key ID, document kind, canonical RSA-2048 `n`/`e`, validity and licence subject-key identifier. Record the independent source and validation decision. Card-supplied or fixture keys are not an approval source. |
-| First-party single SD-JWT | Signing key custody is prepared above. Deploy the reviewed disabled key/rate-limit/age-only configuration, then select approved card trust and explicitly activate the first-party profile. No Wallet/HAIP, mdoc or batch activation is needed for this first slice. |
+| First-party single SD-JWT | Signing key custody is prepared above. The disabled key/rate-limit/age-only bindings are observed above; select approved card trust and explicitly activate the first-party profile. No Wallet/HAIP, mdoc or batch activation is needed for this first slice. |
 | CI secret custody | The workflow and promotion validator now include the selected dedicated Identity signing key. Approved card-trust secret provisioning and the exact activation selection remain outstanding; adding dashboard secrets alone does not complete that path. |
 | mdoc | Matching Document Signer certificate and its operator/RP trust decision (`IDENTITY_MDOC_CERT_DER`, or the reviewed credential-certificate configuration). This is required for mdoc, not the initial SD-JWT-only slice. |
 | Independent Wallet | Registered exact client ID/name/HTTPS callback in `IDENTITY_WALLET_CLIENTS`, then `IDENTITY_WALLET_ENABLED=true`; compile the corresponding public Wallet configuration. The callback fix alone does not register or authenticate a Wallet. |
