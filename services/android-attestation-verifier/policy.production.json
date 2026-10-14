@@ -1,0 +1,13 @@
+{
+  "format": "mikaki-android-verifier-policy-v1",
+  "client_id": "mikaki-android-wallet",
+  "package_name": "app.tossa.mikaki",
+  "signing_certificate_sha256": ["fc5138fe5c6e0555ad085e4d68daf9dbf67693631e72c941a17d17800deb0066"],
+  "minimum_version": 1000,
+  "minimum_os_version": 140000,
+  "minimum_os_patch": "2026-09",
+  "minimum_vendor_patch": "2026-09",
+  "minimum_boot_patch": "2026-09",
+  "security_level": "tee",
+  "max_status_age_seconds": 900
+}

@@ -21,7 +21,7 @@ internal fun server(verifier: Verification, token: String, address: InetSocketAd
         ArrayBlockingQueue(8),
         ThreadPoolExecutor.AbortPolicy(),
       )
-    createContext("/verify") { exchange ->
+    createContext("/") { exchange ->
       var code = 400
       var body = "{\"verified\":false}".toByteArray()
       try {
@@ -29,6 +29,9 @@ internal fun server(verifier: Verification, token: String, address: InetSocketAd
         val actual = MessageDigest.getInstance("SHA-256").digest(auth.toByteArray())
         if (auth.length > 512 || !MessageDigest.isEqual(actual, expected)) {
           code = 401
+        } else if (exchange.requestMethod == "GET" && exchange.requestURI.toString() == "/readyz") {
+          body = verifier.readiness().toString().toByteArray()
+          code = 200
         } else if (
           exchange.requestMethod != "POST" || exchange.requestURI.toString() != "/verify"
         ) {

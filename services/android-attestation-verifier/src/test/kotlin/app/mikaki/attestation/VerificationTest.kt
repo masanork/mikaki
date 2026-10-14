@@ -254,6 +254,22 @@ class VerificationTest {
       assertEquals("no-store", bad.headers().firstValue("cache-control").get())
       assertEquals(404, call("Bearer $token", path = URI.create("$uri?other")).statusCode())
       assertEquals(400, call("Bearer $token", "x".repeat(65537)).statusCode())
+      fun ready(auth: String) =
+        client.send(
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:${server.address.port}/readyz"))
+            .header("Authorization", auth)
+            .GET()
+            .build(),
+          HttpResponse.BodyHandlers.ofString(),
+        )
+      assertEquals(401, ready("Bearer wrong").statusCode())
+      val readiness = ready("Bearer $token")
+      assertEquals(200, readiness.statusCode())
+      assertEquals(
+        "android-key-attestation-readiness-v1",
+        strictJson(readiness.body().toByteArray())["format"].asString,
+      )
+      assertEquals("no-store", readiness.headers().firstValue("cache-control").get())
     } finally {
       server.stop(0)
       (server.executor as java.util.concurrent.ExecutorService).shutdownNow()

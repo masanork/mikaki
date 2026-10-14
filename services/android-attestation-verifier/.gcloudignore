@@ -1,0 +1,9 @@
+.gcloudignore
+.git
+.gradle
+build
+bridge
+**/*.secret*
+**/*.key
+**/*.jks
+**/*.keystore
