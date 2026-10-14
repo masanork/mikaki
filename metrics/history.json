@@ -2568,9 +2568,9 @@
   },
   {
     "date": "2026-10-14",
-    "commit": "a19d30d",
+    "commit": "871fc9c",
     "code": {
-      "implementationLines": 83774,
+      "implementationLines": 83815,
       "testLines": 13369,
       "implementationFiles": 292,
       "testFiles": 38,
@@ -2580,7 +2580,7 @@
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 38967,
+          "implementationLines": 39008,
           "testLines": 10631
         },
         "svelte": {
@@ -2696,18 +2696,18 @@
     "coverage": {
       "lines": {
         "covered": 11864,
-        "count": 13417,
-        "percent": 88.42513229484982
+        "count": 13425,
+        "percent": 88.37243947858472
       },
       "regions": {
         "covered": 19199,
-        "count": 22625,
-        "percent": 84.85745856353591
+        "count": 22640,
+        "percent": 84.8012367491166
       },
       "functions": {
         "covered": 1085,
-        "count": 1265,
-        "percent": 85.77075098814231
+        "count": 1267,
+        "percent": 85.6353591160221
       }
     }
   }
