@@ -312,7 +312,7 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
     const decrypt = async (owner: Owner, collection = 'messages', record = 'one') => {
       const response = await get(owner, collection, record);
       assert.equal(response.status, 200, await response.clone().text());
-      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('cache-control'), 'no-store, no-transform');
       const value = (await response.json()) as RecordResponse;
       assert.equal(response.headers.get('etag'), `"${value.revision}"`);
       assert.deepEqual(
@@ -363,7 +363,7 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
           const result = await mutate(owner, body, 0, id(), 'PUT', 'messages', record);
           assert.equal(result.status, 200, await result.clone().text());
           assert.equal(result.headers.get('etag'), '"1"');
-          assert.equal(result.headers.get('cache-control'), 'no-store');
+          assert.equal(result.headers.get('cache-control'), 'no-store, no-transform');
           assert.deepEqual(await result.json(), { revision: 1, deleted: false });
           const opened = await decrypt(owner, 'messages', record);
           assert.deepEqual(opened.plaintext, plaintext);

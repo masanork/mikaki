@@ -4,6 +4,7 @@ import type { AgentRecipient } from './agent-crypto.ts';
 // Bounded owner-key lease; never persists secrets.
 import { VaultScope } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { ownerLoginPrfInput } from './vault-login-prf.ts';
 import {
   openOwnerKey,
   createOwnerKey,
@@ -26,7 +27,7 @@ export type OwnerPrfEvaluator = (
   credential: Bytes,
   input: Bytes,
   signal: AbortSignal,
-) => Promise<{ credentialId: Bytes; output: Bytes }>;
+) => Promise<{ credentialId: Bytes; output: Bytes; loginOutput?: Bytes }>;
 export class OwnerKeySession {
   private key: CryptoKey | null = null;
   private generation = 0;
@@ -83,6 +84,7 @@ export class OwnerKeySession {
     this.pending = true;
     const generation = this.generation;
     let output: Bytes | undefined;
+    let loginOutput: Bytes | undefined;
     try {
       await this.scope.ensure();
       this.assert();
@@ -92,6 +94,7 @@ export class OwnerKeySession {
         this.scope.signal,
       );
       output = result.output;
+      loginOutput = result.loginOutput;
       this.assert();
       if (
         generation !== this.generation ||
@@ -104,6 +107,7 @@ export class OwnerKeySession {
       this.key = key;
     } finally {
       output?.fill(0);
+      loginOutput?.fill(0);
       this.pending = false;
     }
   }
@@ -111,15 +115,17 @@ export class OwnerKeySession {
     this.assert();
     if (this.pending || this.key) throw new Error('owner key already open/pending');
     const credential = decodeBase64Url(this.scope.identity!.credential_id);
-    const input = crypto.getRandomValues(new Uint8Array(32));
+    const input = ownerLoginPrfInput();
     const generation = this.generation;
     this.pending = true;
     let output: Bytes | undefined;
+    let loginOutput: Bytes | undefined;
     try {
       await this.scope.ensure();
       this.assert();
       const result = await evaluate(credential, input, this.scope.signal);
       output = result.output;
+      loginOutput = result.loginOutput;
       this.assert();
       if (
         generation !== this.generation ||
@@ -133,6 +139,7 @@ export class OwnerKeySession {
       return created.envelope;
     } finally {
       output?.fill(0);
+      loginOutput?.fill(0);
       this.pending = false;
     }
   }

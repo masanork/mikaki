@@ -10,7 +10,9 @@ import {
   sealOwnerRecord,
   openOwnerRecord,
   rewrapOwnerKey,
+  wrapOwnerKeyForLogin,
 } from '../../crates/worker/ui/vault-owner-crypto.ts';
+import { ownerLoginPrfInput } from '../../crates/worker/ui/vault-login-prf.ts';
 
 test('new owner-key bootstrap persists only wrappers; owner/credential scope, exact retries, races and atomic failures', async () => {
   const harness = createTestHarness({
@@ -157,7 +159,7 @@ test('new owner-key bootstrap persists only wrappers; owner/credential scope, ex
     const read = await worker.fetch(url, {
       headers: { Cookie: `__Host-op-sso=${primary.secret}` },
     });
-    assert.equal(read.headers.get('cache-control'), 'no-store');
+    assert.equal(read.headers.get('cache-control'), 'no-store, no-transform');
     const result = (await read.json()) as {
       owner_id: string;
       origin: string;
@@ -585,6 +587,118 @@ test('new owner-key bootstrap persists only wrappers; owner/credential scope, ex
     // Failure after head/wrapper updates rolls back both, including revocation triggers.
     const failedWrapOp = operation();
     const retainedGrant = await seedGrants(4);
+    // Add login custody of the SAME root/credential without revoking existing
+    // shares, changing record bytes, or advancing the authority revision.
+    const loginOutput = new Uint8Array(randomBytes(32));
+    const loginEnvelope = await wrapOwnerKeyForLogin(
+      created.envelope,
+      context,
+      credential,
+      output.slice(),
+      loginOutput.slice(),
+    );
+    const loginBody = JSON.stringify({ ...payload, owner_envelope: loginEnvelope });
+    const loginHeaders = { ...wrapHeaders(operation(), 4), 'If-Match': '"4"' };
+    const loginUrl = url + '/login-wrap';
+    const loginWrite = (body = loginBody, h = loginHeaders) =>
+      worker.fetch(loginUrl, { method: 'PUT', headers: h, body });
+    assert.equal(
+      (await loginWrite(loginBody, { ...loginHeaders, Origin: 'https://evil.test' })).status,
+      403,
+    );
+    assert.equal(
+      (
+        await worker.fetch(loginUrl, {
+          method: 'PUT',
+          headers: {
+            Origin: context.origin,
+            'Content-Type': 'application/json',
+            'If-Match': '"4"',
+          },
+          body: loginBody,
+        })
+      ).status,
+      401,
+    );
+    assert.equal((await loginWrite(loginBody, { ...loginHeaders, 'If-Match': '"5"' })).status, 409);
+    assert.equal(
+      (
+        await loginWrite(
+          JSON.stringify({
+            ...payload,
+            owner_envelope: {
+              ...loginEnvelope,
+              credential_id: secondCredential,
+            },
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await loginWrite(body)).status,
+      400,
+      'Random-input envelopes are not login wrappers',
+    );
+    const loginResult = await loginWrite();
+    assert.equal(loginResult.status, 200, await loginResult.clone().text());
+    assert.equal(loginResult.headers.get('etag'), '"4"');
+    assert.equal(loginResult.headers.get('cache-control'), 'no-store, no-transform');
+    const loginRoot = (await loginResult.json()) as {
+      owner_envelope: unknown;
+      login_envelope: unknown;
+    };
+    assert.deepEqual(loginRoot.owner_envelope, created.envelope);
+    assert.deepEqual(loginRoot.login_envelope, loginEnvelope);
+    assert.equal(
+      (await loginWrite()).status,
+      200,
+      'Exact retry acknowledges the immutable envelope',
+    );
+    const changedLogin = await wrapOwnerKeyForLogin(
+      created.envelope,
+      context,
+      credential,
+      output.slice(),
+      loginOutput.slice(),
+    );
+    assert.equal(
+      (await loginWrite(JSON.stringify({ ...payload, owner_envelope: changedLogin }))).status,
+      409,
+    );
+    const loginKey = await openOwnerKey(loginEnvelope, context, credential, loginOutput.slice());
+    assert.equal(
+      new TextDecoder().decode(await openOwnerRecord(record, loginKey, context, item)),
+      '新しいVaultの会話',
+    );
+    assert.equal(
+      (
+        await env.DB.prepare('SELECT revoked FROM agent_grant WHERE grant_id=?')
+          .bind(retainedGrant)
+          .first()
+      ).revoked,
+      0,
+    );
+    assert.equal(
+      (
+        await env.DB.prepare(
+          "SELECT status FROM vault_record_grant WHERE account_id='owner'",
+        ).first()
+      ).status,
+      'active',
+    );
+    assert.equal(
+      (
+        await env.DB.prepare(
+          "SELECT revision FROM vault_owner_key_head WHERE account_id='owner'",
+        ).first()
+      ).revision,
+      4,
+    );
+    await assert.rejects(
+      () => env.DB.exec("UPDATE vault_owner_login_wrap SET envelope='changed'"),
+      /immutable/,
+    );
     await env.DB.exec(
       `CREATE TRIGGER reject_owner_receipt BEFORE INSERT ON vault_owner_key_wrap_operation WHEN NEW.operation_id='${failedWrapOp}' BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END`,
     );
@@ -773,6 +887,91 @@ test('new owner-key bootstrap persists only wrappers; owner/credential scope, ex
     assert.equal(ceremonies, 2);
     assert.equal(new TextDecoder().decode(await again.session.open(retained, item)), 'one unlock');
     again.session.dispose();
+    // Existing random-input wrappers adopt the supplemental format in one
+    // two-input PRF ceremony; a lost response cannot create/replace a root.
+    const legacy = await seed('legacy');
+    const legacyCredential = new Uint8Array(Buffer.from(legacy.credential, 'base64url'));
+    const legacyOutput = new Uint8Array(randomBytes(32));
+    const legacyLoginOutput = new Uint8Array(randomBytes(32));
+    const legacyContext = { ...context, ownerId: 'legacy' };
+    const legacyKey = await createOwnerKey(
+      legacyContext,
+      legacyCredential,
+      new Uint8Array(randomBytes(32)),
+      legacyOutput.slice(),
+    );
+    assert.equal(
+      (
+        await worker.fetch(url, {
+          method: 'PUT',
+          headers: headers(operation(), legacy.secret),
+          body: JSON.stringify({ ...payload, owner_envelope: legacyKey.envelope }),
+        })
+      ).status,
+      200,
+    );
+    const legacyRecord = await sealOwnerRecord(
+      new TextEncoder().encode('Retained legacy root'),
+      legacyKey.key,
+      legacyContext,
+      item,
+    );
+    let loseLoginWrite = true;
+    const legacyTransport: typeof fetch = async (input, init) => {
+      const requestHeaders = new Headers(init?.headers);
+      requestHeaders.set('Cookie', `__Host-op-sso=${legacy.secret}`);
+      requestHeaders.set('Origin', context.origin);
+      const response = await worker.fetch(new URL(String(input), context.origin).href, {
+        method: init?.method ?? 'GET',
+        headers: Object.fromEntries(requestHeaders),
+        ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      });
+      if (loseLoginWrite && String(input).endsWith('/login-wrap') && response.ok) {
+        loseLoginWrite = false;
+        throw new TypeError('Lost login wrapper response');
+      }
+      return new Response(await response.arrayBuffer(), {
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+      });
+    };
+    const legacyScope = () => {
+      const scope = new VaultScope(() => {}, undefined, undefined, legacyTransport);
+      scope.observe({
+        account_id: 'legacy',
+        credential_id: legacy.credential,
+        session_tag: 'l'.repeat(43),
+      });
+      return scope;
+    };
+    let legacyCalls = 0;
+    const adopted = await openOwnerVault(legacyScope(), context.origin, async () => {
+      legacyCalls++;
+      return {
+        credentialId: legacyCredential,
+        output: legacyOutput.slice(),
+        loginOutput: legacyLoginOutput.slice(),
+      };
+    });
+    assert.equal(legacyCalls, 1);
+    assert.deepEqual(adopted.stored.envelope, legacyKey.envelope);
+    assert.ok(adopted.stored.loginEnvelope);
+    adopted.session.dispose();
+    const signedIn = await openOwnerVault(
+      legacyScope(),
+      context.origin,
+      async (_credential, input) => {
+        assert.deepEqual(input, ownerLoginPrfInput());
+        return { credentialId: legacyCredential, output: legacyLoginOutput.slice() };
+      },
+      undefined,
+      true,
+    );
+    assert.equal(
+      new TextDecoder().decode(await signedIn.session.open(legacyRecord, item)),
+      'Retained legacy root',
+    );
+    signedIn.session.dispose();
     await env.DB.prepare('UPDATE credential SET active=0 WHERE credential_id=?')
       .bind(primary.credential)
       .run();

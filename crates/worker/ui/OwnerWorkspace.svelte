@@ -6,7 +6,8 @@
   import AgentOAuth from './AgentOAuth.svelte';
   import * as m from './paraglide/messages.js';
   import type { Locale } from './paraglide/runtime.js';
-  import { OwnerVaultController } from './vault-owner-controller.ts';
+  import { OwnerVaultController, evaluateOwnerPrf } from './vault-owner-controller.ts';
+  import type { OwnerLoginPrf } from './vault-login-prf.ts';
   import { OWNER_NOTE } from './vault-owner-record-store.ts';
   import OwnerRecordEditor from './OwnerRecordEditor.svelte';
   import OwnerPasskeys from './OwnerPasskeys.svelte';
@@ -22,7 +23,8 @@
   import VaultWebMcp from './VaultWebMcp.svelte';
   import { WebMcpFailure } from './webmcp.ts';
   import type { VaultWebMcpHost, WebMcpDraft, WebMcpReviewAction } from './vault-webmcp.ts';
-  let { locale }: { locale: Locale } = $props();
+  let { locale, takeLogin }: { locale: Locale; takeLogin?: () => OwnerLoginPrf | undefined } =
+    $props();
   const sourceReview = document.getElementById('app')?.dataset['workSourceReview'] === 'true';
   const preparationReview =
     document.getElementById('app')?.dataset['workPreparationReview'] === 'true';
@@ -235,22 +237,44 @@
     status =
       error instanceof DOMException && error.name === 'NotAllowedError'
         ? m.productPasskeyCancelled()
-        : error instanceof Error &&
-            [m.vaultUnsupported(), m.vaultWrongCredential(), m.vaultPrfUnsupported()].includes(
-              error.message,
-            )
-          ? error.message
-          : m.error();
+        : error instanceof Error && error.message === 'credential_not_wrapped'
+          ? m.ownerVaultLoginAccessMissing()
+          : error instanceof Error && error.message === 'prf_unsupported'
+            ? m.vaultPrfUnsupported()
+            : error instanceof Error && error.message === 'wrong_credential'
+              ? m.vaultWrongCredential()
+              : error instanceof Error &&
+                  [
+                    m.vaultUnsupported(),
+                    m.vaultWrongCredential(),
+                    m.vaultPrfUnsupported(),
+                  ].includes(error.message)
+                ? error.message
+                : m.error();
   }
-  async function unlock() {
+  async function unlock(loginPrf?: OwnerLoginPrf) {
     if (busy || opened) return;
     const previousFocus = document.activeElement;
     busy = true;
     try {
       await scope.verify();
       await scope.ensure();
-      owner = new OwnerVaultController(scope, location.origin);
-      await owner.open();
+      let initialPrf = loginPrf;
+      owner = new OwnerVaultController(
+        scope,
+        location.origin,
+        loginPrf
+          ? async (credential, input, signal) => {
+              const ticket = initialPrf;
+              initialPrf = undefined;
+              return (
+                ticket?.consume(credential, input, signal) ??
+                evaluateOwnerPrf(credential, input, signal)
+              );
+            }
+          : evaluateOwnerPrf,
+      );
+      await owner.open(Boolean(loginPrf));
       store = new OwnerWorkspaceStore(owner);
       await loadRecords();
       opened = true;
@@ -263,6 +287,7 @@
       threads = [];
       failure(error);
     } finally {
+      loginPrf?.dispose();
       busy = false;
       if (!scope.signal.aborted)
         await restoreActionFocus(previousFocus, () =>
@@ -395,12 +420,22 @@
     }
   }
   onMount(() => {
+    const loginPrf = takeLogin?.();
     void scope
       .verify()
       .then(async () => {
         await scope.ensure();
         if (!scope.identity) throw new Error('unconfirmed');
         await reloadAgentConnections();
+        if (loginPrf) {
+          if (loginPrf.supported) await unlock(loginPrf);
+          else {
+            loginPrf.dispose();
+            status = loginPrf.provided
+              ? m.ownerVaultOpenFailed()
+              : m.ownerVaultLoginPrfUnsupported();
+          }
+        }
       })
       .catch(() => scope.end('unconfirmed'));
     const unregister = context.registerDraft(() => dirty || (busy && !passkeysBusy));
@@ -427,6 +462,7 @@
     };
     document.addEventListener('visibilitychange', visibility);
     return () => {
+      loginPrf?.dispose();
       clear();
       unregister();
       unregisterResume();
@@ -458,7 +494,7 @@
     />
     {#if !opened}
       <section class="product-result" aria-busy={busy}>
-        <button id="unlock" class="product-primary" disabled={busy} onclick={unlock}
+        <button id="unlock" class="product-primary" disabled={busy} onclick={() => unlock()}
           >{m.vaultUnlock()}</button
         >
         <p role="status">{status}</p>

@@ -1,9 +1,11 @@
 import { VaultScope, type LockReason } from './vault-lifecycle.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { ownerLoginPrfInput } from './vault-login-prf.ts';
 import { rewrapOwnerKey } from './vault-owner-crypto.ts';
 import {
   openOwnerVault,
   readOwnerKey,
+  sameOwnerAuthority,
   createOwnerKeyWrapperOperation,
   type OwnerKeyWrapperOperation,
   type StoredOwnerKey,
@@ -22,21 +24,38 @@ export const evaluateOwnerPrf: OwnerPrfEvaluator = async (credentialId, input, s
       allowCredentials: [{ type: 'public-key', id: credentialId }],
       userVerification: 'required',
       timeout: 120000,
-      extensions: { prf: { eval: { first: input } } },
+      extensions: {
+        prf: {
+          eval: {
+            first: input,
+            ...(encodeBase64Url(input) === encodeBase64Url(ownerLoginPrfInput())
+              ? {}
+              : { second: ownerLoginPrfInput() }),
+          },
+        },
+      },
     },
   });
   if (!(credential instanceof PublicKeyCredential)) throw new Error('wrong_credential');
   const result = credential.getClientExtensionResults().prf?.results?.first;
   const output = result instanceof ArrayBuffer ? new Uint8Array(result) : undefined;
+  const second = credential.getClientExtensionResults().prf?.results?.second;
+  const loginOutput = second instanceof ArrayBuffer ? new Uint8Array(second) : undefined;
   try {
     if (encodeBase64Url(new Uint8Array(credential.rawId)) !== encodeBase64Url(credentialId))
       throw new Error('wrong_credential');
     if (!output || output.byteLength !== 32) throw new Error('prf_unsupported');
     signal.throwIfAborted();
     if (document.visibilityState !== 'visible') throw new DOMException('Hidden', 'AbortError');
-    return { credentialId: new Uint8Array(credential.rawId), output };
+    if (loginOutput && loginOutput.byteLength !== 32) throw new Error('prf_unsupported');
+    return {
+      credentialId: new Uint8Array(credential.rawId),
+      output,
+      ...(loginOutput ? { loginOutput } : {}),
+    };
   } catch (error) {
     output?.fill(0);
+    loginOutput?.fill(0);
     throw error;
   }
 };
@@ -81,7 +100,7 @@ export class OwnerVaultController {
     if (!this.opened?.session.opened) throw new Error('owner_key_locked');
     return this.opened;
   }
-  async open(): Promise<void> {
+  async open(preferLogin = false): Promise<void> {
     this.assertAvailable();
     if (this.opening) throw new Error('unlock_pending');
     if (this.opened) return;
@@ -102,10 +121,12 @@ export class OwnerVaultController {
             return result;
           } catch (error) {
             result.output.fill(0);
+            result.loginOutput?.fill(0);
             throw error;
           }
         },
         () => this.assertCurrent(token),
+        preferLogin,
       );
       this.assertCurrent(token);
       this.opened = { session: candidate.session, stored: candidate.stored };
@@ -125,8 +146,7 @@ export class OwnerVaultController {
       this.assertCurrent(token);
       const current = await readOwnerKey(this.scope, this.origin);
       this.assertCurrent(token);
-      if (!current || JSON.stringify(current) !== JSON.stringify(stored))
-        throw new Error('owner_key_changed');
+      if (!current || !sameOwnerAuthority(current, stored)) throw new Error('owner_key_changed');
     } catch (error) {
       if (token === this.epoch && !this.suspended && !this.disposed && this.visible())
         this.lock('unconfirmed');
@@ -149,12 +169,14 @@ export class OwnerVaultController {
         this.scope.signal,
       );
       sourceOutput = source.output;
+      source.loginOutput?.fill(0);
       this.assertCurrent(token);
       if (encodeBase64Url(source.credentialId) !== stored.envelope.credential_id)
         throw new Error('wrong_credential');
       const targetInput = crypto.getRandomValues(new Uint8Array(32));
       const target = await this.evaluate(decodeBase64Url(targetId), targetInput, this.scope.signal);
       targetOutput = target.output;
+      target.loginOutput?.fill(0);
       this.assertCurrent(token);
       if (encodeBase64Url(target.credentialId) !== targetId) throw new Error('wrong_credential');
       const envelope = await rewrapOwnerKey(
@@ -196,7 +218,7 @@ export class OwnerVaultController {
       if (opened) {
         await opened.session.resume();
         const current = await readOwnerKey(this.scope, this.origin);
-        if (!current || JSON.stringify(current) !== JSON.stringify(opened.stored))
+        if (!current || !sameOwnerAuthority(current, opened.stored))
           throw new Error('owner_key_changed');
       } else {
         await this.scope.verify();

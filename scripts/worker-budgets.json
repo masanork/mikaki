@@ -1,6 +1,6 @@
 {
   "/login/login.js": {
-    "raw": 103424,
+    "raw": 104448,
     "gzip": 32768
   },
   "/login/login.css": {
@@ -29,7 +29,7 @@
   },
   "/vault/vault.js": {
     "raw": 323584,
-    "gzip": 92160
+    "gzip": 93184
   },
   "/vault/search.js": {
     "raw": 245760,

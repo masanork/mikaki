@@ -19,6 +19,7 @@
     type LoginHistory,
     type LoginRecognition,
   } from './login-history.js';
+  import { OwnerLoginPrf, ownerLoginPrfInput } from './vault-login-prf.ts';
 
   let {
     tx,
@@ -31,6 +32,8 @@
     scope = 'openid',
     expiresInMs = 300_000,
     reviewRequired = false,
+    vaultLogin = false,
+    onOwnerLogin,
     locale,
   }: {
     tx: string;
@@ -43,6 +46,8 @@
     scope?: string;
     expiresInMs?: number;
     reviewRequired?: boolean;
+    vaultLogin?: boolean;
+    onOwnerLogin?: (location: string, ticket: OwnerLoginPrf) => Promise<void>;
     locale: Locale;
   } = $props();
   let busy = $state(false);
@@ -139,12 +144,16 @@
     return m.loginHistoryKnown({ date });
   }
 
-  async function complete(p: Pending): Promise<void> {
+  async function complete(p: Pending, loginPrf?: OwnerLoginPrf): Promise<void> {
     const operation = generation;
-    if (!current(operation)) return;
+    if (!current(operation)) {
+      loginPrf?.dispose();
+      return;
+    }
     clearTimeout(reviewTimer);
     pending = null;
     if (performance.now() >= p.deadline) {
+      loginPrf?.dispose();
       busy = false;
       errorKind = 'expired';
       return;
@@ -177,7 +186,11 @@
       }
       invitation = '';
       publishVaultLock();
-      location.assign(next.href);
+      if (loginPrf && onOwnerLogin) {
+        const ticket = loginPrf;
+        loginPrf = undefined;
+        await onOwnerLogin(next.href, ticket);
+      } else location.assign(next.href);
     } catch {
       if (!current(operation)) return;
       authentication = null;
@@ -186,6 +199,8 @@
       await restoreActionFocus(null, () =>
         document.getElementById(enrollment ? 'register' : 'passkey'),
       );
+    } finally {
+      loginPrf?.dispose();
     }
   }
 
@@ -193,6 +208,7 @@
     endpoint: Pending['endpoint'],
     response: Pending['response'],
     id: string,
+    loginPrf?: OwnerLoginPrf,
   ): Promise<void> {
     const operation = generation;
     let fingerprint: string | null = null;
@@ -201,7 +217,10 @@
     } catch {
       /* recognition is optional */
     }
-    if (!current(operation)) return;
+    if (!current(operation)) {
+      loginPrf?.dispose();
+      return;
+    }
     // Re-read after Passkey selection: a different Passkey on a shared browser
     // must not inherit another credential's recognition or skip its review.
     recognition = fingerprint
@@ -214,6 +233,7 @@
       deadline: Math.min(transactionDeadline, performance.now() + 120_000),
     };
     if (!enrollment && !ownerLogin && (reviewRequired || recognition.kind !== 'known')) {
+      loginPrf?.dispose();
       pending = proof;
       busy = false;
       registrationOpen = false;
@@ -227,7 +247,7 @@
       );
       await tick();
       if (current(operation)) document.getElementById('connection-review-title')?.focus();
-    } else await complete(proof);
+    } else await complete(proof, loginPrf);
   }
 
   async function cancelConnection(): Promise<void> {
@@ -295,6 +315,7 @@
     passkeyPending = true;
     if (!automatic) busy = true;
     errorKind = null;
+    let loginPrf: OwnerLoginPrf | null = null;
     try {
       const credential = await navigator.credentials.get({
         signal: controller.signal,
@@ -303,9 +324,16 @@
           rpId,
           userVerification: 'required',
           timeout: 120000,
+          ...(vaultLogin ? { extensions: { prf: { eval: { first: ownerLoginPrfInput() } } } } : {}),
         },
       });
-      if (authentication !== controller || !current(operation)) return;
+      if (authentication !== controller || !current(operation)) {
+        if (credential instanceof PublicKeyCredential) {
+          const stale = credential.getClientExtensionResults().prf?.results?.first;
+          if (stale instanceof ArrayBuffer) new Uint8Array(stale).fill(0);
+        }
+        return;
+      }
       passkeyPending = false;
       busy = true;
       if (
@@ -314,6 +342,13 @@
       ) {
         throw new Error('cancelled');
       }
+      if (vaultLogin) {
+        const output = credential.getClientExtensionResults().prf?.results?.first;
+        loginPrf = new OwnerLoginPrf(
+          new Uint8Array(credential.rawId),
+          output instanceof ArrayBuffer ? new Uint8Array(output) : undefined,
+        );
+      }
       const response = {
         id: credential.id,
         client_data: encode(credential.response.clientDataJSON),
@@ -321,7 +356,9 @@
         signature: encode(credential.response.signature),
         user_handle: credential.response.userHandle ? encode(credential.response.userHandle) : null,
       };
-      await prepareCompletion('/login/finish', response, credential.id);
+      const ticket = loginPrf ?? undefined;
+      loginPrf = null;
+      await prepareCompletion('/login/finish', response, credential.id, ticket);
     } catch {
       if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
@@ -330,6 +367,8 @@
       busy = false;
       if (!automatic && !controller.signal.aborted)
         await restoreActionFocus(previousFocus, () => document.getElementById('passkey'));
+    } finally {
+      loginPrf?.dispose();
     }
   }
 
