@@ -42,6 +42,12 @@ fn random() -> worker::Result<String> {
 fn hash(s: &str) -> String {
     B64.encode(Sha256::digest(s.as_bytes()))
 }
+fn hash_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 fn js(s: &str) -> JsValue {
     JsValue::from_str(s)
 }
@@ -79,6 +85,11 @@ fn policy(ctx: &RouteContext<()>) -> worker::Result<(Vec<TrustedKey>, String)> {
 }
 fn trust_policy(env: &worker::Env) -> worker::Result<(Vec<TrustedKey>, String)> {
     let raw = Zeroizing::new(env.secret("IDENTITY_TRUSTED_KEYS")?.to_string());
+    if let Ok(expected) = env.var("IDENTITY_TRUST_POLICY_SHA256") {
+        if expected.to_string() != hash_hex(raw.trim().as_bytes()) {
+            return Err(server_error());
+        }
+    }
     let keys: Vec<TrustedKey> = serde_json::from_str(&raw).map_err(|_| server_error())?;
     let mut ids = std::collections::HashSet::new();
     if keys.is_empty()
@@ -88,6 +99,33 @@ fn trust_policy(env: &worker::Env) -> worker::Result<(Vec<TrustedKey>, String)> 
             .all(|k| !k.id.is_empty() && k.id.len() <= 128 && ids.insert(&k.id))
     {
         return Err(server_error());
+    }
+    if let Ok(expected) = env.var("IDENTITY_OPERATOR_CARD_KEY_SHA256") {
+        let expected = expected.to_string();
+        if expected.len() != 64
+            || !expected
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(server_error());
+        }
+        let key = &keys[0];
+        let modulus = B64.decode(&key.n).map_err(|_| server_error())?;
+        let time = now()?;
+        if keys.len() != 1
+            || key.document_type != mikaki_identity::card::DocumentType::MyNumberCard
+            || modulus.len() != 256
+            || B64.encode(&modulus) != key.n
+            || hash_hex(&modulus) != expected
+            || key.id != format!("mnc-operator-test-{}", &expected[..16])
+            || key.e != "AQAB"
+            || key.subject_key_identifier.is_some()
+            || !(key.not_before <= time && time < key.not_after)
+            || env.var("IDENTITY_TRUST_POLICY_SHA256").is_err()
+            || env.var("IDENTITY_ISSUANCE_CLAIMS")?.to_string() != "[\"age_over_18\"]"
+        {
+            return Err(server_error());
+        }
     }
     Ok((keys, hash(&raw)))
 }
@@ -593,6 +631,10 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     if !issuance_enabled(&ctx) {
         metadata["mikaki_issuance_enabled"] = json!(false);
     }
+    if ctx.env.var("IDENTITY_OPERATOR_CARD_KEY_SHA256").is_ok() {
+        metadata["mikaki_trust_profile"] = json!("operator-confirmed-card-test");
+        metadata["mikaki_issuer_root_chain_verified"] = json!(false);
+    }
     let Ok(profile) = claim_profile(&ctx) else {
         return error(503, "issuer_unavailable");
     };
@@ -756,6 +798,9 @@ pub async fn nonce(req: Request, ctx: RouteContext<()>) -> worker::Result<Respon
         return error(404, "not_found");
     }
     if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
+    }
+    if ctx.env.var("IDENTITY_OPERATOR_CARD_KEY_SHA256").is_ok() && policy(&ctx).is_err() {
         return error(503, "issuer_unavailable");
     }
     if !limited(&req, &ctx, "nonce").await? {

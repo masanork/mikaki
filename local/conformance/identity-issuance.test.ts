@@ -37,6 +37,107 @@ const root = 'https://issuer.example';
 const issuer = `${root}/identity/issuer`;
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('base64url');
 const secret = () => randomBytes(32).toString('base64url');
+async function bufferConcurrentResponse(
+  request: Promise<{
+    status: number;
+    headers: Iterable<[string, string]>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+  }>,
+) {
+  const response = await request;
+  const status = response.status;
+  const headers = new Headers(Array.from(response.headers));
+  const body = await response.arrayBuffer();
+  return new Response(body, { status, headers });
+}
+test('operator card test binds one live key and policy, accepts its synthetic evidence and publishes limited trust', async () => {
+  const fixture = identityFixture();
+  const original = fixture.trust.find((k) => k.document_type === 'my_number_card')!;
+  const modulus = createHash('sha256').update(Buffer.from(original.n!, 'base64url')).digest('hex');
+  const trust = [
+    { ...original, id: `mnc-operator-test-${modulus.slice(0, 16)}`, subject_key_identifier: null },
+  ];
+  const raw = JSON.stringify(trust);
+  const signing = await generateKeyPair('ES256', { extractable: true });
+  const holder = await generateKeyPair('ES256', { extractable: true });
+  const config = JSON.parse(
+    await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
+  );
+  config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
+  config.queues.consumers = [];
+  config.d1_databases[0].migrations_dir = new URL(
+    '../../crates/worker/migrations',
+    import.meta.url,
+  ).pathname;
+  config.vars = {
+    MIKAKI_ISSUER: root,
+    IDENTITY_ENABLED: 'true',
+    IDENTITY_ISSUANCE_CLAIMS: '["age_over_18"]',
+    IDENTITY_OPERATOR_CARD_KEY_SHA256: modulus,
+    IDENTITY_TRUST_POLICY_SHA256: createHash('sha256').update(raw).digest('hex'),
+    IDENTITY_TRUSTED_KEYS: raw,
+    IDENTITY_ISSUER_JWK: JSON.stringify({
+      ...(await exportJWK(signing.privateKey)),
+      kid: 'operator-test',
+    }),
+  };
+  const mutations = [
+    { IDENTITY_OPERATOR_CARD_KEY_SHA256: '0'.repeat(64) },
+    { IDENTITY_TRUST_POLICY_SHA256: '0'.repeat(64) },
+    { IDENTITY_ISSUANCE_CLAIMS: '["birthdate"]' },
+    { IDENTITY_TRUSTED_KEYS: JSON.stringify([{ ...trust[0], id: 'not-approved' }]) },
+  ];
+  const harness = await createTestHarness({
+    workers: [
+      { config },
+      ...mutations.map((vars, i) => ({
+        config: { ...config, name: `operator-invalid-${i}`, vars: { ...config.vars, ...vars } },
+      })),
+    ],
+  });
+  try {
+    await harness.listen();
+    const worker = harness.getWorker('mikaki-op-worker');
+    await worker.applyD1Migrations('DB');
+    const response = await worker.fetch(
+      `${root}/.well-known/openid-credential-issuer/identity/issuer`,
+    );
+    assert.equal(response.status, 200);
+    const metadata = (await response.json()) as any;
+    assert.equal(metadata.mikaki_trust_profile, 'operator-confirmed-card-test');
+    assert.equal(metadata.mikaki_issuer_root_chain_verified, false);
+    assert.equal(metadata.mikaki_issuance_enabled, undefined);
+    assert.deepEqual(
+      metadata.credential_configurations_supported.linked_document.credential_metadata.claims.map(
+        (c: any) => c.path,
+      ),
+      [['age_over_18']],
+    );
+    const intake = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        evidence: fixture.makeMnc(),
+        holder_jwk: await exportJWK(holder.publicKey),
+      }),
+    };
+    assert.equal((await worker.fetch(`${root}/identity/intake`, intake)).status, 200);
+    assert.equal((await worker.fetch(`${issuer}/nonce`, { method: 'POST' })).status, 200);
+    for (let i = 0; i < mutations.length; i++) {
+      const invalid = harness.getWorker(`operator-invalid-${i}`);
+      assert.equal(
+        (await invalid.fetch(`${root}/.well-known/openid-credential-issuer/identity/issuer`))
+          .status,
+        503,
+      );
+      assert.equal((await invalid.fetch(`${root}/identity/intake`, intake)).status, 503);
+      assert.equal((await invalid.fetch(`${issuer}/nonce`, { method: 'POST' })).status, 503);
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
 test('discovery publishes age-only metadata and JWKS without accepting intake or issuing credentials', async () => {
   const key = await generateKeyPair('ES256', { extractable: true });
   const jwk = { ...(await exportJWK(key.privateKey)), kid: 'discovery-issuer' };
@@ -873,7 +974,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             ).toString(),
           );
         } else {
-          const results = await Promise.all([issue(), issue()]);
+          const results = await Promise.all([issue(), issue()].map(bufferConcurrentResponse));
           assert.equal(
             results.filter((r) => r.status === 200).length,
             1,
@@ -1134,7 +1235,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       });
       assert.equal(missingVerifier.status, 400);
       assert.equal(((await missingVerifier.json()) as any).error, 'invalid_grant');
-      const tokenRace = await Promise.all([walletToken(flow), walletToken(flow)]);
+      const tokenRace = await Promise.all(
+        [walletToken(flow), walletToken(flow)].map(bufferConcurrentResponse),
+      );
       assert.deepEqual(tokenRace.map((r) => r.status).sort(), [200, 400]);
       const racedToken = (await tokenRace.find((r) => r.status === 200)!.json()) as any;
       assert.equal(racedToken.scope, configuration);
@@ -1285,10 +1388,12 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         (await walletIssue(token.access_token, otherConfiguration, validProof)).status,
         401,
       );
-      const issuanceRace = await Promise.all([
-        walletIssue(token.access_token, configuration, validProof),
-        walletIssue(token.access_token, configuration, validProof),
-      ]);
+      const issuanceRace = await Promise.all(
+        [
+          walletIssue(token.access_token, configuration, validProof),
+          walletIssue(token.access_token, configuration, validProof),
+        ].map(bufferConcurrentResponse),
+      );
       assert.equal(issuanceRace.filter((r) => r.status === 200).length, 1);
       assert.ok(
         issuanceRace
@@ -1416,7 +1521,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             'pre-authorized_code': code,
           }).toString(),
         });
-      const tokens = await Promise.all([exchange(), exchange()]);
+      const tokens = await Promise.all([exchange(), exchange()].map(bufferConcurrentResponse));
       assert.deepEqual(tokens.map((r) => r.status).sort(), [200, 400]);
       const access = ((await tokens.find((r) => r.status === 200)!.json()) as any).access_token;
       assert.equal(
@@ -1456,7 +1561,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         );
       usedNonce = nonce;
       const validProof = await proof();
-      const responses = await Promise.all([issue(validProof), issue(validProof)]);
+      const responses = await Promise.all(
+        [issue(validProof), issue(validProof)].map(bufferConcurrentResponse),
+      );
       assert.equal(
         responses.filter((r) => r.status === 200).length,
         1,
@@ -2530,7 +2637,10 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               await unspent();
               await DB.exec('DROP TRIGGER fixture_batch_close');
             }
-            const results = await Promise.all([issueApproved(), issueApproved()]);
+            // Keep status and ciphertext from the same completed response, consuming its body once.
+            const results = await Promise.all(
+              [issueApproved(), issueApproved()].map(bufferConcurrentResponse),
+            );
             const resultDetails = (
               await Promise.all(
                 results.map(async (r) => (r.status === 200 ? 'success' : await r.clone().text())),
@@ -2770,7 +2880,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             }
             const issued =
               slot === size - 1 && size === 8
-                ? await Promise.all([issue(), issue()])
+                ? await Promise.all([issue(), issue()].map(bufferConcurrentResponse))
                 : [await issue()];
             assert.equal(
               issued.filter((r) => r.status === 200).length,
@@ -3627,10 +3737,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
         'HAIP cannot downgrade',
       );
       const sharedProof = await freshHolderProof();
-      const nonceRace = await Promise.all([
-        issue(rsNonce, sharedProof),
-        issue(rsNonce, sharedProof),
-      ]);
+      const nonceRace = await Promise.all(
+        [issue(rsNonce, sharedProof), issue(rsNonce, sharedProof)].map(bufferConcurrentResponse),
+      );
       assert.equal(
         nonceRace.filter((r) => r.status === 200).length,
         1,

@@ -30,7 +30,9 @@ import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = { commit: 'a'.repeat(40), clean: true as const };
 /** Synthetic bytes qualify inventory rejection, never a product deployment. */
-async function fixture(baseline: 'current' | 'age' | 'waitlist' | 'retained' = 'current') {
+async function fixture(
+  baseline: 'current' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
+) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-packet-'));
   const write = async (name: string, bytes: string | Buffer) => {
     await mkdir(dirname(join(directory, name)), { recursive: true });
@@ -48,9 +50,13 @@ async function fixture(baseline: 'current' | 'age' | 'waitlist' | 'retained' = '
   for (const name of ['build.json', 'build-1.log', 'build-2.log', 'build-3.log'])
     await write(name, 'synthetic build evidence');
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
-  const ownerCount = { current: OWNER_MIGRATIONS.length, age: 4, waitlist: 3, retained: 2 }[
-    baseline
-  ];
+  const ownerCount = {
+    current: OWNER_MIGRATIONS.length,
+    review: 5,
+    age: 4,
+    waitlist: 3,
+    retained: 2,
+  }[baseline];
   const ownerNames = new Set<string>(OWNER_MIGRATIONS.slice(0, ownerCount).map(({ name }) => name));
   for (const location of ['migrations', 'work-migrations']) {
     const parent = join(root, 'crates/worker', location);
@@ -94,7 +100,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 17);
+    assert.equal(manifest.migrations.length, 18);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -193,6 +199,20 @@ test('retained sixteen-file packets keep their plan and reject the additive logi
     await f.write(
       'migrations/0005_login_connection_review.sql',
       await readFile(join(root, 'crates/worker/migrations/0005_login_connection_review.sql')),
+    );
+    await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('retained seventeen-file packets keep their plan and reject the additive login wrapper migration', async () => {
+  const f = await fixture('review');
+  try {
+    assert.equal((await verifyAuthorityPacket(f.directory)).migrations.length, 17);
+    await f.write(
+      'migrations/0006_owner_login_wrap.sql',
+      await readFile(join(root, 'crates/worker/migrations/0006_owner_login_wrap.sql')),
     );
     await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
   } finally {

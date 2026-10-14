@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import test from 'node:test';
 import {
   assertWaitlistMailKey,
@@ -10,7 +10,19 @@ import {
   sourceIsCurrent,
 } from './deploy-production.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
-import { identityTestTrust } from './identity-test-profile.ts';
+import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
+
+function preparedIdentityConfig() {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  config.vars.IDENTITY_ENABLED = 'false';
+  delete config.vars.IDENTITY_ISSUANCE_ENABLED;
+  delete config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256;
+  delete config.vars.IDENTITY_TRUST_POLICY_SHA256;
+  config.secrets.required = config.secrets.required.filter(
+    (name: string) => name !== 'IDENTITY_TRUSTED_KEYS',
+  );
+  return config;
+}
 
 function runtimeSecretsFixture() {
   const makeKey = () => {
@@ -99,7 +111,7 @@ test('mail provisioning rejects malformed or noncanonical keys without exposing 
 });
 
 test('promotion preserves only reviewed runtime secrets and requires initial Work custody without leaking values', () => {
-  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const config = preparedIdentityConfig();
   const env = runtimeSecretsFixture();
   assert.deepEqual(
     Object.keys(productionRuntimeSecrets(config, env)).sort(),
@@ -155,7 +167,7 @@ test('promotion preserves only reviewed runtime secrets and requires initial Wor
 });
 
 test('Identity custody stays disabled and age-only, with dedicated signing and a mandatory limiter', () => {
-  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const config = preparedIdentityConfig();
   config.vars.IDENTITY_ENABLED = 'false';
   delete config.vars.IDENTITY_ISSUANCE_ENABLED;
   const env = runtimeSecretsFixture();
@@ -209,7 +221,9 @@ test('Identity custody stays disabled and age-only, with dedicated signing and a
 });
 
 test('discovery activation publishes dedicated custody while keeping issuance and trust closed', () => {
-  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const config = preparedIdentityConfig();
+  config.vars.IDENTITY_ENABLED = 'true';
+  config.vars.IDENTITY_ISSUANCE_ENABLED = 'false';
   const env = { ...runtimeSecretsFixture(), IDENTITY_TRUSTED_KEYS: 'not-selected' };
   assert.equal(config.vars.IDENTITY_ENABLED, 'true');
   assert.equal(config.vars.IDENTITY_ISSUANCE_ENABLED, 'false');
@@ -241,7 +255,7 @@ test('discovery activation publishes dedicated custody while keeping issuance an
 });
 
 test('first-party age activation requires exact live licence trust, and keeps all other profiles closed', () => {
-  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const config = preparedIdentityConfig();
   delete config.vars.IDENTITY_ISSUANCE_ENABLED;
   const env = runtimeSecretsFixture();
   const { n, e } = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({
@@ -298,12 +312,58 @@ test('first-party age activation requires exact live licence trust, and keeps al
       ),
     /reviewed policy/,
   );
-  const prepared = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const prepared = preparedIdentityConfig();
   prepared.vars.IDENTITY_ENABLED = 'false';
   delete prepared.vars.IDENTITY_ISSUANCE_ENABLED;
   assert.equal('IDENTITY_TRUSTED_KEYS' in productionRuntimeSecrets(prepared, credentials), false);
   prepared.secrets.required.push('IDENTITY_TRUSTED_KEYS');
   assert.throws(() => productionRuntimeSecrets(prepared, credentials), /card-trust custody/);
+});
+
+test('operator card activation is age-only and pins exactly one explicitly selected test card key', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  assert.equal(productionIdentityTestProfile(config), 'operator-card-age');
+  assert.equal(config.vars.IDENTITY_ISSUANCE_ENABLED, undefined);
+  const { n, e } = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({
+    format: 'jwk',
+  });
+  const modulus = createHash('sha256').update(Buffer.from(n!, 'base64url')).digest('hex');
+  const now = Math.floor(Date.now() / 1000);
+  const trust = [
+    {
+      id: `mnc-operator-test-${modulus.slice(0, 16)}`,
+      document_type: 'my_number_card',
+      n,
+      e,
+      subject_key_identifier: null,
+      not_before: now - 60,
+      not_after: now + 3600,
+    },
+  ];
+  const raw = JSON.stringify(trust);
+  config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256 = modulus;
+  config.vars.IDENTITY_TRUST_POLICY_SHA256 = identityTestTrust(raw, now, modulus).policy_sha256;
+  const env = { ...runtimeSecretsFixture(), IDENTITY_TRUSTED_KEYS: raw };
+  assert.equal(productionRuntimeSecrets(config, env).IDENTITY_TRUSTED_KEYS, raw);
+  for (const changed of [
+    JSON.stringify([...trust, ...trust]),
+    JSON.stringify([{ ...trust[0], id: 'unapproved' }]),
+    JSON.stringify([{ ...trust[0], document_type: 'driving_license' }]),
+    JSON.stringify([
+      { ...trust[0], subject_key_identifier: Buffer.alloc(32).toString('base64url') },
+    ]),
+    JSON.stringify([{ ...trust[0], not_after: now }]),
+  ])
+    assert.throws(() =>
+      productionRuntimeSecrets(config, { ...env, IDENTITY_TRUSTED_KEYS: changed }),
+    );
+  assert.throws(() =>
+    productionRuntimeSecrets(
+      { ...config, vars: { ...config.vars, IDENTITY_OPERATOR_CARD_KEY_SHA256: '0'.repeat(64) } },
+      env,
+    ),
+  );
+  assert.throws(() => identityTestTrust(raw, now));
 });
 
 test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {
@@ -365,6 +425,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
     { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
     { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
+    { name: 'IDENTITY_TRUSTED_KEYS', type: 'secret_text' },
     {
       name: 'IDENTITY_RATE_LIMIT',
       type: 'ratelimit',
@@ -403,6 +464,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'WAITLIST_MAIL_KEY',
     'WORK_CREDENTIAL_KEY_V1',
     'IDENTITY_ISSUER_JWK',
+    'IDENTITY_TRUSTED_KEYS',
     'IDENTITY_RATE_LIMIT',
     'ENROLLMENT_EMAIL',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
@@ -450,6 +512,7 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
     { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
     { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
+    { name: 'IDENTITY_TRUSTED_KEYS', type: 'secret_text' },
     {
       name: 'IDENTITY_RATE_LIMIT',
       type: 'ratelimit',
