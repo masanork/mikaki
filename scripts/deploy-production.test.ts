@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { generateKeyPairSync } from 'node:crypto';
 import test from 'node:test';
 import {
   assertWaitlistMailKey,
@@ -9,6 +10,23 @@ import {
   sourceIsCurrent,
 } from './deploy-production.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
+
+function runtimeSecretsFixture() {
+  const makeKey = () => {
+    const { kty, crv, x, y, d } = generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+    }).privateKey.export({ format: 'jwk' });
+    return JSON.stringify({ kty, crv, x, y, d, kid: 'synthetic-test-key' });
+  };
+  return {
+    OP_PRIVATE_JWK: makeKey(),
+    IDENTITY_ISSUER_JWK: makeKey(),
+    MIKAKI_READY_TOKEN: 'synthetic readiness token',
+    WAITLIST_MAIL_KEY: Buffer.alloc(32, 1).toString('base64url'),
+    WORK_CREDENTIAL_KEY_V1: Buffer.alloc(32, 7).toString('base64url'),
+    UNREVIEWED_SECRET: 'never include this value',
+  };
+}
 
 test('existing checkpoint rollout requires explicit private subdomain and preview state', () => {
   checkCheckpointExposure({ enabled: false, previews_enabled: false });
@@ -81,13 +99,7 @@ test('mail provisioning rejects malformed or noncanonical keys without exposing 
 
 test('promotion preserves only reviewed runtime secrets and requires initial Work custody without leaking values', () => {
   const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
-  const env = {
-    OP_PRIVATE_JWK: 'synthetic signing key',
-    MIKAKI_READY_TOKEN: 'synthetic readiness token',
-    WAITLIST_MAIL_KEY: Buffer.alloc(32, 1).toString('base64url'),
-    WORK_CREDENTIAL_KEY_V1: Buffer.alloc(32, 7).toString('base64url'),
-    UNREVIEWED_SECRET: 'never include this value',
-  };
+  const env = runtimeSecretsFixture();
   assert.deepEqual(
     Object.keys(productionRuntimeSecrets(config, env)).sort(),
     [...config.secrets.required].sort(),
@@ -139,6 +151,58 @@ test('promotion preserves only reviewed runtime secrets and requires initial Wor
       ),
     /reviewed secret custody/,
   );
+});
+
+test('Identity custody stays disabled and age-only, with dedicated signing and a mandatory limiter', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const env = runtimeSecretsFixture();
+  const secrets = productionRuntimeSecrets(config, env);
+  assert.equal(secrets.IDENTITY_ISSUER_JWK, env.IDENTITY_ISSUER_JWK);
+  assert.equal(secrets.OP_PRIVATE_JWK, env.OP_PRIVATE_JWK);
+  for (const mutate of [
+    (c: typeof config) => {
+      c.vars.IDENTITY_ENABLED = 'true';
+    },
+    (c: typeof config) => {
+      delete c.vars.IDENTITY_ENABLED;
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_ISSUANCE_CLAIMS = '["birthdate"]';
+    },
+    (c: typeof config) => {
+      delete c.vars.IDENTITY_ISSUANCE_CLAIMS;
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_HAIP_ENABLED = 'true';
+    },
+    (c: typeof config) => {
+      c.ratelimits = [];
+    },
+    (c: typeof config) => {
+      c.ratelimits[0].simple.limit = 300;
+    },
+    (c: typeof config) => {
+      c.ratelimits[0].namespace_id = '1030';
+    },
+    (c: typeof config) => {
+      c.services.push({ binding: 'IDENTITY_ANDROID_VERIFIER', service: 'unreviewed' });
+    },
+    (c: typeof config) => {
+      c.secrets.required = c.secrets.required.filter(
+        (name: string) => name !== 'IDENTITY_ISSUER_JWK',
+      );
+    },
+  ]) {
+    const changed = structuredClone(config);
+    mutate(changed);
+    assert.throws(() => productionRuntimeSecrets(changed, env), /Identity/);
+  }
+  for (const raw of [undefined, '', 'do-not-print-private-key', env.OP_PRIVATE_JWK])
+    assert.throws(
+      () => productionRuntimeSecrets(config, { ...env, IDENTITY_ISSUER_JWK: raw }),
+      (error: unknown) =>
+        error instanceof Error && !error.message.includes('do-not-print-private-key'),
+    );
 });
 
 test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {
@@ -199,6 +263,13 @@ test('activation requires all configured native, Vault and runtime secret bindin
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
     { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
+    { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
+    {
+      name: 'IDENTITY_RATE_LIMIT',
+      type: 'ratelimit',
+      namespace_id: '1031',
+      simple: { limit: 30, period: 60 },
+    },
     {
       name: 'ENROLLMENT_EMAIL',
       type: 'send_email',
@@ -230,6 +301,8 @@ test('activation requires all configured native, Vault and runtime secret bindin
     'MIKAKI_READY_TOKEN',
     'WAITLIST_MAIL_KEY',
     'WORK_CREDENTIAL_KEY_V1',
+    'IDENTITY_ISSUER_JWK',
+    'IDENTITY_RATE_LIMIT',
     'ENROLLMENT_EMAIL',
     'MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT',
   ]) {
@@ -275,6 +348,13 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     { name: 'MIKAKI_READY_TOKEN', type: 'secret_text' },
     { name: 'WAITLIST_MAIL_KEY', type: 'secret_text' },
     { name: 'WORK_CREDENTIAL_KEY_V1', type: 'secret_text' },
+    { name: 'IDENTITY_ISSUER_JWK', type: 'secret_text' },
+    {
+      name: 'IDENTITY_RATE_LIMIT',
+      type: 'ratelimit',
+      namespace_id: 1031,
+      simple: { limit: 30, period: 60 },
+    },
     {
       name: 'ENROLLMENT_EMAIL',
       type: 'send_email',

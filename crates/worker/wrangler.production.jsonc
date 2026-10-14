@@ -40,14 +40,17 @@
     "WORK_MINT_STORE_ENABLED": "false",
     "WORK_GIT_STORE_ENABLED": "false",
     "WORK_GIT_EXECUTION_ENABLED": "false",
-    "WORK_PREPARATION_VERIFY_ENABLED": "false"
+    "WORK_PREPARATION_VERIFY_ENABLED": "false",
+    "IDENTITY_ENABLED": "false",
+    "IDENTITY_ISSUANCE_CLAIMS": "[\"age_over_18\"]"
   },
   "secrets": {
     "required": [
       "OP_PRIVATE_JWK",
       "MIKAKI_READY_TOKEN",
       "WAITLIST_MAIL_KEY",
-      "WORK_CREDENTIAL_KEY_V1"
+      "WORK_CREDENTIAL_KEY_V1",
+      "IDENTITY_ISSUER_JWK"
     ]
   },
   "send_email": [
@@ -184,6 +187,16 @@
         "**/*.sql"
       ],
       "fallthrough": true
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "IDENTITY_RATE_LIMIT",
+      "namespace_id": "1031",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
     }
   ]
 }
