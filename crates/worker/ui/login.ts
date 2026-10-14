@@ -3,6 +3,7 @@ import Login from './Login.svelte';
 import Home from './Home.svelte';
 import { initializeLocale } from './locale.js';
 import './auth.css';
+import './login-connection.css';
 
 const target = document.getElementById('app');
 if (!(target instanceof HTMLElement)) throw new Error('Invalid login page');
