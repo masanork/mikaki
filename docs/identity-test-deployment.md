@@ -165,7 +165,7 @@ attester and both batch extensions disabled until their own inputs are ready.
 The owner DB is `mikaki-auth-owner` (`d0258938-0d27-4110-8aa9-c82e20f3885b`).
 Recheck its current migration ledger/schema with the existing deployment checks;
 this read-only checkpoint did not requalify it. Its checked-in Owner migration
-chain is `0001`–`0004`, including the integrated Identity baseline. Never apply the
+chain is `0001`–`0005`, including the integrated Identity baseline and the additive login-review schema. Never apply the
 historical `0036`–`0046` migration sequence to this DB.
 
 Before activation, retain the exact source, active and staged version IDs, selected
