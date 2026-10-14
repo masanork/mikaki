@@ -177,10 +177,9 @@ async function startInstance(options: {
           DB.prepare(
             'INSERT OR IGNORE INTO client(client_id,revision,active,sector_identifier) VALUES(?,1,1,?)',
           ).bind(clientId, `${clientId}.example.test`),
-          DB.prepare('INSERT OR IGNORE INTO app_connection VALUES(?,?,1,1)').bind(
-            account,
-            clientId,
-          ),
+          DB.prepare(
+            'INSERT OR IGNORE INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
+          ).bind(account, clientId),
           DB.prepare(
             'INSERT INTO client_backchannel_logout_uri(client_id,logout_uri,active) VALUES(?,?,1) ON CONFLICT(client_id) DO UPDATE SET logout_uri=excluded.logout_uri,active=1',
           ).bind(clientId, `https://rp.example.test/${clientId}/backchannel`),

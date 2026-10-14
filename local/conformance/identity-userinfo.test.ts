@@ -97,7 +97,9 @@ test('linked-document userinfo requires current owner/RP/field consent and revoc
           client,
           `https://${client}.example/cb`,
         ),
-        DB.prepare("INSERT INTO app_connection VALUES('owner',?,1,1)").bind(client),
+        DB.prepare(
+          "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('owner',?,1,1)",
+        ).bind(client),
         DB.prepare("INSERT INTO client_session VALUES(?,'sid','sso','owner',?,1,0)").bind(
           client,
           `pairwise-${client}`,

@@ -25,10 +25,12 @@ import {
   verifyAuthorityPacket,
 } from './work-authority-packet.ts';
 
+import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
+
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = { commit: 'a'.repeat(40), clean: true as const };
 /** Synthetic bytes qualify inventory rejection, never a product deployment. */
-async function fixture(baseline: 'current' | 'waitlist' | 'retained' = 'current') {
+async function fixture(baseline: 'current' | 'age' | 'waitlist' | 'retained' = 'current') {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-packet-'));
   const write = async (name: string, bytes: string | Buffer) => {
     await mkdir(dirname(join(directory, name)), { recursive: true });
@@ -46,14 +48,14 @@ async function fixture(baseline: 'current' | 'waitlist' | 'retained' = 'current'
   for (const name of ['build.json', 'build-1.log', 'build-2.log', 'build-3.log'])
     await write(name, 'synthetic build evidence');
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
+  const ownerCount = { current: OWNER_MIGRATIONS.length, age: 4, waitlist: 3, retained: 2 }[
+    baseline
+  ];
+  const ownerNames = new Set<string>(OWNER_MIGRATIONS.slice(0, ownerCount).map(({ name }) => name));
   for (const location of ['migrations', 'work-migrations']) {
     const parent = join(root, 'crates/worker', location);
     for (const name of (await readdir(parent)).filter(
-      (n) =>
-        n.endsWith('.sql') &&
-        (baseline === 'current' ||
-          (baseline === 'waitlist' && n !== '0004_identity_age_requests.sql') ||
-          !['0003_enrollment_waitlist.sql', '0004_identity_age_requests.sql'].includes(n)),
+      (name) => name.endsWith('.sql') && (location === 'work-migrations' || ownerNames.has(name)),
     ))
       await write(`migrations/${name}`, await readFile(join(parent, name)));
   }
@@ -92,7 +94,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 16);
+    assert.equal(manifest.migrations.length, 17);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -179,6 +181,20 @@ test('preparation refuses changed source identity, production resource and symli
     await unlink(join(f.directory, 'checkpoint/worker.mjs'));
     await symlink(join(f.directory, 'build-1.log'), join(f.directory, 'checkpoint/worker.mjs'));
     await assert.rejects(verifyAuthorityPacket(f.directory), /member_denied/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('retained sixteen-file packets keep their plan and reject the additive login review migration', async () => {
+  const f = await fixture('age');
+  try {
+    assert.equal((await verifyAuthorityPacket(f.directory)).migrations.length, 16);
+    await f.write(
+      'migrations/0005_login_connection_review.sql',
+      await readFile(join(root, 'crates/worker/migrations/0005_login_connection_review.sql')),
+    );
+    await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
   } finally {
     await f.close();
   }

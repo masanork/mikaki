@@ -79,6 +79,7 @@ test(
           location: `${issuer}/done`,
           expires: 300_000,
           holdFinish: false,
+          reviewRequired: false,
         };
         await page.route(`${issuer}/**`, async (route) => {
           const request = route.request();
@@ -95,7 +96,7 @@ test(
                 'content-security-policy':
                   "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
               },
-              body: `<!doctype html><html lang="${options.locale ?? 'ja'}"><head><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="${config.destination}" data-client="test-app" data-login-scope="${config.scope}" data-expires-in-ms="${config.expires}"></div><script type="module" src="/login/login.js"></script></body></html>`,
+              body: `<!doctype html><html lang="${options.locale ?? 'ja'}"><head><link rel="stylesheet" href="/login/login.css"></head><body><div id="app" data-tx="${'a'.repeat(43)}" data-challenge="${'b'.repeat(43)}" data-rp-id="mikaki.test" data-rp-uri="${config.destination}" data-client="test-app" data-login-scope="${config.scope}" data-expires-in-ms="${config.expires}" data-connection-review-required="${config.reviewRequired}"></div><script type="module" src="/login/login.js"></script></body></html>`,
             });
           } else if (url.pathname === '/register/start') {
             await route.fulfill({
@@ -170,6 +171,36 @@ test(
           releaseFinish: () => releaseFinish?.(),
         };
       }
+
+      await t.test('server-mandated consent cannot be skipped by known local history', async () => {
+        const f = await fixture({ mobile: true });
+        try {
+          await f.page.goto(`${issuer}/login`);
+          await f.page.locator('#connection-approve').click();
+          await expect(f.page.getByRole('heading', { name: 'Done' })).toBeVisible();
+          const previous = await f.stored();
+          f.config.reviewRequired = true;
+          await f.page.goto(`${issuer}/login`);
+          await expect(f.page.locator('#connection-approve')).toBeVisible();
+          await expect(f.page.locator('.connection-memory')).toHaveAttribute(
+            'data-recognition',
+            'known',
+          );
+          await expect(f.page.locator('.connection-review')).toContainText('あらためて確認が必要');
+          assert.equal(f.requests.length, 1);
+          assert.equal(await f.stored(), previous);
+          await f.page.screenshot({
+            path: 'artifacts/login-recognition/server-review-mobile.png',
+            fullPage: true,
+          });
+          await auditAccessibility(f.page, 'login-server-required-review');
+          await f.page.locator('#connection-approve').click();
+          await expect(f.page.getByRole('heading', { name: 'Done' })).toBeVisible();
+          assert.equal(f.requests.length, 2);
+        } finally {
+          await f.context.close();
+        }
+      });
 
       await t.test(
         'first visit and reload remain unconfirmed; approval sends exactly once, and a known connection stays quick',

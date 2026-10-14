@@ -721,5 +721,6 @@
   "loginReviewHint": "Check that you intended to connect to this application. The connection is confirmed only after you continue.",
   "loginReviewApprove": "Continue this connection",
   "loginReviewCancel": "Cancel connection",
+  "loginServerReview": "This destination and request need your confirmation again.",
   "loginReviewExpired": "The confirmation expired. Please use your passkey again."
 }

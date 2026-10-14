@@ -721,5 +721,6 @@
   "loginReviewHint": "自分で始めた接続か確かめてください。続けるまでは、このアプリへの接続は確定しません。",
   "loginReviewApprove": "この接続を続ける",
   "loginReviewCancel": "接続をやめる",
+  "loginServerReview": "この接続先・要求内容は、あらためて確認が必要です。",
   "loginReviewExpired": "確認の有効時間が切れました。Passkeyでもう一度操作してください。"
 }

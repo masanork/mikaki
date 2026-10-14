@@ -311,7 +311,7 @@ pub async fn finish(
     let registration_rp_id = rp_id(&issuer)?;
     let verification_context = mikaki_webauthn::Context {
         challenge: row.challenge,
-        origin: issuer,
+        origin: issuer.clone(),
         rp_id: registration_rp_id,
         max_bytes: policy.form_body_bytes,
         max_depth: 16,
@@ -387,6 +387,15 @@ pub async fn finish(
         db.prepare("INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?1,?2,1,1)")
             .bind(&[JsValue::from_str(&account_id),JsValue::from_str(&login.client_id)])?,
     ]);
+    statements.extend(crate::login_review::record(
+        &db,
+        &login,
+        &issuer,
+        &input.tx,
+        &browser_hash,
+        &account_id,
+        &guard("review"),
+    )?);
     for suffix in ["invite", "register", "login"] {
         statements.push(
             db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")

@@ -235,10 +235,9 @@ async function seedLogoutClient(f: Awaited<ReturnType<typeof fixture>>) {
     f.DB.prepare(
       "INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('synthetic-logout-client',1,1,'https://rp.example.test')",
     ),
-    f.DB.prepare('INSERT INTO app_connection VALUES(?,?,1,1)').bind(
-      'synthetic-delivery-owner',
-      'synthetic-logout-client',
-    ),
+    f.DB.prepare(
+      'INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
+    ).bind('synthetic-delivery-owner', 'synthetic-logout-client'),
     f.DB.prepare('INSERT INTO client_backchannel_logout_uri VALUES(?,?,1)').bind(
       'synthetic-logout-client',
       'https://rp.example.test/backchannel',

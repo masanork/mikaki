@@ -272,7 +272,9 @@ async function qualifyRecordUserInfo(browserCrypto: boolean, profileBenchmark = 
       db.prepare(
         "INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES('rp','https://rp.test/callback')",
       ),
-      db.prepare("INSERT INTO app_connection VALUES('owner','rp',1,1)"),
+      db.prepare(
+        "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('owner','rp',1,1)",
+      ),
       db.prepare("INSERT INTO client_session VALUES('rp','sid','sso','owner','pairwise',1,0)"),
       db.prepare("INSERT INTO signing_key VALUES('op',1,1,'ES256','{}')"),
       db

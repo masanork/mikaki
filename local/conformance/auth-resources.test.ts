@@ -135,7 +135,9 @@ test('product ingress budgets are atomic across isolates and expired state conve
       DB.prepare("INSERT INTO account_security VALUES('account',1,1)"),
       DB.prepare("INSERT INTO credential VALUES('credential','account',1)"),
       DB.prepare("INSERT INTO signing_key VALUES('op',1,1,'ES256','{}')"),
-      DB.prepare("INSERT INTO app_connection VALUES('account','rp',1,1)"),
+      DB.prepare(
+        "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('account','rp',1,1)",
+      ),
       DB.prepare(
         "INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES('rp','https://rp.test/cb')",
       ),

@@ -59,7 +59,9 @@ test('session check authenticates its RP, binds sid, and observes D1 revocation 
       DB.prepare("INSERT INTO signing_key VALUES('op-key',1,1,'ES256',?)").bind(
         JSON.stringify({ kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y }),
       ),
-      DB.prepare("INSERT INTO app_connection VALUES('account',?,1,1)").bind(clientId),
+      DB.prepare(
+        "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('account',?,1,1)",
+      ).bind(clientId),
       DB.prepare('INSERT INTO sso_session VALUES(?,?,?,?,?,0)').bind(
         'sso',
         'account',

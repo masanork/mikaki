@@ -5,6 +5,7 @@
   let {
     connection,
     recognition,
+    reviewRequired,
     label,
     busy,
     onapprove,
@@ -12,6 +13,7 @@
   }: {
     connection: LoginConnection;
     recognition: LoginRecognition;
+    reviewRequired: boolean;
     label: string;
     busy: boolean;
     onapprove: () => void;
@@ -22,6 +24,7 @@
 <section class="connection-review" aria-labelledby="connection-review-title">
   <h2 id="connection-review-title" tabindex="-1">{m.loginReviewTitle()}</h2>
   <p>{label}</p>
+  {#if reviewRequired}<p class="connection-change">{m.loginServerReview()}</p>{/if}
   <dl>
     <div>
       <dt>{m.app()}</dt>
