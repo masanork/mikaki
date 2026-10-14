@@ -222,7 +222,26 @@ fn clients(ctx: &RouteContext<()>) -> worker::Result<(Vec<Client>, String)> {
             let encryption_policy = super::encryption_key(ctx)?
                 .map(|key| key.public().metadata().to_string())
                 .unwrap_or_default();
-            format!("haip-attestation-v8-code60:{trust}:{key_trust}:{encryption_policy}")
+            let deployment = ctx
+                .env
+                .var("IDENTITY_HAIP_POLICY_SHA256")
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            if !deployment.is_empty()
+                && (deployment.len() != 64
+                    || !deployment
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')))
+            {
+                return Err(server_error());
+            }
+            let base =
+                format!("haip-attestation-v8-code60:{trust}:{key_trust}:{encryption_policy}");
+            if deployment.is_empty() {
+                base
+            } else {
+                format!("{base}:deployment:{deployment}")
+            }
         }
     } else {
         "public-wallet-v3-par-completion".to_owned()

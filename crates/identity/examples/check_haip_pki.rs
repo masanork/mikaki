@@ -1,0 +1,121 @@
+//! Validate operator-provisioned development PKI with the actual Issuer/Wallet validators.
+//! Input is a public bundle only; private application and CA keys are never read.
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use mikaki_identity::{
+    certificate,
+    credential_certificate::{Purpose, SigningTrust, verify},
+    issuance::PublicJwk,
+    wallet_profile::Configuration,
+};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Certificates {
+    sd_jwt: SigningTrust,
+    mdoc: SigningTrust,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Attester {
+    chain: Vec<String>,
+    trust_anchors: Vec<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Bundle {
+    format: String,
+    issuer_jwk: PublicJwk,
+    attester_jwk: PublicJwk,
+    credential_certificates: Certificates,
+    attester: Attester,
+    wallet_configuration: Value,
+    revoked_sd_jwt: SigningTrust,
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args()
+        .nth(1)
+        .ok_or("expected a public PKI bundle path")?;
+    let bytes = std::fs::read(path)?;
+    let b: Bundle = serde_json::from_value(mikaki_identity::wallet_profile::strict_json(&bytes)?)?;
+    if b.format != "mikaki-haip-labpki-v1" || b.issuer_jwk == b.attester_jwk {
+        return Err("invalid development PKI bundle".into());
+    }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let c = &b.credential_certificates;
+    let sd_until = verify(&c.sd_jwt, &b.issuer_jwk, Purpose::SdJwt, now)?.1;
+    let mdoc_until = verify(&c.mdoc, &b.issuer_jwk, Purpose::Mdoc, now)?.1;
+    certificate::validate_attester_roots(&b.attester.trust_anchors)?;
+    let chain: Vec<_> = b
+        .attester
+        .chain
+        .iter()
+        .map(|s| STANDARD.decode(s))
+        .collect::<Result<_, _>>()?;
+    let (key, attester_until) =
+        certificate::verify_attester_chain(&chain, &b.attester.trust_anchors, now)?;
+    if PublicJwk::from_key(&key) != b.attester_jwk {
+        return Err("attester key mismatch".into());
+    }
+    let wallet = Configuration::parse(&b.wallet_configuration.to_string(), now)?;
+    if wallet.client_trust[0].trust_anchors != b.attester.trust_anchors
+        || wallet.key_trust.trust_anchors != b.attester.trust_anchors
+        || wallet.credential_trust.sd_jwt.trust_anchors != c.sd_jwt.trust_anchors
+        || wallet.credential_trust.mdoc.trust_anchors != c.mdoc.trust_anchors
+    {
+        return Err("issuer/wallet trust mismatch".into());
+    }
+    // Independent implementations must agree on rejection as well as acceptance.
+    let mut wrong_root = c.sd_jwt.clone();
+    wrong_root.trust_anchors = c.mdoc.trust_anchors.clone();
+    let mut included_root = c.sd_jwt.clone();
+    included_root.chain.extend(c.sd_jwt.trust_anchors.clone());
+    let checks = [
+        (
+            "revoked_signing_certificate",
+            verify(&b.revoked_sd_jwt, &b.issuer_jwk, Purpose::SdJwt, now).is_err(),
+        ),
+        (
+            "wrong_trust_anchor",
+            verify(&wrong_root, &b.issuer_jwk, Purpose::SdJwt, now).is_err(),
+        ),
+        (
+            "root_in_x5c",
+            verify(&included_root, &b.issuer_jwk, Purpose::SdJwt, now).is_err(),
+        ),
+        (
+            "wrong_signing_key",
+            verify(&c.sd_jwt, &b.attester_jwk, Purpose::SdJwt, now).is_err(),
+        ),
+        (
+            "wrong_certificate_purpose",
+            verify(&c.mdoc, &b.issuer_jwk, Purpose::SdJwt, now).is_err(),
+        ),
+        (
+            "expired_attester",
+            certificate::verify_attester_chain(&chain, &b.attester.trust_anchors, attester_until)
+                .is_err(),
+        ),
+        (
+            "expired_credential_crl",
+            verify(&c.sd_jwt, &b.issuer_jwk, Purpose::SdJwt, sd_until).is_err(),
+        ),
+    ];
+    if checks.iter().any(|(_, rejected)| !rejected) {
+        return Err("development PKI negative check failed".into());
+    }
+    println!(
+        "{}",
+        json!({
+            "format":"mikaki-haip-labpki-check-v1", "checked_at":now,
+            "issuer_thumbprint":b.issuer_jwk.thumbprint()?, "attester_thumbprint":b.attester_jwk.thumbprint()?,
+            "sd_jwt_valid_until":sd_until, "mdoc_valid_until":mdoc_until,
+            "attester_valid_until":attester_until, "wallet_configuration_valid":true,
+            "negative_checks":checks.into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
+            "qualification":"development-pki-validation-only"
+        })
+    );
+    Ok(())
+}

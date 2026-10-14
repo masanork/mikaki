@@ -32,7 +32,9 @@ async function bounded(stream, limit) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method !== 'POST' || url.pathname !== '/verify' || url.search) {
+    const ready = request.method === 'GET' && url.pathname === '/readyz';
+    const verify = request.method === 'POST' && url.pathname === '/verify';
+    if ((!ready && !verify) || url.search) {
       return new Response(null, { status: 404 });
     }
     try {
@@ -49,11 +51,13 @@ export default {
         throw Error('configuration');
       if (!/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(env.ANDROID_VERIFIER_TOKEN || ''))
         throw Error('configuration');
-      if (request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json')
+      if (!ready && request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json')
         throw Error('content type');
-      const body = await bounded(request.body, 65536);
-      const response = await fetch(target, {
-        method: 'POST',
+      if (ready && !/^[A-Za-z0-9_-]{43}$/.test(env.ANDROID_VERIFIER_POLICY_HASH || ''))
+        throw Error('configuration');
+      const body = ready ? undefined : await bounded(request.body, 65536);
+      const response = await fetch(ready ? new URL('/readyz', target) : target, {
+        method: ready ? 'GET' : 'POST',
         body,
         redirect: 'manual',
         signal: AbortSignal.timeout(8000),
@@ -68,11 +72,26 @@ export default {
       )
         throw Error('upstream');
       const result = await bounded(response.body, 4096);
+      if (ready) {
+        const value = JSON.parse(new TextDecoder().decode(result));
+        const fields = ['client_id', 'format', 'status_valid_until', 'verifier_policy_hash'];
+        if (
+          !value || typeof value !== 'object' || Array.isArray(value) ||
+          Object.keys(value).sort().join(',') !== fields.join(',') ||
+          value.format !== 'android-key-attestation-readiness-v1' ||
+          value.client_id !== env.ANDROID_VERIFIER_CLIENT_ID ||
+          value.verifier_policy_hash !== env.ANDROID_VERIFIER_POLICY_HASH ||
+          !Number.isSafeInteger(value.status_valid_until) ||
+          value.status_valid_until <= Math.floor(Date.now() / 1000) ||
+          value.status_valid_until > Math.floor(Date.now() / 1000) + 3600
+        ) throw Error('readiness');
+      }
       return new Response(result, {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     } catch {
+      console.error(JSON.stringify({ event: 'android_verifier_unavailable' }));
       return unavailable();
     }
   },

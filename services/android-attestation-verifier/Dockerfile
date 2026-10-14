@@ -8,7 +8,8 @@ RUN ./gradlew --no-daemon installDist
 FROM eclipse-temurin:21-jre
 WORKDIR /opt/service
 COPY --from=build /opt/service/build/install/mikaki-android-attestation-verifier ./
+COPY policy.production.json ./policy.production.json
 USER 10001:10001
-ENV BIND_ADDRESS=0.0.0.0 PORT=8080
+ENV BIND_ADDRESS=0.0.0.0 PORT=8080 MIKAKI_ANDROID_POLICY_FILE=/opt/service/policy.production.json
 EXPOSE 8080
 ENTRYPOINT ["/opt/service/bin/mikaki-android-attestation-verifier"]

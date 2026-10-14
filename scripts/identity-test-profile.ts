@@ -4,11 +4,12 @@ import { createHash, createPublicKey } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { identityHaipSelection } from './identity-haip-profile.ts';
 
 type Config = {
   vars: Record<string, string>;
   secrets?: { required: string[] };
-  services?: { binding: string }[];
+  services?: { binding: string; service?: string; entrypoint?: string }[];
   ratelimits?: { name: string; namespace_id: string; simple: { limit: number; period: number } }[];
 };
 type TrustedKey = {
@@ -109,6 +110,16 @@ export function productionIdentityTestProfile(config: Config) {
   const enabled = config.vars.IDENTITY_ENABLED === 'true';
   const discovery = enabled && config.vars.IDENTITY_ISSUANCE_ENABLED === 'false';
   const operatorCard = enabled && config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256 !== undefined;
+  const haip = config.vars.IDENTITY_ACTIVATION_PROFILE === 'operator-card-haip-age';
+  const haipSelection = haip ? identityHaipSelection() : undefined;
+  if (haip) {
+    assert.ok(
+      enabled && operatorCard && !discovery,
+      'HAIP requires the selected operator card age profile',
+    );
+    for (const [name, expected] of Object.entries(haipSelection!.vars))
+      assert.equal(config.vars[name], expected, 'HAIP setting differs from the reviewed profile');
+  }
   if (operatorCard) assert.match(config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256!, /^[a-f0-9]{64}$/);
   assert.ok(
     enabled || config.vars.IDENTITY_ENABLED === 'false',
@@ -116,18 +127,28 @@ export function productionIdentityTestProfile(config: Config) {
   );
   assert.deepEqual(
     names,
-    discovery
-      ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_ISSUANCE_ENABLED']
-      : operatorCard
-        ? [
+    haip
+      ? [
+          ...[
             'IDENTITY_ENABLED',
             'IDENTITY_ISSUANCE_CLAIMS',
             'IDENTITY_OPERATOR_CARD_KEY_SHA256',
             'IDENTITY_TRUST_POLICY_SHA256',
-          ]
-        : enabled
-          ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_TRUST_POLICY_SHA256']
-          : ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS'],
+          ],
+          ...Object.keys(haipSelection!.vars).filter((name) => name.startsWith('IDENTITY_')),
+        ].sort()
+      : discovery
+        ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_ISSUANCE_ENABLED']
+        : operatorCard
+          ? [
+              'IDENTITY_ENABLED',
+              'IDENTITY_ISSUANCE_CLAIMS',
+              'IDENTITY_OPERATOR_CARD_KEY_SHA256',
+              'IDENTITY_TRUST_POLICY_SHA256',
+            ]
+          : enabled
+            ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_TRUST_POLICY_SHA256']
+            : ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS'],
     'Identity test profile must not activate other Identity capabilities',
   );
   assert.equal(
@@ -149,17 +170,24 @@ export function productionIdentityTestProfile(config: Config) {
       limits[0]!.simple.period === 60,
     'Identity profile requires the reviewed production rate limit',
   );
-  assert.ok(
-    !config.services?.some((item) => item.binding.startsWith('IDENTITY_')),
-    'Identity test profile must not add an attester service',
+  assert.deepEqual(
+    config.services?.filter((item) => item.binding.startsWith('IDENTITY_')) ?? [],
+    haip
+      ? [{ binding: 'IDENTITY_ANDROID_VERIFIER', service: 'mikaki-android-attestation-verifier' }]
+      : [],
+    'Identity attester service must match the reviewed profile',
   );
-  return discovery
-    ? ('discovery' as const)
-    : operatorCard
-      ? ('operator-card-age' as const)
-      : enabled
-        ? ('first-party-age' as const)
-        : ('prepared' as const);
+  for (const secret of ['IDENTITY_ATTESTER_SIGNING', 'IDENTITY_CREDENTIAL_ENCRYPTION_JWK'])
+    assert.equal(required.includes(secret), haip, 'HAIP secrets require the selected HAIP profile');
+  return haip
+    ? ('operator-card-haip-age' as const)
+    : discovery
+      ? ('discovery' as const)
+      : operatorCard
+        ? ('operator-card-age' as const)
+        : enabled
+          ? ('first-party-age' as const)
+          : ('prepared' as const);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

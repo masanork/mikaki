@@ -99,6 +99,17 @@ internal class Verification(
   private val anchors: () -> Set<TrustAnchor> = GoogleTrustAnchors,
   private val clock: () -> Instant = Instant::now,
 ) {
+  fun readiness(): JsonObject {
+    val current = status()
+    require(clock() < current.until)
+    return JsonObject().apply {
+      addProperty("format", "android-key-attestation-readiness-v1")
+      addProperty("client_id", p.client)
+      addProperty("verifier_policy_hash", p.hash)
+      addProperty("status_valid_until", current.until.epochSecond)
+    }
+  }
+
   fun verify(b: JsonObject): JsonObject {
     checkKeys(b, setOf("format", "client_id", "purpose", "verifier_policy_hash", "evidence"))
     require(text(b, "format") == "android-key-attestation-verification-v1")
@@ -126,12 +137,11 @@ internal class Verification(
         raw.map(::digest).toSet().size == raw.size
     )
     val factory = CertificateFactory.getInstance("X.509")
-    val chain =
-      raw.map { der ->
-        val c = factory.generateCertificate(der.inputStream()) as java.security.cert.X509Certificate
-        require(c.encoded.contentEquals(der))
-        c
-      }
+    val chain = raw.map { der ->
+      val c = factory.generateCertificate(der.inputStream()) as java.security.cert.X509Certificate
+      require(c.encoded.contentEquals(der))
+      c
+    }
     // Unsupported critical extension semantics fail closed. The JDK parser rejects duplicate X.509
     // extensions.
     require(

@@ -1,4 +1,8 @@
-build
 .gradle
-bridge/.dev.vars
-bridge/.wrangler
+build
+bridge
+src/test
+*.secret*
+*.key
+*.jks
+*.keystore
