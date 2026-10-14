@@ -1,0 +1,31 @@
+{
+  "name": "mikaki-android-attestation-verifier",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-02",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
+  "vars": {
+    "ANDROID_VERIFIER_URL": "https://mikaki-android-verifier-34wku6zuoa-an.a.run.app/verify",
+    "ANDROID_VERIFIER_POLICY_HASH": "q3js6eUGLqFvJvrrdkWs8pzbeH0vUMSo0EzCGSh6GBo",
+    "ANDROID_VERIFIER_CLIENT_ID": "mikaki-android-wallet"
+  },
+  "account_id": "4b749427a0c80c547e726a42aff4b6fc",
+  "secrets": {
+    "required": [
+      "ANDROID_VERIFIER_TOKEN"
+    ]
+  }
+}
