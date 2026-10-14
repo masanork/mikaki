@@ -21,6 +21,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use zeroize::Zeroizing;
+#[path = "haip_wallet/age_pool.rs"]
+mod age_pool;
 struct Key(SigningKey);
 impl Signer for Key {
     fn public(&self) -> Result<PublicJwk, String> {
@@ -77,6 +79,9 @@ fn field<'a>(v: &'a Value, name: &str) -> Result<&'a str, Box<dyn std::error::Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = io::stdin().lock();
     let first: Value = serde_json::from_str(&line(&mut input)?)?;
+    if first.get("age_pool").is_some() {
+        return age_pool::run(first, &mut input);
+    }
     let instance = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
     let dpop = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
     let holder = Key(SigningKey::generate_from_rng(&mut UnwrapErr(SysRng)));
@@ -319,35 +324,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if v["consent"] != json!(true) {
                         return Err("consent required".into());
                     }
-                    let vp = if format == "dc+sd-jwt" {
-                        let (selected, _) = presentation::select_disclosures(credential, &request)?;
-                        presentation::present(&holder.0, &selected, &request, at)?
-                    } else {
-                        let validated =
-                            mdoc::verify_receipt(credential, &issuer_key, &holder.public()?, at)?;
-                        let transcript = request.mdoc_transcript()?;
-                        let signature: Signature =
-                            holder
-                                .0
-                                .sign(&mdoc::signature_input(&mdoc::device_authentication(
-                                    &transcript,
-                                )?)?);
-                        mdoc::device_response(
-                            &validated,
-                            &request.fields,
-                            &transcript,
-                            &signature.to_bytes(),
-                            &holder.public()?,
-                        )?
-                    };
-                    let mut iv = [0; 12];
-                    UnwrapErr(SysRng).fill_bytes(&mut iv);
-                    let response = presentation::encryption::encrypt_response(
-                        &vp,
+                    let response = presentation_response(
+                        credential,
+                        format,
+                        &issuer_key,
+                        &holder,
                         &request,
                         at,
-                        p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
-                        iv,
                     )?;
                     Ok(json!({"state":"presented","response":response}))
                 })();
@@ -397,4 +380,43 @@ fn validate_receipt(
     };
     trust.verify(credential, format, issuer_key, at, expiry)?;
     Ok(expiry)
+}
+
+fn presentation_response(
+    credential: &str,
+    format: &str,
+    issuer_key: &PublicJwk,
+    holder: &Key,
+    request: &presentation::ApprovedRequest,
+    at: u64,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let vp = if format == "dc+sd-jwt" {
+        let (selected, _) = presentation::select_disclosures(credential, request)?;
+        presentation::present(&holder.0, &selected, request, at)?
+    } else {
+        let validated = mdoc::verify_receipt(credential, issuer_key, &holder.public()?, at)?;
+        let transcript = request.mdoc_transcript()?;
+        let signature: Signature =
+            holder
+                .0
+                .sign(&mdoc::signature_input(&mdoc::device_authentication(
+                    &transcript,
+                )?)?);
+        mdoc::device_response(
+            &validated,
+            &request.fields,
+            &transcript,
+            &signature.to_bytes(),
+            &holder.public()?,
+        )?
+    };
+    let mut iv = [0; 12];
+    UnwrapErr(SysRng).fill_bytes(&mut iv);
+    Ok(presentation::encryption::encrypt_response(
+        &vp,
+        request,
+        at,
+        p256::SecretKey::generate_from_rng(&mut UnwrapErr(SysRng)),
+        iv,
+    )?)
 }

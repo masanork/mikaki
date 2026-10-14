@@ -927,7 +927,11 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         let state = pool.as_ref().unwrap();
         if !encrypted_request
             || response_encryption.is_none()
-            || proofs.len() != state.budget.size
+            || if attestation_proof {
+                proofs.len() > state.budget.size
+            } else {
+                proofs.len() != state.budget.size
+            }
             || state.validate(0).is_err()
         {
             return error(400, "invalid_age_batch");
@@ -985,8 +989,33 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
             }
             let verified = if let Some(policy) = &key_policy {
                 if attestation_proof {
-                    mikaki_identity::key_attestation::verify(proof, &nonce, policy, false, now()?)
-                        .map(|v| (v.holder, Some(v.expires_at)))
+                    if wire_batch {
+                        // Count verified keys, not attestation JWTs. Do not let
+                        // a later proof expand the remaining approved budget.
+                        let remaining = pool
+                            .as_ref()
+                            .unwrap()
+                            .budget
+                            .size
+                            .saturating_sub(holders.len());
+                        mikaki_identity::key_attestation::verify_grouped(
+                            proof,
+                            &nonce,
+                            policy,
+                            remaining,
+                            now()?,
+                        )
+                        .map(|v| (v.holders, Some(v.expires_at)))
+                    } else {
+                        mikaki_identity::key_attestation::verify(
+                            proof,
+                            &nonce,
+                            policy,
+                            false,
+                            now()?,
+                        )
+                        .map(|v| (vec![v.holder], Some(v.expires_at)))
+                    }
                 } else {
                     issuance::verify_attested_wallet_proof(
                         proof,
@@ -996,13 +1025,13 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
                         policy,
                         now()?,
                     )
-                    .map(|(h, e)| (h, Some(e)))
+                    .map(|(h, e)| (vec![h], Some(e)))
                 }
             } else {
                 issuance::verify_wallet_proof(proof, &iss, &nonce, client, now()?)
-                    .map(|h| (h, None))
+                    .map(|h| (vec![h], None))
             };
-            let (holder, expiry) = match verified {
+            let (proof_holders, expiry) = match verified {
                 Ok(value) => value,
                 Err("invalid_nonce") => return error(400, "invalid_nonce"),
                 Err(_) => return error(400, "invalid_proof"),
@@ -1010,12 +1039,14 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
             if let Some(expiry) = expiry {
                 attestation_deadline = Some(attestation_deadline.unwrap_or(u64::MAX).min(expiry));
             }
-            match wallet::fresh_pool_holder(&ctx, &row, &holder) {
-                Ok(false) => return error(400, "invalid_proof"),
-                Err(_) => return error(403, "document_revalidation_required"),
-                Ok(true) => {}
+            for holder in proof_holders {
+                match wallet::fresh_pool_holder(&ctx, &row, &holder) {
+                    Ok(false) => return error(400, "invalid_proof"),
+                    Err(_) => return error(403, "document_revalidation_required"),
+                    Ok(true) => {}
+                }
+                holders.push(holder);
             }
-            holders.push(holder);
         }
     } else {
         if attestation_proof {
