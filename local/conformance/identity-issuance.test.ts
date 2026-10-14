@@ -2110,10 +2110,12 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       400,
       'disabled/old issuer rejects scoped pool',
     );
-    for (const [mode, batchEnabled] of [
-      ['sequential', false],
-      ['sequential', true],
-      ['batch', true],
+    for (const [mode, batchEnabled, proofShape] of [
+      ['sequential', false, 'individual'],
+      ['sequential', true, 'individual'],
+      ['batch', true, 'individual'],
+      ['batch', true, 'grouped'],
+      ['batch', true, 'mixed'],
     ] as const) {
       const poolWorker = harness.getWorker(
         batchEnabled ? 'identity-haip-age-batch' : 'identity-haip-age-pool',
@@ -2125,6 +2127,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.deepEqual(metadata.mikaki_age_batch, batchEnabled ? { batch_size: 8 } : undefined);
       for (const configuration of ['linked_document', 'linked_document_mdoc']) {
         for (const size of [2, 8]) {
+          if (proofShape === 'mixed' && size === 2) continue;
           const budget = JSON.stringify({
             size,
             claims_json: '["age_over_18"]',
@@ -2320,6 +2323,62 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                 'any invalid member rejects the whole batch',
               );
             }
+            const grouped = async (keys: typeof holders, n = nonce, patch = {}) =>
+              keyAttestation(n, keys, { exp: Math.floor(Date.now() / 1000) + 60, ...patch });
+            if (proofShape !== 'individual') {
+              const extraKey = await exportJWK(
+                (await generateKeyPair('ES256', { extractable: true })).publicKey,
+              );
+              const invalidLast = { ...holders[size - 1], x: 'invalid' };
+              const privateLast = { ...holders[size - 1], d: 'private' };
+              for (const values of [
+                [await grouped([])],
+                [await grouped(holders.slice(0, -1))],
+                [await grouped([...holders, extraKey])],
+                [await grouped([...holders.slice(0, -1), holders[0]])],
+                [await grouped([...holders.slice(0, -1), invalidLast])],
+                [await grouped([...holders.slice(0, -1), privateLast])],
+                [await grouped(holders.slice(0, -1)), await grouped([holders[0]])],
+                [await grouped(holders), await grouped([extraKey])],
+                [await grouped(holders.slice(0, -1)), await grouped([holders[size - 1]], secret())],
+                [
+                  await grouped(holders.slice(0, -1)),
+                  await grouped([holders[size - 1]], nonce, {
+                    exp: Math.floor(Date.now() / 1000) - 1,
+                  }),
+                ],
+                [
+                  await grouped(holders.slice(0, -1)),
+                  await keyAttestation(nonce, [holders[size - 1]], {}, op.privateKey),
+                ],
+                [await grouped([...holders.slice(0, -1), dpopJwk])],
+                [
+                  await grouped([
+                    ...holders.slice(0, -1),
+                    await exportJWK(attestedInstance.publicKey),
+                  ]),
+                ],
+              ])
+                assert.equal(
+                  (await issue(values, poolWorker, 'attestation')).status,
+                  400,
+                  'any bad attested key/group rejects the entire batch',
+                );
+            }
+            const proofType = proofShape === 'individual' && size === 8 ? 'jwt' : 'attestation';
+            const values =
+              proofShape === 'grouped'
+                ? [await grouped(holders)]
+                : proofShape === 'mixed'
+                  ? await Promise.all(
+                      [holders.slice(0, 1), holders.slice(1, 4), holders.slice(4)].map((h) =>
+                        grouped(h),
+                      ),
+                    )
+                  : size === 2
+                    ? await Promise.all(holders.map((h) => grouped([h])))
+                    : proofs;
+            const issueApproved = () => issue(values, poolWorker, proofType);
             const unspent = async () => {
               const current = (await DB.prepare(
                 'SELECT issuance_count,state,holder_json FROM identity_wallet_grant WHERE grant_id=?',
@@ -2343,23 +2402,11 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               await DB.exec(
                 `CREATE TRIGGER fixture_batch_close BEFORE UPDATE OF state ON identity_wallet_grant WHEN NEW.grant_id='${grant}' AND NEW.state='issued' BEGIN SELECT RAISE(ABORT,'fixture rollback'); END`,
               );
-              assert.equal((await issue()).status, 409);
+              assert.equal((await issueApproved()).status, 409);
               await unspent();
               await DB.exec('DROP TRIGGER fixture_batch_close');
             }
-            // Exercise both registered proof forms, each with an independent attestation.
-            const values =
-              size === 2
-                ? await Promise.all(
-                    holders.map((h) =>
-                      keyAttestation(nonce, [h], { exp: Math.floor(Date.now() / 1000) + 60 }),
-                    ),
-                  )
-                : proofs;
-            const results = await Promise.all([
-              issue(values, poolWorker, size === 2 ? 'attestation' : 'jwt'),
-              issue(values, poolWorker, size === 2 ? 'attestation' : 'jwt'),
-            ]);
+            const results = await Promise.all([issueApproved(), issueApproved()]);
             const resultDetails = (
               await Promise.all(
                 results.map(async (r) => (r.status === 200 ? 'success' : await r.clone().text())),
@@ -2416,7 +2463,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               ).used,
               1,
             );
-            assert.equal((await issue()).status, 401, 'one batch closes the entire grant');
+            assert.equal((await issueApproved()).status, 401, 'one batch closes the entire grant');
             continue;
           }
           let rsNonce: string | undefined;
@@ -2489,6 +2536,27 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                   ).status,
                   400,
                   'sequential consent cannot be expanded into a batch',
+                );
+              }
+              if (size === 2 && slot === 0) {
+                const group = await keyAttestation(nonce, [holder, externalHolder]);
+                assert.equal(
+                  (
+                    await post(
+                      '/identity/issuer/credential',
+                      {
+                        credential_configuration_id: configuration,
+                        proofs: { attestation: [group] },
+                      },
+                      {
+                        Authorization: `DPoP ${access}`,
+                        DPoP: await dp('credential', rsNonce, access),
+                      },
+                      poolWorker,
+                    )
+                  ).status,
+                  400,
+                  'sequential consent still permits one attested key per operation',
                 );
               }
               const noAttestation = await new SignJWT({

@@ -203,3 +203,133 @@ fn jwt_proof_must_prove_the_attested_key_and_authorized_client() {
         .is_err()
     );
 }
+
+#[test]
+fn grouped_direct_attestation_binds_every_distinct_key_without_widening_single_proofs() {
+    use mikaki_identity::key_attestation::verify_grouped;
+    for count in [1, 2, 8] {
+        let holders: Vec<_> = (10..10 + count)
+            .map(|n| PublicJwk::from_key(key(n).verifying_key()))
+            .collect();
+        let mut c = claims();
+        c["attested_keys"] = json!(holders);
+        let attestation = jwt(header(), c.clone(), 5);
+        let verified =
+            verify_grouped(&attestation, "challenge", &policy(), count as usize, NOW).unwrap();
+        assert_eq!(verified.holders, holders);
+        assert_eq!(verified.expires_at, NOW + 300);
+        for max in [0, 9] {
+            assert!(verify_grouped(&attestation, "challenge", &policy(), max, NOW).is_err());
+        }
+        if count > 1 {
+            assert!(
+                verify_grouped(
+                    &attestation,
+                    "challenge",
+                    &policy(),
+                    count as usize - 1,
+                    NOW
+                )
+                .is_err()
+            );
+            for jwt_proof in [false, true] {
+                assert!(verify(&attestation, "challenge", &policy(), jwt_proof, NOW).is_err());
+            }
+            let proof = jwt(
+                json!({"typ":"openid4vci-proof+jwt","alg":"ES256","jwk":holders[0],"key_attestation":attestation}),
+                json!({"aud":"https://issuer.example","iss":"wallet","nonce":"challenge","iat":NOW}),
+                10,
+            );
+            assert!(
+                verify_attested_wallet_proof(
+                    &proof,
+                    "https://issuer.example",
+                    "challenge",
+                    "wallet",
+                    &policy(),
+                    NOW
+                )
+                .is_err()
+            );
+        }
+        c.as_object_mut().unwrap().remove("exp");
+        assert!(
+            verify_grouped(
+                &jwt(header(), c, 5),
+                "challenge",
+                &policy(),
+                count as usize,
+                NOW
+            )
+            .is_ok()
+        );
+    }
+}
+
+#[test]
+fn grouped_attestation_rejects_any_bad_key_duplicate_or_untrusted_expired_signature() {
+    use mikaki_identity::key_attestation::verify_grouped;
+    let holders: Vec<_> = (10..18)
+        .map(|n| PublicJwk::from_key(key(n).verifying_key()))
+        .collect();
+    let mut c = claims();
+    c["attested_keys"] = json!(holders);
+    let accepts = |claims: Value, signer| {
+        verify_grouped(
+            &jwt(header(), claims, signer),
+            "challenge",
+            &policy(),
+            8,
+            NOW,
+        )
+        .is_ok()
+    };
+    assert!(!accepts(c.clone(), 4));
+    for (name, value) in [
+        ("nonce", json!("other")),
+        ("exp", json!(NOW)),
+        ("status", json!({})),
+        ("attested_keys", json!([])),
+    ] {
+        let mut bad = c.clone();
+        bad[name] = value;
+        assert!(!accepts(bad, 5), "{name}");
+    }
+    for (name, value) in [
+        ("x", json!("invalid")),
+        ("crv", json!("P-384")),
+        ("d", json!("private")),
+    ] {
+        let mut bad = c.clone();
+        bad["attested_keys"][7][name] = value;
+        assert!(!accepts(bad, 5), "last key {name}");
+    }
+    let mut duplicate = c.clone();
+    duplicate["attested_keys"][7] = duplicate["attested_keys"][0].clone();
+    // JOSE metadata cannot disguise the same public key as another identity.
+    duplicate["attested_keys"][7]["kid"] = json!("alias");
+    assert!(!accepts(duplicate, 5));
+    let mut overflow = c.clone();
+    overflow["attested_keys"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!(PublicJwk::from_key(key(20).verifying_key())));
+    assert!(!accepts(overflow, 5));
+    let mut wrong = policy();
+    wrong.trust_anchors = vec![cert("wrong-root")];
+    assert!(verify_grouped(&jwt(header(), c.clone(), 5), "challenge", &wrong, 8, NOW).is_err());
+    let mut constrained = policy();
+    constrained.key_storage = Some(vec!["iso_18045_high".into()]);
+    assert!(
+        verify_grouped(
+            &jwt(header(), c.clone(), 5),
+            "challenge",
+            &constrained,
+            8,
+            NOW
+        )
+        .is_err()
+    );
+    c["key_storage"] = json!(["iso_18045_high"]);
+    assert!(verify_grouped(&jwt(header(), c, 5), "challenge", &constrained, 8, NOW).is_ok());
+}

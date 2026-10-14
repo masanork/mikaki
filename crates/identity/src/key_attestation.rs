@@ -54,6 +54,10 @@ pub struct Verified {
     pub holder: PublicJwk,
     pub expires_at: u64,
 }
+pub struct VerifiedKeys {
+    pub holders: Vec<PublicJwk>,
+    pub expires_at: u64,
+}
 fn decode(s: &str) -> Result<Vec<u8>, &'static str> {
     let bytes = B64.decode(s).map_err(|_| "invalid_proof")?;
     if B64.encode(&bytes) != s {
@@ -80,6 +84,34 @@ pub fn verify(
     jwt_proof: bool,
     now: u64,
 ) -> Result<Verified, &'static str> {
+    let verified = verify_keys(compact, nonce, policy, jwt_proof, 1, now)?;
+    Ok(Verified {
+        holder: verified.holders.into_iter().next().ok_or("invalid_proof")?,
+        expires_at: verified.expires_at,
+    })
+}
+/// Direct attestation proof only. The caller must bind the aggregate key count
+/// across every proof to an explicit batch grant before issuing anything.
+pub fn verify_grouped(
+    compact: &str,
+    nonce: &str,
+    policy: &Trust,
+    max_keys: usize,
+    now: u64,
+) -> Result<VerifiedKeys, &'static str> {
+    verify_keys(compact, nonce, policy, false, max_keys, now)
+}
+fn verify_keys(
+    compact: &str,
+    nonce: &str,
+    policy: &Trust,
+    jwt_proof: bool,
+    max_keys: usize,
+    now: u64,
+) -> Result<VerifiedKeys, &'static str> {
+    if !(1..=crate::age_batch::MAX_SIZE).contains(&max_keys) {
+        return Err("invalid_proof");
+    }
     if compact.len() > 16384 {
         return Err("invalid_proof");
     }
@@ -105,7 +137,8 @@ pub fn verify(
         || now.saturating_sub(c.iat) > 60
         || (jwt_proof && c.exp.is_none())
         || c.exp.is_some_and(|t| t <= now || t <= c.iat)
-        || c.attested_keys.len() != 1
+        || c.attested_keys.is_empty()
+        || c.attested_keys.len() > max_keys
         || c.extensions.contains_key("status")
         || !component(&c.key_storage, &policy.key_storage)
         || !component(&c.user_authentication, &policy.user_authentication)
@@ -123,8 +156,16 @@ pub fn verify(
     let sig = Signature::from_slice(&decode(parts[2])?).map_err(|_| "invalid_proof")?;
     key.verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig)
         .map_err(|_| "invalid_proof")?;
-    Ok(Verified {
-        holder: c.attested_keys.into_iter().next().unwrap().0,
+    let mut seen = std::collections::HashSet::new();
+    let mut holders = Vec::with_capacity(c.attested_keys.len());
+    for Key(holder) in c.attested_keys {
+        if !seen.insert(holder.thumbprint().map_err(|_| "invalid_proof")?) {
+            return Err("invalid_proof");
+        }
+        holders.push(holder);
+    }
+    Ok(VerifiedKeys {
+        holders,
         expires_at: c.exp.unwrap_or(deadline).min(deadline),
     })
 }
