@@ -45,7 +45,40 @@ Do not turn off Work or bypass this guard to activate Identity. Coordinate a
 reviewed configuration retaining the active Work profile before any OP promotion;
 the separate website deployment can publish the callback fix independently.
 
+## Follow-up observation — 2026-10-14 14:13 UTC
+
+The [Wallet progress checkpoint](identity-wallet-progress-20261014.md) observes
+OP version `1c73f5cf-5073-45fd-8442-ee38feff10f4` at 100%, with source annotation
+`30b0aa92f3899a9e10bc1dd8d4cc87c30074a4cb`. The dedicated Identity secret and
+rate-limit **bindings** are now present; Identity remains explicitly disabled
+with age-only claims selected. The public preflight confirms both Android
+association and the issuance callback fallback, while Identity metadata/JWKS
+remain 404. Key values, real card trust and a physical device were not qualified.
+
 ## Required inputs and the smallest activation
+
+### Public issuer discovery activation — 2026-10-15
+
+The experimental production configuration now selects `IDENTITY_ENABLED=true`,
+`IDENTITY_ISSUANCE_ENABLED=false` and `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'`.
+This publishes the issuer's credential metadata, authorization-server metadata,
+dedicated public signing key and credential type description. Credential metadata
+reports `mikaki_issuance_enabled=false`. It does not select a card-trust secret.
+
+All intake, approval, polling, token, nonce and credential endpoints return 503
+`issuer_unavailable` before consuming request bodies or accessing issuance state.
+The policy gate also rejects use of existing linked documents while issuance is
+closed, and independent Wallet authorization/PAR remain disabled even if a stale
+Wallet flag is present. Tests cover absent trust and stale configured trust, the
+public key without private coordinates, age-only metadata and no issuance DB writes.
+This is public discovery activation, not an issued credential or active HAIP Wallet.
+
+Keep the dedicated key, production rate limit and exact binding checks. To enable
+the first-party issuance profile, remove `IDENTITY_ISSUANCE_ENABLED=false` and
+select the approved trust secret/digest described below in the same reviewed
+configuration. Do not substitute repository fixtures for approved card issuer trust.
+Record the source-matched public observation after promotion; this section alone
+records the requested configuration, not a successful deployment.
 
 ### Signing custody preparation — 2026-10-14
 
@@ -76,14 +109,14 @@ JWK/thumbprint and refuses to replace a file:
 node scripts/identity-issuer-key.ts local/generated/identity-keys/NEW_PRIVATE_FILE.jwk.json
 ```
 
-The checked-in configuration stages this key with `IDENTITY_ENABLED=false`,
+The earlier preparation configuration staged this key with `IDENTITY_ENABLED=false`,
 `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'` and the `IDENTITY_RATE_LIMIT`
 binding (namespace `1031`, 30 requests per 60 seconds per hashed IP/operation).
 This limit uses Cloudflare's [local, permissive rate-limit API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 not a strict global request quota. Its deployed behavior still needs measurement.
 No card trust, mdoc, independent Wallet, UserInfo, HAIP, attester or batch profile
-is selected. The promotion validator rejects activation or additional Identity
-variables/services in this preparation profile, verifies the private/public key
+is selected. The promotion validator keeps this preparation profile disabled, rejects additional
+Identity variables/services, verifies the private/public key
 coordinates, and rejects reuse of the OP key even with a different `kid`.
 
 The workflow passes the selected key in the existing private mode-0600 secrets
@@ -91,15 +124,53 @@ file to `wrangler versions upload --secrets-file`, inspects every binding, then
 uses the existing attested promotion path. [Cloudflare preserves omitted secrets](https://developers.cloudflare.com/workers/configuration/secrets/#upload-secrets-alongside-code);
 unexpected live secret bindings still fail the repository's exact binding check.
 This source change is preparation, not proof that the key/rate limit has reached
-the Worker. Record the source-matched deployment after merge. Actual activation
-needs approved card trust plus a reviewed change to this disabled-profile guard;
-certification and physical-device success are not added as activation gates.
+the Worker. Record the source-matched deployment after merge. Certification and
+physical-device success are not activation gates.
+
+### First-party age activation contract
+
+The promotion validator now permits a separate first-party `age_over_18` SD-JWT
+test profile when dedicated signing custody, the reviewed limiter and an exact
+live driving-licence trust policy are selected. The checked-in production config
+publishes discovery with issuance explicitly disabled; this contract does not
+activate issuance.
+
+First obtain an independently approved licence issuer key and record its source,
+EF07/B6 identifier, validity and operator approval. Validate its **compact JSON**
+policy (one JSON line, optional final newline) without printing public key contents:
+
+```sh
+npm run check:identity-test-trust -- /absolute/path/to/approved-licence-trust.json
+```
+
+The tool reports a SHA-256 digest, count, document kind and earliest validity bound.
+It validates encoding and key shape; it cannot establish who owns a key or approve
+trust provenance. It accepts only live RSA-2048/65537 licence keys with canonical
+32-byte EF07/B6 identifiers, rejects duplicate JSON members/IDs, private/unknown
+fields, expired/future policies and My Number keys pending the separate DF31 gate.
+
+After provenance review, select the returned `IDENTITY_TRUST_POLICY_SHA256`,
+`IDENTITY_ENABLED=true` and `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'` in a
+reviewed canonical production configuration. Add `IDENTITY_TRUSTED_KEYS` to
+`secrets.required` and provision those exact compact policy bytes to the GitHub
+production-environment secret. The existing private secrets-file upload path now
+passes that selected secret; before upload the validator rechecks validity and
+compares its digest with the reviewed configuration. A changed secret, absent
+trust, expired policy, raw-attribute selection or added Wallet/HAIP/UserInfo/batch
+flag fails promotion. The disabled preparation profile excludes the trust secret
+even if it exists in the CI environment.
+
+Keep the existing Work deployment guards and exact binding checks. Verify the
+selected profile's metadata/JWKS, disabled other profiles and one approved
+issuance/presentation after source-matched promotion; generic OP smoke and a
+successful policy preflight are not that E2E evidence. Trust secret provisioning,
+the actual activation config, named RP and physical device remain required inputs.
 
 | Profile / requirement | Remaining concrete input or work |
 | --- | --- |
 | Card trust | Operator-validated issuer policies in `IDENTITY_TRUSTED_KEYS`: key ID, document kind, canonical RSA-2048 `n`/`e`, validity and licence subject-key identifier. Record the independent source and validation decision. Card-supplied or fixture keys are not an approval source. |
-| First-party single SD-JWT | Signing key custody is prepared above. Deploy the reviewed disabled key/rate-limit/age-only configuration, then select approved card trust and explicitly activate the first-party profile. No Wallet/HAIP, mdoc or batch activation is needed for this first slice. |
-| CI secret custody | The workflow and promotion validator now include the selected dedicated Identity signing key. Card-trust secret provisioning and a reviewed activation guard remain outstanding; adding dashboard secrets alone does not complete that path. |
+| First-party single SD-JWT | Signing key custody is prepared above. The disabled key/rate-limit/age-only bindings are observed above; select approved card trust and explicitly activate the first-party profile. No Wallet/HAIP, mdoc or batch activation is needed for this first slice. |
+| CI secret custody | The workflow and promotion validator now include the selected dedicated Identity signing key. Approved card-trust secret provisioning and the exact activation selection remain outstanding; adding dashboard secrets alone does not complete that path. |
 | mdoc | Matching Document Signer certificate and its operator/RP trust decision (`IDENTITY_MDOC_CERT_DER`, or the reviewed credential-certificate configuration). This is required for mdoc, not the initial SD-JWT-only slice. |
 | Independent Wallet | Registered exact client ID/name/HTTPS callback in `IDENTITY_WALLET_CLIENTS`, then `IDENTITY_WALLET_ENABLED=true`; compile the corresponding public Wallet configuration. The callback fix alone does not register or authenticate a Wallet. |
 | HAIP / native attester | Purpose-specific client/key-attester and credential-signing trust, separate request-encryption key, required DPoP nonces, attester signing authority/client policy and a deployed Android verifier service binding. Enable the HAIP/attester flags only for this provisioned profile. See the [existing configuration contracts](identity-card-issuance.md#native-attester-enrollment-broker). |
@@ -118,7 +189,7 @@ attester and both batch extensions disabled until their own inputs are ready.
 The owner DB is `mikaki-auth-owner` (`d0258938-0d27-4110-8aa9-c82e20f3885b`).
 Recheck its current migration ledger/schema with the existing deployment checks;
 this read-only checkpoint did not requalify it. Its checked-in Owner migration
-chain is `0001`–`0004`, including the integrated Identity baseline. Never apply the
+chain is `0001`–`0005`, including the integrated Identity baseline and the additive login-review schema. Never apply the
 historical `0036`–`0046` migration sequence to this DB.
 
 Before activation, retain the exact source, active and staged version IDs, selected

@@ -66,8 +66,13 @@ fn enabled(ctx: &RouteContext<()>) -> bool {
         .var("IDENTITY_ENABLED")
         .is_ok_and(|v| v.to_string() == "true")
 }
+fn issuance_enabled(ctx: &RouteContext<()>) -> bool {
+    ctx.env
+        .var("IDENTITY_ISSUANCE_ENABLED")
+        .map_or(true, |v| v.to_string() == "true")
+}
 fn policy(ctx: &RouteContext<()>) -> worker::Result<(Vec<TrustedKey>, String)> {
-    if !enabled(ctx) {
+    if !enabled(ctx) || !issuance_enabled(ctx) {
         return Err(server_error());
     }
     trust_policy(&ctx.env)
@@ -252,6 +257,9 @@ pub async fn intake(mut req: Request, ctx: RouteContext<()>) -> worker::Result<R
     if !enabled(&ctx) {
         return error(404, "not_found");
     }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
+    }
     let Ok((trust, policy_hash)) = policy(&ctx) else {
         return error(503, "issuer_unavailable");
     };
@@ -341,6 +349,9 @@ fn query_tx(req: &Request) -> worker::Result<Option<String>> {
 pub async fn approve_get(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     if !enabled(&ctx) {
         return error(404, "not_found");
+    }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
     }
     let Some(tx) = query_tx(&req)? else {
         return error(404, "not_found");
@@ -453,6 +464,9 @@ pub async fn approve_post(mut req: Request, ctx: RouteContext<()>) -> worker::Re
     if !enabled(&ctx) {
         return error(404, "not_found");
     }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
+    }
     let root = issuer(&ctx)?
         .trim_end_matches("/identity/issuer")
         .to_string();
@@ -517,6 +531,9 @@ pub async fn poll(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Res
     if !enabled(&ctx) {
         return error(404, "not_found");
     }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
+    }
     if !limited(&req, &ctx, "poll").await? {
         return error(429, "slow_down");
     }
@@ -560,7 +577,7 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     if !enabled(&ctx) {
         return error(404, "not_found");
     }
-    if policy(&ctx).is_err() || signing(&ctx).is_err() {
+    if (issuance_enabled(&ctx) && policy(&ctx).is_err()) || signing(&ctx).is_err() {
         return error(503, "issuer_unavailable");
     }
     if credential_trust(
@@ -573,6 +590,9 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     }
     let iss = issuer(&ctx)?;
     let mut metadata = json!({"credential_issuer":iss,"credential_endpoint":format!("{iss}/credential"),"nonce_endpoint":format!("{iss}/nonce"),"credential_configurations_supported":{"linked_document":{"format":"dc+sd-jwt","scope":"linked_document","vct":format!("{iss}/types/linked-document"),"cryptographic_binding_methods_supported":["jwk"],"credential_signing_alg_values_supported":["ES256"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}}}});
+    if !issuance_enabled(&ctx) {
+        metadata["mikaki_issuance_enabled"] = json!(false);
+    }
     let Ok(profile) = claim_profile(&ctx) else {
         return error(503, "issuer_unavailable");
     };
@@ -678,7 +698,7 @@ pub async fn type_metadata(_req: Request, ctx: RouteContext<()>) -> worker::Resu
         return error(404, "not_found");
     }
     response(
-        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes and age predicates linked by account-owner consent. Predicates do not increase assurance. Not a government credential; no liveness or current licence status assertion.","claims":ClaimProfile::all().metadata(None)}),
+        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes and age predicates linked by account-owner consent. Predicates do not increase assurance. Not a government credential; no liveness or current licence status assertion.","claims":ClaimProfile::all().sd_jwt_type_metadata()}),
     )
 }
 #[derive(Deserialize)]
@@ -691,6 +711,9 @@ struct TokenRequest {
 pub async fn token(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     if !enabled(&ctx) {
         return error(404, "not_found");
+    }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
     }
     if !limited(&req, &ctx, "token").await? {
         return error(429, "slow_down");
@@ -731,6 +754,9 @@ pub async fn token(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Re
 pub async fn nonce(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     if !enabled(&ctx) {
         return error(404, "not_found");
+    }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
     }
     if !limited(&req, &ctx, "nonce").await? {
         return error(429, "slow_down");
@@ -778,6 +804,9 @@ struct CredentialRequest {
 pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     if !enabled(&ctx) {
         return error(404, "not_found");
+    }
+    if !issuance_enabled(&ctx) {
+        return error(503, "issuer_unavailable");
     }
     if !limited(&req, &ctx, "credential").await? {
         return error(429, "slow_down");

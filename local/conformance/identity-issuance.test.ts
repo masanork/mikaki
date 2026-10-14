@@ -37,6 +37,108 @@ const root = 'https://issuer.example';
 const issuer = `${root}/identity/issuer`;
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('base64url');
 const secret = () => randomBytes(32).toString('base64url');
+test('discovery publishes age-only metadata and JWKS without accepting intake or issuing credentials', async () => {
+  const key = await generateKeyPair('ES256', { extractable: true });
+  const jwk = { ...(await exportJWK(key.privateKey)), kid: 'discovery-issuer' };
+  const config = JSON.parse(
+    await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
+  );
+  config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
+  config.queues.consumers = [];
+  config.d1_databases[0].migrations_dir = new URL(
+    '../../crates/worker/migrations',
+    import.meta.url,
+  ).pathname;
+  config.vars = {
+    MIKAKI_ISSUER: root,
+    IDENTITY_ENABLED: 'true',
+    IDENTITY_ISSUANCE_ENABLED: 'false',
+    IDENTITY_ISSUANCE_CLAIMS: '["age_over_18"]',
+    IDENTITY_ISSUER_JWK: JSON.stringify(jwk),
+  };
+  const harness = await createTestHarness({
+    workers: [
+      { config },
+      {
+        config: {
+          ...config,
+          name: 'discovery-stale-trust',
+          vars: {
+            ...config.vars,
+            IDENTITY_TRUSTED_KEYS: JSON.stringify(identityFixture().trust),
+            IDENTITY_WALLET_ENABLED: 'true',
+          },
+        },
+      },
+    ],
+  });
+  try {
+    await harness.listen();
+    for (const name of ['mikaki-op-worker', 'discovery-stale-trust']) {
+      const worker = harness.getWorker(name);
+      await worker.applyD1Migrations('DB');
+      const metadataResponse = await worker.fetch(
+        `${root}/.well-known/openid-credential-issuer/identity/issuer`,
+      );
+      assert.equal(metadataResponse.status, 200);
+      assert.equal(metadataResponse.headers.get('cache-control'), 'no-store');
+      const metadata = (await metadataResponse.json()) as any;
+      assert.equal(metadata.mikaki_issuance_enabled, false);
+      assert.deepEqual(Object.keys(metadata.credential_configurations_supported), [
+        'linked_document',
+      ]);
+      assert.deepEqual(
+        metadata.credential_configurations_supported.linked_document.credential_metadata.claims.map(
+          (claim: any) => claim.path,
+        ),
+        [['age_over_18']],
+      );
+      const keysResponse = await worker.fetch(`${issuer}/jwks`);
+      assert.equal(keysResponse.status, 200);
+      const keys = ((await keysResponse.json()) as any).keys;
+      assert.equal(keys.length, 1);
+      assert.equal(keys[0].kid, 'discovery-issuer');
+      assert.equal(keys[0].d, undefined);
+      assert.equal(keys[0].x, jwk.x);
+      const oauthResponse = await worker.fetch(
+        `${root}/.well-known/oauth-authorization-server/identity/issuer`,
+      );
+      assert.equal(oauthResponse.status, 200);
+      assert.equal(((await oauthResponse.json()) as any).authorization_endpoint, undefined);
+      assert.equal((await worker.fetch(`${issuer}/types/linked-document`)).status, 200);
+      for (const [path, method] of [
+        ['/identity/intake', 'POST'],
+        ['/identity/approve', 'GET'],
+        ['/identity/approve', 'POST'],
+        ['/identity/poll', 'POST'],
+        ['/identity/issuer/token', 'POST'],
+        ['/identity/issuer/nonce', 'POST'],
+        ['/identity/issuer/credential', 'POST'],
+      ]) {
+        const response = await worker.fetch(`${root}${path}`, { method });
+        assert.equal(response.status, 503, path);
+        assert.equal(((await response.json()) as any).error, 'issuer_unavailable');
+      }
+      assert.equal((await worker.fetch(`${issuer}/authorize`)).status, 404);
+      assert.equal((await worker.fetch(`${issuer}/par`, { method: 'POST' })).status, 404);
+      const { DB } = await worker.getEnv();
+      for (const table of [
+        'identity_nonce',
+        'identity_transaction',
+        'identity_document',
+        'identity_wallet_grant',
+      ]) {
+        assert.equal(
+          ((await DB.prepare(`SELECT count(*) AS count FROM ${table}`).first()) as any).count,
+          0,
+        );
+      }
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
 test(`workerd verifies both cards, issues holder-bound credentials through OID4VCI and independently verifies encrypted SD-JWT/mdoc OID4VP${process.env.MIKAKI_MULTIPAZ_CHECKOUT ? ' + pinned Multipaz SDK (DPoP nonce required)' : ''}`, async () => {
   const f = identityFixture();
   const ec = createECDH('prime256v1');
@@ -470,6 +572,11 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       [['app.tossa.mikaki.linked_document.1', 'age_over_18']],
     );
     const ageType = (await (await ageOnly.fetch(`${issuer}/types/linked-document`)).json()) as any;
+    for (const claim of ageType.claims) {
+      assert.deepEqual(Object.keys(claim.display[0]).sort(), ['label', 'locale']);
+      assert.equal(claim.display[0].locale, 'ja');
+      assert.ok(typeof claim.display[0].label === 'string' && claim.display[0].label.length > 0);
+    }
     assert.ok(ageType.claims.some((c: any) => c.path[0] === 'age_over_20'));
     assert.equal(
       (
@@ -897,6 +1004,17 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal((await submit({}, 'owner-cookie', root, changedWallet)).status, 409);
       const response = await submit();
       assert.equal(response.status, 303, await response.clone().text());
+      if (decision === 'approve') {
+        const lifetime = await DB.prepare(
+          'SELECT expires_at-unixepoch() AS remaining FROM identity_wallet_grant WHERE grant_id=?',
+        )
+          .bind(grant)
+          .first('remaining');
+        assert.ok(
+          typeof lifetime === 'number' && lifetime >= 88 && lifetime <= 90,
+          'public Wallet codes retain their 90-second lifetime',
+        );
+      }
       assert.equal((await submit()).status, 409);
       const callback = new URL(response.headers.get('location')!);
       assert.equal(callback.origin + callback.pathname, walletClient.redirect_uri);
@@ -3309,6 +3427,15 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal(haipCallback.searchParams.get('channel'), 'wallet');
       assert.equal(haipCallback.searchParams.getAll('code').length, 1);
       const code = haipCallback.searchParams.get('code')!;
+      const lifetime = await DB.prepare(
+        'SELECT expires_at-unixepoch() AS remaining FROM identity_wallet_grant WHERE code_hash=?',
+      )
+        .bind(hash(code))
+        .first('remaining');
+      assert.ok(
+        typeof lifetime === 'number' && lifetime >= 58 && lifetime <= 60,
+        'HAIP codes expire within FAPI’s 60-second maximum',
+      );
       const exchange = (
         headers: Record<string, string>,
         exchangeCode = code,

@@ -16,6 +16,7 @@ import { cloudflareMetadataGet } from './production-worker-inventory.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 import { productionWrangler } from './production-wrangler.ts';
 import { assertDedicatedIdentityKey } from './identity-issuer-key.ts';
+import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
 import {
   assertClosedProductionCopyGraph,
   assertCopyCompanionsPresent,
@@ -214,32 +215,14 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
   );
   assert.ok(
     required.every((name) =>
-      [...base, 'WORK_CREDENTIAL_KEY_V1', 'IDENTITY_ISSUER_JWK'].includes(name),
+      [...base, 'WORK_CREDENTIAL_KEY_V1', 'IDENTITY_ISSUER_JWK', 'IDENTITY_TRUSTED_KEYS'].includes(
+        name,
+      ),
     ),
     'Unreviewed runtime secret selection',
   );
   const withIdentity = required.includes('IDENTITY_ISSUER_JWK');
-  if (withIdentity || Object.keys(config.vars).some((name) => name.startsWith('IDENTITY_'))) {
-    assert.ok(withIdentity, 'Identity preparation requires dedicated signing custody');
-    assert.ok(
-      config.vars.IDENTITY_ENABLED === 'false' &&
-        config.vars.IDENTITY_ISSUANCE_CLAIMS === '["age_over_18"]' &&
-        Object.keys(config.vars).filter((name) => name.startsWith('IDENTITY_')).length === 2,
-      'Identity key preparation requires the disabled, single age-predicate profile',
-    );
-    const limits = config.ratelimits?.filter((item) => item.name === 'IDENTITY_RATE_LIMIT');
-    assert.ok(
-      limits?.length === 1 &&
-        limits[0]!.namespace_id === '1031' &&
-        limits[0]!.simple.limit === 30 &&
-        limits[0]!.simple.period === 60,
-      'Identity preparation requires the reviewed production rate limit',
-    );
-    assert.ok(
-      !config.services?.some((item) => item.binding.startsWith('IDENTITY_')),
-      'Identity preparation must not add an attester service',
-    );
-  }
+  const identityProfile = productionIdentityTestProfile(config);
   const withKey = required.includes('WORK_CREDENTIAL_KEY_V1');
   assert.ok(
     config.vars.WORK_CREDENTIAL_KEY_ADMIN_ENABLED !== 'true' || withKey,
@@ -263,6 +246,12 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
   assertWaitlistMailKey(secrets.WAITLIST_MAIL_KEY);
   if (withIdentity)
     assertDedicatedIdentityKey(secrets.IDENTITY_ISSUER_JWK!, secrets.OP_PRIVATE_JWK!);
+  if (identityProfile === 'first-party-age')
+    assert.equal(
+      identityTestTrust(secrets.IDENTITY_TRUSTED_KEYS!).policy_sha256,
+      config.vars.IDENTITY_TRUST_POLICY_SHA256,
+      'Identity card trust differs from the reviewed policy',
+    );
   if (withKey) {
     const bytes = Buffer.from(secrets.WORK_CREDENTIAL_KEY_V1!, 'base64url');
     try {

@@ -23,7 +23,8 @@ const planName = 'oid4vci-1_0-issuer-haip-test-plan';
 const crossClientParModule =
   'fapi2-security-profile-final-par-attempt-to-use-request_uri-for-different-client';
 const selection = parseHaipIssuerSelection(process.argv.slice(2));
-const positive = selection.legacyFlags.includes('--positive');
+const authorizationLifecycle = selection.legacyFlags.includes('--authorization-lifecycle');
+const positive = authorizationLifecycle || selection.legacyFlags.includes('--positive');
 const encrypted = positive || selection.legacyFlags.includes('--encrypted');
 const keyAttestation = encrypted || selection.legacyFlags.includes('--key-attestation');
 const resource = keyAttestation || selection.legacyFlags.includes('--resource');
@@ -59,6 +60,17 @@ const deferredModules: Record<string, string> = {
   'oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm':
     'Plain credential response variant; the official module requires encrypted responses',
 };
+if (authorizationLifecycle) {
+  for (const name of [
+    'ensure-response-type-code-idtoken-fails',
+    'ensure-response-type-token-fails',
+    'ensure-client-id-in-token-endpoint',
+    'ensure-holder-of-key-required',
+    'ensure-token-endpoint-fails-with-expired-auth-code',
+  ]) {
+    selectedFapiModules.add(`fapi2-security-profile-final-${name}`);
+  }
+}
 if (keyAttestation)
   delete deferredModules['oid4vci-1_0-issuer-fail-invalid-key-attestation-signature'];
 if (encrypted) delete deferredModules['oid4vci-1_0-issuer-fail-unsupported-encryption-algorithm'];

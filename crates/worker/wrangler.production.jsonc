@@ -41,7 +41,8 @@
     "WORK_GIT_STORE_ENABLED": "false",
     "WORK_GIT_EXECUTION_ENABLED": "false",
     "WORK_PREPARATION_VERIFY_ENABLED": "false",
-    "IDENTITY_ENABLED": "false",
+    "IDENTITY_ENABLED": "true",
+    "IDENTITY_ISSUANCE_ENABLED": "false",
     "IDENTITY_ISSUANCE_CLAIMS": "[\"age_over_18\"]"
   },
   "secrets": {
