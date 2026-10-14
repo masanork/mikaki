@@ -706,5 +706,20 @@
   "work_copy_pending": "Copying",
   "work_copy_waiting": "Waiting to start",
   "work_copy_attention": "Needs attention",
-  "work_new_copy": "Prepare a new copy"
+  "work_new_copy": "Prepare a new copy",
+  "loginHistoryFirst": "No confirmed history for this connection.",
+  "loginHistoryUnavailable": "Connection history is unavailable in this browser.",
+  "loginHistoryKnown": "Last sign-in in this browser: {date}",
+  "loginHistoryChanged": "This connection has changed since your last confirmation.",
+  "loginAddressHint": "Also check the domain in the address bar and passkey prompt. History does not prove authenticity.",
+  "loginReviewTitle": "Review this connection",
+  "loginPreviousDestination": "Previous destination",
+  "loginConnectionPurpose": "Requested operation",
+  "loginPurposeSignIn": "Sign in to this application",
+  "loginPurposeProfile": "Sign in and request profile information. Sharing information requires separate approval.",
+  "loginScopeChanged": "The information requested has changed since last time.",
+  "loginReviewHint": "Check that you intended to connect to this application. The connection is confirmed only after you continue.",
+  "loginReviewApprove": "Continue this connection",
+  "loginReviewCancel": "Cancel connection",
+  "loginReviewExpired": "The confirmation expired. Please use your passkey again."
 }

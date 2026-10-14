@@ -303,8 +303,19 @@ pub(super) async fn get(
             })
             .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
     };
+    let login_scope = url::Url::parse(&login.authorization_url)
+        .ok()
+        .and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "scope")
+                .map(|(_, value)| value.into_owned())
+        })
+        .unwrap_or_else(|| "openid".into());
+    let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
+    let expires_in_ms = (login.expires_at - now as i64).clamp(0, 300) * 1000;
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}" data-login-scope="{login_scope}" data-expires-in-ms="{expires_in_ms}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        login_scope = crate::i18n::html_escape(&login_scope),
         owner_login = if login.owner_login != 0 {
             "true"
         } else {
