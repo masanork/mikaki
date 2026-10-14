@@ -88,8 +88,12 @@ or the live messaging gates.
 The workspace review and validator produce a served Vault script of 337,908
 raw bytes / 96,830 bytes under local level-9 gzip, versus 324,568/93,385 for
 the text-copy slice. Its budget moves from 327,680/94,208 to 344,064/98,304
-bytes for this concrete feature; other asset limits are unchanged. These are
-build-size measurements, not network timing.
+bytes for this concrete feature. After merging the Passkey login/Vault handoff
+from main on 2026-10-15, the combined Vault script measures **342,007 raw /
+97,871 gzip-estimate bytes**, within those existing snapshot ceilings. Login
+retains main's separately reviewed **104,448 raw / 32,768 gzip** ceilings; no
+further limits are raised for this merge. These are build-size measurements,
+not network timing.
 
 ## Workspace snapshots: local implementation
 

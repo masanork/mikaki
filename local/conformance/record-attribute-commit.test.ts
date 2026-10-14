@@ -601,7 +601,7 @@ test('v2 approved owner-note commits bind exact values and atomically preserve l
       assert.equal(response.status, 200, await response.clone().text());
       const saved = (await response.json()) as SavedRecord;
       assert.equal(response.headers.get('etag'), `"${saved.revision}"`);
-      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('cache-control'), 'no-store, no-transform');
       const plaintext = await openOwnerRecord(
         { format_version: 2, ciphertext: saved.ciphertext, key_envelope: saved.key_envelope },
         owner.key,

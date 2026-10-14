@@ -4,6 +4,7 @@ import type { AgentRecipient } from './agent-crypto.ts';
 import type { RecordAgentEnvelope } from './agent-record-crypto.ts';
 // Versioned owner-key and record crypto for the owner Vault.
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
+import { ownerLoginPrfInput } from './vault-login-prf.ts';
 import { sealRecordUserInfoDataKey } from './vault-record-recipient-envelope.ts';
 import type { RecordUserInfoRecipient } from './recipient-directory-v2.ts';
 import {
@@ -320,6 +321,25 @@ export async function rewrapOwnerKey(
     raw?.fill(0);
     sourceOutput.fill(0);
     targetOutput.fill(0);
+  }
+}
+// Retain the original credential wrapper and add another wrap of the SAME root
+// for combined sign-in. This primitive cannot choose another credential/input.
+export async function wrapOwnerKeyForLogin(
+  value: OwnerKeyEnvelope,
+  context: OwnerKeyContext,
+  credential: Bytes,
+  sourceOutput: Bytes,
+  loginOutput: Bytes,
+): Promise<OwnerKeyEnvelope> {
+  let raw: Bytes | undefined;
+  try {
+    raw = await unwrap(value, context, credential, sourceOutput);
+    return await wrap(raw, context, credential, ownerLoginPrfInput(), loginOutput);
+  } finally {
+    raw?.fill(0);
+    sourceOutput.fill(0);
+    loginOutput.fill(0);
   }
 }
 function ownerHandle(key: CryptoKey): void {

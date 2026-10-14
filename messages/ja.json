@@ -32,6 +32,8 @@
   "adminMailUnavailable": "現在、招待メールを送信できません。",
   "adminManual": "招待コードを直接渡す",
   "ownerPasskeysHeading": "パスキーのアクセス管理",
+  "ownerVaultLoginPrfUnsupported": "ログイン済みですが、このパスキーから Vault を開くための PRF 出力を取得できませんでした。PRF 対応で Vault アクセスのあるパスキーを使用してください。",
+  "ownerVaultLoginAccessMissing": "ログイン済みですが、このパスキーには Vault アクセスがありません。Vault を開けるパスキーでログインしてアクセスを管理してください。",
   "ownerPasskeysExplanation": "ログイン用パスキーを登録した後、元のパスキーと追加したパスキーで確認して、この Vault を開く権限を許可します。アクセスを変更すると共有と Agent の権限は失効します。必要な権限を再承認してください。変更後は Vault をロックします。",
   "ownerPasskeysRecovery": "Vault を開けるパスキーをすべて失うと、このデータは復旧できません。アクセスを解除しても、コピー済みの鍵や平文は回収できません。Vault のアクセス解除では、ログイン用パスキーの設定は変更しません。",
   "ownerPasskeysEnroll": "ログイン用パスキーを登録",

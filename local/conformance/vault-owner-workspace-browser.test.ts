@@ -29,7 +29,7 @@ test('archive schema accepts human/AI messages and rejects malformed content', (
   ])
     assert.throws(() => parseThreadArchive(invalid));
 });
-test('new owner Vault uses one PRF for profile and conversation reads/writes, exact retries and local search; lock clears display', async () => {
+test('new owner Vault preserves revision ETags through edge compression and uses one PRF for profile and conversation reads/writes, exact retries and local search; lock clears display', async () => {
   const origin = 'https://mikaki.test';
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
@@ -277,9 +277,15 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         await route.abort();
         return;
       }
+      const headers = new Headers(Object.fromEntries(response.headers));
+      const etag = headers.get('etag');
+      // Cloudflare compression weakens a strong ETag unless the response forbids
+      // transformation. Model the production boundary absent from local workerd.
+      if (etag && !/(?:^|,)\s*no-transform\s*(?:,|$)/i.test(headers.get('cache-control') ?? ''))
+        headers.set('etag', `W/${etag}`);
       await route.fulfill({
         status: response.status,
-        headers: Object.fromEntries(response.headers),
+        headers: Object.fromEntries(headers),
         body,
       });
     });

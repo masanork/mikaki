@@ -130,6 +130,7 @@
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('focus', focus);
     window.addEventListener('pagehide', pagehide);
+    window.addEventListener('popstate', pagehide);
     window.addEventListener('pageshow', pageshow);
     return () => {
       scope.end('pagehide');
@@ -140,6 +141,7 @@
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('focus', focus);
       window.removeEventListener('pagehide', pagehide);
+      window.removeEventListener('popstate', pagehide);
       window.removeEventListener('pageshow', pageshow);
     };
   });

@@ -2473,6 +2473,14 @@ pub async fn main(
         )
         .get_async("/vault/owner-key", vault_owner_keys::get)
         .put_async("/vault/owner-key", vault_owner_keys::create)
+        .get_async(
+            "/vault/owner-key/login-wrap",
+            vault_owner_keys::get_login_wrap,
+        )
+        .put_async(
+            "/vault/owner-key/login-wrap",
+            vault_owner_keys::add_login_wrap,
+        )
         .get_async("/vault/owner-key/wrappers", vault_owner_keys::wrappers)
         .put_async("/vault/owner-key/wrappers", vault_owner_keys::add_wrapper)
         .delete_async(
