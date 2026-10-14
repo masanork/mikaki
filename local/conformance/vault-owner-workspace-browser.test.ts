@@ -9,6 +9,7 @@ import { auditAccessibility } from './support/accessibility-audit.ts';
 import { parseThreadArchive } from '../../crates/worker/ui/vault-thread-archive.ts';
 import { build } from 'esbuild';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 test('archive schema accepts human/AI messages and rejects malformed content', () => {
   const archive = {
@@ -40,6 +41,14 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     ],
   });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let workspaceFixture:
+    | {
+        snapshot: string;
+        exportSnapshot(): Promise<string>;
+        restore(text: string): Promise<string>;
+        close(): Promise<void>;
+      }
+    | undefined;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -764,7 +773,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await recipient.close();
     await source.close();
 
-    const workspaceSnapshot = {
+    let workspaceSnapshot = {
       format: 'cloudflare-os-workspace',
       version: 1,
       title: 'Saved app and conversation',
@@ -797,6 +806,40 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         },
       ],
     };
+    if (process.env['MIKAKI_CLOUDFLARE_OS_RPC'] === '1') {
+      assert.ok(sourceRoot, 'The paired RPC test requires MIKAKI_CLOUDFLARE_OS_SOURCE');
+      const output = resolve(
+        sourceRoot,
+        'packages/integration-tests/.wrangler/mikaki-vault-fixture.mjs',
+      );
+      await build({
+        entryPoints: [
+          resolve(sourceRoot, 'packages/integration-tests/src/workspace-vault-fixture.ts'),
+        ],
+        bundle: true,
+        platform: 'node',
+        format: 'esm',
+        packages: 'external',
+        outfile: output,
+      });
+      const fixtureModule = await import(pathToFileURL(output).href);
+      const prebuilt = process.env['WORKSHOP_INTEGRATION_PREBUILT'];
+      process.env['WORKSHOP_INTEGRATION_PREBUILT'] = '1';
+      try {
+        workspaceFixture = await fixtureModule.startWorkspaceVaultFixture(appOrigin);
+      } finally {
+        if (prebuilt === undefined) delete process.env['WORKSHOP_INTEGRATION_PREBUILT'];
+        else process.env['WORKSHOP_INTEGRATION_PREBUILT'] = prebuilt;
+      }
+      assert.ok(workspaceFixture);
+      workspaceSnapshot = JSON.parse(workspaceFixture.snapshot);
+      await context.exposeFunction('exportWorkspaceOverRpc', () =>
+        workspaceFixture!.exportSnapshot(),
+      );
+      await context.exposeFunction('restoreWorkspaceOverRpc', (text: string) =>
+        workspaceFixture!.restore(text),
+      );
+    }
     const workspaceScript = sourceRoot
       ? (
           await build({
@@ -832,9 +875,9 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         <button id="save-workspace">Save workspace</button><button id="restore-workspace">Restore workspace</button><output id="workspace-result"></output>
         <script type="module">
           import {transferWorkspace} from './workspace-sender.js';
-          const snapshot=${JSON.stringify(JSON.stringify(workspaceSnapshot))};
-          document.getElementById('save-workspace').onclick=async()=>{await transferWorkspace(new URL('${origin}/vault'),'save',async()=>snapshot,new AbortController().signal);document.getElementById('workspace-result').textContent='Saved workspace';};
-          document.getElementById('restore-workspace').onclick=async()=>{const transfer=await transferWorkspace(new URL('${origin}/vault'),'restore',async()=>{throw new Error('must not read another workspace');},new AbortController().signal);if(transfer.snapshot!==snapshot) throw new Error('snapshot changed in transit');document.getElementById('workspace-result').textContent='Restored workspace';transfer.restored();};
+          let snapshot=${JSON.stringify(JSON.stringify(workspaceSnapshot))};
+          document.getElementById('save-workspace').onclick=async()=>{await transferWorkspace(new URL('${origin}/vault'),'save',async()=>{if(window.exportWorkspaceOverRpc) snapshot=await window.exportWorkspaceOverRpc();return snapshot;},new AbortController().signal);document.getElementById('workspace-result').textContent='Saved workspace';};
+          document.getElementById('restore-workspace').onclick=async()=>{const transfer=await transferWorkspace(new URL('${origin}/vault'),'restore',async()=>{throw new Error('must not read another workspace');},new AbortController().signal);if(transfer.snapshot!==snapshot) throw new Error('snapshot changed in transit');if(window.restoreWorkspaceOverRpc) await window.restoreWorkspaceOverRpc(transfer.snapshot);document.getElementById('workspace-result').textContent='Restored workspace';transfer.restored();};
         </script>`,
       });
     });
@@ -901,6 +944,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     await os.close();
   } finally {
     await browser?.close();
+    await workspaceFixture?.close();
     await harness.close();
   }
 });

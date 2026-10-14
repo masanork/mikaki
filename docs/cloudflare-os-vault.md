@@ -160,6 +160,30 @@ chat/Git/attachment recovery, retry receipts, interrupted staging, collaborator
 refusal, transactional rollback and portable SQL schema behavior. The paired
 browser fixture bundles the actual Cloudflare OS transfer module and verifies
 large encrypted writes, lost-response exact retries, explicit restore disclosure,
-reopening, mobile layout/accessibility and lock clearing. Backend restore and
-browser transfer are tested separately with synthetic data. This has not been
-merged or deployed; hosted session/popup/real-device qualification remains.
+reopening, mobile layout/accessibility and lock clearing.
+
+The optional paired RPC mode uses the Cloudflare OS integration harness and a
+real authenticated Cap'n Web WebSocket session. Browser buttons call that
+session through Playwright callbacks. Save captures the real workspace; after
+Vault disclosure, the authenticated broker restores it and a new session
+reopens the copy. The test checks workspace registration, chat history,
+binary attachment bytes, gadget SQL/KV, writable restored code and an unchanged
+source. It also checks exact restore retries and another user's lack of access.
+The source page and Passkey input remain fixtures; this does not exercise the
+complete hosted Cloudflare OS UI or account linking.
+
+Build the Cloudflare OS harness first:
+
+```sh
+pnpm exec vp run -F @gadgets/integration-tests build:test-gatekeeper
+```
+
+Then run in Mikaki:
+
+```sh
+MIKAKI_CLOUDFLARE_OS_SOURCE=/absolute/path/to/cloudflare-os \
+MIKAKI_CLOUDFLARE_OS_RPC=1 \
+  node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
+```
+
+This has not been deployed; hosted session/popup/real-device qualification remains.
