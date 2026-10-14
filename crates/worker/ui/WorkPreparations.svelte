@@ -369,7 +369,7 @@
               onclick={() => choose(p.id)}
               aria-pressed={review?.preparation.id === p.id}
             >
-              <strong>{m.work_saved_copy()}</strong><span
+              <strong>{m.work_saved_copy()} · {p.task.name}</strong><span
                 >{copyState(p)} · {date(p.expires_at)}</span
               >
             </button>
@@ -387,12 +387,6 @@
     {@const d = review.disclosure}
     {@const files = d.contexts.reduce((n, c) => n + c.files.length, 0)}
     {@const records = [
-      { label: m.source_code(), value: p.task.namespace + ' / ' + p.task.name, code: false },
-      {
-        label: m.preparation_snapshot(),
-        value: p.snapshot.namespace + ' / ' + p.snapshot.name,
-        code: false,
-      },
       { label: m.source_version(), value: d.code.commit, code: true },
       ...(review.currentSources
         ? [
@@ -479,11 +473,11 @@
         <dl>
           <div>
             <dt>{m.source_code()}</dt>
-            <dd>{p.task.namespace}</dd>
+            <dd>{p.task.namespace} / {p.task.name}</dd>
           </div>
           <div>
             <dt>{m.preparation_snapshot()}</dt>
-            <dd>{p.snapshot.namespace}</dd>
+            <dd>{p.snapshot.namespace} / {p.snapshot.name}</dd>
           </div>
           <div>
             <dt>{m.preparation_expiry()}</dt>
