@@ -53,3 +53,14 @@ Local qualification includes actual virtual-authenticator login/PRF, legacy-root
 adoption and preserved saved records; the existing RP review browser suite, Owner
 Vault tests, migration/schema gates and Rust readiness tests also pass. Physical
 device PRF and a production authenticated-owner journey remain unqualified.
+
+## Migration recognition follow-up
+
+The migration and its exact schema/readiness recognition were subsequently merged
+into main in [PR #243](https://github.com/masanork/mikaki/pull/243); Work packet
+compatibility was reconciled in [PR #244](https://github.com/masanork/mikaki/pull/244).
+A read-only check at `2026-10-14T21:14:13.793Z` observed clean source
+`5fb16eec72d979ea1c352897ceb5990f71905f7a`, Worker version
+`7fcd3b3f-b3b0-4a38-aba6-c852cd576bc4`, and authenticated readiness **204**.
+This resolves the historical migration-only readiness gap above. PR #242's
+combined sign-in/unlock and ETag changes still await their own feature deployment.
