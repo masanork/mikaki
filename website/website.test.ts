@@ -156,21 +156,30 @@ test('public websites keep app callbacks code-free and render the woven material
   try {
     const app = await start('website/wrangler.app.jsonc');
     const site = await start('website/wrangler.jsonc');
-    const callback = await app.fetch(
-      'https://app.mikaki.org/oidc/native/callback?code=secret-code&state=secret-state',
-      { redirect: 'manual' },
-    );
-    assert.equal(callback.status, 303);
-    assert.equal(callback.headers.get('location'), '/native-link-help');
-    assert.equal(callback.headers.get('cache-control'), 'no-store');
-    assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
-    assert.equal(await callback.text(), '');
+    for (const path of ['/oidc/native/callback', '/identity/issuance/callback']) {
+      for (const query of [
+        '',
+        '?code=secret-code&state=secret-state',
+        '?error=access_denied&state=secret-state&iss=https%3A%2F%2Fauth.mikaki.org',
+        '?code=secret-code&code=duplicate&return_to=https%3A%2F%2Fexample.net',
+      ]) {
+        const callback = await app.fetch(`https://app.mikaki.org${path}${query}`, {
+          redirect: 'manual',
+        });
+        assert.equal(callback.status, 303, path);
+        assert.equal(callback.headers.get('location'), '/native-link-help');
+        assert.equal(callback.headers.get('cache-control'), 'no-store');
+        assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
+        assert.equal(callback.headers.get('set-cookie'), null);
+        assert.equal(await callback.text(), '');
+      }
+      for (const method of ['POST', 'PUT', 'DELETE'])
+        assert.equal((await app.fetch(`https://app.mikaki.org${path}`, { method })).status, 404);
+      assert.equal((await app.fetch(`https://app.mikaki.org${path}/extra`)).status, 404);
+      assert.equal((await site.fetch(`https://mikaki.org${path}`)).status, 404);
+    }
     for (const path of ['/authorize', '/token', '/jwks', '/.well-known/apple-app-site-association'])
       assert.equal((await app.fetch(`https://app.mikaki.org${path}`)).status, 404);
-    assert.equal(
-      (await app.fetch('https://app.mikaki.org/oidc/native/callback', { method: 'POST' })).status,
-      404,
-    );
     for (const [host, worker] of [
       ['mikaki.org', site],
       ['app.mikaki.org', app],

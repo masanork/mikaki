@@ -20,7 +20,7 @@ First-party sign-in uses a separate five-minute, browser-bound transaction, requ
 
 The exact mobile redirect is `https://app.mikaki.org/oidc/native/callback`, with sector `app.mikaki.org` and the checked-in mobile client registration. Android package/signing identity is preserved. Rebuild/reinstall the native app to use its new issuer, callback and verified-link host. Existing installed builds still refer to the old test environment. iOS association remains unconfigured pending the actual Apple team/signing identity; this deployment does not claim iPhone qualification.
 
-If the callback reaches a browser, the app Worker responds with a fixed 303 to `/native-link-help`, dropping code/state and the entire query. OP endpoints return 404 on app.mikaki.org. The root domain and app pages never receive authentication cookies or bind D1/R2/signing secrets.
+If either the login callback (`/oidc/native/callback`) or the Identity issuance callback (`/identity/issuance/callback`) reaches a browser, the app Worker responds with a fixed 303 to `/native-link-help`, dropping code/state and the entire query. OP endpoints return 404 on app.mikaki.org. The root domain and app pages never receive authentication cookies or bind D1/R2/signing secrets. The [Identity activation checkpoint](identity-test-deployment.md) records the deployed gap and remaining profile prerequisites.
 
 ## Build and deploy
 
