@@ -236,6 +236,12 @@ the actual activation config, named RP and physical device remain required input
 | Presentation | Name the accepting RP and its exact verifier registration/callback and request. It must inspect the age boolean, validity, signatures and holder/request binding and accept the documented static-evidence assurance. |
 | Device | Signed Android build, matching verified app link and explicit public trust configuration; run the [existing device preflight](../scripts/check-identity-wallet-device.ts), then #117's actual NFC/PIN, receive/persist/delete, account-switch and interrupted-delivery checks. iOS additionally needs the real Apple team/signing identity. |
 
+The operator's LabPKI can now prepare the purpose-separated HAIP development
+certificate material. Its Go-issued chains/CRLs passed Mikaki's actual Rust
+certificate validators and native Wallet configuration parser. See the
+[LabPKI preparation and qualification boundary](identity-labpki.md); the Android
+verifier service and HAIP production-profile deployment remain separate work.
+
 For the first test, select one source document kind and one format. A driving-licence
 profile with independently approved licence issuer keys avoids depending on the
 unresolved My Number DF31 intake decision. The explicitly selected single-card
