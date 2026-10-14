@@ -773,5 +773,13 @@
   "work_demo_restart": "Try another task",
   "work_journey_workspace": "Work with your code",
   "work_demo_loading": "Loading the demo…",
-  "work_demo_unavailable": "The demo could not be loaded. Please open it again."
+  "work_demo_unavailable": "The demo could not be loaded. Please open it again.",
+  "appArchiveHeading": "Save a Cloudflare OS conversation",
+  "appArchiveBoundary": "Save a copy of this text segment. Attachments, tool activity, generated files and application state are not included. The source app already processes this text. Saving it does not grant the app access to your Vault.",
+  "appArchivePreview": "Review {count} messages",
+  "appArchiveSave": "Encrypt and save this copy",
+  "appArchiveSaveFailed": "Saving could not be confirmed. Retry the same save.",
+  "appArchiveInvalid": "The conversation could not be received. Return to Cloudflare OS and try again.",
+  "appArchiveCopySource": "Conversation copy from {origin}",
+  "appArchiveSavedReloadFailed": "The copy was saved, but the list could not be refreshed. Reload your Vault."
 }

@@ -46,6 +46,11 @@ The mounted connection section supports explicit OAuth review for exact v2 Owner
 
 ## Integration boundary
 
+The first [Cloudflare OS integration](cloudflare-os-vault.md) adds an owner-reviewed
+browser handoff for a conversation text segment. Format-2 source information is
+encrypted with the copy. Independent sessions, source reconciliation, linked
+outputs and hosted qualification remain separate work.
+
 The former `?storage=owner-v2` qualification preview is no longer a separate presentation. The default OwnerWorkspace uses `personal/name`, `personal/owner_note` and imported thread-archive record-v2 APIs. No older `personal/profile` or format-1 attribute payload is read or converted automatically. There is no deployed-format migration from historical database rows in the fresh baseline.
 
 Archive import/read/local SQLite search are implemented here. Owner-side record recipient selection and release, archive provenance/authenticity, live E2EE messaging, richer schemas and device qualification remain separate work. The current recipient-side v2 consent and Agent OAuth review do not provide a general Owner share/release workflow.

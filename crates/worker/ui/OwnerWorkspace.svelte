@@ -14,6 +14,7 @@
   import OwnerNoteProposals from './OwnerNoteProposals.svelte';
   import OwnerAgentGrants from './OwnerAgentGrants.svelte';
   import OwnerLocalExport from './OwnerLocalExport.svelte';
+  import OwnerAppArchiveImport from './OwnerAppArchiveImport.svelte';
   import { OwnerWorkspaceStore, type PreparedOwnerWrite } from './vault-owner-workspace-store.ts';
   import { encodeBase64Url } from './vault-crypto.ts';
   import { parseThreadArchive, type ThreadArchive } from './vault-thread-archive.ts';
@@ -601,6 +602,12 @@
             />{/if}
           <section id="threads" aria-labelledby="threads-heading" aria-busy={busy}>
             <h2 id="threads-heading">{m.ownerWorkspaceThreads()}</h2>
+            {#if owner}<OwnerAppArchiveImport
+                {owner}
+                disabled={editingBlocked || pending !== null}
+                onbusy={(value) => (busy = value)}
+                onchanged={loadRecords}
+              />{/if}
             <label for="archive-file">{m.ownerWorkspaceImport()}</label><input
               id="archive-file"
               type="file"
@@ -624,6 +631,9 @@
             </div>
             {#if active}<article>
                 <h3 id="thread-title" tabindex="-1">{active.archive.title}</h3>
+                {#if active.archive.format_version === 2}<p>
+                    {m.appArchiveCopySource({ origin: active.archive.source.origin })}
+                  </p>{/if}
                 <button
                   class="product-danger"
                   disabled={editingBlocked || pending !== null}

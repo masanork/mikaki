@@ -773,5 +773,13 @@
   "work_demo_restart": "別の依頼で試す",
   "work_journey_workspace": "コードから仕事を進める",
   "work_demo_loading": "体験版を読み込んでいます…",
-  "work_demo_unavailable": "体験版を読み込めませんでした。もう一度開いてください。"
+  "work_demo_unavailable": "体験版を読み込めませんでした。もう一度開いてください。",
+  "appArchiveHeading": "Cloudflare OSの会話を保存",
+  "appArchiveBoundary": "この会話部分のテキストをコピーとして保存します。添付ファイル・ツール操作・生成ファイル・アプリの状態は含みません。元のアプリは既にこの文章を処理しています。保存しても、アプリにVaultの読取権限は渡しません。",
+  "appArchivePreview": "{count}件のメッセージを確認",
+  "appArchiveSave": "このコピーを暗号化して保存",
+  "appArchiveSaveFailed": "保存結果を確認できませんでした。同じ保存を再試行してください。",
+  "appArchiveInvalid": "会話を受け取れませんでした。Cloudflare OSからやり直してください。",
+  "appArchiveCopySource": "{origin}から保存した会話のコピー",
+  "appArchiveSavedReloadFailed": "コピーは保存しましたが、一覧を更新できませんでした。Vaultを再読込してください。"
 }

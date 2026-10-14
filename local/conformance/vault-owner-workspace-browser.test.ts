@@ -7,6 +7,8 @@ import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { parseThreadArchive } from '../../crates/worker/ui/vault-thread-archive.ts';
+import { build } from 'esbuild';
+import { resolve } from 'node:path';
 
 test('archive schema accepts human/AI messages and rejects malformed content', () => {
   const archive = {
@@ -145,6 +147,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       { credential: [...credential] },
     );
     let lose = false,
+      loseAppArchive = false,
       failSession = false,
       failSearch = false;
     const searchAssets: string[] = [];
@@ -215,6 +218,16 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
       }
       const body = Buffer.from(await response.arrayBuffer());
+      if (
+        loseAppArchive &&
+        path.startsWith('/vault/records/threads/') &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        loseAppArchive = false;
+        await route.abort();
+        return;
+      }
       if (
         holdLocalExportRead &&
         path === '/vault/records/personal/name' &&
@@ -617,6 +630,128 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     assert.ok(
       recordBodies.every((body) => !body.includes('New owner') && !body.includes('保育園')),
     );
+    failSession = false;
+    const appOrigin = 'https://os.example';
+    const appArchive = {
+      format_version: 2,
+      source: {
+        app: 'cloudflare-os',
+        origin: appOrigin,
+        workspace_id: 'workspace',
+        chat_id: 0,
+        first_sequence: 1,
+        last_sequence: 1,
+        scope: 'text-segment',
+      },
+      title: 'Cloudflare OS consultation',
+      messages: [
+        {
+          source_id: '1',
+          speaker: 'Alice',
+          actor: 'human',
+          text: 'Private OS context',
+          timestamp: '2026-10-14T00:00:00.000Z',
+        },
+      ],
+    };
+    const sourceRoot = process.env['MIKAKI_CLOUDFLARE_OS_SOURCE'];
+    const senderScript = sourceRoot
+      ? (
+          await build({
+            entryPoints: [
+              resolve(sourceRoot, 'packages/workshop-frontend/src/features/chat/vaultArchive.ts'),
+            ],
+            bundle: true,
+            write: false,
+            format: 'esm',
+            platform: 'browser',
+          })
+        ).outputFiles![0]!.text
+      : null;
+    await context.route(`${appOrigin}/**`, (route) => {
+      if (new URL(route.request().url()).pathname === '/sender.js' && senderScript)
+        return route.fulfill({ contentType: 'text/javascript', body: senderScript });
+      return route.fulfill({
+        contentType: 'text/html',
+        body: `
+      <!doctype html><title>Cloudflare OS handoff fixture</title><button id="send">Save to Vault</button><output id="result"></output>
+      ${
+        senderScript
+          ? `<script type="module">
+        import {sendVaultArchive, makeVaultArchive} from './sender.js';
+        const expected = ${JSON.stringify(appArchive)};
+        document.getElementById('send').onclick = async () => {
+          const page = {messages: expected.messages.map(message => ({chatId: 0, sequence: Number(message.source_id), type:'message', message:message.text,
+            timestamp:new Date(message.timestamp), author:{type:message.actor==='human'?'user':'agent',id:'synthetic-owner',name:message.speaker}}))};
+          await sendVaultArchive(new URL('${origin}/vault'), async () => makeVaultArchive(page,
+            {origin:location.origin,workspaceId:'workspace',chatId:0,title:expected.title}), new AbortController().signal);
+          document.getElementById('result').textContent='Saved';
+        };
+      </script>`
+          : `<script>
+        const channel = crypto.randomUUID(), archive = ${JSON.stringify(JSON.stringify(appArchive))};
+        let popup, sent = false, timer;
+        document.getElementById('send').onclick = () => {
+          popup = window.open('${origin}/vault?lang=en', '_blank');
+          timer = setInterval(() => { if (!sent) popup.postMessage({protocol:'mikaki-archive-v1',type:'offer',channel}, '${origin}'); }, 100);
+        };
+        window.addEventListener('message', event => {
+          if(event.source !== popup || event.origin !== '${origin}' || event.data.protocol !== 'mikaki-archive-v1' || event.data.channel !== channel) return;
+          if(event.data.type === 'request') { sent = true; popup.postMessage({protocol:'mikaki-archive-v1',type:'archive',channel,archive}, '${origin}'); }
+          if(event.data.type === 'saved') { document.getElementById('result').textContent='Saved'; clearInterval(timer); }
+        });
+      </script>`
+      }`,
+      });
+    });
+    const source = await context.newPage();
+    await source.goto(appOrigin);
+    const newPopup = source.waitForEvent('popup');
+    await source.locator('#send').click();
+    const recipient = await newPopup;
+    await recipient.setViewportSize({ width: 390, height: 844 });
+    await recipient.waitForLoadState('domcontentloaded');
+    await recipient.goto(`${origin}/vault?lang=en`);
+    await recipient.locator('#unlock').click();
+    await expect(
+      recipient.getByRole('heading', { name: 'Save a Cloudflare OS conversation' }),
+    ).toBeVisible();
+    await expect(source.locator('#result')).toHaveText('');
+    const previousBodies = recordBodies.length;
+    await recipient
+      .getByRole('button', { name: 'Encrypt and save this copy', exact: true })
+      .scrollIntoViewIfNeeded();
+    await auditAccessibility(recipient, 'cloudflare-os-vault-mobile');
+    await mkdir('artifacts/cloudflare-os-vault', { recursive: true });
+    await recipient.screenshot({ path: 'artifacts/cloudflare-os-vault/receive-mobile.png' });
+    loseAppArchive = true;
+    await recipient.locator('#app-archive-save').click();
+    await expect(recipient.locator('#app-archive-save')).toHaveText('Retry the same save');
+    await expect(source.locator('#result')).toHaveText('');
+    await recipient.locator('#app-archive-save').click();
+    await expect(source.locator('#result')).toHaveText('Saved');
+    assert.equal(recordBodies.length, previousBodies + 2);
+    assert.equal(
+      recordBodies[previousBodies],
+      recordBodies[previousBodies + 1],
+      'App handoff retries the exact ciphertext',
+    );
+    assert.ok(
+      recordBodies
+        .slice(previousBodies)
+        .every((body) => !body.includes('Private OS context') && !body.includes(appOrigin)),
+    );
+    await recipient.reload();
+    await recipient.locator('#unlock').click();
+    await recipient.getByRole('button', { name: appArchive.title, exact: true }).click();
+    await expect(recipient.locator('.archive-message')).toContainText('Private OS context');
+    assert.deepEqual(
+      await recipient.evaluate(() => sessionStorage.length),
+      0,
+      'No plaintext handoff is persisted in browser session storage',
+    );
+    await recipient.close();
+    await source.close();
   } finally {
     await browser?.close();
     await harness.close();
