@@ -6,6 +6,7 @@ import {
   assertCopyCompanionsPresent,
   CLOSED_OP_COPY_VARS,
   productionCopyCompanions,
+  closedCopyDeployment,
 } from './production-work-copy-graph.ts';
 const config = () => JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
 
@@ -40,6 +41,74 @@ test('staged production graph refuses enabled gates and altered named capabiliti
     entrypoint: 'OpAuthorityAdmin',
   });
   assert.throws(() => assertClosedProductionCopyGraph(additional), /graph differs/);
+  for (const value of [undefined, '', 'single-disclosure', 'unknown']) {
+    const changed = config();
+    changed.vars.WORK_COPY_ACTIVATION_PROFILE = value;
+    assert.throws(() => assertClosedProductionCopyGraph(changed), /remain closed/);
+  }
+  const selected = config();
+  selected.vars.WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST = 'a'.repeat(64);
+  assert.throws(() => assertClosedProductionCopyGraph(selected), /selector/);
+});
+
+test('ordinary promotion protects active copy and cleanup configuration and refuses a changing version', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const bindings = () => [
+    ...CLOSED_OP_COPY_VARS.map((name) => ({ name, type: 'plain_text', text: 'false' })),
+    { name: 'WORK_COPY_ACTIVATION_PROFILE', type: 'plain_text', text: 'closed' },
+  ];
+  const get = (selected: unknown[]) => async (path: string) =>
+    path.includes('/versions/')
+      ? { result: { id, resources: { bindings: selected } } }
+      : {
+          result: {
+            deployments: [
+              { strategy: 'percentage', versions: [{ version_id: id, percentage: 100 }] },
+            ],
+          },
+        };
+  assert.equal(await closedCopyDeployment(get(bindings()), '/op'), id);
+  assert.equal(await closedCopyDeployment(get([]), '/op'), id);
+  for (const name of [...CLOSED_OP_COPY_VARS, 'WORK_COPY_ACTIVATION_PROFILE']) {
+    const changed = bindings();
+    changed.find((b) => b.name === name)!.text = name.endsWith('PROFILE')
+      ? 'single-disclosure'
+      : 'true';
+    await assert.rejects(closedCopyDeployment(get(changed), '/op'), /deactivation/);
+  }
+  await assert.rejects(
+    closedCopyDeployment(
+      get([
+        ...bindings(),
+        {
+          name: 'WORK_COPY_ACTIVATION_DISCLOSURE_DIGEST',
+          type: 'plain_text',
+          text: 'a'.repeat(64),
+        },
+      ]),
+      '/op',
+    ),
+    /deactivation/,
+  );
+  let reads = 0;
+  await assert.rejects(
+    closedCopyDeployment(async (path) => {
+      const result = await get(bindings())(path);
+      if (!path.includes('/versions/') && ++reads === 2)
+        return {
+          result: {
+            deployments: [
+              {
+                strategy: 'percentage',
+                versions: [{ version_id: '22222222-2222-4222-8222-222222222222', percentage: 100 }],
+              },
+            ],
+          },
+        };
+      return result;
+    }, '/op'),
+    /changed during preflight/,
+  );
 });
 
 test('unstaged selection permits only the existing enrolled checkpoint edge', () => {

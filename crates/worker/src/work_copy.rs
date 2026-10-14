@@ -25,7 +25,7 @@ pub async fn handle(mut request: Request, env: &Env) -> worker::Result<Response>
         let input: Input = serde_json::from_str(&body)?;
         let store = WorkStore::from_env(env).map_err(|_| worker::Error::from("copy_store"))?;
         let value = match input {
-            Input::Pending => store.pending_copy_jobs().await,
+            Input::Pending => store.pending_copy_jobs(env).await,
             Input::Advance {
                 preparation_id,
                 step,

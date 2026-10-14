@@ -18,6 +18,7 @@ import { productionWrangler } from './production-wrangler.ts';
 import {
   assertClosedProductionCopyGraph,
   assertCopyCompanionsPresent,
+  closedCopyDeployment,
 } from './production-work-copy-graph.ts';
 
 type Binding = Record<string, unknown>;
@@ -428,6 +429,10 @@ async function main() {
     PRODUCTION_WORK_TARGET.account,
     process.env.CLOUDFLARE_API_TOKEN!,
   );
+  const opPath = `/accounts/${PRODUCTION_WORK_TARGET.account}/workers/scripts/mikaki-auth`;
+  const priorCopyVersion = copyBindingsStaged
+    ? await closedCopyDeployment(metadataGet, opPath)
+    : null;
   const roster = (await metadataGet(
     `/accounts/${PRODUCTION_WORK_TARGET.account}/workers/scripts`,
   )) as { result: { id: string }[] };
@@ -545,6 +550,12 @@ async function main() {
     staged.push({ worker: worker!, configPath: configPath!, config, id });
   }
   for (const item of staged) {
+    if (item.worker === 'op' && priorCopyVersion)
+      assert.equal(
+        await closedCopyDeployment(metadataGet, opPath),
+        priorCopyVersion,
+        'OP changed while the ordinary promotion was staged',
+      );
     console.log(
       await wrangler([
         'versions',

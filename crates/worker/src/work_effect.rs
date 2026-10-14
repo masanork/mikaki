@@ -156,6 +156,24 @@ async fn execute(
         return Err("invalid_effect_input".into());
     }
     let store = WorkStore::from_env(env)?;
+    // Old isolates cannot authorize a different preparation through the current
+    // named stores after a scoped rollout. Safety captures and cleanup remain
+    // available; independent non-copy qualification retains its existing path.
+    if env.var("WORK_COPY_ACTIVATION_PROFILE").is_ok() {
+        let attempt = match &input {
+            Input::InitialPlan { attempt_id }
+            | Input::MintPlan { attempt_id }
+            | Input::GitPlan { attempt_id }
+            | Input::GitExecute { attempt_id, .. } => Some(attempt_id),
+            _ => None,
+        };
+        if let Some(id) = attempt {
+            let planned = store.credential_plan(id).await?;
+            store
+                .require_copy_activation(env, planned.preparation_id())
+                .await?;
+        }
+    }
     // Each fixed branch enforces its own authority/permit checks. Safety result
     // recording grants no productive dispatch. All Native batches still require
     // checkpoint framing, including cleanup after productive Git execution.
