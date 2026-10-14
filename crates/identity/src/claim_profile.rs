@@ -115,7 +115,7 @@ impl ClaimProfile {
             })
             .collect()
     }
-    /// OID4VCI Final credential_metadata.claims and SD-JWT type metadata paths.
+    /// OID4VCI Final credential_metadata.claims uses display.name.
     pub fn metadata(&self, namespace: Option<&str>) -> Value {
         json!(
             self.0
@@ -127,6 +127,15 @@ impl ClaimProfile {
                     };
                     json!({"path":path,"display":[{"name":c.label(),"locale":"ja"}]})
                 })
+                .collect::<Vec<_>>()
+        )
+    }
+    /// SD-JWT VC claim display metadata uses label rather than OID4VCI's name.
+    pub fn sd_jwt_type_metadata(&self) -> Value {
+        json!(
+            self.0
+                .iter()
+                .map(|c| json!({"path":[c.name()],"display":[{"label":c.label(),"locale":"ja"}]}))
                 .collect::<Vec<_>>()
         )
     }

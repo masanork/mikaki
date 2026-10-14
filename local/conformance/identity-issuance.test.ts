@@ -470,6 +470,11 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       [['app.tossa.mikaki.linked_document.1', 'age_over_18']],
     );
     const ageType = (await (await ageOnly.fetch(`${issuer}/types/linked-document`)).json()) as any;
+    for (const claim of ageType.claims) {
+      assert.deepEqual(Object.keys(claim.display[0]).sort(), ['label', 'locale']);
+      assert.equal(claim.display[0].locale, 'ja');
+      assert.ok(typeof claim.display[0].label === 'string' && claim.display[0].label.length > 0);
+    }
     assert.ok(ageType.claims.some((c: any) => c.path[0] === 'age_over_20'));
     assert.equal(
       (

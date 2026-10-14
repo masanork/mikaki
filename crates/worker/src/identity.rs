@@ -678,7 +678,7 @@ pub async fn type_metadata(_req: Request, ctx: RouteContext<()>) -> worker::Resu
         return error(404, "not_found");
     }
     response(
-        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes and age predicates linked by account-owner consent. Predicates do not increase assurance. Not a government credential; no liveness or current licence status assertion.","claims":ClaimProfile::all().metadata(None)}),
+        json!({"vct":format!("{}/types/linked-document",issuer(&ctx)?),"name":"Mikaki linked document attributes","description":"Static issuer-signed document attributes and age predicates linked by account-owner consent. Predicates do not increase assurance. Not a government credential; no liveness or current licence status assertion.","claims":ClaimProfile::all().sd_jwt_type_metadata()}),
     )
 }
 #[derive(Deserialize)]
