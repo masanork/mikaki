@@ -93,19 +93,26 @@ export function productionIdentityTestProfile(config: Config) {
     'Identity test profile must be age-only',
   );
   const enabled = config.vars.IDENTITY_ENABLED === 'true';
+  const discovery = enabled && config.vars.IDENTITY_ISSUANCE_ENABLED === 'false';
   assert.ok(
     enabled || config.vars.IDENTITY_ENABLED === 'false',
     'Identity profile requires explicit activation',
   );
   assert.deepEqual(
     names,
-    enabled
-      ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_TRUST_POLICY_SHA256']
-      : ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS'],
+    discovery
+      ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_ISSUANCE_ENABLED']
+      : enabled
+        ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_TRUST_POLICY_SHA256']
+        : ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS'],
     'Identity test profile must not activate other Identity capabilities',
   );
-  assert.equal(withTrust, enabled, 'Identity activation requires selected card-trust custody');
-  if (enabled)
+  assert.equal(
+    withTrust,
+    enabled && !discovery,
+    'Identity issuance activation requires selected card-trust custody',
+  );
+  if (enabled && !discovery)
     assert.match(
       config.vars.IDENTITY_TRUST_POLICY_SHA256!,
       /^[a-f0-9]{64}$/,
@@ -123,7 +130,11 @@ export function productionIdentityTestProfile(config: Config) {
     !config.services?.some((item) => item.binding.startsWith('IDENTITY_')),
     'Identity test profile must not add an attester service',
   );
-  return enabled ? ('first-party-age' as const) : ('prepared' as const);
+  return discovery
+    ? ('discovery' as const)
+    : enabled
+      ? ('first-party-age' as const)
+      : ('prepared' as const);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

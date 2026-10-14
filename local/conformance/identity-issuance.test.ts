@@ -37,6 +37,108 @@ const root = 'https://issuer.example';
 const issuer = `${root}/identity/issuer`;
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('base64url');
 const secret = () => randomBytes(32).toString('base64url');
+test('discovery publishes age-only metadata and JWKS without accepting intake or issuing credentials', async () => {
+  const key = await generateKeyPair('ES256', { extractable: true });
+  const jwk = { ...(await exportJWK(key.privateKey)), kid: 'discovery-issuer' };
+  const config = JSON.parse(
+    await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
+  );
+  config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
+  config.queues.consumers = [];
+  config.d1_databases[0].migrations_dir = new URL(
+    '../../crates/worker/migrations',
+    import.meta.url,
+  ).pathname;
+  config.vars = {
+    MIKAKI_ISSUER: root,
+    IDENTITY_ENABLED: 'true',
+    IDENTITY_ISSUANCE_ENABLED: 'false',
+    IDENTITY_ISSUANCE_CLAIMS: '["age_over_18"]',
+    IDENTITY_ISSUER_JWK: JSON.stringify(jwk),
+  };
+  const harness = await createTestHarness({
+    workers: [
+      { config },
+      {
+        config: {
+          ...config,
+          name: 'discovery-stale-trust',
+          vars: {
+            ...config.vars,
+            IDENTITY_TRUSTED_KEYS: JSON.stringify(identityFixture().trust),
+            IDENTITY_WALLET_ENABLED: 'true',
+          },
+        },
+      },
+    ],
+  });
+  try {
+    await harness.listen();
+    for (const name of ['mikaki-op-worker', 'discovery-stale-trust']) {
+      const worker = harness.getWorker(name);
+      await worker.applyD1Migrations('DB');
+      const metadataResponse = await worker.fetch(
+        `${root}/.well-known/openid-credential-issuer/identity/issuer`,
+      );
+      assert.equal(metadataResponse.status, 200);
+      assert.equal(metadataResponse.headers.get('cache-control'), 'no-store');
+      const metadata = (await metadataResponse.json()) as any;
+      assert.equal(metadata.mikaki_issuance_enabled, false);
+      assert.deepEqual(Object.keys(metadata.credential_configurations_supported), [
+        'linked_document',
+      ]);
+      assert.deepEqual(
+        metadata.credential_configurations_supported.linked_document.credential_metadata.claims.map(
+          (claim: any) => claim.path,
+        ),
+        [['age_over_18']],
+      );
+      const keysResponse = await worker.fetch(`${issuer}/jwks`);
+      assert.equal(keysResponse.status, 200);
+      const keys = ((await keysResponse.json()) as any).keys;
+      assert.equal(keys.length, 1);
+      assert.equal(keys[0].kid, 'discovery-issuer');
+      assert.equal(keys[0].d, undefined);
+      assert.equal(keys[0].x, jwk.x);
+      const oauthResponse = await worker.fetch(
+        `${root}/.well-known/oauth-authorization-server/identity/issuer`,
+      );
+      assert.equal(oauthResponse.status, 200);
+      assert.equal(((await oauthResponse.json()) as any).authorization_endpoint, undefined);
+      assert.equal((await worker.fetch(`${issuer}/types/linked-document`)).status, 200);
+      for (const [path, method] of [
+        ['/identity/intake', 'POST'],
+        ['/identity/approve', 'GET'],
+        ['/identity/approve', 'POST'],
+        ['/identity/poll', 'POST'],
+        ['/identity/issuer/token', 'POST'],
+        ['/identity/issuer/nonce', 'POST'],
+        ['/identity/issuer/credential', 'POST'],
+      ]) {
+        const response = await worker.fetch(`${root}${path}`, { method });
+        assert.equal(response.status, 503, path);
+        assert.equal(((await response.json()) as any).error, 'issuer_unavailable');
+      }
+      assert.equal((await worker.fetch(`${issuer}/authorize`)).status, 404);
+      assert.equal((await worker.fetch(`${issuer}/par`, { method: 'POST' })).status, 404);
+      const { DB } = await worker.getEnv();
+      for (const table of [
+        'identity_nonce',
+        'identity_transaction',
+        'identity_document',
+        'identity_wallet_grant',
+      ]) {
+        assert.equal(
+          ((await DB.prepare(`SELECT count(*) AS count FROM ${table}`).first()) as any).count,
+          0,
+        );
+      }
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
 test(`workerd verifies both cards, issues holder-bound credentials through OID4VCI and independently verifies encrypted SD-JWT/mdoc OID4VP${process.env.MIKAKI_MULTIPAZ_CHECKOUT ? ' + pinned Multipaz SDK (DPoP nonce required)' : ''}`, async () => {
   const f = identityFixture();
   const ec = createECDH('prime256v1');

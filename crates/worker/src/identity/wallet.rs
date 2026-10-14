@@ -11,6 +11,7 @@ struct Client {
 }
 pub(super) fn enabled(ctx: &RouteContext<()>) -> bool {
     super::enabled(ctx)
+        && super::issuance_enabled(ctx)
         && ctx
             .env
             .var("IDENTITY_WALLET_ENABLED")

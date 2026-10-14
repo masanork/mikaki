@@ -156,6 +156,8 @@ test('promotion preserves only reviewed runtime secrets and requires initial Wor
 
 test('Identity custody stays disabled and age-only, with dedicated signing and a mandatory limiter', () => {
   const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  config.vars.IDENTITY_ENABLED = 'false';
+  delete config.vars.IDENTITY_ISSUANCE_ENABLED;
   const env = runtimeSecretsFixture();
   const secrets = productionRuntimeSecrets(config, env);
   assert.equal(secrets.IDENTITY_ISSUER_JWK, env.IDENTITY_ISSUER_JWK);
@@ -206,8 +208,41 @@ test('Identity custody stays disabled and age-only, with dedicated signing and a
     );
 });
 
+test('discovery activation publishes dedicated custody while keeping issuance and trust closed', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const env = { ...runtimeSecretsFixture(), IDENTITY_TRUSTED_KEYS: 'not-selected' };
+  assert.equal(config.vars.IDENTITY_ENABLED, 'true');
+  assert.equal(config.vars.IDENTITY_ISSUANCE_ENABLED, 'false');
+  assert.equal('IDENTITY_TRUSTED_KEYS' in productionRuntimeSecrets(config, env), false);
+  for (const mutate of [
+    (c: typeof config) => {
+      delete c.vars.IDENTITY_ISSUANCE_ENABLED;
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_ISSUANCE_ENABLED = 'true';
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_ISSUANCE_ENABLED = 'unknown';
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_WALLET_ENABLED = 'true';
+    },
+    (c: typeof config) => {
+      c.secrets.required.push('IDENTITY_TRUSTED_KEYS');
+    },
+    (c: typeof config) => {
+      c.vars.IDENTITY_TRUST_POLICY_SHA256 = '0'.repeat(64);
+    },
+  ]) {
+    const changed = structuredClone(config);
+    mutate(changed);
+    assert.throws(() => productionRuntimeSecrets(changed, env), /Identity/);
+  }
+});
+
 test('first-party age activation requires exact live licence trust, and keeps all other profiles closed', () => {
   const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  delete config.vars.IDENTITY_ISSUANCE_ENABLED;
   const env = runtimeSecretsFixture();
   const { n, e } = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({
     format: 'jwk',
@@ -264,6 +299,8 @@ test('first-party age activation requires exact live licence trust, and keeps al
     /reviewed policy/,
   );
   const prepared = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  prepared.vars.IDENTITY_ENABLED = 'false';
+  delete prepared.vars.IDENTITY_ISSUANCE_ENABLED;
   assert.equal('IDENTITY_TRUSTED_KEYS' in productionRuntimeSecrets(prepared, credentials), false);
   prepared.secrets.required.push('IDENTITY_TRUSTED_KEYS');
   assert.throws(() => productionRuntimeSecrets(prepared, credentials), /card-trust custody/);

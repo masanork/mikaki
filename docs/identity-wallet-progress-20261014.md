@@ -2,8 +2,14 @@
 
 This checkpoint advances Issues #116–#120 from main `a19d30d`. The measured
 implementation is `e01f168`, with a clean checkout at the start of the official
-Issuer run. Subsequent report edits change documentation only. It does not
+Issuer run. The initial subsequent report edits changed documentation only. This checkpoint does not
 activate Identity, submit certification or qualify physical cards/devices.
+
+The 2026-10-15 follow-up selects [public issuer discovery](identity-test-deployment.md#public-issuer-discovery-activation--2026-10-15)
+in the production configuration, with `IDENTITY_ISSUANCE_ENABLED=false` and no
+card-trust secret. It adds a workerd check for public age-only metadata/JWKS and
+closed issuance APIs, including stale-trust rejection. The official-suite hashes
+below continue to qualify `e01f168`, not the follow-up deployment.
 
 ## Implementation changes
 
@@ -21,7 +27,8 @@ activate Identity, submit certification or qualify physical cards/devices.
   rejects ambiguous/private/unsupported/expired policies. The workflow supplies
   `IDENTITY_TRUSTED_KEYS` only when the reviewed config selects it. See the
   [activation contract](identity-test-deployment.md#first-party-age-activation-contract).
-  The canonical config still selects the disabled preparation profile.
+  At this checkpoint the canonical config selected the disabled preparation profile;
+  the 2026-10-15 follow-up selects discovery with issuance explicitly closed.
 - `--authorization-lifecycle` extends the existing 42-module Issuer selection
   with five inherited authorization/token modules while retaining the official
   plan's original ordering and variants. Targeted `--module` selection remains

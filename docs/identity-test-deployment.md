@@ -57,6 +57,29 @@ remain 404. Key values, real card trust and a physical device were not qualified
 
 ## Required inputs and the smallest activation
 
+### Public issuer discovery activation — 2026-10-15
+
+The experimental production configuration now selects `IDENTITY_ENABLED=true`,
+`IDENTITY_ISSUANCE_ENABLED=false` and `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'`.
+This publishes the issuer's credential metadata, authorization-server metadata,
+dedicated public signing key and credential type description. Credential metadata
+reports `mikaki_issuance_enabled=false`. It does not select a card-trust secret.
+
+All intake, approval, polling, token, nonce and credential endpoints return 503
+`issuer_unavailable` before consuming request bodies or accessing issuance state.
+The policy gate also rejects use of existing linked documents while issuance is
+closed, and independent Wallet authorization/PAR remain disabled even if a stale
+Wallet flag is present. Tests cover absent trust and stale configured trust, the
+public key without private coordinates, age-only metadata and no issuance DB writes.
+This is public discovery activation, not an issued credential or active HAIP Wallet.
+
+Keep the dedicated key, production rate limit and exact binding checks. To enable
+the first-party issuance profile, remove `IDENTITY_ISSUANCE_ENABLED=false` and
+select the approved trust secret/digest described below in the same reviewed
+configuration. Do not substitute repository fixtures for approved card issuer trust.
+Record the source-matched public observation after promotion; this section alone
+records the requested configuration, not a successful deployment.
+
 ### Signing custody preparation — 2026-10-14
 
 PR [#228](https://github.com/masanork/mikaki/pull/228) merged as `da96679`.
@@ -86,7 +109,7 @@ JWK/thumbprint and refuses to replace a file:
 node scripts/identity-issuer-key.ts local/generated/identity-keys/NEW_PRIVATE_FILE.jwk.json
 ```
 
-The checked-in configuration stages this key with `IDENTITY_ENABLED=false`,
+The earlier preparation configuration staged this key with `IDENTITY_ENABLED=false`,
 `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'` and the `IDENTITY_RATE_LIMIT`
 binding (namespace `1031`, 30 requests per 60 seconds per hashed IP/operation).
 This limit uses Cloudflare's [local, permissive rate-limit API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
@@ -109,7 +132,8 @@ physical-device success are not activation gates.
 The promotion validator now permits a separate first-party `age_over_18` SD-JWT
 test profile when dedicated signing custody, the reviewed limiter and an exact
 live driving-licence trust policy are selected. The checked-in production config
-continues to select `IDENTITY_ENABLED=false`; this contract does not activate it.
+publishes discovery with issuance explicitly disabled; this contract does not
+activate issuance.
 
 First obtain an independently approved licence issuer key and record its source,
 EF07/B6 identifier, validity and operator approval. Validate its **compact JSON**
