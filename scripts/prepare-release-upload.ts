@@ -6,6 +6,7 @@ import { constants } from 'node:fs';
 import { appendFile, mkdir, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkWorkerBundle, measureWorkerUpload } from './worker-bundle-size.ts';
 import {
   releaseSource,
   verifyRelease,
@@ -38,11 +39,11 @@ const workers = [
 function digest(bytes: Uint8Array) {
   return { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
-async function boundedFile(path: string): Promise<Buffer> {
+async function boundedFile(path: string, maximum = limit): Promise<Buffer> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await file.stat();
-    assert.ok(stat.isFile() && stat.size <= limit, 'Expected a bounded regular file');
+    assert.ok(stat.isFile() && stat.size <= maximum, 'Expected a bounded regular file');
     const buffer = Buffer.alloc(stat.size + 1);
     let length = 0;
     while (length < buffer.length) {
@@ -69,7 +70,7 @@ export async function prepareReleaseUpload(
   inventory: ReleaseInventory,
   source: ReleaseSource,
   allowDirty = false,
-  bundle?: (entry: string, config: string, output: string) => void,
+  bundle?: (entry: string, config: string, output: string, upload: string) => void | Promise<void>,
 ) {
   await verifyRelease(root, inventory, source, allowDirty);
   const destination = await mkdtemp(join(root, 'artifacts/promotion-'));
@@ -104,11 +105,22 @@ export async function prepareReleaseUpload(
       }
       const entry = join(input, `worker/${worker.entry}.mjs`);
       const config = join(root, worker.config);
-      if (bundle) bundle(entry, config, output);
+      const upload = join(destination, worker.directory, 'upload.multipart');
+      if (bundle) await bundle(entry, config, output, upload);
       else
         execFileSync(
           wrangler,
-          ['deploy', entry, '--config', config, '--dry-run', '--outdir', output],
+          [
+            'deploy',
+            entry,
+            '--config',
+            config,
+            '--dry-run',
+            '--outdir',
+            output,
+            '--outfile',
+            upload,
+          ],
           {
             cwd: root,
             env: wranglerEnv,
@@ -127,12 +139,19 @@ export async function prepareReleaseUpload(
         bundleFiles.filter((file) => file.name.endsWith('.wasm')).length,
         worker.directory === 'checkpoint' ? 0 : 1,
       );
+      // Multipart framing, metadata and debug maps are not part of the 64 MiB code limit.
+      const uploadBytes = await boundedFile(upload, 2 * limit);
+      const measured = await measureWorkerUpload(new Uint8Array(uploadBytes));
+      const failures = checkWorkerBundle(worker.directory, measured.raw);
+      assert.equal(failures.length, 0, failures.join('\n'));
       prepared.push({
         worker: worker.directory,
         archive: worker.archive,
         archive_digest: original.digest,
         config_sha256: digest(await boundedFile(config)).sha256,
         bundle_files: bundleFiles,
+        bundle_raw_bytes: measured.raw,
+        upload_digest: digest(uploadBytes),
       });
     }
     const result = {
@@ -212,6 +231,15 @@ export async function verifyPreparedUpload(
       assert.match(file.name, /^[a-zA-Z0-9_.-]+$/);
       assert.deepEqual(digest(await boundedFile(join(output, file.name))), file.digest);
     }
+    const uploadBytes = await boundedFile(
+      join(destination, worker.directory, 'upload.multipart'),
+      2 * limit,
+    );
+    assert.deepEqual(digest(uploadBytes), record.upload_digest, 'Worker upload changed');
+    const { raw } = await measureWorkerUpload(new Uint8Array(uploadBytes));
+    assert.equal(record.bundle_raw_bytes, raw, 'Worker bundle size changed');
+    const failures = checkWorkerBundle(worker.directory, raw);
+    assert.equal(failures.length, 0, failures.join('\n'));
   }
 }
 

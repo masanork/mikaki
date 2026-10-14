@@ -88,11 +88,12 @@ or the live messaging gates.
 After merging the Passkey login/Vault handoff from main on 2026-10-15, the
 combined Vault script measures **342,007 raw bytes**. Its local level-9 gzip
 estimate is **97,871 bytes** on macOS / Node 26.11.1 and **98,339 bytes** in
-Ubuntu / Node 26.10.0 CI. The gzip ceiling is **99,328 bytes (97 KiB)**, raised
-by 1 KiB to cover the CI measurement; its **344,064-byte raw ceiling** stays
-unchanged. Login retains main's separately reviewed **104,448 raw / 32,768
-gzip** ceilings. See the [budget measurements](worker-budgets.md) for CI
-evidence. These are build-size estimates, not network timing.
+Ubuntu / Node 26.10.0 CI. Its **344,064 raw / 99,328 gzip** values are growth
+warning thresholds. Per-resource raw/gzip growth does not block CI; the size
+gate checks each complete Worker bundle against Cloudflare's **64 MiB
+uncompressed** limit. See the [budget measurements](worker-budgets.md) for
+the bundle totals and CI evidence. These are build-size estimates, not network
+timing.
 
 ## Workspace snapshots: local implementation
 
