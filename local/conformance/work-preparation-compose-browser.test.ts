@@ -47,6 +47,9 @@ test('owner source selection creates a preparation and opens fresh separate copy
     release: (() => void) | undefined;
   let corrupt: '' | 'digest' | 'oversize' = '';
   let latest: any;
+  let holdDemo = false,
+    demoStarted: (() => void) | undefined,
+    releaseDemo: (() => void) | undefined;
   const submitted: any[] = [];
   await context.route('https://work.test/**', async (route) => {
     const request = route.request();
@@ -59,6 +62,10 @@ test('owner source selection creates a preparation and opens fresh separate copy
       body: request.postData() ?? undefined,
     });
     let bytes = Buffer.from(await response.arrayBuffer());
+    if (holdDemo && new URL(request.url()).pathname === '/work/task-demo.js') {
+      demoStarted?.();
+      await new Promise<void>((resolve) => (releaseDemo = resolve));
+    }
     if (creating && response.status === 200) {
       latest = JSON.parse(bytes.toString()).record;
       if (hold) {
@@ -120,6 +127,146 @@ test('owner source selection creates a preparation and opens fresh separate copy
   const shots = new URL('../../artifacts/work-preparation-compose/', import.meta.url).pathname;
   await mkdir(shots, { recursive: true });
   try {
+    await t.test(
+      'task-to-result demo is bilingual, responsive and creates no real work or copy',
+      async () => {
+        const before = submitted.length;
+        for (const lang of ['ja', 'en']) {
+          await page.setViewportSize({ width: lang === 'ja' ? 1280 : 375, height: 1000 });
+          await page.goto('https://work.test/work/source-review?lang=' + lang);
+          await expect(code()).toBeVisible();
+          await page
+            .getByRole('button', {
+              name:
+                lang === 'ja' ? '依頼から結果までを試す（体験版）' : 'Try the task-to-result demo',
+              exact: true,
+            })
+            .click();
+          const demo = page.locator('#work-journey-demo');
+          const next = demo.getByRole('button', {
+            name: lang === 'ja' ? '渡すものを確認する' : 'Review what to share',
+            exact: true,
+          });
+          await expect(next).toBeDisabled();
+          await demo
+            .getByRole('button', {
+              name:
+                lang === 'ja' ? 'モバイル表示の修正を例にする' : 'Use the mobile layout example',
+            })
+            .click();
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({ path: shots + 'task-demo-' + lang + '.png', fullPage: true });
+          await auditAccessibility(page, 'work-task-demo-' + lang);
+          await next.click();
+          await demo.getByRole('checkbox', { name: /design.md/ }).uncheck();
+          const start = demo.getByRole('button', {
+            name: lang === 'ja' ? 'サンプルの作業を確認する' : 'Review the sample activity',
+          });
+          await expect(start).toBeDisabled();
+          await demo
+            .getByRole('checkbox', {
+              name:
+                lang === 'ja'
+                  ? 'サンプルのコードと選んだ資料で、仕事の流れを試す'
+                  : 'Try the journey with the sample code and selected references',
+            })
+            .check();
+          await start.click();
+          await expect(
+            demo.getByText(
+              lang === 'ja'
+                ? 'サンプルコードだけを作業用コピーへ。'
+                : 'Only sample code in a working copy.',
+              { exact: true },
+            ),
+          ).toBeVisible();
+          await demo
+            .getByRole('button', {
+              name: lang === 'ja' ? 'サンプルの結果を見る' : 'View the sample result',
+            })
+            .click();
+          await expect(demo.locator('.sample-diff')).toContainText('max-width: 100%');
+          assert.equal(
+            await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+            false,
+          );
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({ path: shots + 'task-result-' + lang + '.png', fullPage: true });
+          await auditAccessibility(page, 'work-task-demo-result-' + lang);
+          await demo
+            .getByRole('button', {
+              name: lang === 'ja' ? 'サンプルの変更を採用' : 'Accept the sample changes',
+            })
+            .click();
+          await expect(demo.getByRole('status')).toContainText(
+            lang === 'ja' ? '実際のファイルは変更していません' : 'No real files were changed',
+          );
+          await demo
+            .getByRole('button', { name: lang === 'ja' ? '別の依頼で試す' : 'Try another task' })
+            .click();
+          await expect(
+            demo.getByLabel(lang === 'ja' ? '直してほしいこと' : 'What should change?', {
+              exact: true,
+            }),
+          ).not.toHaveValue('');
+          await page
+            .getByRole('button', {
+              name: lang === 'ja' ? '体験版を閉じる' : 'Close the demo',
+              exact: true,
+            })
+            .click();
+          await expect(demo).toHaveCount(0);
+          await page
+            .getByRole('button', {
+              name:
+                lang === 'ja' ? '依頼から結果までを試す（体験版）' : 'Try the task-to-result demo',
+              exact: true,
+            })
+            .click();
+          await expect(
+            demo.getByLabel(lang === 'ja' ? '直してほしいこと' : 'What should change?', {
+              exact: true,
+            }),
+          ).toHaveValue('');
+          await page.evaluate(() =>
+            (window as unknown as { hideComposition: () => void }).hideComposition(),
+          );
+          await expect(demo).toHaveCount(0);
+        }
+        assert.equal(submitted.length, before);
+        for (const table of [
+          'work_preparation',
+          'work_copy_consent',
+          'work_credential_attempt',
+          'work_grant',
+          'work_run',
+        ] as const)
+          assert.equal(await count(table), 0);
+        await page.setViewportSize({ width: 1280, height: 1000 });
+      },
+    );
+    await t.test('a late demo module cannot reopen a locked view', async () => {
+      await page.goto('https://work.test/work/source-review?lang=ja');
+      await expect(code()).toBeVisible();
+      holdDemo = true;
+      const pending = new Promise<void>((resolve) => (demoStarted = resolve));
+      await page
+        .getByRole('button', { name: '依頼から結果までを試す（体験版）', exact: true })
+        .click();
+      await pending;
+      await page.evaluate(() =>
+        (window as unknown as { hideComposition: () => void }).hideComposition(),
+      );
+      const response = page.waitForResponse(
+        (r) => new URL(r.url()).pathname === '/work/task-demo.js',
+      );
+      releaseDemo?.();
+      holdDemo = false;
+      await (await response).finished();
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      await expect(page.locator('#work-journey-demo')).toHaveCount(0);
+      assert.equal(await count('work_preparation'), 0);
+    });
     await t.test(
       'Japanese content selection persists only a preparation and requires a second explicit approval',
       async () => {
@@ -267,6 +414,7 @@ test('owner source selection creates a preparation and opens fresh separate copy
       ]);
     }
   } finally {
+    releaseDemo?.();
     release?.();
     await browser.close();
     await f.close();

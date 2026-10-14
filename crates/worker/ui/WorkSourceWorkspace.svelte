@@ -11,6 +11,7 @@
   const context = vaultContext(),
     scope = context.current();
   const port = sourceHttpPort(scope.request);
+  const composeEnabled = document.documentElement.dataset.workCompose === 'true';
   let ready = $state(false);
   onMount(() => {
     void scope
@@ -27,7 +28,9 @@
   <ProductHeader {locale} onlock={context.lock} lockLabel={m.source_lock()} material />
   <main id="product-main" tabindex="-1" class="product-main source-page">
     <WorkSteps current={1} />
-    <div class="product-heading"><h1>{m.source_title()}</h1></div>
+    <div class="product-heading">
+      <h1>{composeEnabled ? m.work_journey_workspace() : m.source_title()}</h1>
+    </div>
     {#if ready}<WorkSources {port} />{:else}<p role="status">{m.source_loading()}</p>{/if}
   </main>
 </div>

@@ -25,6 +25,7 @@
     "login.ts",
     "vault.ts",
     "work-sources.ts",
+    "work-task-demo.ts",
     "work-preparations.ts",
     "work-preparation-view.ts",
     "work-source-view.ts",

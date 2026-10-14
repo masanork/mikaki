@@ -11,6 +11,7 @@
   } from './work-source-view.js';
   import { preparationComposePort, type PreparedSelection } from './work-compose-view.js';
   import WorkWebMcp from './WorkWebMcp.svelte';
+  import WorkJourneyIntro from './WorkJourneyIntro.svelte';
   import { WebMcpFailure } from './webmcp.ts';
   import type { WorkWebMcpHost } from './work-webmcp.ts';
   let { port }: { port: ReturnType<typeof sourceHttpPort> } = $props();
@@ -313,6 +314,8 @@
 </script>
 
 <section id="work-sources" aria-busy={busy}>
+  {#if composeEnabled}<WorkJourneyIntro />
+    <h2>{m.source_title()}</h2>{/if}
   <p class="source-lead">{m.source_intro()}</p>
   <div class="source-toolbar">
     <button type="button" disabled={busy} onclick={() => load()}>{m.source_refresh()}</button>

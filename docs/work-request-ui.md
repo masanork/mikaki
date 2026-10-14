@@ -6,6 +6,30 @@
 
 ## Views and confirmations
 
+The code selection page now introduces the whole task journey: describe the
+change and acceptance criteria, review shared code/references and permitted
+work, follow activity, then review the diff/checks before accepting changes.
+An inline Japanese/English demo lets the owner try all four stages with a
+fixed mobile-login example. Its inputs stay in component memory and are
+discarded when the demo closes, the view becomes hidden or the session ends.
+Sample activity, diffs and check results are explicitly labeled; accepting a
+sample changes no files. The demo performs no preparation, copy-consent,
+credential, grant, run or adoption request.
+
+The page identifies the available product path below the demo: select actual
+code/references, prepare a copy and review its separate approval. Productive
+agent delegation and exact result adoption remain pending in #201/#202.
+The demo does not turn those stages on or treat a copy approval as delegation.
+
+The demo JavaScript loads only when opened. Its JS/CSS use the same live owner,
+same-origin and checkpoint guards as the source-review assets. A late module
+download cannot remount the demo after close, hide or session invalidation.
+
+[Japanese task entry](work-request-ui-preview/request-ja.png) ·
+[English mobile result review](work-request-ui-preview/result-mobile-en.png).
+These captures use the real UI bundles with disposable synthetic owner/source
+data; the displayed activity and results are samples.
+
 | View              | Owner-visible information/action                                                                                                                                                          |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Compose           | Goal, acceptance, selected context, recipient and destination. Editing creates no permission.                                                                                             |

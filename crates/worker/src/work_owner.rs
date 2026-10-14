@@ -99,6 +99,8 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             | "/work/source-review"
             | "/work/source-review.js"
             | "/work/source-review.css"
+            | "/work/task-demo.js"
+            | "/work/task-demo.css"
             | "/work/browser-assistant.js"
     ) {
         return crate::work_sources::handle(request, env).await;
