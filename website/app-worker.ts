@@ -2,7 +2,10 @@
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/oidc/native/callback') {
+    if (
+      url.pathname === '/oidc/native/callback' ||
+      url.pathname === '/identity/issuance/callback'
+    ) {
       if (request.method !== 'GET') return new Response('Not found', { status: 404 });
       // Drop the entire query: never expose or forward an authorization code/state.
       return new Response(null, {

@@ -61,7 +61,7 @@ for (const lang of ['ja', 'en']) {
     document(
       'app.mikaki.org',
       ja ? 'アプリに戻れませんでした' : 'Unable to return to the application',
-      `<h1>${ja ? 'アプリに戻れませんでした' : 'Unable to return to the application'}</h1><div class="prose"><p>${ja ? 'アプリを開いて、サインインをやり直してください。' : 'Open the application and start sign-in again.'}</p><h2>${ja ? 'Androidをお使いの場合' : 'On Android'}</h2><p>${ja ? '設定の「アプリ」→「mikaki」→「デフォルトで開く」で、app.mikaki.org のリンクを許可します。' : 'In Settings, open Apps → mikaki → Open by default, and allow app.mikaki.org links.'}</p><h2>${ja ? 'iPhoneをお使いの場合' : 'On iPhone'}</h2><p>${ja ? 'アプリを開いて、もう一度サインインしてください。' : 'Open the application and try signing in again.'}</p></div><div class="actions"><a class="button button-outline" href="/${prefix}">${ja ? 'アプリの案内へ戻る' : 'Back to the application guide'}</a></div>`,
+      `<h1>${ja ? 'アプリに戻れませんでした' : 'Unable to return to the application'}</h1><div class="prose"><p>${ja ? 'サインインや身分証の発行結果がアプリに届いていません。アプリを開き、待機中の操作をキャンセルしてからやり直してください。' : 'The sign-in or credential issuance result did not reach the application. Open the application, cancel the pending operation, and start again.'}</p><h2>${ja ? 'Androidをお使いの場合' : 'On Android'}</h2><p>${ja ? '設定の「アプリ」→「mikaki」→「デフォルトで開く」で、app.mikaki.org のリンクを許可します。' : 'In Settings, open Apps → mikaki → Open by default, and allow app.mikaki.org links.'}</p><h2>${ja ? 'iPhoneをお使いの場合' : 'On iPhone'}</h2><p>${ja ? 'アプリを開いて、待機中の操作をキャンセルしてからやり直してください。' : 'Open the application, cancel the pending operation, and start again.'}</p></div><div class="actions"><a class="button button-outline" href="/${prefix}">${ja ? 'アプリの案内へ戻る' : 'Back to the application guide'}</a></div>`,
       lang,
       `/${prefix}native-link-help`,
       true,
