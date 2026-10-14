@@ -246,9 +246,13 @@ export function productionRuntimeSecrets(config: Config, env: Record<string, str
   assertWaitlistMailKey(secrets.WAITLIST_MAIL_KEY);
   if (withIdentity)
     assertDedicatedIdentityKey(secrets.IDENTITY_ISSUER_JWK!, secrets.OP_PRIVATE_JWK!);
-  if (identityProfile === 'first-party-age')
+  if (identityProfile === 'first-party-age' || identityProfile === 'operator-card-age')
     assert.equal(
-      identityTestTrust(secrets.IDENTITY_TRUSTED_KEYS!).policy_sha256,
+      identityTestTrust(
+        secrets.IDENTITY_TRUSTED_KEYS!,
+        undefined,
+        config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256,
+      ).policy_sha256,
       config.vars.IDENTITY_TRUST_POLICY_SHA256,
       'Identity card trust differs from the reviewed policy',
     );

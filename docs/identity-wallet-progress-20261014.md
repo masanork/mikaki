@@ -5,11 +5,14 @@ implementation is `e01f168`, with a clean checkout at the start of the official
 Issuer run. The initial subsequent report edits changed documentation only. This checkpoint does not
 activate Identity, submit certification or qualify physical cards/devices.
 
-The 2026-10-15 follow-up selects [public issuer discovery](identity-test-deployment.md#public-issuer-discovery-activation--2026-10-15)
-in the production configuration, with `IDENTITY_ISSUANCE_ENABLED=false` and no
-card-trust secret. It adds a workerd check for public age-only metadata/JWKS and
-closed issuance APIs, including stale-trust rejection. The official-suite hashes
-below continue to qualify `e01f168`, not the follow-up deployment.
+The initial 2026-10-15 follow-up selected public issuer discovery with issuance
+explicitly stopped. Its deployment was blocked by an already-applied Owner
+migration. The later follow-up selects [operator-confirmed card test issuance](identity-test-deployment.md#operator-confirmed-card-test-activation--2026-10-15)
+for one explicitly approved card key and only `age_over_18`; the government root
+chain remains unverified. Separate workerd checks cover this pinned-key intake,
+discovery-only operation, stale/mismatched trust rejection and closed other
+profiles. The official-suite hashes below continue to qualify `e01f168`, not the
+follow-up deployment.
 
 ## Implementation changes
 
@@ -28,7 +31,8 @@ below continue to qualify `e01f168`, not the follow-up deployment.
   `IDENTITY_TRUSTED_KEYS` only when the reviewed config selects it. See the
   [activation contract](identity-test-deployment.md#first-party-age-activation-contract).
   At this checkpoint the canonical config selected the disabled preparation profile;
-  the 2026-10-15 follow-up selects discovery with issuance explicitly closed.
+  the initial 2026-10-15 follow-up selected discovery with issuance explicitly
+  closed, followed by the scoped operator-confirmed card test selection above.
 - `--authorization-lifecycle` extends the existing 42-module Issuer selection
   with five inherited authorization/token modules while retaining the official
   plan's original ordering and variants. Targeted `--module` selection remains

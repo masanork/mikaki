@@ -57,9 +57,56 @@ remain 404. Key values, real card trust and a physical device were not qualified
 
 ## Required inputs and the smallest activation
 
+### Operator-confirmed card test activation — 2026-10-15
+
+The activation request selects first-party, single SD-JWT `age_over_18` issuance
+for the operator-confirmed My Number card key. The private operator approval record
+`local/generated/identity-keys/card-issuer-operator-test-20261014.approval.json`
+records one physical card, explicit user approval for `mikaki_test`, independent
+civ/self-consistency and matching Mikaki signature verification. Its key modulus
+SHA-256 is `4f165687b442164881e40b9f2d06a50a3b6e7ddeb45844fbdb7ab604dd9ee6ff`.
+**The government issuer root chain was not verified.** This is operator-selected
+test trust, not an approved government issuer/certificate framework.
+
+The same public trust policy is normalized to compact JSON for the existing GitHub
+production secret; no new signing key, private card key or raw evidence is provisioned.
+The selected policy digest is
+`0bf9e8cd3d2916034333f669cfafbd3a2b0c55e3ba954020de2d4bea81dde207`.
+Its original validity ends at **2026-10-21 13:14:39 UTC**. The exact single modulus,
+key ID, null licence identifier, live validity, document kind and age-only profile
+are checked before promotion and at runtime. A changed policy/modulus, additional
+card, expired policy or raw-attribute profile cannot activate this selection.
+
+The canonical config selects `IDENTITY_ENABLED=true`, the two reviewed digests,
+`IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'` and `IDENTITY_TRUSTED_KEYS`. It removes
+the discovery-only issuance stop. Metadata publishes
+`mikaki_trust_profile=operator-confirmed-card-test` and
+`mikaki_issuer_root_chain_verified=false`. Credentials retain static-data evidence,
+`live_possession_verified=false` and `government_credential=false`; approval does
+not establish person/account binding. Independent Wallet authorization, HAIP,
+mdoc, Attester, UserInfo and batch extensions remain unselected.
+
+This scoped experiment uses the existing server signature-verification path:
+the signed My Number input includes DF31. The activation does not resolve
+[#208's general-service decision](identity-age-predicates.md#my-number-evidence-decision-before-real-intake)
+or claim that the data is never transmitted. Physical receive/persist/presentation
+and authenticated owner/device qualification remain separate evidence.
+
+For this explicit operator profile, the preflight accepts the public modulus digest
+as its optional second argument. It validates selection, not provenance or approval:
+
+```sh
+npm run check:identity-test-trust -- /absolute/path/to/compact-test-trust.json 4f165687b442164881e40b9f2d06a50a3b6e7ddeb45844fbdb7ab604dd9ee6ff
+```
+
+The earlier discovery-only main promotion was blocked by the already-applied
+Owner migration; the follow-up also updates current Work packets to include all
+18 Owner/Work migrations while preserving retained 14–17-file packet verification.
+Source-matched promotion and public smoke must establish the actual deployment.
+
 ### Public issuer discovery activation — 2026-10-15
 
-The experimental production configuration now selects `IDENTITY_ENABLED=true`,
+The initial experimental production configuration selected `IDENTITY_ENABLED=true`,
 `IDENTITY_ISSUANCE_ENABLED=false` and `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'`.
 This publishes the issuer's credential metadata, authorization-server metadata,
 dedicated public signing key and credential type description. Credential metadata
@@ -143,8 +190,8 @@ physical-device success are not activation gates.
 The promotion validator now permits a separate first-party `age_over_18` SD-JWT
 test profile when dedicated signing custody, the reviewed limiter and an exact
 live driving-licence trust policy are selected. The checked-in production config
-publishes discovery with issuance explicitly disabled; this contract does not
-activate issuance.
+now selects the separate operator-confirmed card test described above; it does
+not select the licence issuer profile.
 
 First obtain an independently approved licence issuer key and record its source,
 EF07/B6 identifier, validity and operator approval. Validate its **compact JSON**
@@ -179,9 +226,9 @@ the actual activation config, named RP and physical device remain required input
 
 | Profile / requirement | Remaining concrete input or work |
 | --- | --- |
-| Card trust | Operator-validated issuer policies in `IDENTITY_TRUSTED_KEYS`: key ID, document kind, canonical RSA-2048 `n`/`e`, validity and licence subject-key identifier. Record the independent source and validation decision. Card-supplied or fixture keys are not an approval source. |
-| First-party single SD-JWT | Signing key custody is prepared above. The disabled key/rate-limit/age-only bindings are observed above; select approved card trust and explicitly activate the first-party profile. No Wallet/HAIP, mdoc or batch activation is needed for this first slice. |
-| CI secret custody | The workflow and promotion validator now include the selected dedicated Identity signing key. Approved card-trust secret provisioning and the exact activation selection remain outstanding; adding dashboard secrets alone does not complete that path. |
+| Card trust | The selected single-card operator experiment has its explicit test approval and pinned public modulus above, without government-root verification. A broader licence/issuer trust profile still needs an independent source and validation decision; repository fixtures are not an approval source. |
+| First-party single SD-JWT | The canonical selection enables one `age_over_18` receipt from the operator-confirmed key. Verify source-matched promotion, intake/nonce availability and a separate owner/device issuance. No independent Wallet/HAIP, mdoc or batch activation is needed for this slice. |
+| CI secret custody | The dedicated Identity signing key is prepared, and the existing approved test-card policy is normalized to compact JSON in the production-environment secret. Exact digest/profile checks still gate promotion; secret provisioning alone does not establish deployment. |
 | mdoc | Matching Document Signer certificate and its operator/RP trust decision (`IDENTITY_MDOC_CERT_DER`, or the reviewed credential-certificate configuration). This is required for mdoc, not the initial SD-JWT-only slice. |
 | Independent Wallet | Registered exact client ID/name/HTTPS callback in `IDENTITY_WALLET_CLIENTS`, then `IDENTITY_WALLET_ENABLED=true`; compile the corresponding public Wallet configuration. The callback fix alone does not register or authenticate a Wallet. |
 | HAIP / native attester | Purpose-specific client/key-attester and credential-signing trust, separate request-encryption key, required DPoP nonces, attester signing authority/client policy and a deployed Android verifier service binding. Enable the HAIP/attester flags only for this provisioned profile. See the [existing configuration contracts](identity-card-issuance.md#native-attester-enrollment-broker). |
@@ -191,8 +238,10 @@ the actual activation config, named RP and physical device remain required input
 
 For the first test, select one source document kind and one format. A driving-licence
 profile with independently approved licence issuer keys avoids depending on the
-unresolved My Number DF31 intake decision. Do not add My Number trust until that
-[real-intake gate](identity-age-predicates.md#my-number-evidence-decision-before-real-intake) is resolved.
+unresolved My Number DF31 intake decision. The explicitly selected single-card
+operator experiment above uses the existing verification path; general My Number
+intake remains subject to the separate
+[decision](identity-age-predicates.md#my-number-evidence-decision-before-real-intake).
 Select `IDENTITY_ISSUANCE_CLAIMS='["age_over_18"]'` explicitly; absence selects the
 existing full raw-attribute profile. Keep independent Wallet, UserInfo, HAIP,
 attester and both batch extensions disabled until their own inputs are ready.

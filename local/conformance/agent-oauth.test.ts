@@ -483,9 +483,15 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     );
     assert.equal((await env.DB.prepare('SELECT count(*) n FROM agent_oauth_token').first()).n, 0);
     await env.DB.prepare('DROP TRIGGER fail_oauth_token').run();
-    const responses = await Promise.all([exchange(r, code), exchange(r, code)]);
+    // Consume each concurrent transport body once, as its request completes.
+    const responses = await Promise.all(
+      [exchange(r, code), exchange(r, code)].map(async (request) => {
+        const response = await request;
+        return { status: response.status, body: await response.text() };
+      }),
+    );
     assert.deepEqual(responses.map((v) => v.status).sort(), [200, 400]);
-    const issued = (await responses.find((v) => v.status === 200)!.json()) as OAuthTokens;
+    const issued = JSON.parse(responses.find((v) => v.status === 200)!.body) as OAuthTokens;
     assert.equal(issued.scope, 'list read');
     assert.match(issued.access_token, /^moa_[A-Za-z0-9_-]{43}$/);
     assert.equal(issued.refresh_token, undefined);
