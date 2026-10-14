@@ -8,19 +8,19 @@ authority, retried, or replaced. The production OP remains outside this lane.
 `node scripts/prepare-work-authority.ts prepare ACCOUNT local/generated/OUTPUT`
 prepares an offline packet from a clean commit. It builds the actual product
 Rust/Wasm, without the `work-qualification` feature, and packages the named OP
-facades, checkpoint bundle, fifteen frozen migrations and input inventory.
+facades, checkpoint bundle, seventeen frozen migrations and input inventory.
 The Wasm must contain the selected commit. Each member has a byte count and
 SHA-256, and the packaged schema is applied only to in-memory SQLite. Verification
 uses `node scripts/prepare-work-authority.ts verify PACKET`.
 
-The current fifteen-file chain includes all three production baseline files and
-the twelve opt-in Work files, without renaming either `0003` migration. The
-retained fourteen-file packets omit the waiting-list migration and retain their
-original fourteen-file plan, member inventory and source identity. Verification
-accepts only these exact filename sets, pins the applicable immutable baseline
-bytes and derives the matching plan. Removing the waiting-list file from a
-current packet or adding it to a retained packet is refused; an old packet is
-never silently upgraded or substituted for current-source qualification.
+The current seventeen-file chain includes all five production owner migrations
+and the twelve opt-in Work files, without renaming migrations that share a
+numeric prefix. Retained fourteen-, fifteen- and sixteen-file packets keep their
+original exact owner-migration prefix, plan, member inventory and source identity.
+Verification pins each applicable migration's bytes and derives the matching
+plan. Adding the login-review migration to an older packet, or removing a
+required file from a current packet, is refused; an old packet is never silently
+upgraded or substituted for current-source qualification.
 
 The fixed account is `4b749427a0c80c547e726a42aff4b6fc`. Intended resources are
 `mikaki-work-authority-qualification` (OP and D1),
