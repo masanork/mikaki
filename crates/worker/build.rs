@@ -6,6 +6,8 @@ fn main() {
     println!("cargo:rerun-if-changed=../../branding");
     println!("cargo:rerun-if-changed=ui/BrandMark.svelte");
     println!("cargo:rerun-if-changed=ui/login.ts");
+    println!("cargo:rerun-if-changed=ui/login-history.ts");
+    println!("cargo:rerun-if-changed=ui/ConnectionReview.svelte");
     println!("cargo:rerun-if-changed=ui/auth.css");
     println!("cargo:rerun-if-changed=ui/product.css");
     println!("cargo:rerun-if-changed=ui/ProductHeader.svelte");

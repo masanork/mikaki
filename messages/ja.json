@@ -706,5 +706,20 @@
   "work_copy_pending": "コピー中",
   "work_copy_waiting": "開始待ち",
   "work_copy_attention": "確認が必要",
-  "work_new_copy": "新しいコピーを準備"
+  "work_new_copy": "新しいコピーを準備",
+  "loginHistoryFirst": "この接続の確認済み履歴がありません。",
+  "loginHistoryUnavailable": "このブラウザでは接続履歴を確認できません。",
+  "loginHistoryKnown": "このブラウザで前回サインインした日時：{date}",
+  "loginHistoryChanged": "前回確認した接続から変更があります。",
+  "loginAddressHint": "アドレスバーとPasskey画面のドメインも確かめてください。履歴は安全性の証明ではありません。",
+  "loginReviewTitle": "接続先を確認してください",
+  "loginPreviousDestination": "前回の接続先",
+  "loginConnectionPurpose": "今回の要求",
+  "loginPurposeSignIn": "このアプリへのサインイン",
+  "loginPurposeProfile": "サインインとプロフィール情報の要求。情報の開示には別の承認が必要です。",
+  "loginScopeChanged": "要求している情報が前回から変わっています。",
+  "loginReviewHint": "自分で始めた接続か確かめてください。続けるまでは、このアプリへの接続は確定しません。",
+  "loginReviewApprove": "この接続を続ける",
+  "loginReviewCancel": "接続をやめる",
+  "loginReviewExpired": "確認の有効時間が切れました。Passkeyでもう一度操作してください。"
 }

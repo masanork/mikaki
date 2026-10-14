@@ -315,6 +315,16 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     assert.ok(passkeyEvents.includes('passkey-test:auto-aborted'));
     assert.ok(passkeyEvents.includes('passkey-test:button-cancelled'));
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).click();
+    await page.getByRole('heading', { name: '接続先を確認してください' }).waitFor();
+    assert.equal(
+      (
+        await DB.prepare(
+          "SELECT COUNT(*) AS n FROM app_connection WHERE client_id='test-client'",
+        ).first()
+      ).n,
+      0,
+    );
+    await page.getByRole('button', { name: 'この接続を続ける' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
     assert.ok(passkeyEvents.includes('passkey-test:button-retry'));
     const secondSso = (await context.cookies(issuer)).find(

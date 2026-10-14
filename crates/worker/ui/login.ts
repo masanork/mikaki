@@ -11,8 +11,11 @@ if (target.dataset['page'] === 'home') {
   target.replaceChildren();
   mount(Home, { target, props: { locale } });
 } else {
-  const { tx, challenge, rpId, rpUri, client, enrollment, ownerLogin } = target.dataset;
+  const { tx, challenge, rpId, rpUri, client, enrollment, ownerLogin, loginScope, expiresInMs } =
+    target.dataset;
   if (!tx || !challenge || !rpId || !rpUri || !client) throw new Error('Invalid login transaction');
+  const lifetime = expiresInMs === undefined ? 300_000 : Number(expiresInMs);
+  if (!Number.isFinite(lifetime) || lifetime < 0) throw new Error('Invalid login lifetime');
 
   mount(Login, {
     target,
@@ -24,6 +27,8 @@ if (target.dataset['page'] === 'home') {
       client,
       enrollment: enrollment === 'true',
       ownerLogin: ownerLogin === 'true',
+      scope: loginScope ?? 'openid',
+      expiresInMs: lifetime,
       locale: initializeLocale(),
     },
   });
