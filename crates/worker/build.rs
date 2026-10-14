@@ -20,6 +20,9 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerAppArchiveImport.svelte");
     println!("cargo:rerun-if-changed=ui/vault-app-archive-handoff.ts");
+    println!("cargo:rerun-if-changed=ui/OwnerWorkspaceSnapshots.svelte");
+    println!("cargo:rerun-if-changed=ui/vault-workspace-snapshot.ts");
+    println!("cargo:rerun-if-changed=ui/vault-workspace-handoff.ts");
     println!("cargo:rerun-if-changed=ui/VaultWebMcp.svelte");
     println!("cargo:rerun-if-changed=ui/vault-webmcp.ts");
     println!("cargo:rerun-if-changed=ui/webmcp.ts");

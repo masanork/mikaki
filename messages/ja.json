@@ -781,5 +781,20 @@
   "appArchiveSaveFailed": "保存結果を確認できませんでした。同じ保存を再試行してください。",
   "appArchiveInvalid": "会話を受け取れませんでした。Cloudflare OSからやり直してください。",
   "appArchiveCopySource": "{origin}から保存した会話のコピー",
-  "appArchiveSavedReloadFailed": "コピーは保存しましたが、一覧を更新できませんでした。Vaultを再読込してください。"
+  "appArchiveSavedReloadFailed": "コピーは保存しましたが、一覧を更新できませんでした。Vaultを再読込してください。",
+  "workspaceSnapshotHeading": "Cloudflare OSの保存版",
+  "workspaceSnapshotBoundary": "会話・添付・コード履歴とガジェットのSQL/KVデータを、2MiBまで暗号化して保存します。実行中の処理・接続権限・共有リンクは復元対象に含みません。",
+  "workspaceSnapshotDestination": "{origin}に、選んだ保存版の内容を送ります。",
+  "workspaceSnapshotEmpty": "保存版はありません。",
+  "workspaceSnapshotReadFailed": "保存版を確認できませんでした。もう一度一覧を開いてください。",
+  "workspaceSnapshotList": "保存版を確認（最大8件ずつ）",
+  "workspaceSnapshotPreview": "{gadgets}件のガジェットと{records}件のワークスペースデータ",
+  "workspaceSnapshotSaved": "保存版を暗号化してVaultに保存しました。",
+  "workspaceSnapshotSent": "選んだ保存版を送信しました。Cloudflare OSで復元結果を確認してください。",
+  "workspaceSnapshotRestored": "Cloudflare OSから、新しいワークスペースへの復元完了が通知されました。",
+  "workspaceSnapshotInvalid": "受け渡しを確認できませんでした。Cloudflare OSからやり直してください。",
+  "workspaceSnapshotRestoreBoundary": "この保存版を復号した内容だけを送信します。Cloudflare OSは新しいワークスペースを作成します。外部サービスへの接続は再設定が必要です。",
+  "workspaceSnapshotRestore": "この内容を送信して新しいワークスペースに復元",
+  "workspaceSnapshotWrongOrigin": "保存元と復元先が異なるため、この保存版は送信できません。",
+  "workspaceSnapshotDismiss": "閉じる"
 }

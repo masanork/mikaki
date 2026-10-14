@@ -83,6 +83,7 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
       ),
     ]);
     let activeSecret = secret;
+    let loseWorkspaceSnapshot = false;
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     let ceremonies = 0;
@@ -244,6 +245,16 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
         response.ok
       ) {
         loseWrapper = false;
+        await route.abort();
+        return;
+      }
+      if (
+        loseWorkspaceSnapshot &&
+        path.startsWith('/vault/records/workspace-snapshots/') &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        loseWorkspaceSnapshot = false;
         await route.abort();
         return;
       }
@@ -752,6 +763,142 @@ test('new owner Vault uses one PRF for profile and conversation reads/writes, ex
     );
     await recipient.close();
     await source.close();
+
+    const workspaceSnapshot = {
+      format: 'cloudflare-os-workspace',
+      version: 1,
+      title: 'Saved app and conversation',
+      source: {
+        origin: appOrigin,
+        workspaceId: 'a'.repeat(64),
+        capturedAt: '2026-10-15T00:00:00.000Z',
+      },
+      records: [
+        ['version', 4],
+        [
+          'chats:a0.a0',
+          { type: 'object', value: [['message', 'Workspace private payload '.repeat(3000)]] },
+        ],
+      ],
+      gadgets: [
+        {
+          id: 1,
+          state: {
+            schema: [
+              {
+                type: 'table',
+                name: 'notes',
+                sql: 'CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT)',
+              },
+            ],
+            tables: [{ name: 'notes', columns: ['id', 'body'], rows: [[1, 'Saved gadget note']] }],
+            kv: [['theme', 'dark']],
+          },
+        },
+      ],
+    };
+    const workspaceScript = sourceRoot
+      ? (
+          await build({
+            entryPoints: [
+              resolve(sourceRoot, 'packages/workshop-frontend/src/features/chat/vaultWorkspace.ts'),
+            ],
+            bundle: true,
+            write: false,
+            format: 'esm',
+            platform: 'browser',
+          })
+        ).outputFiles![0]!.text
+      : `export function transferWorkspace(destination,mode,read,signal) {
+      const popup=window.open(destination.href,'_blank'),channel=crypto.randomUUID();
+      return new Promise(resolve=>{
+        let requested=false;
+        const timer=setInterval(()=>{if(!requested) popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'offer',mode},destination.origin);},100);
+        const receive=async event=>{
+          const v=event.data;
+          if(event.source!==popup||event.origin!==destination.origin||v.protocol!=='mikaki-workspace-v1'||v.channel!==channel) return;
+          if(v.type==='request'&&mode==='save'&&!requested){requested=true;popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'snapshot',snapshot:await read()},destination.origin);}
+          if(v.type==='saved'&&mode==='save'||v.type==='snapshot'&&mode==='restore') {clearInterval(timer);window.removeEventListener('message',receive);resolve({snapshot:v.snapshot,restored:()=>popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'restored'},destination.origin)});}
+        };
+        window.addEventListener('message',receive);
+      });
+    }`;
+    await context.route(`${appOrigin}/**`, (route) => {
+      if (new URL(route.request().url()).pathname === '/workspace-sender.js')
+        return route.fulfill({ contentType: 'text/javascript', body: workspaceScript });
+      return route.fulfill({
+        contentType: 'text/html',
+        body: `<!doctype html><title>Cloudflare OS workspace fixture</title>
+        <button id="save-workspace">Save workspace</button><button id="restore-workspace">Restore workspace</button><output id="workspace-result"></output>
+        <script type="module">
+          import {transferWorkspace} from './workspace-sender.js';
+          const snapshot=${JSON.stringify(JSON.stringify(workspaceSnapshot))};
+          document.getElementById('save-workspace').onclick=async()=>{await transferWorkspace(new URL('${origin}/vault'),'save',async()=>snapshot,new AbortController().signal);document.getElementById('workspace-result').textContent='Saved workspace';};
+          document.getElementById('restore-workspace').onclick=async()=>{const transfer=await transferWorkspace(new URL('${origin}/vault'),'restore',async()=>{throw new Error('must not read another workspace');},new AbortController().signal);if(transfer.snapshot!==snapshot) throw new Error('snapshot changed in transit');document.getElementById('workspace-result').textContent='Restored workspace';transfer.restored();};
+        </script>`,
+      });
+    });
+    const os = await context.newPage();
+    await os.goto(appOrigin);
+    const savePopup = os.waitForEvent('popup');
+    await os.locator('#save-workspace').click();
+    const vaultSave = await savePopup;
+    await vaultSave.setViewportSize({ width: 390, height: 844 });
+    vaultSave.on('dialog', (d) => void d.accept());
+    await vaultSave.goto(`${origin}/vault?lang=en`);
+    await vaultSave.locator('#unlock').click();
+    await expect(
+      vaultSave.getByRole('heading', { name: workspaceSnapshot.title, exact: true }),
+    ).toBeVisible();
+    await expect(os.locator('#workspace-result')).toHaveText('');
+    const beforeWorkspace = recordBodies.length;
+    loseWorkspaceSnapshot = true;
+    await vaultSave.locator('#workspace-snapshot-save').click();
+    await expect(vaultSave.locator('#workspace-snapshot-save')).toHaveText('Retry the same save');
+    await expect(os.locator('#workspace-result')).toHaveText('');
+    await vaultSave.locator('#workspace-snapshot-save').click();
+    await expect(os.locator('#workspace-result')).toHaveText('Saved workspace');
+    assert.equal(recordBodies.length, beforeWorkspace + 2);
+    assert.equal(recordBodies[beforeWorkspace], recordBodies[beforeWorkspace + 1]);
+    assert.ok(
+      recordBodies[beforeWorkspace]!.length > 24000 &&
+        !recordBodies[beforeWorkspace]!.includes('Workspace private payload'),
+    );
+    await vaultSave.close();
+    const restorePopup = os.waitForEvent('popup');
+    await os.locator('#restore-workspace').click();
+    const vaultRestore = await restorePopup;
+    await vaultRestore.setViewportSize({ width: 390, height: 844 });
+    vaultRestore.on('dialog', (d) => void d.accept());
+    await vaultRestore.goto(`${origin}/vault?lang=en`);
+    await vaultRestore.locator('#unlock').click();
+    await expect(
+      vaultRestore.getByText('Send the selected snapshot contents to https://os.example.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await vaultRestore.locator('#workspace-snapshot-list').click();
+    await vaultRestore.getByRole('button', { name: /Saved app and conversation/ }).click();
+    await expect(os.locator('#workspace-result')).toHaveText('Saved workspace');
+    await vaultRestore.locator('#workspace-snapshot-restore').scrollIntoViewIfNeeded();
+    assert.ok(
+      await vaultRestore.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      'Snapshot review fits the mobile viewport',
+    );
+    await auditAccessibility(vaultRestore, 'workspace-vault-restore-mobile');
+    await vaultRestore.screenshot({
+      path: 'artifacts/cloudflare-os-vault/workspace-restore-mobile.png',
+    });
+    await vaultRestore.locator('#workspace-snapshot-restore').click();
+    await expect(os.locator('#workspace-result')).toHaveText('Restored workspace');
+    await expect(
+      vaultRestore.locator('section[aria-labelledby=workspace-snapshots-heading] [role=status]'),
+    ).toContainText('Cloudflare OS reported that a new workspace was restored.');
+    assert.equal(await vaultRestore.evaluate(() => sessionStorage.length), 0);
+    await vaultRestore.getByRole('button', { name: 'Lock Vault', exact: true }).click();
+    await expect(vaultRestore.getByText(workspaceSnapshot.title, { exact: true })).toHaveCount(0);
+    await vaultRestore.close();
+    await os.close();
   } finally {
     await browser?.close();
     await harness.close();

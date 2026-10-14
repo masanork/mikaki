@@ -28,8 +28,8 @@
     "gzip": 30720
   },
   "/vault/vault.js": {
-    "raw": 327680,
-    "gzip": 94208
+    "raw": 344064,
+    "gzip": 98304
   },
   "/vault/search.js": {
     "raw": 245760,
