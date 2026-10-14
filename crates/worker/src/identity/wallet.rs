@@ -221,7 +221,7 @@ fn clients(ctx: &RouteContext<()>) -> worker::Result<(Vec<Client>, String)> {
             let encryption_policy = super::encryption_key(ctx)?
                 .map(|key| key.public().metadata().to_string())
                 .unwrap_or_default();
-            format!("haip-attestation-v7-query-time:{trust}:{key_trust}:{encryption_policy}")
+            format!("haip-attestation-v8-code60:{trust}:{key_trust}:{encryption_policy}")
         }
     } else {
         "public-wallet-v3-par-completion".to_owned()
@@ -637,8 +637,10 @@ pub async fn authorize_post(mut req: Request, ctx: RouteContext<()>) -> worker::
         return error(401, "authentication_required");
     };
     let code = random()?;
-    let callback = db.prepare("UPDATE identity_wallet_grant SET state=?1,document_id=?2,code_hash=?3,csrf_hash=NULL,expires_at=unixepoch()+90 WHERE grant_id=?4 AND state='pending' AND expires_at>unixepoch() AND csrf_hash=?5 AND session_hash=?6 AND account_id=?7 AND client_policy_hash=?8 AND policy_hash=?9 AND (par_hash IS NULL OR EXISTS(SELECT 1 FROM identity_wallet_par p WHERE p.request_hash=par_hash AND p.client_id=identity_wallet_grant.client_id AND p.client_policy_hash=?8 AND p.used=0 AND p.expires_at>unixepoch())) AND epoch=(SELECT epoch FROM account_security WHERE account_id=?7 AND active=1) AND (?1='denied' OR EXISTS(SELECT 1 FROM identity_document d WHERE d.document_id=?2 AND d.account_id=?7 AND d.epoch=identity_wallet_grant.epoch AND d.revoked=0 AND d.valid_until>unixepoch() AND d.policy_hash=?9)) RETURNING redirect_uri,wallet_state")
-        .bind(&[js(if body.decision == "approve" {"offered"} else {"denied"}), if body.decision == "approve" {js(body.document.as_deref().unwrap())} else {JsValue::NULL}, if body.decision == "approve" {js(&hash(&code))} else {JsValue::NULL}, js(&body.grant), js(&hash(&body.csrf)), js(&owner.secret_hash), js(&owner.account_id), js(&client_policy), js(&policy_hash)])?.first::<Callback>(None).await?;
+    // HAIP inherits FAPI 2.0's maximum 60-second authorization-code lifetime.
+    let code_lifetime = if haip(&ctx) { 60.0 } else { 90.0 };
+    let callback = db.prepare("UPDATE identity_wallet_grant SET state=?1,document_id=?2,code_hash=?3,csrf_hash=NULL,expires_at=unixepoch()+?10 WHERE grant_id=?4 AND state='pending' AND expires_at>unixepoch() AND csrf_hash=?5 AND session_hash=?6 AND account_id=?7 AND client_policy_hash=?8 AND policy_hash=?9 AND (par_hash IS NULL OR EXISTS(SELECT 1 FROM identity_wallet_par p WHERE p.request_hash=par_hash AND p.client_id=identity_wallet_grant.client_id AND p.client_policy_hash=?8 AND p.used=0 AND p.expires_at>unixepoch())) AND epoch=(SELECT epoch FROM account_security WHERE account_id=?7 AND active=1) AND (?1='denied' OR EXISTS(SELECT 1 FROM identity_document d WHERE d.document_id=?2 AND d.account_id=?7 AND d.epoch=identity_wallet_grant.epoch AND d.revoked=0 AND d.valid_until>unixepoch() AND d.policy_hash=?9)) RETURNING redirect_uri,wallet_state")
+        .bind(&[js(if body.decision == "approve" {"offered"} else {"denied"}), if body.decision == "approve" {js(body.document.as_deref().unwrap())} else {JsValue::NULL}, if body.decision == "approve" {js(&hash(&code))} else {JsValue::NULL}, js(&body.grant), js(&hash(&body.csrf)), js(&owner.secret_hash), js(&owner.account_id), js(&client_policy), js(&policy_hash), JsValue::from_f64(code_lifetime)])?.first::<Callback>(None).await?;
     let Some(callback) = callback else {
         return error(409, "transaction_unavailable");
     };

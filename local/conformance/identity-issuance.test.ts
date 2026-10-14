@@ -897,6 +897,17 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal((await submit({}, 'owner-cookie', root, changedWallet)).status, 409);
       const response = await submit();
       assert.equal(response.status, 303, await response.clone().text());
+      if (decision === 'approve') {
+        const lifetime = await DB.prepare(
+          'SELECT expires_at-unixepoch() AS remaining FROM identity_wallet_grant WHERE grant_id=?',
+        )
+          .bind(grant)
+          .first('remaining');
+        assert.ok(
+          typeof lifetime === 'number' && lifetime >= 88 && lifetime <= 90,
+          'public Wallet codes retain their 90-second lifetime',
+        );
+      }
       assert.equal((await submit()).status, 409);
       const callback = new URL(response.headers.get('location')!);
       assert.equal(callback.origin + callback.pathname, walletClient.redirect_uri);
@@ -3309,6 +3320,15 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
       assert.equal(haipCallback.searchParams.get('channel'), 'wallet');
       assert.equal(haipCallback.searchParams.getAll('code').length, 1);
       const code = haipCallback.searchParams.get('code')!;
+      const lifetime = await DB.prepare(
+        'SELECT expires_at-unixepoch() AS remaining FROM identity_wallet_grant WHERE code_hash=?',
+      )
+        .bind(hash(code))
+        .first('remaining');
+      assert.ok(
+        typeof lifetime === 'number' && lifetime >= 58 && lifetime <= 60,
+        'HAIP codes expire within FAPI’s 60-second maximum',
+      );
       const exchange = (
         headers: Record<string, string>,
         exchangeCode = code,

@@ -10,6 +10,7 @@ import {
   sourceIsCurrent,
 } from './deploy-production.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
+import { identityTestTrust } from './identity-test-profile.ts';
 
 function runtimeSecretsFixture() {
   const makeKey = () => {
@@ -203,6 +204,69 @@ test('Identity custody stays disabled and age-only, with dedicated signing and a
       (error: unknown) =>
         error instanceof Error && !error.message.includes('do-not-print-private-key'),
     );
+});
+
+test('first-party age activation requires exact live licence trust, and keeps all other profiles closed', () => {
+  const config = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  const env = runtimeSecretsFixture();
+  const { n, e } = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({
+    format: 'jwk',
+  });
+  const now = Math.floor(Date.now() / 1000);
+  const trust = [
+    {
+      id: 'synthetic-licence-issuer',
+      document_type: 'driving_license',
+      n,
+      e,
+      subject_key_identifier: Buffer.alloc(32, 8).toString('base64url'),
+      not_before: now - 60,
+      not_after: now + 3600,
+    },
+  ];
+  const raw = JSON.stringify(trust);
+  config.vars.IDENTITY_ENABLED = 'true';
+  config.vars.IDENTITY_TRUST_POLICY_SHA256 = identityTestTrust(raw).policy_sha256;
+  config.secrets.required.push('IDENTITY_TRUSTED_KEYS');
+  const credentials = { ...env, IDENTITY_TRUSTED_KEYS: raw };
+  assert.equal(productionRuntimeSecrets(config, credentials).IDENTITY_TRUSTED_KEYS, raw);
+  for (const changed of [
+    undefined,
+    '',
+    JSON.stringify([{ ...trust[0], id: 'substitute-issuer' }]),
+    JSON.stringify([{ ...trust[0], not_after: now }]),
+    JSON.stringify([{ ...trust[0], document_type: 'my_number_card' }]),
+  ])
+    assert.throws(() =>
+      productionRuntimeSecrets(config, { ...credentials, IDENTITY_TRUSTED_KEYS: changed }),
+    );
+  for (const flag of [
+    'IDENTITY_WALLET_ENABLED',
+    'IDENTITY_HAIP_ENABLED',
+    'IDENTITY_USERINFO_ENABLED',
+    'IDENTITY_HAIP_AGE_BATCH_ENABLED',
+    'IDENTITY_HAIP_AGE_POOL_ENABLED',
+  ])
+    assert.throws(
+      () =>
+        productionRuntimeSecrets(
+          { ...config, vars: { ...config.vars, [flag]: 'true' } },
+          credentials,
+        ),
+      /other Identity capabilities/,
+    );
+  assert.throws(
+    () =>
+      productionRuntimeSecrets(
+        { ...config, vars: { ...config.vars, IDENTITY_TRUST_POLICY_SHA256: '0'.repeat(64) } },
+        credentials,
+      ),
+    /reviewed policy/,
+  );
+  const prepared = JSON.parse(readFileSync('crates/worker/wrangler.production.jsonc', 'utf8'));
+  assert.equal('IDENTITY_TRUSTED_KEYS' in productionRuntimeSecrets(prepared, credentials), false);
+  prepared.secrets.required.push('IDENTITY_TRUSTED_KEYS');
+  assert.throws(() => productionRuntimeSecrets(prepared, credentials), /card-trust custody/);
 });
 
 test('OP Queue producer/consumer config is source-bound and isolated from local queues', () => {

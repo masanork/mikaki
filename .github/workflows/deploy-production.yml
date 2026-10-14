@@ -79,6 +79,7 @@ jobs:
           WAITLIST_MAIL_KEY: ${{ secrets.WAITLIST_MAIL_KEY }}
           WORK_CREDENTIAL_KEY_V1: ${{ secrets.WORK_CREDENTIAL_KEY_V1 }}
           IDENTITY_ISSUER_JWK: ${{ secrets.IDENTITY_ISSUER_JWK }}
+          IDENTITY_TRUSTED_KEYS: ${{ secrets.IDENTITY_TRUSTED_KEYS }}
         run: node scripts/deploy-production.ts "$PROMOTION_DIR"
       - name: Remove temporary secret file
         if: always()
