@@ -88,6 +88,43 @@ trusted program and Dockerfile: source data stays out of image layers. Use that
 generated context when building the image, never the repository root. The base
 Node image is digest-pinned and the Docker build targets `linux/amd64`.
 
+### Select the executable image digest
+
+A registry digest can identify an OCI index containing an executable image and
+BuildKit attestation manifests. Resolve the index to one `linux/amd64` image
+manifest before setting `host.image_digest` in a copy binding target or the
+Container's named image reference. Docker's local architecture inspection and
+Wrangler's image preparation response do not establish that the selected
+reference boots remotely.
+
+The offline [image selector](../scripts/select-work-git-host-image.ts) consumes
+retained registry metadata. Store the original index, selected manifest and image
+config bytes as `<sha256 hex>.json` in a trusted metadata directory, then run:
+
+```sh
+npm run select:work-git-host-image -- ACCOUNT_ID registry.cloudflare.com/ACCOUNT_ID/REPOSITORY@sha256:DIGEST METADATA_DIRECTORY
+```
+
+It verifies each object's digest and descriptor size, requires one unambiguous
+executable amd64/Linux member, excludes attestation manifests and independently
+checks the image config's platform. A direct image manifest is also accepted.
+Use its `runtime_reference` for the named image and `runtime_digest` for
+`host.image_digest`. The receipt omits config environment values. This tool has
+no authentication, network, upload or startup capability; remote startup, program
+hash and owner/copy authority remain separate evidence.
+
+On 2026-10-14, an isolated private diagnostic in the selected account reproduced
+startup failure for index `938fbcc4…`, even with `/bin/sleep` as its entrypoint.
+The same account and instance type started Cloudflare's managed image. Selecting
+the index's executable manifest `bb22d76d…` started successfully; the remote
+`/app/host.mjs` hash matched the retained program and application readiness
+returned HTTP 200. No source packs, Artifacts capability or copy credential
+entered this diagnostic. The production host's closed image reference was
+changed while its code, bindings and original namespace were preserved. The
+blocked copy and its unknown Git outcome remain retained; this does not complete
+copy/readback qualification. See [Container scheduling and named images](https://developers.cloudflare.com/containers/configuration/scheduling-policy/)
+and [startup monitoring](https://developers.cloudflare.com/containers/api/durable-object-container/#monitor).
+
 Store the three source files in a separately selected **private** R2 bucket,
 under `registry/<registry_sha256>/registry.json`, `task.pack` and `snapshot.pack`.
 The publisher must retain the selected package pin; changing an object at that

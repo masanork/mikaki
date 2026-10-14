@@ -107,6 +107,15 @@ After authentication and fresh resource inventory checks:
    reference from provider metadata. Verify account, private routes, bindings
    and image against the selected packet before invoking the probe.
 
+Resolve an OCI index to its executable amd64/Linux manifest using the
+[offline image selector](work-git-host.md#select-the-executable-image-digest)
+before choosing the image pin. Preserve the index and selected manifest/config
+bytes as distinct evidence. A prepared image or Docker's local architecture
+report does not prove a remote start. Startup errors occur asynchronously after
+`start()` returns; use `monitor()` alongside the bounded readiness checks when
+diagnosing them. Existing unknown qualification slots and productive host
+journals must keep their original identities.
+
 These steps allocate only infrastructure test resources. Deployment does not
 enable the productive copy Workflow or adopt any protected Artifacts repository.
 The [example configuration](../crates/work-git-host-worker/wrangler.qualification.example.jsonc)
