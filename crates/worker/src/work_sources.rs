@@ -83,7 +83,11 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
     let static_asset = request.method() == Method::Get
         && matches!(
             url.path(),
-            "/work/source-review.js" | "/work/source-review.css" | "/work/browser-assistant.js"
+            "/work/source-review.js"
+                | "/work/source-review.css"
+                | "/work/browser-assistant.js"
+                | "/work/task-demo.js"
+                | "/work/task-demo.css"
         );
     if !listing && !reading && !page && !static_asset {
         return error(404, "not_found");
@@ -157,6 +161,16 @@ pub async fn handle(mut request: Request, env: Env) -> worker::Result<Response> 
             (
                 include_str!(concat!(env!("OUT_DIR"), "/work-assistant.js")),
                 "text/javascript; charset=utf-8",
+            )
+        } else if url.path() == "/work/task-demo.js" {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-task-demo.js")),
+                "text/javascript; charset=utf-8",
+            )
+        } else if url.path() == "/work/task-demo.css" {
+            (
+                include_str!(concat!(env!("OUT_DIR"), "/work-task-demo.css")),
+                "text/css; charset=utf-8",
             )
         } else if url.path().ends_with(".js") {
             (

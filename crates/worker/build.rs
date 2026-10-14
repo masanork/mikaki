@@ -38,6 +38,9 @@ fn main() {
         "WorkCopySession.svelte",
         "WorkCopyWorkspace.svelte",
         "WorkSources.svelte",
+        "WorkJourneyIntro.svelte",
+        "WorkJourneyDemo.svelte",
+        "work-task-demo.ts",
         "WorkSourceWorkspace.svelte",
         "WorkSourceSession.svelte",
         "work-preparations.ts",
@@ -242,6 +245,7 @@ fn main() {
         "work-sources",
         "work-preparations",
         "work-copy",
+        "work-task-demo",
     ] {
         let status = Command::new(&vite)
             .arg("build")

@@ -20,6 +20,8 @@ test('owner source access and real Git bytes through native OP/D1/private RPC', 
           '/work/source-review',
           '/work/source-review.js',
           '/work/source-review.css',
+          '/work/task-demo.js',
+          '/work/task-demo.css',
         ]) {
           assert.equal((await f.http(path, f.first, {}, f.disabled)).status, 404);
           const response = await f.http(path);

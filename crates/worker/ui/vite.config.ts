@@ -17,6 +17,7 @@ if (
     'work-sources',
     'work-preparations',
     'work-copy',
+    'work-task-demo',
   ].includes(entry)
 )
   throw new Error('Unknown Worker UI entry');
