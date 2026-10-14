@@ -1,7 +1,8 @@
 import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { readFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
@@ -36,7 +37,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     await worker.applyD1Migrations('DB');
-    const { DB } = await worker.getEnv();
+    let { DB } = await worker.getEnv();
     const policy = JSON.parse(
       await readFile(new URL('../generated/worker-policy.json', import.meta.url), 'utf8'),
     );
@@ -415,6 +416,120 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
     await page.getByRole('heading', { name: '接続先を確認してください' }).waitFor();
     await page.getByRole('button', { name: 'この接続を続ける' }).click();
     await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
+    assert.equal(
+      await DB.prepare(
+        "SELECT reviewed_scope FROM app_connection WHERE client_id='test-client' AND account_id=(SELECT account_id FROM credential WHERE credential_id=?)",
+      )
+        .bind(lostCredential)
+        .first('reviewed_scope'),
+      'openid',
+    );
+
+    // A changed authenticated PAR must carry its authoritative profile scope
+    // through the review and real finish, even with a conflicting outer query.
+    const clientKey = await generateKeyPair('ES256', { extractable: true });
+    const clientJwk = await exportJWK(clientKey.publicKey);
+    await DB.prepare("INSERT INTO client_key VALUES('test-client','review',1,1,'ES256',?)")
+      .bind(
+        Buffer.concat([
+          Buffer.from([4]),
+          Buffer.from(clientJwk.x!, 'base64url'),
+          Buffer.from(clientJwk.y!, 'base64url'),
+        ]),
+      )
+      .run();
+    await harness.update({
+      root: new URL('../..', import.meta.url).pathname,
+      workers: [
+        {
+          configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
+          vars: { MIKAKI_ISSUER: issuer, MIKAKI_PAR_MODE: 'required' },
+        },
+      ],
+    });
+    DB = (await worker.getEnv()).DB;
+    const now = Math.floor(Date.now() / 1000);
+    const assertion = await new SignJWT({ jti: randomUUID() })
+      .setProtectedHeader({ alg: 'ES256', kid: 'review' })
+      .setIssuer('test-client')
+      .setSubject('test-client')
+      .setAudience(`${issuer}/par`)
+      .setIssuedAt(now)
+      .setExpirationTime(now + 60)
+      .sign(clientKey.privateKey);
+    const pushed = await worker.fetch(`${issuer}/par`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        ...Object.fromEntries(authorize.searchParams),
+        scope: 'openid profile',
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: assertion,
+      }).toString(),
+    });
+    assert.equal(pushed.status, 201, await pushed.clone().text());
+    const reference = `${issuer}/authorize?${new URLSearchParams({ client_id: 'test-client', request_uri: ((await pushed.json()) as { request_uri: string }).request_uri, scope: 'openid' })}`;
+    const currentSso = (await context.cookies(issuer)).find(
+      (cookie) => cookie.name === '__Host-op-sso',
+    )!;
+    const parPending = await worker.fetch(reference, {
+      redirect: 'manual',
+      headers: { cookie: `${currentSso.name}=${currentSso.value}` },
+    });
+    const parLogin = requiredHeader(parPending, 'location');
+    assert.equal(new URL(parLogin).pathname, '/login');
+    const parBrowser = requiredHeader(parPending, 'set-cookie').split(';')[0].split('=')[1];
+    await context.addCookies([
+      {
+        name: '__Host-op-browser',
+        value: parBrowser,
+        domain: 'mikaki.test',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    const beforeReview = await worker.fetch(parLogin, {
+      headers: { cookie: `__Host-op-browser=${parBrowser}` },
+    });
+    const parHtml = await beforeReview.text();
+    assert.match(parHtml, /data-login-scope="openid profile"/);
+    assert.match(parHtml, /data-connection-review-required="true"/);
+    await page.goto(parLogin);
+    await page.locator('#passkey').click();
+    await page.getByRole('alert').waitFor();
+    await page.locator('#passkey').click();
+    await page.locator('#connection-approve').waitFor();
+    assert.equal(
+      await DB.prepare(
+        "SELECT reviewed_scope FROM app_connection WHERE client_id='test-client' AND account_id=(SELECT account_id FROM credential WHERE credential_id=?)",
+      )
+        .bind(lostCredential)
+        .first('reviewed_scope'),
+      'openid',
+    );
+    await page.locator('#connection-approve').click();
+    await page.getByRole('heading', { name: 'Authorization resumed' }).waitFor();
+    assert.equal(
+      await DB.prepare(
+        "SELECT reviewed_scope FROM app_connection WHERE client_id='test-client' AND account_id=(SELECT account_id FROM credential WHERE credential_id=?)",
+      )
+        .bind(lostCredential)
+        .first('reviewed_scope'),
+      'openid profile',
+    );
+    const parSso = (await context.cookies(issuer)).find(
+      (cookie) => cookie.name === '__Host-op-sso',
+    )!;
+    const parResumed = await worker.fetch(reference, {
+      redirect: 'manual',
+      headers: { cookie: `${parSso.name}=${parSso.value}` },
+    });
+    assert.ok(
+      new URL(requiredHeader(parResumed, 'location')).searchParams.get('code'),
+      'reviewed PAR resumes and issues one code',
+    );
     assert.deepEqual(errors, []);
   } catch (error) {
     failure = error;

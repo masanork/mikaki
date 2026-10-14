@@ -17,6 +17,7 @@ function seededDb() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
   db.exec(migration('0001_owner_vault_initial.sql'));
+  db.exec(migration('0005_login_connection_review.sql'));
   const now = Math.floor(Date.now() / 1000);
   db.exec("INSERT INTO account_security VALUES('account',0,1)");
   db.exec("INSERT INTO credential VALUES('cred','account',1)");
@@ -27,7 +28,12 @@ function seededDb() {
     'client',
     REDIRECT,
   );
-  db.exec("INSERT INTO app_connection VALUES('account','client',1,1)");
+  db.exec(
+    "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('account','client',1,1)",
+  );
+  db.prepare(
+    'UPDATE app_connection SET reviewed_redirect_uri=?,reviewed_scope=?,reviewed_client_revision=1,reviewed_grant_version=1',
+  ).run(REDIRECT, 'openid');
   db.prepare("INSERT INTO sso_session VALUES('sso','account','cred',0,?,0)").run(now + 600);
   db.prepare('INSERT INTO sso_context VALUES(?,?,?)').run('sso', COOKIE_HASH, now - 10);
   return db;
@@ -42,6 +48,7 @@ type Options = {
   codeHash?: string;
   nonce?: string;
   candidateSub?: string;
+  scope?: string;
 };
 function runBatch(db: DatabaseSync, options: Options = {}) {
   const {
@@ -53,13 +60,14 @@ function runBatch(db: DatabaseSync, options: Options = {}) {
     codeHash = 'A'.repeat(43),
     nonce = 'test-nonce',
     candidateSub = 'Z'.repeat(43),
+    scope = 'openid',
   } = options;
   const now = Math.floor(Date.now() / 1000);
   const commands: Array<[string, Array<string | number>]> = [
     ['insert-pairwise-subject.sql', ['account', 'sector.example', candidateSub]],
     [
       'insert-authorization-client-session.sql',
-      [sid, 'sso', cookieHash, 'client', revision, redirect, now],
+      [sid, 'sso', cookieHash, 'client', revision, redirect, now, scope],
     ],
     [
       'insert-authorization-code.sql',
@@ -154,6 +162,100 @@ test('each batch failure rolls back every insert', () => {
       );
       assert.deepEqual(counts(db), [0, 0, 0, 0, 0]);
     }
+  } finally {
+    db.close();
+  }
+});
+
+test('a changed or removed review after SSO lookup cannot issue a code', () => {
+  for (const change of [
+    "UPDATE app_connection SET reviewed_redirect_uri='https://client.example/other'",
+    "UPDATE app_connection SET reviewed_scope='openid profile'",
+    'UPDATE app_connection SET reviewed_client_revision=NULL',
+    'UPDATE app_connection SET grant_version=grant_version+1',
+  ]) {
+    const db = seededDb();
+    try {
+      db.exec(change);
+      assert.throws(() => runBatch(db));
+      assert.deepEqual(counts(db), [0, 0, 0, 0, 0]);
+    } finally {
+      db.close();
+    }
+  }
+  const db = seededDb();
+  try {
+    assert.throws(() => runBatch(db, { scope: 'openid profile' }));
+    assert.deepEqual(counts(db), [0, 0, 0, 0, 0]);
+  } finally {
+    db.close();
+  }
+});
+
+test('review persistence is bound to the consumed login and live client revision', () => {
+  const db = seededDb();
+  try {
+    const tx = 'L'.repeat(43),
+      browser = 'B'.repeat(43);
+    db.prepare(
+      `INSERT INTO login_transaction(tx_id,browser_hash,authorization_url,client_id,challenge,expires_at,client_revision,requested_scope)
+      VALUES(?,?,?,'client',?,?,1,'openid profile')`,
+    ).run(
+      tx,
+      browser,
+      'https://issuer.example/authorize',
+      'H'.repeat(43),
+      Math.floor(Date.now() / 1000) + 300,
+    );
+    const record = () =>
+      db
+        .prepare(sql('record-login-review.sql'))
+        .run(REDIRECT, 'openid profile', 'account', 'client', tx, browser);
+    assert.equal(record().changes, 0, 'unconsumed login has not accepted a proof');
+    db.exec('BEGIN IMMEDIATE');
+    db.exec('UPDATE login_transaction SET consumed=1');
+    assert.equal(record().changes, 1);
+    db.exec('ROLLBACK');
+    assert.equal(scalar(db, 'SELECT reviewed_scope FROM app_connection'), 'openid');
+    assert.equal(scalar(db, 'SELECT consumed FROM login_transaction'), 0);
+    db.exec('UPDATE login_transaction SET consumed=1');
+    db.exec('UPDATE client SET revision=2');
+    assert.equal(record().changes, 0, 'a client change during the ceremony cannot be approved');
+    db.exec('UPDATE login_transaction SET client_revision=2');
+    assert.equal(record().changes, 1);
+    assert.equal(scalar(db, 'SELECT reviewed_scope FROM app_connection'), 'openid profile');
+  } finally {
+    db.close();
+  }
+});
+
+test('the additive upgrade preserves existing grants without approving old contexts', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('PRAGMA foreign_keys=ON');
+    db.exec(migration('0001_owner_vault_initial.sql'));
+    db.exec("INSERT INTO account_security VALUES('account',0,1)");
+    db.exec(
+      "INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('client',1,1,'sector.example')",
+    );
+    db.exec(
+      "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('account','client',7,1)",
+    );
+    db.exec(migration('0005_login_connection_review.sql'));
+    assert.deepEqual(
+      { ...db.prepare('SELECT * FROM app_connection').get() },
+      {
+        account_id: 'account',
+        client_id: 'client',
+        grant_version: 7,
+        active: 1,
+        reviewed_redirect_uri: null,
+        reviewed_scope: null,
+        reviewed_client_revision: null,
+        reviewed_grant_version: null,
+      },
+    );
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   } finally {
     db.close();
   }

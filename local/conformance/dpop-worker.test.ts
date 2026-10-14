@@ -85,7 +85,9 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
       DB.prepare("INSERT INTO signing_key VALUES('op',1,1,'ES256',?)").bind(
         JSON.stringify(opPublic),
       ),
-      DB.prepare("INSERT INTO app_connection VALUES('account','rp',1,1)"),
+      DB.prepare(
+        "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('account','rp',1,1)",
+      ),
       DB.prepare("INSERT INTO sso_session VALUES('sso','account','credential',1,?,0)").bind(
         now() + 3600,
       ),
@@ -683,6 +685,9 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
           .run();
         const cookie = secret();
         await DB.prepare('UPDATE sso_context SET secret_hash=?').bind(digest(cookie)).run();
+        await DB.prepare(
+          "UPDATE app_connection SET reviewed_redirect_uri='https://rp.example/callback',reviewed_scope='openid',reviewed_client_revision=(SELECT revision FROM client WHERE client_id='rp'),reviewed_grant_version=grant_version WHERE client_id='rp'",
+        ).run();
         const withCookie = () =>
           worker.fetch(reference, {
             headers: { Cookie: `__Host-op-sso=${cookie}` },
@@ -811,6 +816,9 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         assert.equal((await deny()).status, 400);
         const cookie = secret();
         await DB.prepare('UPDATE sso_context SET secret_hash=?').bind(digest(cookie)).run();
+        await DB.prepare(
+          "UPDATE app_connection SET reviewed_redirect_uri='https://rp.example/callback',reviewed_scope='openid',reviewed_client_revision=(SELECT revision FROM client WHERE client_id='rp'),reviewed_grant_version=grant_version WHERE client_id='rp'",
+        ).run();
         const authorized = await worker.fetch(reference, {
           headers: { Cookie: `__Host-op-sso=${cookie}` },
           redirect: 'manual',

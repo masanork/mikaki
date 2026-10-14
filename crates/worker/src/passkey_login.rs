@@ -20,6 +20,7 @@ pub(super) fn random_secret(random: &mut WorkersCryptoRandom) -> worker::Result<
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn start(
     request: &worker::Request,
     db: &worker::d1::D1Database,
@@ -27,6 +28,8 @@ pub(super) async fn start(
     client_id: &str,
     redirect_uri: &str,
     state: Option<&str>,
+    review_required: bool,
+    requested_scope: &str,
 ) -> worker::Result<worker::Response> {
     let mut random = WorkersCryptoRandom;
     let tx = random_secret(&mut random)?;
@@ -48,9 +51,12 @@ pub(super) async fn start(
         continuation.query_pairs_mut().append_pair("state", state);
     }
     let authorization_url = continuation.to_string();
-    db.prepare(
-        "INSERT INTO login_transaction(tx_id,browser_hash,authorization_url,client_id,challenge,expires_at) \
-         VALUES(?1,?2,?3,?4,?5,?6)",
+    let template = loopback_redirect_template(redirect_uri);
+    let result = db.prepare(
+        "INSERT INTO login_transaction(tx_id,browser_hash,authorization_url,client_id,challenge,expires_at,client_revision,connection_review_required,requested_scope) \
+         SELECT ?1,?2,?3,c.client_id,?5,?6,c.revision,?7,?9 FROM client c \
+         JOIN client_redirect_uri r ON r.client_id=c.client_id AND r.redirect_uri=?8 AND r.active=1 \
+         WHERE c.client_id=?4 AND c.active=1",
     )
     .bind(&[
         JsValue::from_str(&tx),
@@ -59,9 +65,15 @@ pub(super) async fn start(
         JsValue::from_str(client_id),
         JsValue::from_str(&challenge),
         JsValue::from_f64((now + 300) as f64),
+        JsValue::from_f64(if review_required { 1.0 } else { 0.0 }),
+        JsValue::from_str(template.as_deref().unwrap_or(redirect_uri)),
+        JsValue::from_str(crate::login_review::scope(requested_scope)),
     ])?
     .run()
     .await?;
+    if result.meta()?.is_none_or(|meta| meta.changes != Some(1)) {
+        return crate::vault_http::error(409, "connection_changed");
+    }
     Ok(worker::Response::builder()
         .with_status(302)
         .with_header("Location", &format!("{issuer}/login?tx={tx}"))?
@@ -83,7 +95,7 @@ pub(super) async fn transaction(
 ) -> worker::Result<Option<LoginTransactionRow>> {
     let row = db
         .prepare(
-            "SELECT authorization_url,client_id,challenge,expires_at,failures,0 AS owner_login \
+            "SELECT authorization_url,client_id,challenge,expires_at,failures,0 AS owner_login,connection_review_required,requested_scope \
          FROM login_transaction WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 \
          AND expires_at>CAST(strftime('%s','now') AS INTEGER) AND failures<5",
         )
@@ -93,7 +105,7 @@ pub(super) async fn transaction(
     if row.is_some() {
         return Ok(row);
     }
-    let row = db.prepare("SELECT l.authorization_url,'mikaki-internal-agent' AS client_id,l.challenge,l.expires_at,l.failures,1 AS owner_login \
+    let row = db.prepare("SELECT l.authorization_url,'mikaki-internal-agent' AS client_id,l.challenge,l.expires_at,l.failures,1 AS owner_login,0 AS connection_review_required,NULL AS requested_scope \
       FROM owner_login_transaction l JOIN agent_oauth_request r ON r.request_id=l.request_id \
       JOIN agent_oauth_client c ON c.client_id=r.client_id AND c.active=1 \
       WHERE l.tx_id=?1 AND l.browser_hash=?2 AND l.consumed=0 AND l.failures<5 \
@@ -103,7 +115,7 @@ pub(super) async fn transaction(
     if row.is_some() {
         return Ok(row);
     }
-    db.prepare("SELECT authorization_url,'mikaki-internal-web' AS client_id,challenge,expires_at,failures,2 AS owner_login FROM web_login_transaction WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>unixepoch()")
+    db.prepare("SELECT authorization_url,'mikaki-internal-web' AS client_id,challenge,expires_at,failures,2 AS owner_login,0 AS connection_review_required,NULL AS requested_scope FROM web_login_transaction WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>unixepoch()")
       .bind(&[JsValue::from_str(tx),JsValue::from_str(browser_hash)])?
       .first::<LoginTransactionRow>(None).await
 }
@@ -303,18 +315,16 @@ pub(super) async fn get(
             })
             .ok_or_else(|| worker::Error::RustError("invalid login transaction".into()))?
     };
-    let login_scope = url::Url::parse(&login.authorization_url)
-        .ok()
-        .and_then(|url| {
-            url.query_pairs()
-                .find(|(key, _)| key == "scope")
-                .map(|(_, value)| value.into_owned())
-        })
-        .unwrap_or_else(|| "openid".into());
+    let login_scope = login.requested_scope.as_deref().unwrap_or("openid");
     let now = now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
     let expires_in_ms = (login.expires_at - now as i64).clamp(0, 300) * 1000;
     let html = format!(
-        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}" data-login-scope="{login_scope}" data-expires-in-ms="{expires_in_ms}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        r#"<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title><link rel="stylesheet" href="/login/login.css"><link rel="icon" type="image/svg+xml" href="/favicon.svg"></head><body><div id="app" data-tx="{tx}" data-challenge="{challenge}" data-rp-id="{rp_id}" data-rp-uri="{rp_uri}" data-client="{client}" data-enrollment="{enrollment}" data-owner-login="{owner_login}" data-login-scope="{login_scope}" data-expires-in-ms="{expires_in_ms}" data-connection-review-required="{review_required}"></div><script type="module" src="/login/login.js"></script></body></html>"#,
+        review_required = if login.connection_review_required == 1 {
+            "true"
+        } else {
+            "false"
+        },
         login_scope = crate::i18n::html_escape(&login_scope),
         owner_login = if login.owner_login != 0 {
             "true"
@@ -589,7 +599,7 @@ pub(super) async fn finish(
         consumed: false,
         context: mikaki_webauthn::Context {
             challenge: login.challenge.clone(),
-            origin: issuer,
+            origin: issuer.clone(),
             rp_id,
             max_bytes: policy.form_body_bytes,
             max_depth: 16,
@@ -628,7 +638,7 @@ pub(super) async fn finish(
     } else {
         ""
     };
-    crate::op_authority::batch(&context.env, vec![
+    let mut statements = vec![
         db.prepare(format!("UPDATE {login_table} SET consumed=1 WHERE tx_id=?1 AND browser_hash=?2 AND consumed=0 AND failures<5 AND expires_at>?3{live_request}"))
             .bind(&[JsValue::from_str(&input.tx),JsValue::from_str(&browser_hash),JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
@@ -651,7 +661,17 @@ pub(super) async fn finish(
             .bind(&[JsValue::from_str(&format!("{sso_id}-passkey"))])?,
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?1")
             .bind(&[JsValue::from_str(&format!("{sso_id}-sso"))])?,
-    ]).await?;
+    ];
+    statements.extend(crate::login_review::record(
+        &db,
+        &login,
+        &issuer,
+        &input.tx,
+        &browser_hash,
+        &credential.account_id,
+        &format!("{sso_id}-review"),
+    )?);
+    crate::op_authority::batch(&context.env, statements).await?;
     worker::Response::builder()
         .with_header(
             "Set-Cookie",

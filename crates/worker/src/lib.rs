@@ -39,6 +39,8 @@ mod home;
 #[cfg(target_arch = "wasm32")]
 mod identity;
 #[cfg(target_arch = "wasm32")]
+mod login_review;
+#[cfg(target_arch = "wasm32")]
 mod logout;
 #[cfg(target_arch = "wasm32")]
 mod logout_delivery;
@@ -243,6 +245,7 @@ struct AuthorizationContextRow {
     account_id: String,
     parent_expires_at: i64,
     auth_time: i64,
+    connection_reviewed: i64,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -263,6 +266,8 @@ struct LoginTransactionRow {
     failures: u32,
     // 0: RP authorization, 1: agent owner login, 2: first-party Web sign-in.
     owner_login: i64,
+    connection_review_required: i64,
+    requested_scope: Option<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1027,11 +1032,22 @@ async fn authorization_interaction_response(
     state: Option<&str>,
     error: &str,
     prompt_none: bool,
+    requested_scope: &str,
 ) -> worker::Result<worker::Response> {
     if prompt_none {
         authorization_error_response(redirect_uri, state, issuer, error)
     } else {
-        passkey_login::start(request, db, issuer, client_id, redirect_uri, state).await
+        passkey_login::start(
+            request,
+            db,
+            issuer,
+            client_id,
+            redirect_uri,
+            state,
+            matches!(error, "consent_required" | "account_selection_required"),
+            requested_scope,
+        )
+        .await
     }
 }
 
@@ -1344,8 +1360,9 @@ async fn authorize_route(
             client_id,
             redirect_uri,
             state,
-            "login_required",
+            "consent_required",
             false,
+            &parameters["scope"],
         )
         .await;
     }
@@ -1359,6 +1376,7 @@ async fn authorize_route(
             state,
             "consent_required",
             false,
+            &parameters["scope"],
         )
         .await;
     }
@@ -1372,6 +1390,7 @@ async fn authorize_route(
             state,
             "account_selection_required",
             false,
+            &parameters["scope"],
         )
         .await;
     }
@@ -1388,6 +1407,7 @@ async fn authorize_route(
             state,
             "login_required",
             prompts.contains(&"none"),
+            &parameters["scope"],
         )
         .await;
     };
@@ -1396,7 +1416,10 @@ async fn authorize_route(
     let sso = db
         .prepare(
             "SELECT ss.sso_id,ss.account_id,ss.expires_at AS parent_expires_at, \
-             sx.auth_time,c.revision AS client_revision,c.sector_identifier \
+             sx.auth_time,c.revision AS client_revision,c.sector_identifier, \
+             CASE WHEN g.reviewed_redirect_uri=r.redirect_uri AND g.reviewed_scope=?5 \
+               AND g.reviewed_client_revision=c.revision AND g.reviewed_grant_version=g.grant_version \
+               THEN 1 ELSE 0 END AS connection_reviewed \
              FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
              JOIN account_security a ON a.account_id=ss.account_id \
              JOIN credential cr ON cr.credential_id=ss.credential_id AND cr.account_id=ss.account_id \
@@ -1412,6 +1435,7 @@ async fn authorize_route(
             JsValue::from_str(client_id),
             JsValue::from_str(registered_redirect_uri),
             JsValue::from_f64(now as f64),
+            JsValue::from_str(login_review::scope(&parameters["scope"])),
         ])?
         .first::<AuthorizationContextRow>(None)
         .await?;
@@ -1425,6 +1449,7 @@ async fn authorize_route(
             state,
             "login_required",
             prompts.contains(&"none"),
+            &parameters["scope"],
         )
         .await;
     };
@@ -1450,11 +1475,31 @@ async fn authorize_route(
                 client_id,
                 redirect_uri,
                 state,
-                "login_required",
+                if sso.connection_reviewed != 1 && !prompts.contains(&"none") {
+                    "consent_required"
+                } else {
+                    "login_required"
+                },
                 prompts.contains(&"none"),
+                &parameters["scope"],
             )
             .await;
         }
+    }
+
+    if sso.connection_reviewed != 1 {
+        return authorization_interaction_response(
+            &request,
+            &db,
+            &issuer,
+            client_id,
+            redirect_uri,
+            state,
+            "consent_required",
+            prompts.contains(&"none"),
+            &parameters["scope"],
+        )
+        .await;
     }
 
     let age_snapshot = if let Some(age) = &age_request {
@@ -1518,6 +1563,7 @@ async fn authorize_route(
         JsValue::from_str(&sso.client_revision.to_string()),
         JsValue::from_str(registered_redirect_uri),
         JsValue::from_str(&now.to_string()),
+        JsValue::from_str(login_review::scope(&parameters["scope"])),
     ];
     let code_values = [
         JsValue::from_str(code_hash),

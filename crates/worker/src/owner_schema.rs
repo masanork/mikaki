@@ -4,6 +4,7 @@ const BASELINE: &str = "0001_owner_vault_initial.sql";
 const WRAPPERS: &str = "0002_owner_key_wrap_operations.sql";
 const WAITLIST: &str = "0003_enrollment_waitlist.sql";
 const AGE_REQUESTS: &str = "0004_identity_age_requests.sql";
+const LOGIN_REVIEW: &str = "0005_login_connection_review.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -16,7 +17,14 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST}")
                 || ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}")
         }
-        AGE_REQUESTS => ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}"),
+        AGE_REQUESTS => {
+            ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}")
+                || ledger
+                    == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW}")
+        }
+        LOGIN_REVIEW => {
+            ledger == format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW}")
+        }
         _ => false,
     }
 }
@@ -88,6 +96,26 @@ mod tests {
             format!("{ledger},{AGE_REQUESTS}"),
         ] {
             assert!(!ready(&invalid, AGE_REQUESTS));
+        }
+    }
+
+    #[test]
+    fn login_review_upgrade_keeps_only_the_previous_binary_ready() {
+        let previous = format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS}");
+        let upgraded = format!("{previous},{LOGIN_REVIEW}");
+        assert!(ready(&previous, AGE_REQUESTS));
+        assert!(ready(&upgraded, AGE_REQUESTS));
+        assert!(ready(&upgraded, LOGIN_REVIEW));
+        assert!(!ready(&previous, LOGIN_REVIEW));
+        assert!(!ready(&upgraded, WAITLIST));
+        for invalid in [
+            format!("{BASELINE},{WRAPPERS},{WAITLIST},{LOGIN_REVIEW}"),
+            format!("{upgraded},{LOGIN_REVIEW}"),
+            format!("{previous},0005_unknown.sql"),
+            format!("{upgraded},0006_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, AGE_REQUESTS));
+            assert!(!ready(&invalid, LOGIN_REVIEW));
         }
     }
 }

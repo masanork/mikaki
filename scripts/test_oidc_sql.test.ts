@@ -46,7 +46,7 @@ function seed(db: DatabaseSync) {
     INSERT INTO client VALUES('c',1,1);
     INSERT INTO client_key VALUES('c','ck',1,1);
     INSERT INTO signing_key VALUES('opk',1,1);
-    INSERT INTO app_connection VALUES('a','c',1,1);
+    INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('a','c',1,1);
   `);
   db.prepare('INSERT INTO sso_session VALUES(?,?,?,?,?,?)').run(
     'sso',

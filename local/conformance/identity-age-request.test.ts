@@ -118,12 +118,19 @@ for (const algorithm of ['ES256', 'RS256'] as const)
           algorithm,
           JSON.stringify(publicJwk),
         ),
-        DB.prepare("INSERT INTO app_connection VALUES('owner','rp',1,1)"),
+        DB.prepare(
+          "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('owner','rp',1,1)",
+        ),
         DB.prepare("INSERT INTO sso_session VALUES('sso','owner','passkey',1,?,0)").bind(
           now() + 7200,
         ),
         DB.prepare("INSERT INTO sso_context VALUES('sso',?,?)").bind(hash('cookie'), now()),
       ]);
+      await DB.prepare(
+        "UPDATE app_connection SET reviewed_redirect_uri=?,reviewed_scope='openid profile',reviewed_client_revision=1,reviewed_grant_version=1",
+      )
+        .bind(redirect)
+        .run();
       const document = secret();
       const verified = {
         attributes: {

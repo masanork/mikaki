@@ -59,12 +59,19 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       DB.prepare("INSERT INTO signing_key VALUES('op',1,1,'ES256',?)").bind(
         JSON.stringify(publicJwk),
       ),
-      DB.prepare('INSERT INTO app_connection VALUES(?,?,1,1)').bind('account', clientId),
+      DB.prepare(
+        'INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
+      ).bind('account', clientId),
       DB.prepare("INSERT INTO sso_session VALUES('sso','account','credential',1,?,0)").bind(
         now + 3600,
       ),
       DB.prepare("INSERT INTO sso_context VALUES('sso',?,?)").bind(digest('cookie-secret'), now),
     ]);
+    await DB.prepare(
+      "UPDATE app_connection SET reviewed_redirect_uri=?,reviewed_scope='openid',reviewed_client_revision=1,reviewed_grant_version=1 WHERE client_id=?",
+    )
+      .bind(callback, clientId)
+      .run();
     const metadata = (await (
       await worker.fetch(`${issuer}/.well-known/openid-configuration`)
     ).json()) as { token_endpoint_auth_methods_supported: string[] };
@@ -270,7 +277,16 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       'test',
       'desktop loopback',
     );
-    await DB.prepare('INSERT INTO app_connection VALUES(?,?,1,1)').bind('account', desktopId).run();
+    await DB.prepare(
+      'INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
+    )
+      .bind('account', desktopId)
+      .run();
+    await DB.prepare(
+      "UPDATE app_connection SET reviewed_redirect_uri=?,reviewed_scope='openid',reviewed_client_revision=1,reviewed_grant_version=1 WHERE client_id=?",
+    )
+      .bind(registeredLoopback, desktopId)
+      .run();
     const desktopVerifier = secret();
     const desktopState = secret();
     const desktopUrl = new URL(`${issuer}/authorize`);

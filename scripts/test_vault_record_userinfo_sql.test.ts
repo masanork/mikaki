@@ -34,7 +34,7 @@ function fixture() {
   }
   const now = Number(db.prepare('SELECT unixepoch() AS t').get()!.t);
   db.exec(
-    "INSERT INTO account_security VALUES('owner',1,1); INSERT INTO credential VALUES('credential','owner',1); INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('rp',1,1,'https://rp.example');INSERT INTO app_connection VALUES('owner','rp',1,1);INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES('rp','https://rp.example/callback');",
+    "INSERT INTO account_security VALUES('owner',1,1); INSERT INTO credential VALUES('credential','owner',1); INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('rp',1,1,'https://rp.example');INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('owner','rp',1,1);INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES('rp','https://rp.example/callback');",
   );
   db.prepare("INSERT INTO sso_session VALUES('sso','owner','credential',1,?,0)").run(now + 3600);
   db.prepare("INSERT INTO sso_context VALUES('sso',?,?)").run(token('cookie'), now);

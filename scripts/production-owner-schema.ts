@@ -29,6 +29,10 @@ export const OWNER_MIGRATIONS = [
     name: '0004_identity_age_requests.sql',
     sha256: '2eb1455067507ebe6bfc007a9ab2330b101522a7417729b2edf793f806b892b6',
   },
+  {
+    name: '0005_login_connection_review.sql',
+    sha256: '679c00ff7ec7c0ec2693fbd145b17f358cb7eb973aaddae9b56797f670b6ef89',
+  },
 ] as const;
 
 export function assertProductionOwnerSchema(

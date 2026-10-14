@@ -32,7 +32,9 @@ test('RP name consent requires current system sharing and is independently revoc
       db.prepare(
         "INSERT INTO client(client_id,revision,active,sector_identifier) VALUES('rp',1,1,'rp.example')",
       ),
-      db.prepare("INSERT INTO app_connection VALUES('owner','rp',1,1)"),
+      db.prepare(
+        "INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES('owner','rp',1,1)",
+      ),
       db
         .prepare(
           `INSERT INTO vault_attribute_head

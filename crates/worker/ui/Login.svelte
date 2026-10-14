@@ -30,6 +30,7 @@
     ownerLogin,
     scope = 'openid',
     expiresInMs = 300_000,
+    reviewRequired = false,
     locale,
   }: {
     tx: string;
@@ -41,6 +42,7 @@
     ownerLogin: boolean;
     scope?: string;
     expiresInMs?: number;
+    reviewRequired?: boolean;
     locale: Locale;
   } = $props();
   let busy = $state(false);
@@ -211,7 +213,7 @@
       credential: fingerprint,
       deadline: Math.min(transactionDeadline, performance.now() + 120_000),
     };
-    if (!enrollment && !ownerLogin && recognition.kind !== 'known') {
+    if (!enrollment && !ownerLogin && (reviewRequired || recognition.kind !== 'known')) {
       pending = proof;
       busy = false;
       registrationOpen = false;
@@ -467,6 +469,7 @@
       <ConnectionReview
         {connection}
         {recognition}
+        {reviewRequired}
         label={historyLabel()}
         {busy}
         onapprove={() => {
