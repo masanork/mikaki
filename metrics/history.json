@@ -2568,23 +2568,23 @@
   },
   {
     "date": "2026-10-14",
-    "commit": "5fb16ee",
+    "commit": "68f05c6",
     "code": {
-      "implementationLines": 83871,
+      "implementationLines": 84412,
       "testLines": 13388,
-      "implementationFiles": 292,
+      "implementationFiles": 293,
       "testFiles": 38,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 37216,
+          "implementationLines": 37535,
           "testLines": 2738
         },
         "rust": {
-          "implementationLines": 39064,
+          "implementationLines": 39199,
           "testLines": 10650
         },
         "svelte": {
-          "implementationLines": 7591,
+          "implementationLines": 7678,
           "testLines": 0
         }
       }
