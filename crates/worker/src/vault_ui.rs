@@ -75,7 +75,7 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
     Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Referrer-Policy", "no-referrer")?
-        .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
+        .with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?
         .from_html(html)
 }
 

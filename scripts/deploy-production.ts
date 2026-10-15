@@ -562,6 +562,9 @@ async function main() {
       '--no-bundle',
       '--config',
       configPath!,
+      ...(worker === 'op' && manifest.release_inventory.assets?.length
+        ? ['--assets', join(destination, 'op/assets')]
+        : []),
       '--tag',
       source.commit.slice(0, 12),
       '--message',

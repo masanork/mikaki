@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { weaveProfile } from '../crates/worker/ui/woven-gate.ts';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { header, footer, escape } from './layout.mjs';
 const op = JSON.parse(
   await readFile(new URL('../crates/worker/wrangler.production.jsonc', import.meta.url)),
@@ -8,6 +8,8 @@ const op = JSON.parse(
 const base = new URL('./', import.meta.url);
 for (const dir of ['public', 'app-public']) {
   await mkdir(new URL(dir, base), { recursive: true });
+  await rm(new URL(`${dir}/fonts`, base), { recursive: true, force: true });
+  await cp(new URL('../assets/fonts', base), new URL(`${dir}/fonts`, base), { recursive: true });
   await build({
     entryPoints: [new URL('site.ts', base).pathname],
     outfile: new URL(`${dir}/site.js`, base).pathname,
@@ -28,10 +30,14 @@ for (const dir of ['public', 'app-public']) {
   await writeFile(
     new URL(`${dir}/_headers`, base),
     `/*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Cache-Control: public, max-age=300
+
+/fonts/*.woff2
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
 `,
   );
 }
@@ -40,7 +46,7 @@ const document = (host, title, body, lang = 'ja', path = '/', noindex = false) =
   const origin = 'https://mikaki.org';
   const app = host === 'app.mikaki.org';
   const languageUrl = path.startsWith('/en/') ? path.replace('/en/', '/') : `/en${path}`;
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${app ? (ja ? 'mikakiアプリとWeb版の利用案内。' : 'Using the mikaki application and Web service.') : ja ? 'mikakiの公式サイト。' : 'The official mikaki website.'}">${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="https://${host}${path}">`}<title>${escape(title)} · mikaki</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body>${header(lang, 'index', { origin, languageUrl })}<main class="app-main" id="main-content" tabindex="-1"><p class="eyebrow">${app ? (ja ? 'mikakiアプリ' : 'mikaki application') : 'mikaki'}</p>${body}</main>${footer(lang, { origin })}</body></html>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${app ? (ja ? 'mikakiアプリとWeb版の利用案内。' : 'Using the mikaki application and Web service.') : ja ? 'mikakiの公式サイト。' : 'The official mikaki website.'}">${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="https://${host}${path}">`}<title>${escape(title)} · mikaki</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/fonts/fonts.css"><link rel="stylesheet" href="/style.css"></head><body>${header(lang, 'index', { origin, languageUrl })}<main class="app-main" id="main-content" tabindex="-1"><p class="eyebrow">${app ? (ja ? 'mikakiアプリ' : 'mikaki application') : 'mikaki'}</p>${body}</main>${footer(lang, { origin })}</body></html>`;
 };
 for (const lang of ['ja', 'en']) {
   const ja = lang === 'ja';

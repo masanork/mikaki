@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 test('Worker login and Vault mount their Svelte screens in both locales', async () => {
   const harness = createTestHarness({
@@ -35,6 +36,25 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
       assert.equal(callbackHost.status, 404, 'branding must not expand callback-host routes');
     }
     const versionResponse = await worker.fetch('https://mikaki.test/version');
+    const fontManifest = JSON.parse(
+      readFileSync(new URL('../../assets/fonts/manifest.json', import.meta.url), 'utf8'),
+    ) as { files: { file: string }[] };
+    const fontPath = `/fonts/${fontManifest.files[0]!.file}`;
+    for (const [path, contentType] of [
+      ['/fonts/fonts.css', 'text/css'],
+      [fontPath, 'font/woff2'],
+    ]) {
+      const asset = await worker.fetch(`https://mikaki.test${path}`);
+      assert.equal(asset.status, 200);
+      assert.ok(asset.headers.get('Content-Type')?.startsWith(contentType));
+      assert.equal(asset.headers.get('X-Content-Type-Options'), 'nosniff');
+      assert.ok((await asset.arrayBuffer()).byteLength > 0);
+      if (path === fontPath) {
+        assert.equal(asset.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+      }
+      const callbackHost = await worker.fetch(`https://app.mikaki.org${path}`);
+      assert.equal(callbackHost.status, 404, 'fonts must not expand callback-host routes');
+    }
     assert.equal(versionResponse.status, 200);
     assert.equal(versionResponse.headers.get('Cache-Control'), 'no-store');
     const version = (await versionResponse.json()) as Record<string, unknown>;

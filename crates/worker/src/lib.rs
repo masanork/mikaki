@@ -2323,6 +2323,11 @@ pub async fn main(
                 .fixed(b"not found".to_vec())),
         };
     }
+    if url.path().starts_with("/fonts/")
+        && matches!(req.method(), worker::Method::Get | worker::Method::Head)
+    {
+        return env.service("FONT_ASSETS")?.fetch_request(req).await;
+    }
     if !auth_resources::admit(&req, &env).await? {
         return auth_resources::limited();
     }

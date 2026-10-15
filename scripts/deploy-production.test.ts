@@ -440,6 +440,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
     ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
+    { name: 'FONT_ASSETS', type: 'assets' },
     ...config.secrets.required.map((name: string) => ({ name, type: 'secret_text' })),
     {
       name: 'IDENTITY_RATE_LIMIT',
@@ -472,6 +473,7 @@ test('activation requires all configured native, Vault and runtime secret bindin
   for (const removed of [
     'DB',
     'VAULT_BLOBS',
+    'FONT_ASSETS',
     'USERINFO_CLAIMS',
     'WORK_AUTHORITY_CHECKPOINT',
     'LOGOUT_QUEUE',
@@ -525,6 +527,7 @@ test('activation rejects unknown and duplicate bindings and exacts default servi
     ),
     { name: 'LOGOUT_QUEUE', type: 'queue', queue_name: 'mikaki-logout-wakeups' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
+    { name: 'FONT_ASSETS', type: 'assets' },
     ...config.secrets.required.map((name: string) => ({ name, type: 'secret_text' })),
     {
       name: 'IDENTITY_RATE_LIMIT',

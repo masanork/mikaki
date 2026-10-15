@@ -43,13 +43,23 @@ test('generated website CSP avoids the deployed root detach bug and stays page-s
   );
   assert.equal(rules[0].path, '/*');
   assert.deepEqual(
-    rules.slice(1).map((rule) => rule.path),
+    rules
+      .slice(1)
+      .filter((rule) => rule.path !== '/fonts/*.woff2')
+      .map((rule) => rule.path),
     paths.filter((path) => path !== '/'),
   );
   assert.ok(rules.length <= 100);
+  assert.ok(
+    rules.some(
+      (rule) =>
+        rule.path === '/fonts/*.woff2' &&
+        rule.lines.includes('Cache-Control: public, max-age=31536000, immutable'),
+    ),
+  );
   assert.ok(headers.split('\n').every((line) => line.length <= 2000));
   const baseline =
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+    "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
   for (const path of paths) {
     const file = path.endsWith('/') ? `${path}index.html` : `${path}.html`;
     const html = await readFile(new URL(`public${file}`, import.meta.url), 'utf8');
@@ -156,6 +166,17 @@ test('public websites keep app callbacks code-free and render the woven material
   try {
     const app = await start('website/wrangler.app.jsonc');
     const site = await start('website/wrangler.jsonc');
+    const fontInventory = JSON.parse(
+      await readFile(new URL('../assets/fonts/manifest.json', import.meta.url), 'utf8'),
+    );
+    for (const worker of [app, site]) {
+      const font = await worker.fetch(`https://mikaki.org/fonts/${fontInventory.files[0].file}`);
+      assert.equal(font.status, 200);
+      assert.equal(font.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+      const css = await worker.fetch('https://mikaki.org/fonts/fonts.css');
+      assert.equal(css.status, 200);
+      assert.equal(css.headers.get('cache-control'), 'public, max-age=300');
+    }
     for (const path of ['/oidc/native/callback', '/identity/issuance/callback']) {
       for (const query of [
         '',

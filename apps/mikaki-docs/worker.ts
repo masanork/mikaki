@@ -65,12 +65,12 @@ function page(env: Env, locale: 'ja' | 'en', content: string, status = 200, brow
   headers.set('Content-Language', locale);
   headers.set(
     'Content-Security-Policy',
-    `default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' ${env.ISSUER}; frame-ancestors 'none'; base-uri 'none'`,
+    `default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action 'self' ${env.ISSUER}; frame-ancestors 'none'; base-uri 'none'`,
   );
   headers.append('Set-Cookie', cookieHeader(LOCALE_COOKIE, locale, 31536000));
   if (browser) headers.append('Set-Cookie', cookieHeader(BROWSER, browser, 86400));
   return new Response(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} · mikaki Docs</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body><a class="skip-link" href="#main-content">${t.skip}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${locale === 'en' ? '/en/' : '/'}">mikaki Docs</a><a class="language-link" href="/session?lang=${locale === 'ja' ? 'en' : 'ja'}" lang="${locale === 'ja' ? 'en' : 'ja'}">${locale === 'ja' ? 'English' : '日本語'}</a></div></header><main class="app-main prose" id="main-content" tabindex="-1">${content}<p><a href="${locale === 'en' ? '/en/' : '/'}">${t.home}</a></p></main></body></html>`,
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title} · mikaki Docs</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/fonts/fonts.css"><link rel="stylesheet" href="/style.css"></head><body><a class="skip-link" href="#main-content">${t.skip}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${locale === 'en' ? '/en/' : '/'}">mikaki Docs</a><a class="language-link" href="/session?lang=${locale === 'ja' ? 'en' : 'ja'}" lang="${locale === 'ja' ? 'en' : 'ja'}">${locale === 'ja' ? 'English' : '日本語'}</a></div></header><main class="app-main prose" id="main-content" tabindex="-1">${content}<p><a href="${locale === 'en' ? '/en/' : '/'}">${t.home}</a></p></main></body></html>`,
     { status, headers },
   );
 }

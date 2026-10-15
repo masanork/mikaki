@@ -145,7 +145,7 @@ for (const lang of ['ja', 'en']) {
       body = `${breadcrumbs(slug, lang)}<div class="article-layout${group ? '' : ' no-sidebar'}">${sectionNav(slug, lang)}<main class="article-main" id="main-content" tabindex="-1"><header class="article-header"><p class="eyebrow">${escapeHtml(group?.labels[lang] ?? (ja ? '招待・連携相談' : 'Invitations and integration'))}</p><h1 class="article-title">${escapeHtml(concept.title)}</h1></header><article class="prose">${content}</article></main></div>`;
     }
     const social = `<meta property="og:image" content="${imageUrl}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(imageAlt)}"><meta name="twitter:image" content="${imageUrl}"><meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">`;
-    const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body>${header(lang, slug)}${body}${footer(lang)}</body></html>`;
+    const html = `<!doctype html><html lang="${lang}"><head>${head}${social}<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/fonts/fonts.css"><link rel="stylesheet" href="/style.css"><script type="module" src="/site.js"></script></head><body>${header(lang, slug)}${body}${footer(lang)}</body></html>`;
     writeFileSync(join(site, 'public', rel), html);
     copyFileSync(
       join(site, 'dist', rel.replace('.html', '.md')),
@@ -193,7 +193,7 @@ const rules = [...pageHashes]
   );
 // Global rules still cover non-HTML assets and 404s. .html aliases redirect before headers.
 const output = defaults.replace(policy, withHashes(rootHashes)) + '\n' + rules.join('\n');
-if (rules.length + 1 > 100 || output.split('\n').some((line) => line.length > 2000))
+if (rules.length + 2 > 100 || output.split('\n').some((line) => line.length > 2000))
   throw new Error('Static-asset header rules exceed Cloudflare limits');
 writeFileSync(headers, output);
 console.log(`Sorane metadata and content ready: ${report.warning_count} validation warnings.`);

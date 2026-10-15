@@ -9,6 +9,7 @@
 **/dist/
 /local/generated/
 /artifacts/
+/apps/mikaki-client/ui/fonts/
 /coverage/
 **/.svelte-check/
 /local/ui/src/paraglide/

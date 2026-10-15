@@ -4,6 +4,7 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { fileURLToPath } from 'node:url';
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
+  publicDir: fileURLToPath(new URL('../../assets', import.meta.url)),
   plugins: [
     svelte(),
     paraglideVitePlugin({

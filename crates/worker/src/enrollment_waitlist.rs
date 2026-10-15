@@ -202,12 +202,12 @@ pub async fn page(
 ) -> worker::Result<worker::Response> {
     let strings = i18n::catalog(i18n::select(&request, None)?);
     let html = format!(
-        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/ui/product.css\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head><body><div id=\"app\"></div><script type=\"module\" src=\"/waitlist/waitlist.js\"></script></body></html>",
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/fonts/fonts.css\"><link rel=\"stylesheet\" href=\"/ui/product.css\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head><body><div id=\"app\"></div><script type=\"module\" src=\"/waitlist/waitlist.js\"></script></body></html>",
         strings.locale,
         i18n::html_escape(strings.message("waitlistTitle"))
     );
     worker::Response::builder().with_header("Cache-Control","no-store")?.with_header("Referrer-Policy","no-referrer")?
-        .with_header("Content-Security-Policy","default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?.from_html(html)
+        .with_header("Content-Security-Policy","default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")?.from_html(html)
 }
 pub async fn script(
     _request: worker::Request,
