@@ -14,6 +14,14 @@ request measurements are saved under `artifacts/font-rendering/` and uploaded
 by CI. The narrow viewport covers responsive layout; it does not emulate an
 actual iPhone or replace testing the Safari application.
 
+`node scripts/check-production-fonts.ts` checks the public website, authentication
+pages and Docs entry in Chromium and WebKit. It compares downloaded CSS and WOFF2
+hashes with the reviewed assets, checks immutable font caching and records desktop
+and narrow-screen screenshots in `artifacts/production-fonts/`. The
+`production-smoke` workflow runs this check after deployment; it can also be run
+with `workflow_dispatch`. Set `MIKAKI_FONT_SMOKE_BASE_URL` to check a local Worker
+fixture instead of the public sites.
+
 The latest local Bunsen PUP inputs contain 6,705 of the reference font's 9,420
 administrative private-use characters. The remaining 2,715 are intentionally
 unsupported. `assets/fonts/coverage.json` records their codepoints. Text is kept

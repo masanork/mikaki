@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chromium, type BrowserContext, type Page, type Route } from '@playwright/test';
+import { chromium, type BrowserContext, type Page } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
-import { drainBrowserRoutes } from './support/browser-route-teardown.ts';
+import { startBrowserEvidence } from './support/browser-evidence.ts';
+import { journeyServer } from './support/journey-server.ts';
 
 async function waitForFonts(page: Page) {
   const failed = await page.evaluate(async () => {
@@ -15,8 +16,21 @@ async function waitForFonts(page: Page) {
   assert.deepEqual(failed, [], 'account-page web fonts must decode before checking layout');
 }
 
+function barrier() {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, resolve: () => release() };
+}
+
 test('account pages use the product styles under CSP and fit a mobile viewport', async () => {
-  const issuer = 'https://mikaki.test';
+  let dispatch: Parameters<typeof journeyServer>[0] = async () => {
+    throw new Error('Account page fixture not ready');
+  };
+  // Real HTTPS keeps cancelled font requests independent of Playwright route ownership.
+  const server = await journeyServer((url, init) => dispatch(url, init));
+  const issuer = `https://mikaki.test:${server.port}`;
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
     workers: [
@@ -29,6 +43,10 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
   let browser;
   let context: BrowserContext | undefined;
   let staticContext: BrowserContext | undefined;
+  let releaseLateFont = () => {};
+  let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
+  let staticEvidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
+  let failure: unknown;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -67,8 +85,12 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     assert.match(stylesheet.headers.get('content-type') ?? '', /text\/css/);
     assert.match(await stylesheet.text(), /\.product-header/);
 
-    browser = await chromium.launch({ headless: true });
-    context = await browser.newContext();
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--host-resolver-rules=MAP mikaki.test 127.0.0.1', '--no-proxy-server'],
+    });
+    context = await browser.newContext({ ignoreHTTPSErrors: true });
+    evidence = await startBrowserEvidence(context, 'account-pages');
     await context.addCookies([
       {
         name: '__Host-op-sso',
@@ -88,24 +110,29 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    const forward = async (route: Route) => {
-      const request = route.request();
-      const response = await worker.fetch(request.url(), {
-        method: request.method(),
-        headers: await request.allHeaders(),
-        redirect: 'manual',
-        ...(request.postDataBuffer() ? { body: request.postDataBuffer() } : {}),
-      });
-      const headers = Object.fromEntries(response.headers);
-      const cookies = response.headers.getSetCookie();
-      if (cookies.length) headers['set-cookie'] = cookies.join('\n');
-      await route.fulfill({
+    const lateFontStarted = barrier();
+    const lateFontReleased = barrier();
+    const lateFontFinished = barrier();
+    releaseLateFont = lateFontReleased.resolve;
+    dispatch = async (url, init) => {
+      const response = await worker.fetch(url, { ...init, redirect: 'manual' });
+      const delayed = new URL(url).searchParams.has('late-font');
+      if (delayed) {
+        lateFontStarted.resolve();
+        await lateFontReleased.promise;
+      }
+      return {
         status: response.status,
-        headers,
-        body: Buffer.from(await response.arrayBuffer()),
-      });
+        headers: response.headers,
+        async arrayBuffer() {
+          try {
+            return await response.arrayBuffer();
+          } finally {
+            if (delayed) lateFontFinished.resolve();
+          }
+        },
+      };
     };
-    await context.route(`${issuer}/**`, forward);
 
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: 900 });
@@ -121,7 +148,10 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         assert.equal(await page.locator('.product-header').count(), 1);
         {
           await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
-          assert.equal(await page.locator('.product-origin strong').textContent(), 'mikaki.test');
+          assert.equal(
+            await page.locator('.product-origin strong').textContent(),
+            new URL(issuer).host,
+          );
           assert.equal(await page.locator('.gate-fallback span').count(), 1);
           assert.match(
             await page
@@ -141,7 +171,16 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         );
       }
     }
+    const fontManifest = JSON.parse(
+      await readFile(new URL('../../assets/fonts/manifest.json', import.meta.url), 'utf8'),
+    ) as { files: { file: string }[] };
+    await page.evaluate((url) => {
+      void fetch(url).catch(() => {});
+    }, `${issuer}/fonts/${fontManifest.files[0]!.file}?late-font=1`);
+    await lateFontStarted.promise;
     await page.goto(`${issuer}/admin?lang=ja`);
+    releaseLateFont();
+    await lateFontFinished.promise;
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('heading', { name: 'Issue an invitation' }).waitFor();
     await waitForFonts(page);
@@ -156,13 +195,19 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       'none',
     );
     assert.deepEqual(errors, []);
-    staticContext = await browser.newContext({ javaScriptEnabled: false });
+    staticContext = await browser.newContext({
+      javaScriptEnabled: false,
+      ignoreHTTPSErrors: true,
+    });
+    staticEvidence = await startBrowserEvidence(staticContext, 'account-pages-no-javascript');
     await staticContext.addCookies(await context.cookies());
-    await staticContext.route(`${issuer}/**`, forward);
     const staticPage = await staticContext.newPage();
     await staticPage.goto(`${issuer}/logout?lang=en`);
     await waitForFonts(staticPage);
-    assert.equal(await staticPage.locator('.product-origin strong').textContent(), 'mikaki.test');
+    assert.equal(
+      await staticPage.locator('.product-origin strong').textContent(),
+      new URL(issuer).host,
+    );
     assert.equal(await staticPage.locator('.gate-fallback').isVisible(), true);
     const confirmed = staticPage.waitForResponse(
       (response) => response.request().method() === 'POST' && response.url().includes('/logout'),
@@ -172,17 +217,25 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await staticPage.getByRole('heading', { name: 'You have logged out', exact: true }).waitFor();
     await waitForFonts(staticPage);
     assert.equal(await staticPage.locator('body').getAttribute('data-session-state'), 'ended');
-    await drainBrowserRoutes(staticContext);
+    await staticEvidence.finish();
     await staticContext.close();
     staticContext = undefined;
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
+    releaseLateFont();
     try {
-      await Promise.all([drainBrowserRoutes(context), drainBrowserRoutes(staticContext)]);
+      await Promise.all([evidence?.finish(failure), staticEvidence?.finish(failure)]);
     } finally {
       try {
         await browser?.close();
       } finally {
-        await harness.close();
+        try {
+          await server.close();
+        } finally {
+          await harness.close();
+        }
       }
     }
   }
