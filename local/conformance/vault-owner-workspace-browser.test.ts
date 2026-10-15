@@ -1090,6 +1090,10 @@ test('new owner Vault preserves revision ETags through edge compression and uses
       ).toContainText('Cloudflare OS reported that a new workspace was restored.');
       await workshop.reload();
       await expect(workshop.getByText('Workspace in Vault', { exact: true })).toBeVisible();
+      await workshop.getByText('New Chat', { exact: true }).click();
+      await expect(workshop.getByText('Second message', { exact: true })).toBeVisible();
+      await workshop.reload();
+      await expect(workshop.getByText('Second message', { exact: true })).toBeVisible();
       assert.deepEqual(uiErrors, [], 'The complete Workshop frontend runs without uncaught errors');
       await workshop.screenshot({ path: 'artifacts/cloudflare-os-vault/workshop-restored-ui.png' });
       await uiRestore.close();
