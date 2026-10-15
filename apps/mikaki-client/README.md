@@ -1,54 +1,57 @@
 # Mikaki Tauri client
 
-This is an experimental Tauri 2 client. Install the pinned CLI with `npm ci`
-from this directory; `npm run tauri -- android init --ci --skip-targets-install`
-and `npm run tauri -- ios init --ci --skip-targets-install` initialize the
-checked-in native projects. Its bundled local UI starts OIDC login
-in the system browser. Desktop uses an ephemeral `127.0.0.1` callback port;
-Android and iPhone use an app-claimed HTTPS callback. Rust uses Authorization
-Code with S256 PKCE, checks callback `state` and `iss`, exchanges the one-use
-code as a public client, validates the signed ID Token and nonce, and holds
-the resulting UserInfo token only in process memory. The token is not a Vault
-grant. No remote document has Tauri command access.
+This experimental Tauri 2 app displays `https://auth.mikaki.org/vault` in its
+main WebView. Account screens, browser session Cookies, Passkeys and Owner
+Vault PRF unlock stay on that HTTPS origin inside the app. Shared WOFF2 fonts
+are fetched from the server, using the normal Web stylesheet and Unicode
+subsets. The app does not open the system browser for ordinary account use.
 
-The [client architecture review](../../docs/tauri-client-auth.md) describes the
-separate Vault resource grant and WebAuthn PRF work. A mobile-only Vault
-preview opens the system browser for one-attribute consent. Its DPoP P-256
-private key is generated and retained by Android Keystore or the iPhone Secure
-Enclave; the Rust code receives only its public coordinates and DER signatures.
-The access token stays in Rust process memory. It does not decrypt the owner
-envelope. Mobile callback
-and Android app association and ordinary OIDC return/token validation have
-been tested in a signed installed app; iPhone remains unqualified.
-Android reads My Number input-support attributes and traditional IC driving licences
-over NFC. A disabled-by-default backend path verifies static issuer signatures,
-links attributes after browser-owner consent, and issues a short-lived SD-JWT or mdoc through
-OID4VCI. Android encrypted receipt persistence and signed preregistered SD-JWT/mdoc OID4VP
-presentation and Android QR + BLE peripheral proximity are implemented locally.
-UserInfo verified attribute release requires separate owner consent; PDS remains unimplemented. The icon uses mikaki's woven fence mark; a distribution
-signing identity has not been selected. Android release signing can use an
-ignored local keystore configuration described in the activation checkpoint.
+Wallet keys, attestation, NFC/BLE, credential receipt and presentation consent
+stay native. A Wallet link in native-hosted Web screens switches the same
+WebView to the small bundled Wallet UI. Incoming validated Wallet links also
+return there. This local UI uses system fonts and explicitly embeds only its
+HTML, JS, CSS and icon, including when an old generated font directory exists.
+No remote page has Tauri IPC capability or receives keys or native tokens.
+The native marker shown to Web pages is only a cosmetic UI hint.
 
-## App interface
+`open_mikaki_web` navigates the WebView to one of two fixed HTTPS destinations.
+Top-level navigation is restricted to first-party HTTPS origins and the local
+Wallet document. A stalled load returns to a local retry screen after twenty
+seconds. Retrying remains inside the app. Certificate verification is unchanged.
 
-The bundled UI provides a login entry, browser-authentication waiting screen,
-account home, account details and settings. Settings offer system/light/dark
-appearance and local logout; browser SSO remains active. Back navigation cannot
-reveal account screens after logout. Cancel invalidates the pending Rust
-transaction, including delayed discovery or token responses. Appearance is the
-only value stored in WebView localStorage; tokens remain in Rust memory.
+## Development and verification
 
-Technical status and the opt-in Vault key/consent/ciphertext tools live under
-Settings → Diagnostics. The home does not claim to decrypt or manage Vault data.
-See [screen previews and validation](../../docs/mobile-ui-preview/README.md).
-From the repository root, `npm run test:mobile-ui` checks the real bundled
-assets with a synthetic native bridge, and `npm run preview:mobile-ui`
-regenerates the screenshots. These browser checks do not establish OS callback
-delivery or device-specific layout.
+Install pinned dependencies with `npm ci` in this directory. `npm run dev:macos`
+and `npm run build:macos` use the development Mac overlay. Android and iPhone
+projects are checked in; initialize them with the pinned Tauri CLI when needed.
+The existing native OIDC public-client implementation is retained for protocol
+validation and is not the app's account entry point.
+
+A debug-only `MIKAKI_WEBVIEW_DEV_ORIGIN=http://127.0.0.1:<port>` build variable
+can select a local Web server. Only literal IPv4 loopback HTTP origins with
+an explicit port are accepted. Release builds ignore it. The origin stays
+unprivileged and receives no native IPC capability. This is for local WebView
+and WebFont tests, not production authentication.
+
+`npm run test:mobile-ui` tests the local Wallet shell; the identity card/HAIP
+UI suites cover explicit consent, cancellation and stale results. Native Rust
+tests check navigation boundaries. These mocks do not qualify WebAuthn or
+physical-device attestation. HAIP attestation and NFC/BLE remain Android
+features; building for Mac does not establish support for those protocols.
+
+The tested Mac can reach production in Chrome using ECH, while normal TLS
+connections naming auth.mikaki.org reset before receiving a certificate.
+The same IP accepts a control SNI. An isolated URLSession probe with per-process
+encrypted DNS also fails TLS. Production WebView connectivity remains an
+unresolved network prerequisite. Embedded Passkeys additionally need OS
+association and appropriate app signing (Apple webcredentials / Android
+Credential Manager and Digital Asset Links); current app-link association
+alone does not qualify them. Do not claim a successful production Passkey
+ceremony from compilation or synthetic WebView tests.
 
 ## Identity-card read, account linking and issuance
 
-Settings → Diagnostics reads My Number input-support four attributes or traditional
+Wallet reads My Number input-support four attributes or traditional
 IC driving licences on Android. Driver's licence PIN1 is sufficient for a local
 preview; PIN2 is required for backend signature verification because the signed
 hash also covers photo and registered domicile. Both PINs are verified once and

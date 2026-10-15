@@ -6,7 +6,6 @@
     <meta name="color-scheme" content="light dark" />
     <title>mikaki</title>
     <link rel="icon" type="image/svg+xml" href="brand-icon.svg" />
-    <link rel="stylesheet" href="fonts/fonts.css" />
     <link rel="stylesheet" href="style.css" />
     <script src="app.js" type="module"></script>
   </head>
@@ -53,82 +52,24 @@
         </button>
       </header>
       <main id="main">
-        <section id="welcome" class="screen welcome-screen" aria-labelledby="welcome-title">
-          <div class="welcome-art" aria-hidden="true">
-            <span class="welcome-orbit"></span><span class="welcome-orbit inner"></span
-            ><img class="brand-mark" src="brand-icon.svg" alt="" width="72" height="72" />
-          </div>
+        <section id="home" class="screen" aria-labelledby="home-title">
           <p class="eyebrow">YOUR PERSONAL SPACE</p>
-          <h1 id="welcome-title">あなたの情報を、<br />あなたの手元に。</h1>
-          <p class="lead">パスキーで、あなたのmikakiへ。</p>
-          <button id="login" class="primary" type="button" disabled>
-            <svg class="icon" aria-hidden="true"><use href="#i-key" /></svg
-            ><span>パスキーでログイン</span><span class="button-arrow" aria-hidden="true">→</span>
-          </button>
-          <p class="help">ブラウザで本人確認した後、このアプリに戻ります。</p>
-          <button id="retry-init" class="text-button" type="button" hidden>もう一度確認する</button>
-        </section>
-        <section id="waiting" class="screen waiting-screen" aria-labelledby="waiting-title" hidden>
-          <div class="waiting-symbol" aria-hidden="true">
-            <svg class="icon"><use href="#i-browser" /></svg>
-          </div>
-          <p class="eyebrow">CONTINUE IN YOUR BROWSER</p>
-          <h1 id="waiting-title">ブラウザで<br />本人確認してください</h1>
-          <p class="lead" id="waiting-description">完了すると、このアプリに戻ります。</p>
-          <p class="waiting-progress">
-            <span class="progress-dot" aria-hidden="true"></span
-            ><span id="waiting-phase">ブラウザを開いています</span>
-          </p>
-          <button id="check-auth" type="button" class="secondary" hidden>
-            状態をもう一度確認する
-          </button>
-          <button id="cancel-login" type="button" class="secondary">キャンセルして戻る</button>
-        </section>
-        <section id="home" class="screen" aria-labelledby="home-title" hidden>
-          <p class="eyebrow">MY ACCOUNT</p>
           <h1 id="home-title">あなたのmikaki</h1>
-          <p class="lead">アカウントを、いつも手元に。</p>
-          <div class="identity-card">
-            <span class="avatar" aria-hidden="true"
-              ><svg class="icon"><use href="#i-user" /></svg
-            ></span>
-            <div>
-              <h2>mikaki アカウント</h2>
-              <p>この端末でログインしています</p>
-            </div>
-            <span class="session-badge"
-              ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>ログイン済み</span
-            >
-          </div>
-          <h2 class="section-title">アカウント</h2>
-          <a class="menu-row" href="#account"
-            ><span class="row-icon" aria-hidden="true"
-              ><svg class="icon"><use href="#i-key" /></svg></span
-            ><span><strong>アカウント情報</strong><small>ログイン方法と接続先</small></span
-            ><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron" /></svg
-          ></a>
-          <a class="menu-row" href="#settings"
-            ><span class="row-icon" aria-hidden="true"
-              ><svg class="icon"><use href="#i-phone" /></svg></span
-            ><span><strong>この端末の設定</strong><small>表示とログイン状態</small></span
-            ><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron" /></svg
-          ></a>
-        </section>
-        <section id="account" class="screen" aria-labelledby="account-title" hidden>
-          <button class="back-button" type="button" data-back>
-            <svg class="icon" aria-hidden="true"><use href="#i-back" /></svg>ホーム
+          <p class="lead">アカウントとVaultはWebで。証明書はこの端末で。</p>
+          <button class="primary" type="button" data-web-destination="signin">
+            <svg class="icon" aria-hidden="true"><use href="#i-browser" /></svg>
+            <span>Web版を開く</span>
           </button>
-          <p class="eyebrow">MY ACCOUNT</p>
-          <h1 id="account-title">アカウント情報</h1>
-          <dl class="facts">
-            <dt>ログイン方法</dt>
-            <dd>パスキー</dd>
-            <dt>接続先</dt>
-            <dd>auth.mikaki.org</dd>
-            <dt>この端末</dt>
-            <dd>ログイン済み</dd>
-          </dl>
-          <p class="help account-help">アプリが終了した場合は、もう一度ログインしてください。</p>
+          <p class="help">Web画面をこのアプリ内で開きます。</p>
+          <button class="menu-row" type="button" data-web-destination="vault">
+            <span><strong>Vaultを開く</strong><small>アプリ内で情報を確認・管理する</small></span>
+            <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+          </button>
+          <a class="menu-row" href="#wallet">
+            <span><strong>Wallet</strong><small>この端末で証明書を受け取り、提示する</small></span>
+            <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+          </a>
+          <p class="help">証明書の受取・提示は、アプリのログインなしで始められます。</p>
         </section>
         <section id="settings" class="screen" aria-labelledby="settings-title" hidden>
           <button class="back-button" type="button" data-back>
@@ -145,14 +86,6 @@
               <option value="dark">ダーク</option>
             </select></label
           >
-          <div id="session-settings" hidden>
-            <h2 class="section-title">アカウント</h2>
-            <button id="open-logout" class="menu-row" type="button">
-              <span><strong>この端末からログアウト</strong></span
-              ><svg class="icon chevron" aria-hidden="true"><use href="#i-logout" /></svg>
-            </button>
-            <p class="help">ブラウザ側のログインは継続します。</p>
-          </div>
           <h2 class="section-title">アプリについて</h2>
           <a class="menu-row" href="#diagnostics"
             ><span><strong>診断</strong><small>接続状態と検証用の操作</small></span
@@ -169,8 +102,8 @@
           <dl class="facts">
             <dt>接続先</dt>
             <dd>auth.mikaki.org</dd>
-            <dt>ログイン状態</dt>
-            <dd id="diagnostic-session">確認中</dd>
+            <dt>アカウント・Vault</dt>
+            <dd>アプリ内のWeb画面で利用</dd>
             <dt>実行環境</dt>
             <dd id="diagnostic-platform">確認中</dd>
           </dl>
@@ -178,6 +111,14 @@
             <summary>最後のエラー</summary>
             <pre id="diagnostic-error"></pre>
           </details>
+        </section>
+        <section id="wallet" class="screen" aria-labelledby="wallet-title" hidden>
+          <button class="back-button" type="button" data-back>
+            <svg class="icon" aria-hidden="true"><use href="#i-back" /></svg>戻る
+          </button>
+          <p class="eyebrow">ON YOUR DEVICE</p>
+          <h1 id="wallet-title">Wallet</h1>
+          <p class="help">鍵と証明書をこの端末で管理します。受取時はブラウザーで発行を承認してください。利用できる機能は端末によって異なります。</p>
           <section id="identity-reader" hidden>
             <h2 class="section-title">身分証の読取</h2>
             <button id="identity-manage" class="secondary" type="button">
@@ -361,24 +302,25 @@
             </button>
           </section>
         </section>
+        <section id="connection" class="screen" aria-labelledby="connection-title" hidden>
+          <p class="eyebrow">CONNECTION</p>
+          <h1 id="connection-title">接続できませんでした</h1>
+          <p class="lead">auth.mikaki.org の画面を読み込めませんでした。</p>
+          <p class="help">ネットワークの接続を確認して、もう一度お試しください。</p>
+          <button class="primary" type="button" data-web-destination="vault">もう一度接続する</button>
+          <a class="menu-row" href="#wallet"><span><strong>この端末のWalletを開く</strong></span></a>
+        </section>
         <p id="status" class="notice" role="status" aria-live="polite" hidden></p>
       </main>
       <nav id="navigation" class="bottom-nav" aria-label="アプリ内の画面" hidden>
         <a href="#home" data-nav="home"
           ><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg><span>ホーム</span></a
+        ><a href="#wallet" data-nav="wallet" aria-label="Walletを開く"><svg class="icon" aria-hidden="true"><use href="#i-key" /></svg><span>Wallet</span></a
         ><a href="#settings" data-nav="settings"
           ><svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg><span>設定</span></a
         >
       </nav>
     </div>
-    <dialog id="logout-dialog" aria-labelledby="logout-title" aria-describedby="logout-description">
-      <h2 id="logout-title">この端末から<br />ログアウトしますか？</h2>
-      <p id="logout-description">
-        このアプリのログイン状態を消去します。ブラウザ側のログインは継続します。
-      </p>
-      <button id="clear" class="primary" type="button">ログアウト</button
-      ><button id="keep-session" class="secondary" type="button">キャンセル</button>
-      <p id="logout-error" class="help" role="alert" hidden></p>
-    </dialog>
+
   </body>
 </html>

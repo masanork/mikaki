@@ -1,5 +1,24 @@
 # Tauri client authentication decision review
 
+The application now displays the first-party HTTPS account and Owner Vault
+inside its WebView. The WebView owns its own Web session and PRF unlock flow;
+ordinary account entry does not start a native OIDC transaction or open an
+external browser. WebFonts are loaded from the server. The local Wallet and
+connection retry screens use system fonts and contain no font inventory.
+
+Remote documents have no Tauri IPC capability. A fixed first-party Wallet
+navigation link only opens the bundled consent UI; it cannot request a
+signature or supply attributes. The local UI invokes native Wallet commands
+only after its existing explicit reviews. Validated incoming Wallet callbacks
+also return to that local UI. Wallet OAuth authorization remains its separate
+protocol flow, including external-user-agent requirements.
+
+The native OIDC implementation below is retained as a separate public-client
+path. The current Mac's production TLS reset remains unresolved, and embedded
+Passkeys require OS association and signed-app/device qualification. A loaded
+Web page or a successful compile does not establish a Passkey ceremony.
+
+
 **Status (2026-10-05):** the client supports ordinary OIDC login and Identity
 wallet/presentation. Native Vault OAuth, consent, ciphertext commands, and the
 Vault-specific DPoP key/plugin surface have been retired. This source change

@@ -1,5 +1,12 @@
 # Native app interface
 
+2026-10-15: ordinary account/Vault screens are hosted in the app WebView.
+The bundled UI is now a Wallet and connection-retry surface. The preview
+script captures those local screens using a synthetic native bridge. Their
+Web links navigate the app WebView; they do not launch the system browser.
+Older welcome, waiting and account screenshots below describe earlier builds.
+
+
 2026-09-30: the debug landing screen is replaced by a mobile account interface.
 These screenshots use the actual bundled HTML/CSS/JS, the app CSP and a synthetic
 native bridge at 375 × 812. They contain no real account or token data.

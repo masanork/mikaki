@@ -83,6 +83,8 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
 
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
+      if (location.search.includes('native-host'))
+        Object.defineProperty(window, '__MIKAKI_NATIVE__', { value: true });
       if (location.search.includes('silent-motion-change')) {
         const original = window.matchMedia.bind(window);
         window.matchMedia = (query) => {
@@ -216,8 +218,15 @@ test('Worker login and Vault mount their Svelte screens in both locales', async 
     await page.waitForTimeout(200);
     assert.deepEqual(errors, [], 'zero-height resize must not draw an empty material canvas');
 
+    await page.goto('https://mikaki.test/login?native-host');
+    await page.getByRole('link', { name: 'この端末のWalletを開く' }).waitFor();
+    assert.equal(
+      await page.getByRole('link', { name: 'この端末のWalletを開く' }).getAttribute('href'),
+      'https://auth.mikaki.org/native/wallet',
+    );
     await page.goto('https://mikaki.test/login');
     await page.locator('#passkey').waitFor();
+    assert.equal(await page.getByRole('link', { name: 'この端末のWalletを開く' }).count(), 0);
     await auditAccessibility(page, 'login-ja');
     await page.getByRole('button', { name: 'Passkeyでサインイン' }).waitFor();
     assert.equal(await page.getByText('test-rp').count(), 1);

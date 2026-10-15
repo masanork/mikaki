@@ -50,7 +50,9 @@ keeps WebKit DOM text on Inter when another Japanese chunk has loaded.
 CSS families use the Mikaki Bunsen prefix so installed Bunsen fonts cannot
 claim characters outside the webfont ranges.
 Merged-font creation/modification times use the pinned source-date epoch.
-Fonts are self-hosted. Native builds bundle these same assets for offline use.
+Fonts are self-hosted and loaded by the application WebView from the Web
+origin. The local Wallet and connection-retry screens use system fonts;
+native builds do not bundle the WebFont inventory.
 
 Regeneration
 Normal builds use the committed subsets. To regenerate, prepare the six

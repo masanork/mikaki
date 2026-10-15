@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NativeWalletLink from './NativeWalletLink.svelte';
   import { restoreActionFocus } from './action-focus.js';
   import { publishVaultLock } from './session-events.js';
   import { onMount, tick } from 'svelte';
@@ -546,6 +547,7 @@
       <a class="quiet" href={`/signin?lang=${locale}`}>{m.enrollSignIn()}</a>{/if}
   </main>
   <footer>
+    <NativeWalletLink className="quiet" {locale} />
     {#if !pending && !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}
         >{m.homeEnroll()}</a
       >
