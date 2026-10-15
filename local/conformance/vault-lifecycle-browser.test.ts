@@ -386,6 +386,8 @@ async function exerciseLifecycle(notifications: Notifications) {
     await reopen.click();
     await expect(page.locator('#unlock')).toBeEnabled();
     await page.locator('#unlock').click();
+    // Finish the protected reads during unlock before another tab revokes the session.
+    await expect(page.locator('#name')).toHaveValue('');
     const other = await page.context().newPage();
     logoutPage = other;
     other.on('pageerror', (error) => errors.push(error.message));
