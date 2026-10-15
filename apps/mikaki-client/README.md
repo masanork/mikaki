@@ -208,6 +208,14 @@ successful compile or synthetic Worker test does not qualify the installed
 flow. Test login, cancel/timeout, callback interception, wrong port/issuer,
 second login, and process restart on each target desktop OS before release.
 
+On 2026-10-15, an Apple Silicon Mac running macOS 27.0.1 built the universal
+bundle, passed all 51 library tests, verified both architectures and the ad-hoc
+signature after ZIP extraction, and launched the installed development app.
+The welcome screen and login action were exercised. Live login remains
+unqualified on that host: OIDC discovery with the same native HTTP library
+returned `Connection reset by peer`, while Chrome reached the discovery
+endpoint. Intel execution and the complete Passkey/callback flow remain open.
+
 ## Android and iPhone setup
 
 The [activation checkpoint](../../docs/native-client-activation.md) records

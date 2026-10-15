@@ -316,7 +316,8 @@ jobs:
         run: |
           app='apps/mikaki-client/src-tauri/target/universal-apple-darwin/release/bundle/macos/Mikaki Dev.app'
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/mikaki-client"
+          lipo "$app/Contents/MacOS/mikaki-client" -verify_arch arm64
+          lipo "$app/Contents/MacOS/mikaki-client" -verify_arch x86_64
           mkdir -p artifacts/macos-development
           ditto -c -k --sequesterRsrc --keepParent "$app" artifacts/macos-development/Mikaki-Dev-universal.app.zip
           (cd artifacts/macos-development && shasum -a 256 Mikaki-Dev-universal.app.zip > SHA256SUMS)
