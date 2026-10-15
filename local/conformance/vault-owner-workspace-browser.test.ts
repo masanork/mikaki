@@ -8,7 +8,7 @@ import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { parseThreadArchive } from '../../crates/worker/ui/vault-thread-archive.ts';
 import { build } from 'esbuild';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 test('archive schema accepts human/AI messages and rejects malformed content', () => {
@@ -46,6 +46,8 @@ test('new owner Vault preserves revision ETags through edge compression and uses
         snapshot: string;
         exportSnapshot(): Promise<string>;
         restore(text: string): Promise<string>;
+        verifyRestored(id: string): Promise<string>;
+        browserSession: { url: string; token: string; workspaceId: string; chatId: number };
         close(): Promise<void>;
       }
     | undefined;
@@ -948,6 +950,151 @@ test('new owner Vault preserves revision ETags through edge compression and uses
     await expect(vaultRestore.getByText(workspaceSnapshot.title, { exact: true })).toHaveCount(0);
     await vaultRestore.close();
     await os.close();
+
+    if (process.env['MIKAKI_CLOUDFLARE_OS_UI'] === '1') {
+      assert.ok(
+        sourceRoot && workspaceFixture,
+        'The complete UI test requires the Cloudflare OS source and RPC fixture',
+      );
+      const { browserSession } = workspaceFixture;
+      const uiOrigin = new URL(browserSession.url).origin;
+      await context.grantPermissions(['local-network-access'], { origin: uiOrigin });
+      const dist = resolve(sourceRoot, 'packages/workshop-frontend/dist');
+      const contentTypes: Record<string, string> = {
+        '.js': 'text/javascript',
+        '.css': 'text/css',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.woff2': 'font/woff2',
+        '.wasm': 'application/wasm',
+        '.json': 'application/json',
+        '.ico': 'image/x-icon',
+      };
+      // Serve the real production SPA on the fixture backend's origin. Its browser WebSocket
+      // connects directly to workerd; there are no exposed RPC callbacks or replacement controls.
+      await context.route(`${uiOrigin}/**`, async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.startsWith('/api')) return route.continue();
+        const file = path.startsWith('/assets/') || extname(path) ? path : '/index.html';
+        const target = resolve(dist, `.${file}`);
+        assert.ok(target.startsWith(`${dist}/`));
+        try {
+          await route.fulfill({
+            contentType: contentTypes[extname(file)] ?? 'text/html',
+            body: await readFile(target),
+          });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          await route.fulfill({ status: 404, body: 'Not found' });
+        }
+      });
+      await context.addInitScript(
+        ({ origin, token }) => {
+          if (location.origin === origin) localStorage.setItem('authToken', token);
+        },
+        { origin: uiOrigin, token: browserSession.token },
+      );
+      const workshop = await context.newPage();
+      await workshop.setViewportSize({ width: 1440, height: 1000 });
+      const uiErrors: string[] = [];
+      const consoleErrors: string[] = [];
+      workshop.on('pageerror', (error) => uiErrors.push(error.message));
+      workshop.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500));
+      });
+      const sockets = { opened: 0, sent: 0, received: 0, closed: 0, errors: [] as string[] };
+      workshop.on('websocket', (socket) => {
+        sockets.opened++;
+        socket.on('framesent', () => sockets.sent++);
+        socket.on('framereceived', () => sockets.received++);
+        socket.on('close', () => sockets.closed++);
+        socket.on('socketerror', (error) => sockets.errors.push(error));
+      });
+      const workspacePath = `/workspace/${encodeURIComponent(browserSession.workspaceId)}`;
+      await workshop.goto(
+        `${uiOrigin}${workspacePath}?chat=${browserSession.chatId}&showChat=true`,
+      );
+      try {
+        await workshop.getByText('Workspace in Vault', { exact: true }).click({ timeout: 15_000 });
+      } catch (error) {
+        await workshop.screenshot({
+          path: 'artifacts/cloudflare-os-vault/workshop-ui-failure.png',
+        });
+        throw new Error(
+          JSON.stringify({
+            url: workshop.url(),
+            errors: uiErrors,
+            consoleErrors,
+            sockets,
+            body: (await workshop.locator('body').innerText()).slice(0, 4000),
+          }),
+          { cause: error },
+        );
+      }
+      await expect(
+        workshop.getByRole('button', { name: 'Save workspace to Vault', exact: true }),
+      ).toBeVisible();
+      await workshop.screenshot({ path: 'artifacts/cloudflare-os-vault/workshop-ui.png' });
+      const uiSavePopup = workshop.waitForEvent('popup');
+      await workshop.getByRole('button', { name: 'Save workspace to Vault', exact: true }).click();
+      const uiSave = await uiSavePopup;
+      uiSave.on('dialog', (dialog) => void dialog.accept());
+      await uiSave.goto(`${origin}/vault?lang=en`);
+      await uiSave.locator('#unlock').click();
+      await expect(
+        uiSave.getByRole('heading', { name: workspaceSnapshot.title, exact: true }),
+      ).toBeVisible();
+      await uiSave.locator('#workspace-snapshot-save').click();
+      await expect(
+        workshop
+          .getByRole('status')
+          .filter({ hasText: 'Mikaki confirmed the encrypted workspace snapshot was saved.' }),
+      ).toBeVisible();
+      await uiSave.close();
+      const uiRestorePopup = workshop.waitForEvent('popup');
+      await workshop
+        .getByRole('button', { name: 'Restore workspace from Vault', exact: true })
+        .click();
+      const uiRestore = await uiRestorePopup;
+      uiRestore.on('dialog', (dialog) => void dialog.accept());
+      await uiRestore.goto(`${origin}/vault?lang=en`);
+      await uiRestore.locator('#unlock').click();
+      await uiRestore.locator('#workspace-snapshot-list').click();
+      const snapshots = uiRestore.locator('section[aria-labelledby=workspace-snapshots-heading]');
+      await expect(
+        snapshots.getByRole('button', { name: /Saved app and conversation/ }).first(),
+      ).toBeVisible();
+      for (const entry of await snapshots
+        .getByRole('button', { name: /Saved app and conversation/ })
+        .all()) {
+        await entry.click();
+        await expect(snapshots).toHaveAttribute('aria-busy', 'false');
+        if ((await snapshots.locator('h3 + p').textContent())?.startsWith(uiOrigin)) break;
+        await expect(uiRestore.locator('#workspace-snapshot-restore')).toHaveCount(0);
+      }
+      await expect(uiRestore.locator('#workspace-snapshot-restore')).toBeEnabled();
+      await uiRestore.locator('#workspace-snapshot-restore').click();
+      await workshop.waitForURL(
+        (url) =>
+          url.pathname.startsWith('/workspace/') &&
+          decodeURIComponent(url.pathname.slice('/workspace/'.length)) !==
+            browserSession.workspaceId,
+        { timeout: 30_000 },
+      );
+      const restoredId = decodeURIComponent(
+        new URL(workshop.url()).pathname.slice('/workspace/'.length),
+      );
+      await workspaceFixture.verifyRestored(restoredId);
+      await expect(
+        uiRestore.locator('section[aria-labelledby=workspace-snapshots-heading] [role=status]'),
+      ).toContainText('Cloudflare OS reported that a new workspace was restored.');
+      await workshop.reload();
+      await expect(workshop.getByText('Workspace in Vault', { exact: true })).toBeVisible();
+      assert.deepEqual(uiErrors, [], 'The complete Workshop frontend runs without uncaught errors');
+      await workshop.screenshot({ path: 'artifacts/cloudflare-os-vault/workshop-restored-ui.png' });
+      await uiRestore.close();
+      await workshop.close();
+    }
   } finally {
     await browser?.close();
     await workspaceFixture?.close();

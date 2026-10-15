@@ -190,4 +190,40 @@ MIKAKI_CLOUDFLARE_OS_RPC=1 \
   node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
 ```
 
-This has not been deployed; hosted session/popup/real-device qualification remains.
+## Complete local Cloudflare OS UI
+
+The receiver was merged in [#245](https://github.com/masanork/mikaki/pull/245).
+The companion implementation is reviewed in the
+[portable snapshot API PR](https://github.com/masanork/cloudflare-os/pull/1) and
+[Mikaki UI PR](https://github.com/masanork/cloudflare-os/pull/2) in the user's
+Cloudflare OS fork. Upstream's contribution policy does not accept a feature of
+this size; those PRs do not target `cloudflare/cloudflare-os`.
+
+To exercise the complete production React frontend, first build in that checkout:
+
+```sh
+VITE_MIKAKI_VAULT_URL=https://mikaki.test/vault \
+  pnpm exec vp run -F @gadgets/workshop-frontend build
+pnpm exec vp run -F @gadgets/integration-tests build:test-gatekeeper
+```
+
+Then run in Mikaki:
+
+```sh
+MIKAKI_CLOUDFLARE_OS_SOURCE=/absolute/path/to/cloudflare-os \
+MIKAKI_CLOUDFLARE_OS_RPC=1 MIKAKI_CLOUDFLARE_OS_UI=1 \
+  node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
+```
+
+This mode serves the unmodified production assets on the local backend origin.
+The actual Workshop buttons open Mikaki and use the browser's authenticated
+WebSocket connection directly. It covers save confirmation, refusing disclosure
+to a different origin, restoring a selected copy, navigation and reload, plus
+the new-session business-data checks above. The test grants local-network access
+only to the fixture's loopback origin, so Chromium can reach that backend.
+The Workshop account/session and Mikaki login/Passkey PRF remain fixtures.
+
+This has not been deployed; hosted login/session/popup and physical-device
+qualification remain. The Cloudflare OS preview preflight requires a target
+account/subdomain, matching Access application (`CF_ACCESS_AUD`, `CF_ACCESS_ISS`),
+preview administrator and deployed Mikaki `/vault` URL.
