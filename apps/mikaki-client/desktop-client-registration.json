@@ -1,0 +1,5 @@
+{
+  "client_id": "52086973-4ce5-452c-8e73-3889af93a430",
+  "sector_identifier": "127.0.0.1",
+  "redirect_uris": ["http://127.0.0.1:0/oidc/callback"]
+}

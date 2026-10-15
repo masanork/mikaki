@@ -148,19 +148,73 @@ Gradle subprocess startup issue; it requires an up-to-date Rust library first.
 
 ## Desktop setup
 
-Apply the normal OP migrations through `0026_native_loopback_redirect.sql` and
-register a public desktop client with a separate client ID, sector
-`127.0.0.1`, and redirect URI `http://127.0.0.1:0/oidc/callback`. The operator
-command and input format are in the architecture review. The client ID is
-public but must match the registration. Set `MIKAKI_DESKTOP_CLIENT_ID` in the
-build environment, then build from `src-tauri` with `cargo check` or the Tauri
-CLI. The issuer is pinned to `https://auth.mikaki.org`.
+On a Mac with Xcode Command Line Tools, the pinned Rust toolchain and Node
+installed, run from this directory:
+
+```sh
+npm ci
+npm run dev:macos
+```
+
+This starts **Mikaki Dev** with Rust hot reload and the bundled local UI. To
+produce an app that can be opened directly:
+
+```sh
+npm run build:macos
+open 'src-tauri/target/release/bundle/macos/Mikaki Dev.app'
+```
+
+The explicit `tauri.macos-dev.conf.json` overlay sets the separate development
+identifier `app.tossa.mikaki.dev`, macOS 13 minimum and ad-hoc signing. These
+commands use the public client ID in `desktop-client-registration.json` for
+`https://auth.mikaki.org`; `MIKAKI_DESKTOP_CLIENT_ID` can override it when
+compiling. No client secret is needed. Changing that environment variable
+rebuilds the Rust app, including when reusing a Cargo cache.
+
+The desktop registration uses sector `127.0.0.1` and the exact port-zero URI
+`http://127.0.0.1:0/oidc/callback`; each login binds a fresh loopback port.
+The checked-in public registration was applied to the production Owner DB on
+2026-10-15 with PKCE required and no client secret.
+Register it with the audited operator command described in the
+[client architecture review](../../docs/tauri-client-auth.md). Use the current
+Owner schema migrations when setting up another OP; the historical migration
+number in older native-client notes is not a production migration command.
+
+CI's `native-client` job tests the Rust library and builds an ad-hoc signed
+universal `.app` for both Apple Silicon and Intel. Its
+`mikaki-macos-development-universal-<attempt>` artifact contains
+`Mikaki-Dev-universal.app.zip`, its SHA-256 checksum and the source commit, and
+is retained for 14 days. Extract the inner app zip with Archive Utility or
+`ditto -x -k Mikaki-Dev-universal.app.zip .` to preserve the bundle. To reproduce
+that build locally:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run build:macos -- --target universal-apple-darwin --ci
+open 'src-tauri/target/universal-apple-darwin/release/bundle/macos/Mikaki Dev.app'
+```
+
+The development artifact is not notarized for public distribution. macOS can
+require approval in Privacy & Security for a downloaded app; local source
+builds are the development path. See Tauri's
+[ad-hoc signing documentation](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing).
+HAIP wallet issuance still requires Android hardware key attestation. The
+Mac build supports the app UI and ordinary OIDC login; it does not enable
+Android NFC, BLE proximity or HAIP issuance on macOS.
 
 The desktop login requires an installed OP with the matching client
 registration, a system browser, a Passkey, and a local loopback listener. A
 successful compile or synthetic Worker test does not qualify the installed
 flow. Test login, cancel/timeout, callback interception, wrong port/issuer,
 second login, and process restart on each target desktop OS before release.
+
+On 2026-10-15, an Apple Silicon Mac running macOS 27.0.1 built the universal
+bundle, passed all 51 library tests, verified both architectures and the ad-hoc
+signature after ZIP extraction, and launched the installed development app.
+The welcome screen and login action were exercised. Live login remains
+unqualified on that host: OIDC discovery with the same native HTTP library
+returned `Connection reset by peer`, while Chrome reached the discovery
+endpoint. Intel execution and the complete Passkey/callback flow remain open.
 
 ## Android and iPhone setup
 
