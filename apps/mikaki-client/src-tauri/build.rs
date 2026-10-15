@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=MIKAKI_WEBVIEW_DEV_ORIGIN");
     println!("cargo:rerun-if-env-changed=MIKAKI_HAIP_WALLET");
     println!("cargo:rerun-if-env-changed=MIKAKI_OID4VP_VERIFIERS");
     println!("cargo:rerun-if-env-changed=MIKAKI_MDOC_READERS");

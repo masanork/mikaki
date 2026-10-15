@@ -138,7 +138,9 @@ jobs:
       - name: Bunsen and Inter rendering in Chromium and WebKit
         run: npm run test:fonts
       - name: Native client UI lifecycle
-        run: npm run test:mobile-ui
+        run: |
+          npm run test:mobile-ui
+          node --test local/conformance/identity-card-ui.test.ts local/conformance/identity-haip-ui.test.ts
       - name: MDS durable operation regressions
         run: node --test local/conformance/mds-operation.test.ts
       - name: Project size, coverage, and dependency trends

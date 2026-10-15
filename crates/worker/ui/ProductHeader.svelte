@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NativeWalletLink from './NativeWalletLink.svelte';
   import BrandMark from './BrandMark.svelte';
   import * as m from './paraglide/messages.js';
   import { switchLocale } from './locale.js';
@@ -82,6 +83,7 @@
       </div>
     {:else}<span class="product-brand-tag">PRIVATE BY DESIGN</span>{/if}
     <div class="product-toolbar">
+      <NativeWalletLink className="product-signout" {locale} />
       <label class="product-language"
         >{m.language()}
         <select

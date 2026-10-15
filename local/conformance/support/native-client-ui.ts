@@ -48,12 +48,6 @@ export async function startNativeUiServer() {
       readFileSync(new URL(name, directory)),
     ]),
   );
-  const fonts = new URL('../../../assets/fonts/', import.meta.url);
-  const manifest = JSON.parse(readFileSync(new URL('manifest.json', fonts), 'utf8')) as {
-    files: { file: string }[];
-  };
-  for (const name of ['fonts.css', ...manifest.files.map(({ file }) => file)])
-    assets.set(`fonts/${name}`, readFileSync(new URL(name, fonts)));
   const server = createServer((request, response) => {
     const name = new URL(request.url ?? '/', 'http://localhost').pathname.slice(1) || 'index.html';
     const data = assets.get(name);
@@ -67,11 +61,9 @@ export async function startNativeUiServer() {
         ? 'text/javascript'
         : name.endsWith('.css')
           ? 'text/css'
-          : name.endsWith('.woff2')
-            ? 'font/woff2'
-            : name.endsWith('.svg')
-              ? 'image/svg+xml'
-              : 'text/html',
+          : name.endsWith('.svg')
+            ? 'image/svg+xml'
+            : 'text/html',
       'Content-Security-Policy': config.app.security.csp,
     });
     response.end(data);
@@ -307,6 +299,8 @@ export async function createNativeUiPage(
         case 'clear_identity_credential':
         case 'cancel_identity_card':
           break;
+        case 'open_mikaki_web':
+          break;
         case 'native_platform':
           result = initial.platform ?? 'mobile';
           break;
@@ -366,12 +360,8 @@ export async function createNativeUiPage(
     });
   }, scenario);
   await page.goto(url);
-  await page.waitForFunction(
-    () =>
-      !document.querySelector<HTMLButtonElement>('#login')?.disabled ||
-      !document.querySelector('#home')?.hasAttribute('hidden') ||
-      !document.querySelector('#waiting')?.hasAttribute('hidden'),
-  );
+  await page.locator('.screen:not([hidden])').first().waitFor({ state: 'visible' });
+  await page.waitForFunction(() => window.__nativeUiTest.calls.includes('native_platform'));
   return { page, errors };
 }
 

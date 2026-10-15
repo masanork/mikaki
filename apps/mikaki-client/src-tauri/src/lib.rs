@@ -8,6 +8,7 @@ mod identity_wallet;
 mod mobile_oidc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod native_oidc;
+mod web;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -15,6 +16,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .manage(web::NavigationState::default())
         .manage(identity_reader::ReadState::default())
         .manage(identity_events::IdentityEvents::default())
         .manage(identity_issuance::IdentityState::default())
@@ -24,6 +26,7 @@ pub fn run() {
     let builder = builder
         .manage(native_oidc::NativeAuthState::default())
         .invoke_handler(tauri::generate_handler![
+            web::open_mikaki_web,
             identity_events::subscribe_identity_updates,
             identity_issuance::haip::flow::identity_wallet_issuance_status,
             identity_issuance::haip::flow::start_identity_wallet_issuance,
@@ -59,6 +62,7 @@ pub fn run() {
     let builder = builder
         .manage(mobile_oidc::MobileAuthState::default())
         .invoke_handler(tauri::generate_handler![
+            web::open_mikaki_web,
             identity_events::subscribe_identity_updates,
             identity_issuance::haip::flow::identity_wallet_issuance_status,
             identity_issuance::haip::flow::start_identity_wallet_issuance,
@@ -90,6 +94,7 @@ pub fn run() {
             mobile_oidc::start_mobile_login
         ])
         .setup(|app| {
+            web::create(app)?;
             let handle = app.handle().clone();
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
@@ -113,6 +118,11 @@ pub fn run() {
             });
             Ok(())
         });
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.setup(|app| {
+        web::create(app)?;
+        Ok(())
+    });
     #[cfg(target_os = "android")]
     let builder = builder
         .plugin(tauri_plugin_identity_reader::init())

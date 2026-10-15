@@ -120,6 +120,7 @@ pub fn receive(app: &AppHandle, uri: &url::Url) {
         s.invocation = Some((random(), invocation, Instant::now()));
     }
     let _ = app.emit("identity-presentation-ready", ());
+    let _ = crate::web::show_wallet(app);
 }
 #[tauri::command]
 pub fn pending_identity_invocation(

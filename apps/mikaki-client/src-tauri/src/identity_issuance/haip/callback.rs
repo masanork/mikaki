@@ -60,6 +60,7 @@ pub fn receive(app: &AppHandle, uri: &url::Url) -> bool {
     drop(inner);
     if matches!(outcome, Outcome::Ready | Outcome::Denied | Outcome::Expired) {
         let _ = app.emit("identity-issuance-updated", ());
+        let _ = crate::web::show_wallet(app);
     }
     true
 }

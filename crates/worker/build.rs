@@ -12,6 +12,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/login-connection.css");
     println!("cargo:rerun-if-changed=ui/product.css");
     println!("cargo:rerun-if-changed=ui/ProductHeader.svelte");
+    println!("cargo:rerun-if-changed=ui/NativeWalletLink.svelte");
     println!("cargo:rerun-if-changed=ui/logout.html");
     println!("cargo:rerun-if-changed=ui/vault.html");
     println!("cargo:rerun-if-changed=ui/vault.ts");
