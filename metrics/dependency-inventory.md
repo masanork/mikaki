@@ -1,8 +1,8 @@
 # Direct dependency inventory
 
-Snapshot: `2026-10-14` / commit `68f05c6`
+Snapshot: `2026-10-15` / commit `747e10b`
 
-Runtime dependency source: 1,659,151 lines total (373,303 npm, 1,285,848 Rust; 117 npm packages, 169 Rust crates in the resolved runtime graph).
+Runtime dependency source: 1,659,256 lines total (373,408 npm, 1,285,848 Rust; 117 npm packages, 169 Rust crates in the resolved runtime graph).
 
 | Scope | Count | Direct dependencies |
 |---|---:|---|
