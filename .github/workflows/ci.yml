@@ -292,17 +292,41 @@ jobs:
 
   native-client:
     runs-on: macos-15
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: rustup toolchain install 1.98.1 --profile minimal
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: apps/mikaki-client/package-lock.json
+      - run: rustup toolchain install 1.98.1 --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin
       - uses: ./.github/actions/setup-rust-cache
         with:
           workspaces: apps/mikaki-client/src-tauri
       - name: Native client library regressions
         run: cargo test --locked --manifest-path apps/mikaki-client/src-tauri/Cargo.toml --lib
+      - run: npm ci --prefix apps/mikaki-client
+      - name: Build the macOS development app for Apple Silicon and Intel
+        working-directory: apps/mikaki-client
+        run: npm run build:macos -- --target universal-apple-darwin --ci
+      - name: Verify and archive the macOS development app
+        run: |
+          app='apps/mikaki-client/src-tauri/target/universal-apple-darwin/release/bundle/macos/Mikaki Dev.app'
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/mikaki-client"
+          mkdir -p artifacts/macos-development
+          ditto -c -k --sequesterRsrc --keepParent "$app" artifacts/macos-development/Mikaki-Dev-universal.app.zip
+          (cd artifacts/macos-development && shasum -a 256 Mikaki-Dev-universal.app.zip > SHA256SUMS)
+          git rev-parse HEAD > artifacts/macos-development/source-commit.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mikaki-macos-development-universal-${{ github.run_attempt }}
+          path: artifacts/macos-development/
+          if-no-files-found: error
+          retention-days: 14
 
   jose-probes:
     runs-on: ubuntu-24.04

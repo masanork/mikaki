@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "tauri": "tauri",
+    "dev:macos": "node scripts/macos.mjs dev",
+    "build:macos": "node scripts/macos.mjs build",
     "generate:icons": "node branding/prepare.mjs && tauri icon branding/icons.json && tauri icon ../../branding/favicon.svg --output ../../branding/favicon --png 16 --png 32 --png 48 --png 64 && python3 branding/opaque-ios.py"
   },
   "devDependencies": {
