@@ -103,8 +103,9 @@ owner-reviewed copies, not automatic sync or a generic Durable Object backup.
 
 Save opens Mikaki after a user click. Its unlocked Owner workspace requests
 one payload from the pinned opener. The Cloudflare OS owner-only RPC captures
-supervisor business rows and clones each permanent gadget facet before its
-first await. A trusted inspector reads frozen user SQL/KV without starting
+supervisor business rows, durably journals the planned clone names, then checks
+that the supervisor has not changed before cloning each permanent gadget facet.
+A trusted inspector reads frozen user SQL/KV without starting
 archived gadget code. A concurrent supervisor change fails capture; each facet
 is individually frozen, without a cross-facet application transaction claim.
 Private capture clones are deleted after capture, and expired abandoned clones
@@ -126,7 +127,10 @@ before scanning. Oversized copies, native capabilities, virtual tables and
 unsupported values fail the entire capture; data is not truncated. Active
 agents, pending actions, proposed changes, provisional gadgets/bindings and
 current or tombstoned private worktrees must be resolved first. Private
-worktree export requires its own contract.
+worktree export requires its own contract. Spawned/callable agent chat scopes
+also require a separate contract and refuse export; dropping their frozen scope
+could grant wider default capabilities when a restored chat resumes. Callback
+history remains readable, with bindings to omitted argument capabilities removed.
 
 Mikaki encrypts the complete snapshot as one `workspace-snapshots/<random ID>`
 Owner record of kind `workspace-snapshot`. Only that collection/kind pair may
@@ -165,6 +169,9 @@ refusal, transactional rollback and portable SQL schema behavior. The paired
 browser fixture bundles the actual Cloudflare OS transfer module and verifies
 large encrypted writes, lost-response exact retries, explicit restore disclosure,
 reopening, mobile layout/accessibility and lock clearing.
+Imported SQL schema must contain single, non-data-producing DDL statements;
+`CREATE TABLE AS SELECT` and appended data-writing statements are refused before
+staging writes. Trigger bodies, including CASE expressions, remain supported.
 
 The optional paired RPC mode uses the Cloudflare OS integration harness and a
 real authenticated Cap'n Web WebSocket session. Browser buttons call that
@@ -190,4 +197,40 @@ MIKAKI_CLOUDFLARE_OS_RPC=1 \
   node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
 ```
 
-This has not been deployed; hosted session/popup/real-device qualification remains.
+## Complete local Cloudflare OS UI
+
+The receiver was merged in [#245](https://github.com/masanork/mikaki/pull/245).
+The companion implementation is reviewed in the
+[portable snapshot API PR](https://github.com/masanork/cloudflare-os/pull/1) and
+[Mikaki UI PR](https://github.com/masanork/cloudflare-os/pull/2) in the user's
+Cloudflare OS fork. Upstream's contribution policy does not accept a feature of
+this size; those PRs do not target `cloudflare/cloudflare-os`.
+
+To exercise the complete production React frontend, first build in that checkout:
+
+```sh
+VITE_MIKAKI_VAULT_URL=https://mikaki.test/vault \
+  pnpm exec vp run -F @gadgets/workshop-frontend build
+pnpm exec vp run -F @gadgets/integration-tests build:test-gatekeeper
+```
+
+Then run in Mikaki:
+
+```sh
+MIKAKI_CLOUDFLARE_OS_SOURCE=/absolute/path/to/cloudflare-os \
+MIKAKI_CLOUDFLARE_OS_RPC=1 MIKAKI_CLOUDFLARE_OS_UI=1 \
+  node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
+```
+
+This mode serves the unmodified production assets on the local backend origin.
+The actual Workshop buttons open Mikaki and use the browser's authenticated
+WebSocket connection directly. It covers save confirmation, refusing disclosure
+to a different origin, restoring a selected copy, navigation and reload, plus
+the new-session business-data checks above. The test grants local-network access
+only to the fixture's loopback origin, so Chromium can reach that backend.
+The Workshop account/session and Mikaki login/Passkey PRF remain fixtures.
+
+This has not been deployed; hosted login/session/popup and physical-device
+qualification remain. The Cloudflare OS preview preflight requires a target
+account/subdomain, matching Access application (`CF_ACCESS_AUD`, `CF_ACCESS_ISS`),
+preview administrator and deployed Mikaki `/vault` URL.
