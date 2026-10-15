@@ -148,18 +148,18 @@
     "@sqlite.org/sqlite-wasm": "3.53.4-build2",
     "jose": "6.2.12",
     "svelte": "5.57.2",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "4.14.0",
     "@babel/parser": "8.0.7",
     "@babel/traverse": "8.0.7",
     "@babel/types": "8.0.6",
-    "@cloudflare/workers-types": "^5.20261011.1",
-    "@inlang/paraglide-js": "^2.27.0",
-    "@inlang/plugin-message-format": "^4.5.1",
+    "@cloudflare/workers-types": "^5.20261015.1",
+    "@inlang/paraglide-js": "^2.29.0",
+    "@inlang/plugin-message-format": "^4.5.4",
     "@jridgewell/trace-mapping": "0.3.31",
-    "@playwright/test": "1.64.0",
+    "@playwright/test": "1.64.1",
     "@sorane/cli": "0.5.0",
     "@sorane/core": "0.5.0",
     "@sorane/okf": "0.5.0",
@@ -174,13 +174,13 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "wrangler": "4.149.0"
+    "wrangler": "4.151.0"
   },
   "overrides": {
     "katex": "0.18.2",
     "source-map-js": "1.2.2",
     "@zenuml/core": {
-      "playwright-core": "1.64.0"
+      "playwright-core": "1.64.1"
     },
     "@sorane/core": {
       "mermaid": "12.0.0",
