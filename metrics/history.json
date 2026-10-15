@@ -2713,11 +2713,11 @@
   },
   {
     "date": "2026-10-15",
-    "commit": "991589b",
+    "commit": "90f6395",
     "code": {
-      "implementationLines": 85399,
-      "testLines": 13397,
-      "implementationFiles": 299,
+      "implementationLines": 85532,
+      "testLines": 13463,
+      "implementationFiles": 300,
       "testFiles": 38,
       "byLanguage": {
         "typescript": {
@@ -2725,8 +2725,8 @@
           "testLines": 2747
         },
         "rust": {
-          "implementationLines": 39317,
-          "testLines": 10650
+          "implementationLines": 39450,
+          "testLines": 10716
         },
         "svelte": {
           "implementationLines": 8070,
@@ -2745,12 +2745,12 @@
         "dev": 11
       },
       "sourceLines": {
-        "npmRuntime": 373408,
-        "rustRuntime": 1285847,
-        "total": 1659255
+        "npmRuntime": 371701,
+        "rustRuntime": 1286609,
+        "total": 1658310
       },
       "sourcePackages": {
-        "npmRuntime": 117,
+        "npmRuntime": 119,
         "rustRuntime": 169
       },
       "names": {
