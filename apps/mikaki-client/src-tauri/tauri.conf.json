@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "identifier": "app.tossa.mikaki",
   "build": {
+    "beforeDevCommand": "node prepare-fonts.mjs",
+    "beforeBuildCommand": "node prepare-fonts.mjs",
     "frontendDist": "../ui"
   },
   "app": {

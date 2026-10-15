@@ -21,6 +21,7 @@ export type ReleaseInventory = {
   source: ReleaseSource;
   archives: { name: string; digest: Digest; members: { name: string; digest: Digest }[] }[];
   migrations: { name: string; digest: Digest }[];
+  assets?: { name: string; digest: Digest }[];
 };
 function digest(bytes: Uint8Array): Digest {
   assert.ok(bytes.length <= limit, 'Release input exceeds size limit');
@@ -110,7 +111,40 @@ export async function collectRelease(
   const migrations = await Promise.all(
     names.map(async (name) => ({ name, digest: digest(await regularFile(join(directory, name))) })),
   );
-  return { schema_version: 1, source, archives: releases, migrations };
+  const config = JSON.parse(
+    (await regularFile(join(root, 'crates/worker/wrangler.production.jsonc'))).toString('utf8'),
+  ) as { assets?: { directory: string } };
+  const assets = config.assets ? await collectFontAssets(root) : undefined;
+  if (config.assets) assert.equal(config.assets.directory, '../../assets');
+  return {
+    schema_version: 1,
+    source,
+    archives: releases,
+    migrations,
+    ...(assets ? { assets } : {}),
+  };
+}
+
+/** Inventory every static font and its accompanying license before promotion. */
+export async function collectFontAssets(root: string) {
+  const files: { name: string; digest: Digest }[] = [];
+  async function visit(directory: string) {
+    for (const entry of (
+      await readdir(join(root, 'assets', directory), { withFileTypes: true })
+    ).sort((a, b) => a.name.localeCompare(b.name))) {
+      const name = directory ? `${directory}/${entry.name}` : entry.name;
+      assert.match(name, /^[a-zA-Z0-9_./-]+$/, 'Unexpected static asset path');
+      assert.ok(!entry.isSymbolicLink(), 'Static assets must not be symlinks');
+      if (entry.isDirectory()) await visit(name);
+      else files.push({ name, digest: digest(await regularFile(join(root, 'assets', name))) });
+    }
+  }
+  await visit('');
+  assert.ok(
+    files.some((file) => file.name === 'fonts/fonts.css'),
+    'Font build required',
+  );
+  return files;
 }
 export async function verifyRelease(
   root: string,

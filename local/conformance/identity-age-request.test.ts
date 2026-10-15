@@ -57,6 +57,7 @@ for (const algorithm of ['ES256', 'RS256'] as const)
     const config = JSON.parse(
       await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
     );
+    config.assets.directory = new URL('../../assets', import.meta.url).pathname;
     config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
     config.d1_databases[0].migrations_dir = new URL(
       '../../crates/worker/migrations',

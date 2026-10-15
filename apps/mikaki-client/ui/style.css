@@ -1,7 +1,6 @@
 :root {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
-  font-synthesis: none;
+  font-family: var(--font-body);
+  font-synthesis: weight;
   --surface: #f7f9fc;
   --card: #fff;
   --text: #142944;
@@ -39,7 +38,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button,
-select {
+input,
+select,
+textarea {
   font: inherit;
 }
 button,

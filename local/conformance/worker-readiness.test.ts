@@ -29,6 +29,7 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     use: 'sig',
   };
   const config = JSON.parse(await readFile(opConfig, 'utf8'));
+  config.assets.directory = new URL('../../assets', import.meta.url).pathname;
   config.main = new URL('./support/readiness-op.mjs', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = new URL(
     '../../crates/worker/migrations',

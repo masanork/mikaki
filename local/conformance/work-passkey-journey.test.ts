@@ -44,6 +44,7 @@ for (const lang of ['ja', 'en'] as const) {
         entrypoint: 'WorkCheckpointService',
       };
       const base = JSON.parse(await readFile(join(root, 'crates/worker/wrangler.jsonc'), 'utf8'));
+      base.assets.directory = new URL('../../assets', import.meta.url).pathname;
       const config = {
         ...base,
         name: 'work-journey-op',

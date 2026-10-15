@@ -1,8 +1,8 @@
 :root {
-  font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif;
+  font-family: var(--font-body);
   color: #16243a;
   background: #f8f9fb;
-  font-synthesis: none;
+  font-synthesis: weight;
 }
 
 * {
@@ -17,6 +17,10 @@ body {
 button,
 input,
 select {
+  font: inherit;
+}
+
+textarea {
   font: inherit;
 }
 

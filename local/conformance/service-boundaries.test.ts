@@ -15,6 +15,7 @@ test('named OP authorities limit Agent SQL and claim release without downstream 
       )
     ).replace(/,\s*([}\]])/g, '$1'),
   );
+  opConfig.assets.directory = new URL('../../assets', import.meta.url).pathname;
   opConfig.main = `${root}crates/worker/service/entrypoint.ts`;
   opConfig.d1_databases[0].migrations_dir = `${root}crates/worker/migrations`;
   const harness = createTestHarness({

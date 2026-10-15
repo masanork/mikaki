@@ -14,7 +14,7 @@
   min-height: 560px;
   color: var(--ink);
   background: var(--base);
-  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans JP', sans-serif;
+  font-family: var(--font-body);
 }
 .auth-shell * {
   box-sizing: border-box;

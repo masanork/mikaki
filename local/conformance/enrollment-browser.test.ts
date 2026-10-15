@@ -176,7 +176,7 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
           await route.fulfill({
             status: response.status,
             headers: Object.fromEntries(response.headers),
-            body: await response.text(),
+            body: Buffer.from(await response.arrayBuffer()),
           });
         } catch (error) {
           errors.push(String(error));

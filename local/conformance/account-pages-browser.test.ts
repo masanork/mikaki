@@ -2,10 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chromium, type BrowserContext, type Route } from '@playwright/test';
+import { chromium, type BrowserContext, type Page, type Route } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { drainBrowserRoutes } from './support/browser-route-teardown.ts';
+
+async function waitForFonts(page: Page) {
+  const failed = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].filter((font) => font.status === 'error').map((font) => font.family);
+  });
+  assert.deepEqual(failed, [], 'account-page web fonts must decode before checking layout');
+}
 
 test('account pages use the product styles under CSP and fit a mobile viewport', async () => {
   const issuer = 'https://mikaki.test';
@@ -94,7 +102,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       await route.fulfill({
         status: response.status,
         headers,
-        body: await response.text(),
+        body: Buffer.from(await response.arrayBuffer()),
       });
     };
     await context.route(`${issuer}/**`, forward);
@@ -109,6 +117,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
       ]) {
         await page.goto(`${issuer}${path}`);
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+        await waitForFonts(page);
         assert.equal(await page.locator('.product-header').count(), 1);
         {
           await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
@@ -135,8 +144,10 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await page.goto(`${issuer}/admin?lang=ja`);
     await page.getByRole('combobox', { name: '言語' }).selectOption('en');
     await page.getByRole('heading', { name: 'Issue an invitation' }).waitFor();
+    await waitForFonts(page);
     await page.goto(`${issuer}/admin?lang=en&no-canvas=1`);
     await page.getByRole('heading', { name: 'Issue an invitation' }).waitFor();
+    await waitForFonts(page);
     assert.equal(await page.locator('.gate-background').getAttribute('data-renderer'), 'css');
     const fallback = page.locator('.gate-fallback');
     assert.equal(await fallback.isVisible(), true);
@@ -150,6 +161,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await staticContext.route(`${issuer}/**`, forward);
     const staticPage = await staticContext.newPage();
     await staticPage.goto(`${issuer}/logout?lang=en`);
+    await waitForFonts(staticPage);
     assert.equal(await staticPage.locator('.product-origin strong').textContent(), 'mikaki.test');
     assert.equal(await staticPage.locator('.gate-fallback').isVisible(), true);
     const confirmed = staticPage.waitForResponse(
@@ -158,6 +170,7 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
     await staticPage.getByRole('button', { name: 'Log out', exact: true }).click();
     assert.equal((await confirmed).status(), 200);
     await staticPage.getByRole('heading', { name: 'You have logged out', exact: true }).waitFor();
+    await waitForFonts(staticPage);
     assert.equal(await staticPage.locator('body').getAttribute('data-session-state'), 'ended');
     await drainBrowserRoutes(staticContext);
     await staticContext.close();

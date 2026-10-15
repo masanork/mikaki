@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { checkWorkerBundle, measureWorkerUpload } from './worker-bundle-size.ts';
 import {
   releaseSource,
+  collectFontAssets,
   verifyRelease,
   type ReleaseInventory,
   type ReleaseSource,
@@ -104,6 +105,14 @@ export async function prepareReleaseUpload(
         await writeFile(join(input, member.name), bytes, { flag: 'wx', mode: 0o600 });
       }
       const entry = join(input, `worker/${worker.entry}.mjs`);
+      const assetFiles = worker.directory === 'op' ? (inventory.assets ?? []) : [];
+      for (const file of assetFiles) {
+        const bytes = await boundedFile(join(root, 'assets', file.name));
+        assert.deepEqual(digest(bytes), file.digest, `Static asset changed: ${file.name}`);
+        const path = join(destination, worker.directory, 'assets', file.name);
+        await mkdir(join(path, '..'), { recursive: true, mode: 0o700 });
+        await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+      }
       const config = join(root, worker.config);
       const upload = join(destination, worker.directory, 'upload.multipart');
       if (bundle) await bundle(entry, config, output, upload);
@@ -120,6 +129,9 @@ export async function prepareReleaseUpload(
             output,
             '--outfile',
             upload,
+            ...(assetFiles.length
+              ? ['--assets', join(destination, worker.directory, 'assets')]
+              : []),
           ],
           {
             cwd: root,
@@ -152,6 +164,7 @@ export async function prepareReleaseUpload(
         bundle_files: bundleFiles,
         bundle_raw_bytes: measured.raw,
         upload_digest: digest(uploadBytes),
+        asset_files: assetFiles,
       });
     }
     const result = {
@@ -200,6 +213,15 @@ export async function verifyPreparedUpload(
     assert.equal(record.archive, worker.archive);
     assert.deepEqual(record.archive_digest, archive.digest);
     assert.equal(record.config_sha256, digest(await boundedFile(join(root, worker.config))).sha256);
+    const assets = worker.directory === 'op' ? (result.release_inventory.assets ?? []) : [];
+    assert.deepEqual(record.asset_files, assets);
+    if (assets.length) {
+      assert.deepEqual(
+        await collectFontAssets(join(destination, worker.directory)),
+        assets,
+        'Prepared static assets differ from release inventory',
+      );
+    }
     const input = join(destination, worker.directory, 'input');
     assert.deepEqual(
       (await readdir(input)).sort(),

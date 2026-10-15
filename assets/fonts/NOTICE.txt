@@ -1,0 +1,77 @@
+mikaki bundled fonts
+
+Japanese: Bunsen Mincho and Bunsen Gothic, each with Base, Ext and PUP
+layers (CC0 1.0 Universal). GlyphWiki and KAGE Engine supply the glyph
+outlines. These are Masanori Kusunoki's personal fonts, developed in the
+gjs repository, rather than a font officially adopted by the Digital Agency.
+Bunsen-CC0.txt and Bunsen-FONTLOG.txt accompany the subsets.
+
+Latin: Inter Variable 4.1, upright and true italic (SIL OFL 1.1).
+The original license accompanies the unmodified Inter font files.
+https://github.com/rsms/inter/releases/tag/v4.1
+
+Coverage and the accepted gap
+The two Japanese styles cover the same 121,850 codepoints and 26,313
+variation sequences in the current source fonts. Each style covers 6,705
+of the 9,420 Plane-16 private-use characters in the Digital Agency's
+2026-08-18 Additional Administrative Standard Mincho font. The remaining
+2,715 are intentionally unsupported pending GlyphWiki/KAGE improvements.
+coverage.json lists these codepoints and the reference font's hash.
+
+The reference administrative font is used only during the build-time
+coverage audit. IPAmj and the additional Mincho font are not bundled or
+used to fill the accepted gap. An installed system font may render an
+unsupported character; its rendering is not guaranteed. Text is preserved
+without normalization, codepoint replacement or substitution with a similar
+character. This is partial administrative-standard coverage.
+
+Typography
+--font-serif selects Inter plus Bunsen Mincho / Ext / PUP.
+--font-sans selects Inter plus Bunsen Gothic / Ext / PUP.
+--font-body defaults to --font-serif. Set data-font-family="gothic" on the
+root element to switch the application to Gothic. data-font-family="mincho"
+restores Mincho; .font-gothic and .font-mincho select the styles locally.
+Only the selected style and the needed Unicode chunks download.
+Japanese fonts provide Regular, with browser-synthesized bold for UI labels.
+Inter provides weights 100-900, optical sizing and true italics.
+
+Subsetting and validation
+Every shipped cmap/IVS mapping is checked against the selected source outline
+and advance metrics. Base takes precedence for duplicate variation sequences.
+The generated manifest records source hashes, subsetter identity and asset
+hashes. CSS unicode-range selects the base characters; cmap14 handles IVS. Matching
+Base, Ext and PUP chunks are merged into one physical font per style and
+Unicode range, preserving Base precedence for overlapping sequences. This
+lets WebKit select an Ext variation of a character whose plain glyph lives
+in Base. Japanese precedes Inter in the family stack for WebKit IVS selection.
+Exact unicode-ranges assign all Inter-supported characters to Inter; the
+Japanese ranges and physical cmaps exclude those characters. This also
+keeps WebKit DOM text on Inter when another Japanese chunk has loaded.
+CSS families use the Mikaki Bunsen prefix so installed Bunsen fonts cannot
+claim characters outside the webfont ranges.
+Merged-font creation/modification times use the pinned source-date epoch.
+Fonts are self-hosted. Native builds bundle these same assets for offline use.
+
+Regeneration
+Normal builds use the committed subsets. To regenerate, prepare the six
+Bunsen TTF files in the gjs checkout's data/output/bunsen-build directory,
+use the versions and input hashes in scripts/fonts.lock.json. Create a
+Python 3.12 venv at local/generated/font-venv and install
+scripts/fonts-requirements.txt, then run npm run build:fonts.
+MIKAKI_GJS_DIR chooses the gjs checkout. MIKAKI_FONT_PYTHON chooses an
+alternative interpreter. Regeneration rejects changed tools or source
+bytes. npm run check:fonts-reproducible regenerates into a clean directory
+and compares every file byte for byte. npm run test:fonts verifies both
+styles, the documented gap, IVS selection, asset bytes and all-font decoding
+in Chromium and WebKit. These engines require Playwright's browser install.
+Screenshots, traces and request measurements appear in artifacts/font-rendering.
+Playwright WebKit is distinct from the Safari application; use
+npm run preview:fonts -- --serve for a native Safari review.
+
+Sources and acknowledgements
+https://github.com/digital-go-jp/gjs
+https://glyphwiki.org/
+https://fonts.jp/kage/
+https://www.digital.go.jp/policies/local_governments/character-specification
+https://github.com/masanork/mikaki/blob/main/scripts/build-fonts.py
+https://github.com/masanork/mikaki/blob/main/scripts/gjs-fonts.mjs

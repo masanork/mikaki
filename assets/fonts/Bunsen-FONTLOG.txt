@@ -1,0 +1,126 @@
+FONTLOG for the Bunsen font family
+==================================
+
+This file provides detailed information on the Bunsen Mincho, Bunsen Gothic,
+Bunsen Mincho Ext, Bunsen Gothic Ext, Bunsen Mincho PUP, and Bunsen Gothic
+PUP fonts. Information should be in basic English. This information should
+be distributed along with the Bunsen fonts and any derivative works.
+
+
+Basic Font Information
+----------------------
+
+The Bunsen family consists of six CJK ideograph fonts arranged as
+3 layers (Base / Ext / PUP) × 2 styles (Mincho / Gothic):
+
+  - BunsenMincho     — base Mincho-style font (IPAmj-equivalent coverage)
+  - BunsenGothic     — base Gothic-style font (IPAmj-equivalent coverage)
+  - BunsenMinchoExt  — Ext Mincho extension (Unicode CJK + AJ1 IVS)
+  - BunsenGothicExt  — Ext Gothic extension (Unicode CJK + AJ1 IVS)
+  - BunsenMinchoPUP  — PUP Mincho layer (Plane 16 PUA: 戸籍/登記 PUA)
+  - BunsenGothicPUP  — PUP Gothic layer (Plane 16 PUA: 戸籍/登記 PUA)
+
+The name "Bunsen" (文選) refers to the traditional Japanese typesetting
+process of selecting individual movable types from a case to compose text,
+a craft from the Edo to Meiji periods. This name reflects the font's design
+philosophy: assembling a wide variety of glyph forms collected from GlyphWiki
+into a coherent typeface.
+
+Coverage:
+
+  - Base (Bunsen Mincho / Bunsen Gothic):
+    - Unicode CJK Unified Ideographs (URO + Ext-A core, IPAmj coverage)
+    - MJ characters (文字情報基盤 / Moji Joho Kiban) including
+      full IVS (Ideographic Variation Sequence) coverage
+    - 行政事務標準文字仕様 PUP (U+101000–U+104295) backward-compat
+      cmap12 aliases pointing at the corresponding MJ-IVS GIDs, so that
+      systems without IVS support can still reach the MJ glyphs.
+    - cmap format 12: 64,778 codepoints
+    - cmap format 14 (IVS): 26,259 sequences
+
+  - Ext (Bunsen Mincho Ext / Bunsen Gothic Ext):
+    - Unicode CJK Unified Ideographs all extensions (Ext-A through Ext-I,
+      CJK Compatibility, Compatibility Supplement) for codepoints not
+      already in the base fonts
+    - CJK-adjacent symbols (Bopomofo, Hangul Compatibility Jamo,
+      CJK Strokes, Enclosed CJK, etc.)
+    - Non-CJK symbols (Math Operators, Misc Tech, Misc Symbols, Latin
+      Extended Additional, Greek Extended, Cyrillic, Braille, Box Drawing,
+      etc.) — only those registered in GlyphWiki
+    - Adobe-Japan1 IVS unique sequences (those not covered by the base
+      fonts' MJ-IVS aliases)
+    - cmap format 12: 50,038 codepoints
+    - cmap format 14 (AJ1 IVS): 10,068 sequences
+
+  - PUP (Bunsen Mincho PUP / Bunsen Gothic PUP):
+    - 戸籍統一文字 (Koseki Tōitsu Moji) — characters used in Japan's
+      family registry system
+    - 登記統一文字 (Tōki Tōitsu Moji) — characters used in Japan's
+      real estate / commercial registry system
+    - All GJ codepoints in Plane 16 PUA whose glyphs can be resolved
+      via the GlyphWiki dump (jgj-NNNNNN / toki-NNNNNNNN), in 1:1
+      cmap12 mapping (no IVS).
+    - cmap format 12: 6,507 codepoints
+
+Glyph outlines are generated directly from KAGE Engine skeleton data
+sourced from GlyphWiki, with no manual hinting or commercial font
+data incorporated.
+
+
+Information for Contributors
+----------------------------
+
+The Bunsen fonts are released under the Creative Commons CC0 1.0 Universal
+Public Domain Dedication. To the extent possible under law, the author has
+waived all copyright and related rights to these fonts.
+
+This means you are free to use, copy, modify, redistribute, and embed
+these fonts in commercial or non-commercial works, with no attribution
+requirement. As a courtesy (not a legal requirement), credit to GlyphWiki
+and the KAGE Engine project is appreciated.
+
+The font generation pipeline lives in the gjs repository:
+  https://github.com/digital-go-jp/gjs
+
+Pull requests for glyph corrections, build improvements, or coverage
+extensions are welcome.
+
+
+Acknowledgements
+----------------
+
+These fonts would not exist without the foundational work of:
+
+  - GlyphWiki Project (https://glyphwiki.org/) — the wiki-based
+    glyph database that supplies the skeleton data for every character
+    in these fonts. GlyphWiki data is distributed under a permissive
+    license that allows free use, modification, and redistribution
+    including for commercial purposes.
+
+  - KAGE Engine (https://fonts.jp/kage/) by Koichi Kamichi — the
+    skeleton-to-outline rendering system that converts GlyphWiki's
+    KAGE-format data into TrueType glyph outlines.
+
+  - Jigmo (https://kamichikoichi.github.io/jigmo/) — a CC0 font built
+    from GlyphWiki + KAGE that demonstrated the feasibility of this
+    approach and served as a reference for the Bunsen pipeline.
+
+
+ChangeLog
+---------
+
+(Pre-release)
+
+Fonts are under active development. See the gjs repository commit
+history for detailed change tracking. A formal v1.0.0 release will
+be tagged once the pipeline stabilizes.
+
+The fonts were previously named GJSMincho / GJSGothic / GJSMinchoExt /
+GJSGothicExt during development; they were renamed to Bunsen in
+preparation for distribution alongside a Wiki-based archive.
+
+The Plane 16 PUA coverage was originally folded into the base fonts
+under a 4-file layout, then split out into the dedicated PUP fonts
+(3-layer × 2-style = 6-file layout) so the full set of GJ codepoints
+that GlyphWiki can resolve (~6,500) is covered, and so the Plane 16
+PUA layer can be compared against acgjm one-to-one.

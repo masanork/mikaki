@@ -18,6 +18,15 @@ test('Docs RP serves bilingual guides and keeps only isolated OIDC session state
     page.setDefaultTimeout(5000);
     page.setDefaultNavigationTimeout(5000);
 
+    const fontInventory = JSON.parse(
+      await readFile(new URL('../../assets/fonts/manifest.json', import.meta.url), 'utf8'),
+    );
+    const font = await local.rp.fetch(`${RP}/fonts/${fontInventory.files[0].file}`);
+    assert.equal(font.status, 200);
+    assert.equal(font.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    const fontCSS = await local.rp.fetch(`${RP}/fonts/fonts.css`);
+    assert.equal(fontCSS.status, 200);
+    assert.equal(fontCSS.headers.get('cache-control'), 'public, max-age=300');
     const docsDir = new URL('../../apps/mikaki-docs/dist/', import.meta.url);
     const japaneseHome = await readFile(new URL('index.html', docsDir), 'utf8');
     const englishHome = await readFile(new URL('en/index.html', docsDir), 'utf8');

@@ -1,0 +1,26 @@
+{
+  "gjs_commit": "a36551122f53271e23997729cfdf11afdca028b3",
+  "rust": "1.98.1",
+  "wasm_pack": "0.15.0",
+  "python": "3.12",
+  "fonttools": "4.65.0",
+  "brotli": "1.2.0",
+  "zopfli": "0.4.3",
+  "gjs_files": {
+    "crates/font-subsetter/src/bin/build_acgjmp.rs": "51cf9f9b3b283392e8f9cfd85c2d02b18b5c949d3d01b1ee06f743f9ee618c8f",
+    "crates/font-subsetter/src/bin/build_gjs_mincho.rs": "b6002f3056691aebba9a5dd4deed39b17b6b1fcc2655d1a166cd7a1c4257a3ae",
+    "crates/font-subsetter/src/lib.rs": "6f2d8a6ddc272499ed61f51fb51b3f0c948873ef5141b62411445a8d4145273d",
+    "crates/font-subsetter/src/merger.rs": "761943d6ea54f2b5f38c7e3cc460af95afffcc5e9d5669301d2bcb3029eb30ed",
+    "crates/font-subsetter/Cargo.toml": "712e362cf45cef90a133076eea39eb31c09387047d87e954b54410b7c8abb44f",
+    "crates/font-subsetter/Cargo.lock": "9cd3caa98eadd569c587f18e611104e43ae1fe12f98fe7135c889fc8701a609b",
+    "dist-fonts/LICENSE": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "dist-fonts/FONTLOG.txt": "9f0a2f7b0f7dce96c230d7c366eebc2dcffec50a8746f5b97e5eccf96829af6a",
+    "data/output/bunsen-build/BunsenGothic-Regular.ttf": "dd6a5054a708720249c016235dab4bccf6e1e1a68f58bb191cd134dac4582ae6",
+    "data/output/bunsen-build/BunsenGothicExt-Regular.ttf": "96893bcc602d4cda2741b5e653b87c3263a7eedb4b6ab2f736eb28e7c2979506",
+    "data/output/bunsen-build/BunsenGothicPUP-Regular.ttf": "f2168b010c666ca2d4f9606be03113cf0f263de8772f7d976ec79f419f64fde2",
+    "data/output/bunsen-build/BunsenMincho-Regular.ttf": "a8e2846e4f3628817acbec46f438797f85f7d83947c34cb2aad91c008b1d865f",
+    "data/output/bunsen-build/BunsenMinchoExt-Regular.ttf": "46bd055062c10581016c473ef3cad8961b791d989b258a2ad6c3fbfca28bf321",
+    "data/output/bunsen-build/BunsenMinchoPUP-Regular.ttf": "9dfdaa9f567e0c2ebfb4da455fc74d33f4fb017bd1d5e33dcad7d63d38e773cd"
+  },
+  "source_date_epoch": 1790519804
+}

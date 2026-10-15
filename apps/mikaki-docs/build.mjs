@@ -22,6 +22,7 @@ mkdirSync(output, { recursive: true });
 for (const file of ['style.css', 'favicon.svg'])
   copyFileSync(join(source, file), join(output, file));
 cpSync(join(source, 'screenshots'), join(output, 'screenshots'), { recursive: true });
+cpSync(join(source, 'fonts'), join(output, 'fonts'), { recursive: true });
 cpSync(join(source, 'social-preview'), join(output, 'social-preview'), { recursive: true });
 const publicLink = (slug, lang, suffix = '') =>
   route(
@@ -99,7 +100,7 @@ for (const lang of ['ja', 'en']) {
     writeFileSync(
       join(output, `${prefix}${slug}.html`),
       links(
-        `<!doctype html><html lang="${lang}"><head>${head}${home ? '<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css">' : ''}</head><body>${header(slug)}${body}${footer}</body></html>`,
+        `<!doctype html><html lang="${lang}"><head>${head}${home ? '<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/fonts/fonts.css"><link rel="stylesheet" href="/style.css">' : ''}</head><body>${header(slug)}${body}${footer}</body></html>`,
         lang,
       ),
     );
@@ -107,11 +108,11 @@ for (const lang of ['ja', 'en']) {
   }
   writeFileSync(
     join(output, `${prefix}404.html`),
-    `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${ja ? 'ページが見つかりません' : 'Page not found'} · mikaki Docs</title><meta name="robots" content="noindex"><link rel="stylesheet" href="/style.css"></head><body>${header('index')}<main class="app-main" id="main-content"><h1>${ja ? 'ページが見つかりません' : 'Page not found'}</h1><a href="/${prefix}">${ja ? 'ドキュメントへ戻る' : 'Back to the documentation'}</a></main>${footer}</body></html>`,
+    `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${ja ? 'ページが見つかりません' : 'Page not found'} · mikaki Docs</title><meta name="robots" content="noindex"><link rel="stylesheet" href="/fonts/fonts.css"><link rel="stylesheet" href="/style.css"></head><body>${header('index')}<main class="app-main" id="main-content"><h1>${ja ? 'ページが見つかりません' : 'Page not found'}</h1><a href="/${prefix}">${ja ? 'ドキュメントへ戻る' : 'Back to the documentation'}</a></main>${footer}</body></html>`,
   );
 }
 const policy = (hashes) =>
-  `default-src 'none'; script-src 'self' ${[...hashes].join(' ')}; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`;
+  `default-src 'none'; script-src 'self' ${[...hashes].join(' ')}; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`;
 const headers =
   `/*\n  Content-Security-Policy: ${policy(pageHashes.get('/'))}\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n  Cache-Control: public, max-age=300\n\n` +
   [...pageHashes]
@@ -120,8 +121,9 @@ const headers =
       ([path, hashes]) =>
         `${path}\n  ! Content-Security-Policy\n  Content-Security-Policy: ${policy(hashes)}\n`,
     )
-    .join('\n');
-if (headers.split('\n').some((line) => line.length > 2000) || pageHashes.size > 100)
+    .join('\n') +
+  '\n/fonts/*.woff2\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n';
+if (headers.split('\n').some((line) => line.length > 2000) || pageHashes.size + 1 > 100)
   throw new Error('Asset header limits exceeded');
 writeFileSync(join(output, '_headers'), headers);
 writeFileSync(

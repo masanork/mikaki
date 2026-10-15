@@ -1,8 +1,8 @@
 :root {
-  font-family: Inter, 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+  font-family: var(--font-body);
   color: #223c32;
   background: #f6f7f2;
-  font-synthesis: none;
+  font-synthesis: weight;
   color-scheme: light;
   --ink: #223c32;
   --muted: #52645b;

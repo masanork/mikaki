@@ -48,6 +48,12 @@ export async function startNativeUiServer() {
       readFileSync(new URL(name, directory)),
     ]),
   );
+  const fonts = new URL('../../../assets/fonts/', import.meta.url);
+  const manifest = JSON.parse(readFileSync(new URL('manifest.json', fonts), 'utf8')) as {
+    files: { file: string }[];
+  };
+  for (const name of ['fonts.css', ...manifest.files.map(({ file }) => file)])
+    assets.set(`fonts/${name}`, readFileSync(new URL(name, fonts)));
   const server = createServer((request, response) => {
     const name = new URL(request.url ?? '/', 'http://localhost').pathname.slice(1) || 'index.html';
     const data = assets.get(name);
@@ -61,9 +67,11 @@ export async function startNativeUiServer() {
         ? 'text/javascript'
         : name.endsWith('.css')
           ? 'text/css'
-          : name.endsWith('.svg')
-            ? 'image/svg+xml'
-            : 'text/html',
+          : name.endsWith('.woff2')
+            ? 'font/woff2'
+            : name.endsWith('.svg')
+              ? 'image/svg+xml'
+              : 'text/html',
       'Content-Security-Policy': config.app.security.csp,
     });
     response.end(data);

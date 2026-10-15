@@ -10,6 +10,81 @@ import { prepareReleaseUpload, verifyPreparedUpload } from './prepare-release-up
 
 const source = { commit: 'a'.repeat(40), clean: true };
 const entries = ['index.js', 'index_bg.wasm', 'package.json', 'worker/shim.mjs'];
+
+async function fakeBundle(entry: string, _config: string, output: string, upload: string) {
+  assert.equal(
+    execFileSync('cat', [entry], { encoding: 'utf8' }),
+    entry.endsWith('service.mjs')
+      ? 'fixture:worker/service.mjs'
+      : entry.endsWith('checkpoint.mjs')
+        ? 'fixture:worker/checkpoint.mjs'
+        : 'fixture:worker/shim.mjs',
+  );
+  writeFileSync(
+    join(
+      output,
+      entry.endsWith('service.mjs')
+        ? 'service.js'
+        : entry.endsWith('checkpoint.mjs')
+          ? 'checkpoint.js'
+          : 'shim.js',
+    ),
+    'bundled entry',
+  );
+  if (!entry.endsWith('checkpoint.mjs')) writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
+  const name = entry.endsWith('service.mjs')
+    ? 'service'
+    : entry.endsWith('checkpoint.mjs')
+      ? 'checkpoint'
+      : 'shim';
+  writeFileSync(join(output, `${name}.js.map`), 'debug source map excluded from upload size');
+  const form = new FormData();
+  form.set('metadata', JSON.stringify({ main_module: `${name}.js` }));
+  form.set(
+    `${name}.js`,
+    new Blob(['bundled entry'], { type: 'application/javascript+module' }),
+    `${name}.js`,
+  );
+  if (!entry.endsWith('checkpoint.mjs'))
+    form.set(
+      'module.wasm',
+      new Blob(['bundled wasm'], { type: 'application/wasm' }),
+      'module.wasm',
+    );
+  form.set(
+    `${name}.js.map`,
+    new Blob(['debug source map excluded from upload size'], {
+      type: 'application/source-map',
+    }),
+    `${name}.js.map`,
+  );
+  await writeFile(upload, new Uint8Array(await new Response(form).arrayBuffer()));
+}
+
+test('font assets are source-bound and prepared bytes cannot change before upload', async () => {
+  const { root } = await fixture();
+  try {
+    await mkdir(join(root, 'assets/fonts'), { recursive: true });
+    await writeFile(join(root, 'assets/fonts/fonts.css'), 'font fixture');
+    await writeFile(join(root, 'assets/fonts/sample.woff2'), 'font bytes');
+    await writeFile(
+      join(root, 'crates/worker/wrangler.production.jsonc'),
+      JSON.stringify({ name: 'op', assets: { directory: '../../assets' } }),
+    );
+    const inventory = await collectRelease(root, source);
+    assert.equal(inventory.assets?.length, 2);
+    const prepared = await prepareReleaseUpload(root, inventory, source, false, fakeBundle);
+    await writeFile(join(prepared.destination, 'op/assets/fonts/sample.woff2'), 'tampered');
+    await assert.rejects(
+      verifyPreparedUpload(root, prepared.destination, prepared.result, source),
+      /Prepared static assets differ/,
+    );
+    await writeFile(join(root, 'assets/fonts/fonts.css'), 'changed source');
+    await assert.rejects(verifyRelease(root, inventory, source));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'mikaki-release-test-'));
   await mkdir(join(root, 'build/worker'), { recursive: true });
@@ -72,56 +147,7 @@ test('upload preparation stages only verified archive members and records Wrangl
   const { root, archive } = await fixture();
   try {
     const inventory = await collectRelease(root, source);
-    const fakeBundle = async (entry: string, _config: string, output: string, upload: string) => {
-      assert.equal(
-        execFileSync('cat', [entry], { encoding: 'utf8' }),
-        entry.endsWith('service.mjs')
-          ? 'fixture:worker/service.mjs'
-          : entry.endsWith('checkpoint.mjs')
-            ? 'fixture:worker/checkpoint.mjs'
-            : 'fixture:worker/shim.mjs',
-      );
-      writeFileSync(
-        join(
-          output,
-          entry.endsWith('service.mjs')
-            ? 'service.js'
-            : entry.endsWith('checkpoint.mjs')
-              ? 'checkpoint.js'
-              : 'shim.js',
-        ),
-        'bundled entry',
-      );
-      if (!entry.endsWith('checkpoint.mjs'))
-        writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
-      const name = entry.endsWith('service.mjs')
-        ? 'service'
-        : entry.endsWith('checkpoint.mjs')
-          ? 'checkpoint'
-          : 'shim';
-      writeFileSync(join(output, `${name}.js.map`), 'debug source map excluded from upload size');
-      const form = new FormData();
-      form.set('metadata', JSON.stringify({ main_module: `${name}.js` }));
-      form.set(
-        `${name}.js`,
-        new Blob(['bundled entry'], { type: 'application/javascript+module' }),
-        `${name}.js`,
-      );
-      if (!entry.endsWith('checkpoint.mjs'))
-        form.set(
-          'module.wasm',
-          new Blob(['bundled wasm'], { type: 'application/wasm' }),
-          'module.wasm',
-        );
-      form.set(
-        `${name}.js.map`,
-        new Blob(['debug source map excluded from upload size'], {
-          type: 'application/source-map',
-        }),
-        `${name}.js.map`,
-      );
-      await writeFile(upload, new Uint8Array(await new Response(form).arrayBuffer()));
-    };
+
     const prepared = await prepareReleaseUpload(root, inventory, source, false, fakeBundle);
     assert.equal(prepared.result.promotion_ready, true);
     assert.equal(prepared.result.workers.length, 3);

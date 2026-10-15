@@ -7,6 +7,7 @@ interface __BaseEnv_Env {
   LOGOUT_QUEUE: Queue;
   IDENTITY_RATE_LIMIT: RateLimit;
   CF_VERSION_METADATA: WorkerVersionMetadata;
+  FONT_ASSETS: Fetcher;
   MIKAKI_WAITLIST_FROM: 'no-reply@mikaki.org';
   MIKAKI_ISSUER: 'https://auth.mikaki.org';
   MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT: 'FC:51:38:FE:5C:6E:05:55:AD:08:5E:4D:68:DA:F9:DB:F6:76:93:63:1E:72:C9:41:A1:7D:17:80:0D:EB:00:66';

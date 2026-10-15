@@ -111,7 +111,7 @@ pub async fn handle(request: Request, env: Env) -> worker::Result<Response> {
                 "preparation_title"
             })),
         );
-        return builder.with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?.from_html(html);
+        return builder.with_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")?.from_html(html);
     }
     let (body, mime) = if copy_page && url.path().ends_with(".js") {
         (

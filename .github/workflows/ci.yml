@@ -133,8 +133,10 @@ jobs:
       - name: Browser PQC interoperability
         run: |
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
           node design/probes/pqc/browser.ts
+      - name: Bunsen and Inter rendering in Chromium and WebKit
+        run: npm run test:fonts
       - name: Native client UI lifecycle
         run: npm run test:mobile-ui
       - name: MDS durable operation regressions
