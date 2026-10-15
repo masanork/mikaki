@@ -14,9 +14,9 @@ jsonwebtoken = { version = "=11.1.0", default-features = false }
 base64 = "=0.23.1"
 p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["sha2", "encoding"] }
-sha2 = { version = "=0.11.0", features = ["oid"] }
+sha2 = { version = "=0.11.1", features = ["oid"] }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.152"
+serde_json = "=1.0.154"
 signature = "=3.0.0"
 # jsonwebtoken 11's provider interface still uses signature 2; bridge only that boundary.
 signature-legacy = { package = "signature", version = "=2.2.0" }

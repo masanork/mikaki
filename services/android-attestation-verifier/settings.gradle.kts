@@ -11,7 +11,7 @@ val revision =
     .get()
     .trim()
 
-check(revision == "3f550f94a9e3c010dda7cdcad8bca764cd76d4f4") {
+check(revision == "621149c4ebaeeea844d6f43098687c73c4d370a3") {
   "Unexpected keyattestation revision"
 }
 
