@@ -45,6 +45,31 @@ on:
 permissions:
   contents: read
 jobs:
+  public-fonts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium and WebKit
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
+          npx playwright install --with-deps chromium webkit
+      - name: Verify public font bytes, caching and rendering
+        run: node scripts/check-production-fonts.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: production-fonts-${{ github.run_id }}
+          path: artifacts/production-fonts/
+          if-no-files-found: error
+          retention-days: 30
   public-endpoints:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
