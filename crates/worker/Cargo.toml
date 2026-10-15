@@ -19,6 +19,8 @@ url.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+base64.workspace = true
+mikaki-webauthn = { path = "../webauthn" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 mikaki-identity = { path = "../identity" }

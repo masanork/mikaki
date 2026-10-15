@@ -4,6 +4,7 @@
 <dict>
     <key>com.apple.developer.associated-domains</key>
     <array>
+        <string>webcredentials:auth.mikaki.org</string>
         <string>applinks:app.mikaki.org</string>
     </array>
 </dict>

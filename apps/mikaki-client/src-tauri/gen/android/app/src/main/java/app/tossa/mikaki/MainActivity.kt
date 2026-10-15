@@ -6,6 +6,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebSettingsCompat
 
 class MainActivity : TauriActivity() {
   private var darkAppearance: Boolean? = null
@@ -17,6 +18,11 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)) {
+      WebSettingsCompat.setWebAuthenticationSupport(
+        webView.settings, WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_APP
+      )
+    }
     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
       // Only the bundled top-level UI can change icon contrast. No key or session access.
       WebViewCompat.addWebMessageListener(

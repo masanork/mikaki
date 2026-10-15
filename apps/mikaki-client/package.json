@@ -6,6 +6,7 @@
     "tauri": "tauri",
     "dev:macos": "node scripts/macos.mjs dev",
     "build:macos": "node scripts/macos.mjs build",
+    "build:macos:passkeys": "node scripts/macos.mjs build --passkeys",
     "generate:icons": "node branding/prepare.mjs && tauri icon branding/icons.json && tauri icon ../../branding/favicon.svg --output ../../branding/favicon --png 16 --png 32 --png 48 --png 64 && python3 branding/opaque-ios.py"
   },
   "devDependencies": {

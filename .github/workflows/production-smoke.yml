@@ -206,6 +206,7 @@ jobs:
           set -euo pipefail
           host=https://app.mikaki.org
           curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors "$host/.well-known/assetlinks.json" -o assetlinks.json
+          curl -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors 'https://auth.mikaki.org/.well-known/assetlinks.json' -o credential-assetlinks.json
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D native-callback-headers.txt -o native-callback-body.txt -w '%{http_code}' "$host/oidc/native/callback?code=smoke-code&state=smoke-state" > native-callback-status.txt
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -D identity-callback-headers.txt -o identity-callback-body.txt -w '%{http_code}' "$host/identity/issuance/callback?code=smoke-code&state=smoke-state&iss=https%3A%2F%2Fauth.mikaki.org" > identity-callback-status.txt
           curl -sS --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$host/authorize" > native-authorize-status.txt

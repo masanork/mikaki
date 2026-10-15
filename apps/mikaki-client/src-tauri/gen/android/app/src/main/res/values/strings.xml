@@ -1,4 +1,5 @@
 <resources>
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://auth.mikaki.org/.well-known/assetlinks.json\"}]</string>
     <string name="app_name">"Mikaki"</string>
     <string name="main_activity_title">"Mikaki"</string>
 </resources>
