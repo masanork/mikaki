@@ -2448,6 +2448,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               Array.from({ length: size }, () => generateKeyPair('ES256', { extractable: true })),
             );
             const holders = await Promise.all(keys.map((k) => exportJWK(k.publicKey)));
+            // Leave a full minute after HAIP rounds the verified deadline down.
+            // A 60-second fixture can expire while issuance crosses the next minute.
+            const attestationExpiresAt = Math.floor(Date.now() / 1000) + 120;
             const proof = async (
               i: number,
               n = nonce,
@@ -2468,7 +2471,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                   ...(attested
                     ? {
                         key_attestation: await keyAttestation(n, [jwk], {
-                          exp: Math.floor(Date.now() / 1000) + 60,
+                          exp: attestationExpiresAt,
                         }),
                       }
                     : {}),
@@ -2558,7 +2561,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
               );
             }
             const grouped = async (keys: typeof holders, n = nonce, patch = {}) =>
-              keyAttestation(n, keys, { exp: Math.floor(Date.now() / 1000) + 60, ...patch });
+              keyAttestation(n, keys, { exp: attestationExpiresAt, ...patch });
             if (proofShape !== 'individual') {
               const extraKey = await exportJWK(
                 (await generateKeyPair('ES256', { extractable: true })).publicKey,
@@ -2669,7 +2672,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                   issuer,
                 });
                 assert.deepEqual((payload.cnf as any).jwk, holders[i]);
-                assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 60);
+                assert.ok((payload.exp as number) <= attestationExpiresAt);
                 assert.equal(
                   JSON.parse(Buffer.from(credential.split('~')[1], 'base64url').toString())[1],
                   'age_over_18',
@@ -2718,8 +2721,9 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             const nonce = (
               (await (await poolWorker.fetch(`${issuer}/nonce`, { method: 'POST' })).json()) as any
             ).c_nonce;
+            const attestationExpiresAt = Math.floor(Date.now() / 1000) + 120;
             const attestation = await keyAttestation(nonce, [holder], {
-              exp: Math.floor(Date.now() / 1000) + 60,
+              exp: attestationExpiresAt,
             });
             const proof = await new SignJWT({
               iss: walletClient.client_id,
@@ -2888,7 +2892,13 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
             assert.equal(
               issued.filter((r) => r.status === 200).length,
               1,
-              'each slot has one winner',
+              `${mode}/${configuration}/${size}/${slot}: each slot has one winner; ${(
+                await Promise.all(
+                  issued.map(async (r) =>
+                    r.status === 200 ? '200' : `${r.status}: ${await r.clone().text()}`,
+                  ),
+                )
+              ).join(', ')}`,
             );
             assert.ok(issued.every((r) => [200, 401, 409].includes(r.status)));
             const receipt = ((await issued.find((r) => r.status === 200)!.json()) as any)
@@ -2900,7 +2910,7 @@ test(`workerd verifies both cards, issues holder-bound credentials through OID4V
                 issuer,
               });
               assert.deepEqual((payload.cnf as any).jwk, holder);
-              assert.ok((payload.exp as number) <= Math.floor(Date.now() / 1000) + 60);
+              assert.ok((payload.exp as number) <= attestationExpiresAt);
               assert.equal(
                 JSON.parse(Buffer.from(credential.split('~')[1], 'base64url').toString())[1],
                 'age_over_18',
