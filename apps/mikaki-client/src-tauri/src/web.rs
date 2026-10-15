@@ -123,11 +123,25 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
             tauri::WebviewUrl::External(origin.join("/vault").expect("fixed developer path"));
     }
     let handle = app.handle().clone();
-    WebviewWindowBuilder::from_config(app, &config)?
+    let window = WebviewWindowBuilder::from_config(app, &config)?
         // Cosmetic feature detection only. Remote origins receive no IPC capability.
         .initialization_script("Object.defineProperty(window,'__MIKAKI_NATIVE__',{value:true});")
         .on_navigation(move |url| match classify(url) {
-            Navigation::Web | Navigation::Local => true,
+            Navigation::Web => {
+                if let Some(window) = handle.get_webview_window("main") {
+                    expect_navigation(&window);
+                }
+                true
+            }
+            Navigation::Local => {
+                if let Some(window) = handle.get_webview_window("main") {
+                    window
+                        .state::<NavigationState>()
+                        .0
+                        .fetch_add(1, Ordering::AcqRel);
+                }
+                true
+            }
             Navigation::Wallet => {
                 let app = handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -139,29 +153,39 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
         })
         .on_page_load(|window, payload| {
             let state = window.state::<NavigationState>().0.clone();
-            match payload.event() {
-                PageLoadEvent::Started if classify(payload.url()) == Navigation::Web => {
-                    let epoch = state.fetch_add(1, Ordering::AcqRel) + 1;
-                    // Return to a local retry screen on a stalled connection. Never
-                    // fall back to another browser or bypass certificate validation.
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs(20));
-                        if state
-                            .compare_exchange(epoch, epoch + 1, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                        {
-                            let _ = window.navigate(local_url("connection"));
-                        }
-                    });
-                }
-                PageLoadEvent::Finished if window.url().ok().as_ref() == Some(payload.url()) => {
-                    state.fetch_add(1, Ordering::AcqRel);
-                }
-                _ => {}
+            if matches!(payload.event(), PageLoadEvent::Finished)
+                && window.url().ok().as_ref() == Some(payload.url())
+            {
+                state.fetch_add(1, Ordering::AcqRel);
             }
         })
         .build()?;
+    // A TLS failure can happen before WebKit emits any page-load callback.
+    let state = window.state::<NavigationState>().0.clone();
+    if state
+        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        arm_timeout(window, state, 1);
+    }
     Ok(())
+}
+
+fn expect_navigation(window: &WebviewWindow) {
+    let state = window.state::<NavigationState>().0.clone();
+    let epoch = state.fetch_add(1, Ordering::AcqRel) + 1;
+    arm_timeout(window.clone(), state, epoch);
+}
+fn arm_timeout(window: WebviewWindow, state: Arc<AtomicU64>, epoch: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(20));
+        if state
+            .compare_exchange(epoch, epoch + 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            let _ = window.navigate(local_url("connection"));
+        }
+    });
 }
 
 pub fn show_wallet(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -179,6 +203,7 @@ pub fn show_wallet(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// have no capability and cannot invoke any Wallet signing/credential command.
 #[tauri::command]
 pub fn open_mikaki_web(window: WebviewWindow, destination: Destination) -> Result<(), String> {
+    expect_navigation(&window);
     window
         .navigate(destination.url())
         .map_err(|_| "webview unavailable".to_owned())
