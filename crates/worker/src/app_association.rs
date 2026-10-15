@@ -23,6 +23,21 @@ fn apple_document(team_id: &str) -> Option<serde_json::Value> {
 }
 
 fn android_document(fingerprint: &str) -> Option<serde_json::Value> {
+    android_association(fingerprint, "delegate_permission/common.handle_all_urls")
+}
+
+fn apple_credentials_document(team_id: &str) -> Option<serde_json::Value> {
+    apple_document(team_id)?;
+    Some(serde_json::json!({"webcredentials": {"apps": [
+        format!("{team_id}.{APP_ID}"), format!("{team_id}.{APP_ID}.dev")
+    ]}}))
+}
+
+fn android_credentials_document(fingerprint: &str) -> Option<serde_json::Value> {
+    android_association(fingerprint, "delegate_permission/common.get_login_creds")
+}
+
+fn android_association(fingerprint: &str, relation: &str) -> Option<serde_json::Value> {
     let parts: Vec<&str> = fingerprint.split(':').collect();
     if parts.len() != 32
         || !parts
@@ -32,7 +47,7 @@ fn android_document(fingerprint: &str) -> Option<serde_json::Value> {
         return None;
     }
     Some(serde_json::json!([{
-        "relation": ["delegate_permission/common.handle_all_urls"],
+        "relation": [relation],
         "target": {
             "namespace": "android_app",
             "package_name": APP_ID,
@@ -44,9 +59,29 @@ fn android_document(fingerprint: &str) -> Option<serde_json::Value> {
 #[cfg(target_arch = "wasm32")]
 pub fn apple_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
     let document = env
-        .var("MIKAKI_IOS_TEAM_ID")
+        .var("MIKAKI_APPLE_TEAM_ID")
+        .or_else(|_| env.var("MIKAKI_IOS_TEAM_ID"))
         .ok()
         .and_then(|value| apple_document(&value.to_string()));
+    association_response(document)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn apple_credentials_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
+    let document = env
+        .var("MIKAKI_APPLE_TEAM_ID")
+        .or_else(|_| env.var("MIKAKI_IOS_TEAM_ID"))
+        .ok()
+        .and_then(|value| apple_credentials_document(&value.to_string()));
+    association_response(document)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn android_credentials_for_env(env: &worker::Env) -> worker::Result<worker::Response> {
+    let document = env
+        .var("MIKAKI_ANDROID_SHA256_CERT_FINGERPRINT")
+        .ok()
+        .and_then(|value| android_credentials_document(&value.to_string()));
     association_response(document)
 }
 
@@ -125,7 +160,26 @@ p,li{line-height:1.7}ol{padding-left:1.4rem}.note{font-size:.9rem;color:#526a7b}
 
 #[cfg(test)]
 mod tests {
-    use super::{android_document, apple_document};
+    use super::{
+        android_credentials_document, android_document, apple_credentials_document, apple_document,
+    };
+
+    #[test]
+    fn credential_associations_do_not_claim_callback_links() {
+        assert_eq!(
+            apple_credentials_document("ABCDEFGHIJ").unwrap(),
+            serde_json::json!({
+                "webcredentials": {"apps": ["ABCDEFGHIJ.app.tossa.mikaki", "ABCDEFGHIJ.app.tossa.mikaki.dev"]}
+            })
+        );
+        assert!(apple_credentials_document("personal-team").is_none());
+        let document = android_credentials_document(&["ab"; 32].join(":")).unwrap();
+        assert_eq!(
+            document[0]["relation"],
+            serde_json::json!(["delegate_permission/common.get_login_creds"])
+        );
+        assert!(android_credentials_document("AB:CD").is_none());
+    }
 
     #[test]
     fn apple_association_is_exact() {

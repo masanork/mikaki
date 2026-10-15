@@ -39,15 +39,54 @@ tests check navigation boundaries. These mocks do not qualify WebAuthn or
 physical-device attestation. HAIP attestation and NFC/BLE remain Android
 features; building for Mac does not establish support for those protocols.
 
-The tested Mac can reach production in Chrome using ECH, while normal TLS
-connections naming auth.mikaki.org reset before receiving a certificate.
-The same IP accepts a control SNI. An isolated URLSession probe with per-process
-encrypted DNS also fails TLS. Production WebView connectivity remains an
-unresolved network prerequisite. Embedded Passkeys additionally need OS
-association and appropriate app signing (Apple webcredentials / Android
-Credential Manager and Digital Asset Links); current app-link association
-alone does not qualify them. Do not claim a successful production Passkey
-ceremony from compilation or synthetic WebView tests.
+The installed Mac development app loaded the production HTTPS login page on
+2026-10-16. The earlier TLS reset is no longer reproducible on this network;
+no certificate or transport bypass was added. Successful loading does not
+qualify a Passkey ceremony.
+
+Android enables WebAuthn in `WEB_AUTHENTICATION_SUPPORT_FOR_APP` mode when the
+installed WebView supports it, using Credential Manager 1.6.0. The issuer serves
+`/.well-known/assetlinks.json` with `get_login_creds` for the configured release
+signing fingerprint. The separate app.mikaki.org callback host retains only
+`handle_all_urls`. WebView app-mode client data uses an `android:apk-key-hash`
+origin: the server accepts only the exact configured signing-key hash, then
+still verifies the signed challenge, RP ID, user verification and replay state.
+The HTTP Origin and session-cookie checks remain bound to the HTTPS issuer.
+Debug APKs signed by another key cannot use the production association. Physical
+Android and credential-provider verification remain required, including Vault
+PRF support. See [Android's WebView integration](https://developer.android.com/identity/sign-in/credential-manager-webview).
+
+### Mac/iOS Passkey signing
+
+Apple WebView Passkeys require `webcredentials:auth.mikaki.org` in the signed
+app's Associated Domains entitlement and an issuer AASA document authorizing
+that App ID. Set `vars.MIKAKI_APPLE_TEAM_ID` in
+`crates/worker/wrangler.production.jsonc` to the signing team's ten-character ID; `MIKAKI_IOS_TEAM_ID` remains a compatibility fallback.
+The issuer AASA authorizes `<TEAM_ID>.app.tossa.mikaki` and
+`<TEAM_ID>.app.tossa.mikaki.dev`. Its callback-host AASA remains for app links.
+Missing or malformed signing configuration returns 404 instead of publishing
+an incomplete association.
+
+The ordinary Mac development build stays ad-hoc signed and can display Web
+screens, but cannot use Apple Associated Domains. A Personal Team cannot create
+the required provisioning profile. With an eligible Apple Developer team,
+create a Mac App Development profile for `app.tossa.mikaki.dev` with Associated
+Domains enabled, and use an installed signing identity included in that profile:
+
+```sh
+APPLE_SIGNING_IDENTITY='Apple Development: …' \
+MIKAKI_MACOS_PROVISIONING_PROFILE=/absolute/path/Mikaki-Dev.provisionprofile \
+npm run build:macos:passkeys -- --debug --ci
+```
+
+This path verifies profile expiration, platform, App ID, entitlement and signing
+certificate, embeds the profile, and signs with the corresponding Team ID and
+webcredentials entitlement. It prints the Team ID to configure on the issuer.
+No private key is exported. iOS includes the same webcredentials entitlement and
+also requires an eligible profile. Verify the installed, signed app and a real
+Passkey ceremony; compilation and synthetic WebView tests are insufficient.
+See [Apple provisioning profiles](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)
+and [Associated Domains](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.associated-domains).
 
 ## Identity-card read, account linking and issuance
 

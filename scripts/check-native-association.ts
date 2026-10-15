@@ -15,6 +15,16 @@ assert.deepEqual(JSON.parse(readFileSync('assetlinks.json', 'utf8')), [
     },
   },
 ]);
+assert.deepEqual(JSON.parse(readFileSync('credential-assetlinks.json', 'utf8')), [
+  {
+    relation: ['delegate_permission/common.get_login_creds'],
+    target: {
+      namespace: 'android_app',
+      package_name: 'app.tossa.mikaki',
+      sha256_cert_fingerprints: [fingerprint],
+    },
+  },
+]);
 assert.equal(readFileSync('native-authorize-status.txt', 'utf8').trim(), '404');
 for (const prefix of ['native', 'identity']) {
   assert.equal(readFileSync(`${prefix}-callback-status.txt`, 'utf8').trim(), '303');

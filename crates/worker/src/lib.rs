@@ -14,6 +14,8 @@ mod dpop;
 mod enrollment_mail;
 #[cfg(target_arch = "wasm32")]
 mod enrollment_waitlist;
+#[cfg(any(target_arch = "wasm32", test))]
+mod native_webauthn;
 #[cfg(target_arch = "wasm32")]
 pub mod op_authority;
 #[cfg(target_arch = "wasm32")]
@@ -2330,6 +2332,23 @@ pub async fn main(
     }
     if !auth_resources::admit(&req, &env).await? {
         return auth_resources::limited();
+    }
+    if req.method() == worker::Method::Get
+        && env
+            .var("MIKAKI_ISSUER")
+            .ok()
+            .and_then(|value| configured_issuer(&value.to_string()))
+            .is_some_and(|issuer| issuer == url.origin().ascii_serialization())
+    {
+        match url.path() {
+            "/.well-known/apple-app-site-association" => {
+                return app_association::apple_credentials_for_env(&env);
+            }
+            "/.well-known/assetlinks.json" => {
+                return app_association::android_credentials_for_env(&env);
+            }
+            _ => {}
+        }
     }
     let logout_context = std::rc::Rc::new(ctx);
     // The owner transport closes before touching work schema when disabled.

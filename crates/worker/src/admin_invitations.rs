@@ -213,7 +213,12 @@ pub async fn finish(
     let rp_id = enrollment::rp_id(&issuer)?;
     let verification_context = mikaki_webauthn::Context {
         challenge: row.challenge,
-        origin: issuer,
+        origin: native_webauthn::origin(
+            &context.env,
+            &issuer,
+            &input.response.client_data,
+            policy.form_body_bytes,
+        ),
         rp_id,
         max_bytes: policy.form_body_bytes,
         max_depth: 16,
