@@ -188,7 +188,7 @@ jobs:
           worker-build --release crates/worker
           worker-build --release crates/userinfo-claim-worker
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
-      - name: Check served UI and server Wasm byte budgets
+      - name: Check complete Worker bundles and report resource growth
         run: |
           npm run check:worker-budgets
           cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"

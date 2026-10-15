@@ -12,6 +12,7 @@ import {
   openOwnerRecord,
   OWNER_KEY_SUITE,
   OWNER_RECORD_MAX_BYTES,
+  OWNER_WORKSPACE_MAX_BYTES,
   type OwnerRecord,
 } from '../../crates/worker/ui/vault-owner-crypto.ts';
 
@@ -344,6 +345,62 @@ test('owner-key v2 record API preserves ciphertext, exact mutations and live own
       return { value, plaintext };
     };
 
+    await t.test(
+      'large snapshots use only their owner collection and kind; exact receipts and deletion remain canonical',
+      async () => {
+        const owner = await bootstrap('workspace-snapshot');
+        const plaintext = new Uint8Array(OWNER_WORKSPACE_MAX_BYTES - 29).fill(0x61);
+        const collection = 'workspace-snapshots',
+          kind = 'workspace-snapshot',
+          record = 'snapshot';
+        const body = await candidate(owner, record, 1, plaintext, collection, kind),
+          operation = id();
+        for (const [target, payload] of [
+          ['messages', body],
+          [collection, body.replace('"kind":"workspace-snapshot"', '"kind":"message"')],
+        ] as const) {
+          const result = await mutate(owner, payload, 0, id(), 'PUT', target, record);
+          assert.ok([400, 413].includes(result.status));
+          assert.equal(await head(owner, target, record), null);
+        }
+        assert.equal(
+          (await mutate(owner, body, 0, operation, 'PUT', collection, record)).status,
+          200,
+        );
+        assert.equal(
+          (await mutate(owner, body, 0, operation, 'PUT', collection, record)).status,
+          200,
+        );
+        assert.equal(await ledgerCount(owner), 1);
+        assert.deepEqual((await decrypt(owner, collection, record)).plaintext, plaintext);
+        assert.equal(
+          (await mutate(owner, body + ' ', 0, operation, 'PUT', collection, record)).status,
+          409,
+        );
+        const oversized = JSON.stringify({
+          ...JSON.parse(body),
+          ciphertext: Buffer.concat([
+            Buffer.from([2]),
+            Buffer.alloc(OWNER_WORKSPACE_MAX_BYTES),
+          ]).toString('base64url'),
+        });
+        assert.equal(
+          (await mutate(owner, oversized, 0, id(), 'PUT', collection, 'oversized')).status,
+          400,
+        );
+        assert.equal(
+          (await mutate(owner, deletion(owner, 2, kind), 1, id(), 'DELETE', collection, record))
+            .status,
+          200,
+        );
+        assert.equal((await get(owner, collection, record)).status, 404);
+        await assert.rejects(
+          candidate(owner, record, 1, plaintext, collection, 'message'),
+          /too large/,
+        );
+        await assert.rejects(candidate(owner, record, 1, plaintext, 'messages', kind), /too large/);
+      },
+    );
     await t.test(
       'real bootstrap and recovered owner key round-trip empty, Unicode and maximum records',
       async () => {

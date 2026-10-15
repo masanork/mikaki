@@ -14,7 +14,17 @@ use crate::{WorkersCryptoRandom, read_bounded_body};
 const SUITE: &str = "PRF-HKDF-SHA256-AES256GCM-v2";
 const MAX_CIPHERTEXT: usize = 24 * 1024;
 const MAX_BODY: usize = 36 * 1024;
+const MAX_WORKSPACE_CIPHERTEXT: usize = 2 * 1024 * 1024;
+const MAX_WORKSPACE_BODY: usize = 3 * 1024 * 1024;
 const PREFIX: &str = "vault-owner-record/";
+
+fn ciphertext_limit(collection: &str, kind: &str) -> usize {
+    if collection == "workspace-snapshots" && kind == "workspace-snapshot" {
+        MAX_WORKSPACE_CIPHERTEXT
+    } else {
+        MAX_CIPHERTEXT
+    }
+}
 
 #[derive(Clone, Deserialize, PartialEq)]
 struct Root {
@@ -244,7 +254,8 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     let Ok(Some(object)) = bucket.get(object_key).execute().await else {
         return error(503, "storage_unavailable");
     };
-    if object.size() > MAX_CIPHERTEXT as u64 {
+    let max_ciphertext = ciphertext_limit(collection, &selected.kind);
+    if object.size() > max_ciphertext as u64 {
         return error(503, "storage_unavailable");
     }
     let Some(body) = object.body() else {
@@ -253,7 +264,7 @@ pub async fn get(request: Request, context: RouteContext<()>) -> worker::Result<
     let Ok(bytes) = body.bytes().await else {
         return error(503, "storage_unavailable");
     };
-    if !(29..=MAX_CIPHERTEXT).contains(&bytes.len())
+    if !(29..=max_ciphertext).contains(&bytes.len())
         || bytes.first() != Some(&2)
         || URL_SAFE_NO_PAD.encode(Sha256::digest(&bytes)) != *digest
     {
@@ -396,7 +407,14 @@ async fn write(
     if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
         return error(415, "json_required");
     }
-    let body = match read_bounded_body(request, if deleted { 1024 } else { MAX_BODY }).await {
+    let max_body = if deleted {
+        1024
+    } else if collection == "workspace-snapshots" {
+        MAX_WORKSPACE_BODY
+    } else {
+        MAX_BODY
+    };
+    let body = match read_bounded_body(request, max_body).await {
         Ok(body) => body,
         Err(_) => return error(413, "body_too_large_or_invalid"),
     };
@@ -414,7 +432,11 @@ async fn write(
             return error(400, "invalid_candidate_encoding");
         }
         let (Some(ciphertext), Some(_)) = (
-            frame(&value.ciphertext, 29, MAX_CIPHERTEXT),
+            frame(
+                &value.ciphertext,
+                29,
+                ciphertext_limit(collection, &value.kind),
+            ),
             frame(&value.key_envelope, 61, 61),
         ) else {
             return error(400, "invalid_body");

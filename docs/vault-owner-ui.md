@@ -10,6 +10,7 @@ The client pins the root and checks returned owner/origin/Vault/generation/root 
 
 - `personal/name`, kind `name`: the canonical encrypted UTF-8 display name (1–256 characters on save), available to the OwnerWorkspace and exact-source Agent v2 grant contract. It is a personal assertion, not verified identity.
 - `personal/owner_note`, kind `owner_note`: the canonical typed owner note, rendered through the same `OwnerRecordEditor` in OwnerWorkspace.
+- `workspace-snapshots/<random ID>`, kind `workspace-snapshot`: a bounded encrypted [Cloudflare OS workspace copy](cloudflare-os-vault.md#workspace-snapshots-local-implementation), reviewed after unlock. A restore popup discloses one selected copy to its original app origin only after an explicit Send action.
 - `threads/<random ID>`, kind `thread-archive`: encrypted imported conversation JSON. Titles, speakers, message text and timestamps are encrypted together. The first importer takes a file no larger than 24,000 bytes; the record crypto limit remains 24 KiB including encryption framing. Unicode normalization can change serialized size, so encryption performs the final bound check.
 - The UI reads at most six metadata pages (50 entries/page, current storage admission cap 256 total records/account). It then decrypts bounded archives locally. A nonempty search lazily loads a dedicated in-memory SQLite Worker, with literal AND terms, NFKC/case normalization, short Japanese matching, bounded results and exact message navigation. Loading/failure/no-match/truncation are distinct. The index covers the loaded snapshot and is discarded on archive changes, mutation activity, hidden visibility or lock. There is no persistent index or server-side plaintext query. See [search behavior and evidence](vault-thread-search.md).
 
@@ -45,6 +46,11 @@ The deployed application now uses one OwnerWorkspace entry. Historical v1 attrib
 The mounted connection section supports explicit OAuth review for exact v2 Owner-record grants. It displays the selected record source and authority and resets consent when selection changes. The ordinary scope-only OAuth profile remains available only when the owner selects and approves an active v2 grant; supplied authorization details must match the full record source and authority. Format-1 grant/proposal routes are retired. The lazy [Agent grant panel](vault-record-agent-grants.md) adds separate consent for one saved name/note snapshot, one-time bearer delivery, and an exact-target OwnerNote proposal capability. Grant changes refresh existing OAuth connections and proposal review without discarding uncertain operations. Generic agent private-draft tools remain separate from Owner-approved encrypted record commits. Connecting a chosen actual AI/app, conversation sharing, recovery and staged rotation activation remain follow-ups; the owner key never becomes Agent authority.
 
 ## Integration boundary
+
+The first [Cloudflare OS integration](cloudflare-os-vault.md) adds an owner-reviewed
+browser handoff for a conversation text segment. Format-2 source information is
+encrypted with the copy. Independent sessions, source reconciliation, linked
+outputs and hosted qualification remain separate work.
 
 The former `?storage=owner-v2` qualification preview is no longer a separate presentation. The default OwnerWorkspace uses `personal/name`, `personal/owner_note` and imported thread-archive record-v2 APIs. No older `personal/profile` or format-1 attribute payload is read or converted automatically. There is no deployed-format migration from historical database rows in the fresh baseline.
 

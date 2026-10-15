@@ -7,6 +7,9 @@ import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { parseThreadArchive } from '../../crates/worker/ui/vault-thread-archive.ts';
+import { build } from 'esbuild';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 test('archive schema accepts human/AI messages and rejects malformed content', () => {
   const archive = {
@@ -38,6 +41,14 @@ test('new owner Vault preserves revision ETags through edge compression and uses
     ],
   });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let workspaceFixture:
+    | {
+        snapshot: string;
+        exportSnapshot(): Promise<string>;
+        restore(text: string): Promise<string>;
+        close(): Promise<void>;
+      }
+    | undefined;
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
@@ -81,6 +92,7 @@ test('new owner Vault preserves revision ETags through edge compression and uses
       ),
     ]);
     let activeSecret = secret;
+    let loseWorkspaceSnapshot = false;
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     let ceremonies = 0;
@@ -145,6 +157,7 @@ test('new owner Vault preserves revision ETags through edge compression and uses
       { credential: [...credential] },
     );
     let lose = false,
+      loseAppArchive = false,
       failSession = false,
       failSearch = false;
     const searchAssets: string[] = [];
@@ -216,6 +229,16 @@ test('new owner Vault preserves revision ETags through edge compression and uses
       }
       const body = Buffer.from(await response.arrayBuffer());
       if (
+        loseAppArchive &&
+        path.startsWith('/vault/records/threads/') &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        loseAppArchive = false;
+        await route.abort();
+        return;
+      }
+      if (
         holdLocalExportRead &&
         path === '/vault/records/personal/name' &&
         request.method() === 'GET'
@@ -231,6 +254,16 @@ test('new owner Vault preserves revision ETags through edge compression and uses
         response.ok
       ) {
         loseWrapper = false;
+        await route.abort();
+        return;
+      }
+      if (
+        loseWorkspaceSnapshot &&
+        path.startsWith('/vault/records/workspace-snapshots/') &&
+        request.method() === 'PUT' &&
+        response.ok
+      ) {
+        loseWorkspaceSnapshot = false;
         await route.abort();
         return;
       }
@@ -623,8 +656,301 @@ test('new owner Vault preserves revision ETags through edge compression and uses
     assert.ok(
       recordBodies.every((body) => !body.includes('New owner') && !body.includes('保育園')),
     );
+    failSession = false;
+    const appOrigin = 'https://os.example';
+    const appArchive = {
+      format_version: 2,
+      source: {
+        app: 'cloudflare-os',
+        origin: appOrigin,
+        workspace_id: 'workspace',
+        chat_id: 0,
+        first_sequence: 1,
+        last_sequence: 1,
+        scope: 'text-segment',
+      },
+      title: 'Cloudflare OS consultation',
+      messages: [
+        {
+          source_id: '1',
+          speaker: 'Alice',
+          actor: 'human',
+          text: 'Private OS context',
+          timestamp: '2026-10-14T00:00:00.000Z',
+        },
+      ],
+    };
+    const sourceRoot = process.env['MIKAKI_CLOUDFLARE_OS_SOURCE'];
+    const senderScript = sourceRoot
+      ? (
+          await build({
+            entryPoints: [
+              resolve(sourceRoot, 'packages/workshop-frontend/src/features/chat/vaultArchive.ts'),
+            ],
+            bundle: true,
+            write: false,
+            format: 'esm',
+            platform: 'browser',
+          })
+        ).outputFiles![0]!.text
+      : null;
+    await context.route(`${appOrigin}/**`, (route) => {
+      if (new URL(route.request().url()).pathname === '/sender.js' && senderScript)
+        return route.fulfill({ contentType: 'text/javascript', body: senderScript });
+      return route.fulfill({
+        contentType: 'text/html',
+        body: `
+      <!doctype html><title>Cloudflare OS handoff fixture</title><button id="send">Save to Vault</button><output id="result"></output>
+      ${
+        senderScript
+          ? `<script type="module">
+        import {sendVaultArchive, makeVaultArchive} from './sender.js';
+        const expected = ${JSON.stringify(appArchive)};
+        document.getElementById('send').onclick = async () => {
+          const page = {messages: expected.messages.map(message => ({chatId: 0, sequence: Number(message.source_id), type:'message', message:message.text,
+            timestamp:new Date(message.timestamp), author:{type:message.actor==='human'?'user':'agent',id:'synthetic-owner',name:message.speaker}}))};
+          await sendVaultArchive(new URL('${origin}/vault'), async () => makeVaultArchive(page,
+            {origin:location.origin,workspaceId:'workspace',chatId:0,title:expected.title}), new AbortController().signal);
+          document.getElementById('result').textContent='Saved';
+        };
+      </script>`
+          : `<script>
+        const channel = crypto.randomUUID(), archive = ${JSON.stringify(JSON.stringify(appArchive))};
+        let popup, sent = false, timer;
+        document.getElementById('send').onclick = () => {
+          popup = window.open('${origin}/vault?lang=en', '_blank');
+          timer = setInterval(() => { if (!sent) popup.postMessage({protocol:'mikaki-archive-v1',type:'offer',channel}, '${origin}'); }, 100);
+        };
+        window.addEventListener('message', event => {
+          if(event.source !== popup || event.origin !== '${origin}' || event.data.protocol !== 'mikaki-archive-v1' || event.data.channel !== channel) return;
+          if(event.data.type === 'request') { sent = true; popup.postMessage({protocol:'mikaki-archive-v1',type:'archive',channel,archive}, '${origin}'); }
+          if(event.data.type === 'saved') { document.getElementById('result').textContent='Saved'; clearInterval(timer); }
+        });
+      </script>`
+      }`,
+      });
+    });
+    const source = await context.newPage();
+    await source.goto(appOrigin);
+    const newPopup = source.waitForEvent('popup');
+    await source.locator('#send').click();
+    const recipient = await newPopup;
+    await recipient.setViewportSize({ width: 390, height: 844 });
+    await recipient.waitForLoadState('domcontentloaded');
+    await recipient.goto(`${origin}/vault?lang=en`);
+    await recipient.locator('#unlock').click();
+    await expect(
+      recipient.getByRole('heading', { name: 'Save a Cloudflare OS conversation' }),
+    ).toBeVisible();
+    await expect(source.locator('#result')).toHaveText('');
+    const previousBodies = recordBodies.length;
+    await recipient
+      .getByRole('button', { name: 'Encrypt and save this copy', exact: true })
+      .scrollIntoViewIfNeeded();
+    await auditAccessibility(recipient, 'cloudflare-os-vault-mobile');
+    await mkdir('artifacts/cloudflare-os-vault', { recursive: true });
+    await recipient.screenshot({ path: 'artifacts/cloudflare-os-vault/receive-mobile.png' });
+    loseAppArchive = true;
+    await recipient.locator('#app-archive-save').click();
+    await expect(recipient.locator('#app-archive-save')).toHaveText('Retry the same save');
+    await expect(source.locator('#result')).toHaveText('');
+    await recipient.locator('#app-archive-save').click();
+    await expect(source.locator('#result')).toHaveText('Saved');
+    assert.equal(recordBodies.length, previousBodies + 2);
+    assert.equal(
+      recordBodies[previousBodies],
+      recordBodies[previousBodies + 1],
+      'App handoff retries the exact ciphertext',
+    );
+    assert.ok(
+      recordBodies
+        .slice(previousBodies)
+        .every((body) => !body.includes('Private OS context') && !body.includes(appOrigin)),
+    );
+    await recipient.reload();
+    await recipient.locator('#unlock').click();
+    await recipient.getByRole('button', { name: appArchive.title, exact: true }).click();
+    await expect(recipient.locator('.archive-message')).toContainText('Private OS context');
+    assert.deepEqual(
+      await recipient.evaluate(() => sessionStorage.length),
+      0,
+      'No plaintext handoff is persisted in browser session storage',
+    );
+    await recipient.close();
+    await source.close();
+
+    let workspaceSnapshot = {
+      format: 'cloudflare-os-workspace',
+      version: 1,
+      title: 'Saved app and conversation',
+      source: {
+        origin: appOrigin,
+        workspaceId: 'a'.repeat(64),
+        capturedAt: '2026-10-15T00:00:00.000Z',
+      },
+      records: [
+        ['version', 4],
+        [
+          'chats:a0.a0',
+          { type: 'object', value: [['message', 'Workspace private payload '.repeat(3000)]] },
+        ],
+      ],
+      gadgets: [
+        {
+          id: 1,
+          state: {
+            schema: [
+              {
+                type: 'table',
+                name: 'notes',
+                sql: 'CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT)',
+              },
+            ],
+            tables: [{ name: 'notes', columns: ['id', 'body'], rows: [[1, 'Saved gadget note']] }],
+            kv: [['theme', 'dark']],
+          },
+        },
+      ],
+    };
+    if (process.env['MIKAKI_CLOUDFLARE_OS_RPC'] === '1') {
+      assert.ok(sourceRoot, 'The paired RPC test requires MIKAKI_CLOUDFLARE_OS_SOURCE');
+      const output = resolve(
+        sourceRoot,
+        'packages/integration-tests/.wrangler/mikaki-vault-fixture.mjs',
+      );
+      await build({
+        entryPoints: [
+          resolve(sourceRoot, 'packages/integration-tests/src/workspace-vault-fixture.ts'),
+        ],
+        bundle: true,
+        platform: 'node',
+        format: 'esm',
+        packages: 'external',
+        outfile: output,
+      });
+      const fixtureModule = await import(pathToFileURL(output).href);
+      const prebuilt = process.env['WORKSHOP_INTEGRATION_PREBUILT'];
+      process.env['WORKSHOP_INTEGRATION_PREBUILT'] = '1';
+      try {
+        workspaceFixture = await fixtureModule.startWorkspaceVaultFixture(appOrigin);
+      } finally {
+        if (prebuilt === undefined) delete process.env['WORKSHOP_INTEGRATION_PREBUILT'];
+        else process.env['WORKSHOP_INTEGRATION_PREBUILT'] = prebuilt;
+      }
+      assert.ok(workspaceFixture);
+      workspaceSnapshot = JSON.parse(workspaceFixture.snapshot);
+      await context.exposeFunction('exportWorkspaceOverRpc', () =>
+        workspaceFixture!.exportSnapshot(),
+      );
+      await context.exposeFunction('restoreWorkspaceOverRpc', (text: string) =>
+        workspaceFixture!.restore(text),
+      );
+    }
+    const workspaceScript = sourceRoot
+      ? (
+          await build({
+            entryPoints: [
+              resolve(sourceRoot, 'packages/workshop-frontend/src/features/chat/vaultWorkspace.ts'),
+            ],
+            bundle: true,
+            write: false,
+            format: 'esm',
+            platform: 'browser',
+          })
+        ).outputFiles![0]!.text
+      : `export function transferWorkspace(destination,mode,read,signal) {
+      const popup=window.open(destination.href,'_blank'),channel=crypto.randomUUID();
+      return new Promise(resolve=>{
+        let requested=false;
+        const timer=setInterval(()=>{if(!requested) popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'offer',mode},destination.origin);},100);
+        const receive=async event=>{
+          const v=event.data;
+          if(event.source!==popup||event.origin!==destination.origin||v.protocol!=='mikaki-workspace-v1'||v.channel!==channel) return;
+          if(v.type==='request'&&mode==='save'&&!requested){requested=true;popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'snapshot',snapshot:await read()},destination.origin);}
+          if(v.type==='saved'&&mode==='save'||v.type==='snapshot'&&mode==='restore') {clearInterval(timer);window.removeEventListener('message',receive);resolve({snapshot:v.snapshot,restored:()=>popup.postMessage({protocol:'mikaki-workspace-v1',channel,type:'restored'},destination.origin)});}
+        };
+        window.addEventListener('message',receive);
+      });
+    }`;
+    await context.route(`${appOrigin}/**`, (route) => {
+      if (new URL(route.request().url()).pathname === '/workspace-sender.js')
+        return route.fulfill({ contentType: 'text/javascript', body: workspaceScript });
+      return route.fulfill({
+        contentType: 'text/html',
+        body: `<!doctype html><title>Cloudflare OS workspace fixture</title>
+        <button id="save-workspace">Save workspace</button><button id="restore-workspace">Restore workspace</button><output id="workspace-result"></output>
+        <script type="module">
+          import {transferWorkspace} from './workspace-sender.js';
+          let snapshot=${JSON.stringify(JSON.stringify(workspaceSnapshot))};
+          document.getElementById('save-workspace').onclick=async()=>{await transferWorkspace(new URL('${origin}/vault'),'save',async()=>{if(window.exportWorkspaceOverRpc) snapshot=await window.exportWorkspaceOverRpc();return snapshot;},new AbortController().signal);document.getElementById('workspace-result').textContent='Saved workspace';};
+          document.getElementById('restore-workspace').onclick=async()=>{const transfer=await transferWorkspace(new URL('${origin}/vault'),'restore',async()=>{throw new Error('must not read another workspace');},new AbortController().signal);if(transfer.snapshot!==snapshot) throw new Error('snapshot changed in transit');if(window.restoreWorkspaceOverRpc) await window.restoreWorkspaceOverRpc(transfer.snapshot);document.getElementById('workspace-result').textContent='Restored workspace';transfer.restored();};
+        </script>`,
+      });
+    });
+    const os = await context.newPage();
+    await os.goto(appOrigin);
+    const savePopup = os.waitForEvent('popup');
+    await os.locator('#save-workspace').click();
+    const vaultSave = await savePopup;
+    await vaultSave.setViewportSize({ width: 390, height: 844 });
+    vaultSave.on('dialog', (d) => void d.accept());
+    await vaultSave.goto(`${origin}/vault?lang=en`);
+    await vaultSave.locator('#unlock').click();
+    await expect(
+      vaultSave.getByRole('heading', { name: workspaceSnapshot.title, exact: true }),
+    ).toBeVisible();
+    await expect(os.locator('#workspace-result')).toHaveText('');
+    const beforeWorkspace = recordBodies.length;
+    loseWorkspaceSnapshot = true;
+    await vaultSave.locator('#workspace-snapshot-save').click();
+    await expect(vaultSave.locator('#workspace-snapshot-save')).toHaveText('Retry the same save');
+    await expect(os.locator('#workspace-result')).toHaveText('');
+    await vaultSave.locator('#workspace-snapshot-save').click();
+    await expect(os.locator('#workspace-result')).toHaveText('Saved workspace');
+    assert.equal(recordBodies.length, beforeWorkspace + 2);
+    assert.equal(recordBodies[beforeWorkspace], recordBodies[beforeWorkspace + 1]);
+    assert.ok(
+      recordBodies[beforeWorkspace]!.length > 24000 &&
+        !recordBodies[beforeWorkspace]!.includes('Workspace private payload'),
+    );
+    await vaultSave.close();
+    const restorePopup = os.waitForEvent('popup');
+    await os.locator('#restore-workspace').click();
+    const vaultRestore = await restorePopup;
+    await vaultRestore.setViewportSize({ width: 390, height: 844 });
+    vaultRestore.on('dialog', (d) => void d.accept());
+    await vaultRestore.goto(`${origin}/vault?lang=en`);
+    await vaultRestore.locator('#unlock').click();
+    await expect(
+      vaultRestore.getByText('Send the selected snapshot contents to https://os.example.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await vaultRestore.locator('#workspace-snapshot-list').click();
+    await vaultRestore.getByRole('button', { name: /Saved app and conversation/ }).click();
+    await expect(os.locator('#workspace-result')).toHaveText('Saved workspace');
+    await vaultRestore.locator('#workspace-snapshot-restore').scrollIntoViewIfNeeded();
+    assert.ok(
+      await vaultRestore.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      'Snapshot review fits the mobile viewport',
+    );
+    await auditAccessibility(vaultRestore, 'workspace-vault-restore-mobile');
+    await vaultRestore.screenshot({
+      path: 'artifacts/cloudflare-os-vault/workspace-restore-mobile.png',
+    });
+    await vaultRestore.locator('#workspace-snapshot-restore').click();
+    await expect(os.locator('#workspace-result')).toHaveText('Restored workspace');
+    await expect(
+      vaultRestore.locator('section[aria-labelledby=workspace-snapshots-heading] [role=status]'),
+    ).toContainText('Cloudflare OS reported that a new workspace was restored.');
+    assert.equal(await vaultRestore.evaluate(() => sessionStorage.length), 0);
+    await vaultRestore.getByRole('button', { name: 'Lock Vault', exact: true }).click();
+    await expect(vaultRestore.getByText(workspaceSnapshot.title, { exact: true })).toHaveCount(0);
+    await vaultRestore.close();
+    await os.close();
   } finally {
     await browser?.close();
+    await workspaceFixture?.close();
     await harness.close();
   }
 });

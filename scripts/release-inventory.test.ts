@@ -72,7 +72,7 @@ test('upload preparation stages only verified archive members and records Wrangl
   const { root, archive } = await fixture();
   try {
     const inventory = await collectRelease(root, source);
-    const fakeBundle = (entry: string, _config: string, output: string) => {
+    const fakeBundle = async (entry: string, _config: string, output: string, upload: string) => {
       assert.equal(
         execFileSync('cat', [entry], { encoding: 'utf8' }),
         entry.endsWith('service.mjs')
@@ -94,11 +94,57 @@ test('upload preparation stages only verified archive members and records Wrangl
       );
       if (!entry.endsWith('checkpoint.mjs'))
         writeFileSync(join(output, 'module.wasm'), 'bundled wasm');
+      const name = entry.endsWith('service.mjs')
+        ? 'service'
+        : entry.endsWith('checkpoint.mjs')
+          ? 'checkpoint'
+          : 'shim';
+      writeFileSync(join(output, `${name}.js.map`), 'debug source map excluded from upload size');
+      const form = new FormData();
+      form.set('metadata', JSON.stringify({ main_module: `${name}.js` }));
+      form.set(
+        `${name}.js`,
+        new Blob(['bundled entry'], { type: 'application/javascript+module' }),
+        `${name}.js`,
+      );
+      if (!entry.endsWith('checkpoint.mjs'))
+        form.set(
+          'module.wasm',
+          new Blob(['bundled wasm'], { type: 'application/wasm' }),
+          'module.wasm',
+        );
+      form.set(
+        `${name}.js.map`,
+        new Blob(['debug source map excluded from upload size'], {
+          type: 'application/source-map',
+        }),
+        `${name}.js.map`,
+      );
+      await writeFile(upload, new Uint8Array(await new Response(form).arrayBuffer()));
     };
     const prepared = await prepareReleaseUpload(root, inventory, source, false, fakeBundle);
     assert.equal(prepared.result.promotion_ready, true);
     assert.equal(prepared.result.workers.length, 3);
-    assert.equal(prepared.result.workers[0]?.bundle_files.length, 2);
+    assert.equal(prepared.result.workers[0]?.bundle_files.length, 3);
+    assert.equal(
+      prepared.result.workers[0]?.bundle_raw_bytes,
+      Buffer.byteLength('bundled entrybundled wasm'),
+    );
+    assert.equal(prepared.result.workers[2]?.bundle_raw_bytes, Buffer.byteLength('bundled entry'));
+    const changedSize = structuredClone(prepared.result);
+    changedSize.workers[0]!.bundle_raw_bytes++;
+    await assert.rejects(
+      verifyPreparedUpload(root, prepared.destination, changedSize, source),
+      /bundle size changed/,
+    );
+    const uploadPath = join(prepared.destination, 'op/upload.multipart');
+    const originalUpload = await readFile(uploadPath);
+    await writeFile(uploadPath, Buffer.concat([originalUpload, Buffer.from('changed')]));
+    await assert.rejects(
+      verifyPreparedUpload(root, prepared.destination, prepared.result, source),
+      /Worker upload changed/,
+    );
+    await writeFile(uploadPath, originalUpload);
     assert.equal(
       (await readFile(join(prepared.destination, 'op/input/index_bg.wasm'))).toString(),
       'fixture:index_bg.wasm',

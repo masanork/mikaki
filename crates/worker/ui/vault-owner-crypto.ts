@@ -46,8 +46,13 @@ const KEY = 32;
 const NONCE = 12;
 const TAG = 16;
 export const OWNER_KEY_SUITE = 'PRF-HKDF-SHA256-AES256GCM-v2';
-// This first contract covers bounded records, not large SQLite images.
 export const OWNER_RECORD_MAX_BYTES = 24 * 1024;
+export const OWNER_WORKSPACE_MAX_BYTES = 2 * 1024 * 1024;
+function recordMaxBytes(item: OwnerRecordContext): number {
+  return item.collectionId === 'workspace-snapshots' && item.kind === 'workspace-snapshot'
+    ? OWNER_WORKSPACE_MAX_BYTES
+    : OWNER_RECORD_MAX_BYTES;
+}
 const random = (length: number): Bytes => crypto.getRandomValues(new Uint8Array(length));
 function concat(...parts: Bytes[]): Bytes {
   const bytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -356,7 +361,7 @@ export async function sealOwnerRecord(
   item: OwnerRecordContext,
 ): Promise<OwnerRecord> {
   ownerHandle(key);
-  if (plaintext.length > OWNER_RECORD_MAX_BYTES - 1 - NONCE - TAG)
+  if (plaintext.length > recordMaxBytes(item) - 1 - NONCE - TAG)
     throw new Error('record too large');
   const content = recordAad('mikaki-vault-record-content', context, item);
   const keyAad = recordAad('mikaki-vault-record-key', context, item);
@@ -403,7 +408,7 @@ export async function openOwnerRecord(
   if (value['format_version'] !== 2) throw new Error('unsupported record format');
   if (typeof value['ciphertext'] !== 'string' || typeof value['key_envelope'] !== 'string')
     throw new Error('invalid record');
-  const body = decode(value['ciphertext'], 1 + NONCE + TAG, OWNER_RECORD_MAX_BYTES);
+  const body = decode(value['ciphertext'], 1 + NONCE + TAG, recordMaxBytes(item));
   const envelope = decode(value['key_envelope'], 1 + NONCE + KEY + TAG);
   if (body[0] !== 2 || envelope[0] !== 2) throw new Error('invalid record version');
   const raw = new Uint8Array(
