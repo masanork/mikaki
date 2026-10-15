@@ -30,6 +30,7 @@ test('native attester broker binds one-use challenges, PoP, trusted service verd
   );
   // This identity-only multi-worker fixture does not exercise logout delivery.
   config.queues.consumers = [];
+  config.assets.directory = new URL('../../assets', import.meta.url).pathname;
   config.main = new URL('../../crates/worker/build/worker/shim.mjs', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = new URL(
     '../../crates/worker/migrations/',

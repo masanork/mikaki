@@ -21,6 +21,7 @@ const readList = async (response: { status: number; json(): Promise<unknown> }) 
 
 test('single-email requests, UV-bound approval, link registration, retry and expiration', async () => {
   const config = JSON.parse(await readFile(`${root}/crates/worker/wrangler.jsonc`, 'utf8'));
+  config.assets.directory = new URL('../../assets', import.meta.url).pathname;
   config.main = new URL('./support/waitlist-mail-fixture.mjs', import.meta.url).pathname;
   config.d1_databases[0].migrations_dir = `${root}/crates/worker/migrations`;
   config.vars = { ...config.vars, MIKAKI_ISSUER: issuer, WAITLIST_MAIL_KEY: key };

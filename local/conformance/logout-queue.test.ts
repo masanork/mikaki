@@ -44,6 +44,7 @@ async function startInstance(options: {
   const sourceConfig = JSON.parse(
     await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
   );
+  sourceConfig.assets.directory = new URL('../../assets', import.meta.url).pathname;
   sourceConfig.main = new URL(
     '../../crates/worker/build/worker/shim.mjs',
     import.meta.url,
