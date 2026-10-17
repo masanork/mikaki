@@ -1267,5 +1267,37 @@
       "deterministic-order": 89
     },
     "note": "Verified through the public issues API; existing fixed findings are excluded from these counts. Other dispositions are repository review records, not code-fix claims."
+  },
+  "pullRequestReview": {
+    "number": 258,
+    "analysisRevision": "4c386b6930b4189c4e24eb6cdb81f16617f11b8c",
+    "disposition": "false-positive",
+    "reason": "Explicit trusted-operator CLI file selection and purpose-specific preceding checks: SDK selection, signature/package-verified APK read, exclusive wx/0600 report creation and canonical direct-child promotion-directory stat. Regression evidence and per-flow reasons recorded in Cloud. These are not untrusted-agent filesystem sandbox APIs.",
+    "issues": [
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHn",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 201
+      },
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHo",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 222
+      },
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHp",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 313
+      },
+      {
+        "key": "AaFJ4A7_BynKBKHRwxHm",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/prepare-release-upload.ts",
+        "line": 99
+      }
+    ]
   }
 }

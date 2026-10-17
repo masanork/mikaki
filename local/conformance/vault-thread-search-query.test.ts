@@ -65,7 +65,7 @@ test('real SQLite preserves literal NUL queries and rejects lossy Unicode projec
     assert.throws(() => projection.search('abc', ['selected']), /locked/);
     projection.replace(record('\uFFFDabc'));
     assert.throws(() => projection.search('\ud801abc', ['selected']), /invalid query/);
-    assert.equal(projection.search('�abc', ['selected']).hits.length, 1);
+    assert.equal(projection.search('\uFFFDabc', ['selected']).hits.length, 1);
   } finally {
     projection.dispose();
   }

@@ -57,6 +57,11 @@ Compatibility and operator-boundary findings retain their review rationale in
 this inventory; they are not represented as code fixes. Code-hardening findings
 remain open until the merged code is analyzed.
 
+The PR analysis also reported four `S8707` flows at the SDK listing, APK read,
+exclusive report creation and validated promotion-directory `stat`. Each was
+reviewed as a false positive with the specific operand purpose, preceding checks
+and regression evidence recorded in Cloud. See `pullRequestReview` in the inventory.
+
 ## Reliability and maintainability follow-up
 
 All 89 high reliability findings are `S2871` suggestions to use `localeCompare`.
