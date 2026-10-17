@@ -11,6 +11,7 @@
 /artifacts/
 /apps/mikaki-client/ui/fonts/
 /coverage/
+/.scannerwork/
 **/.svelte-check/
 /local/ui/src/paraglide/
 /crates/worker/ui/paraglide/
