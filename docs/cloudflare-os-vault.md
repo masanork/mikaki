@@ -3,9 +3,9 @@
 The first integration is an owner-reviewed browser handoff from an authenticated
 Cloudflare OS conversation to Mikaki's existing Owner Vault. It needs no export
 file. The isolated hosted installation is **https://cfos.mikaki.org**, using
-**https://auth.mikaki.org/vault** as its receiver. Owner login and managed
-Workers AI chat have been verified; the physical Passkey Vault save/restore
-roundtrip remains to be qualified.
+**https://auth.mikaki.org/vault** as its receiver. Owner login, managed Workers
+AI chat and a reviewed save/restore roundtrip with a physical Passkey have
+been verified on a synthetic desktop fixture.
 
 ## First user journey
 
@@ -245,9 +245,19 @@ This deployment uses direct OIDC, with no Cloudflare Access gate. The app's
 Workers AI binding supplies the model provider without a personal API token.
 
 Hosted owner sign-in, existing workspace visibility and an AI response have
-been verified. The physical-device Vault journey remains pending. Use a
-dedicated synthetic workspace containing chat, an attachment, committed code,
-one SQL row and a distinct KV marker. Finish agents and proposed changes,
+been verified. On **2026-10-17**, Chrome/macOS with a real Passkey completed
+Vault unlock, reviewed encrypted save and restoration into a new workspace.
+Chat, committed code, SQL and KV survived reload; the restored 106-byte
+attachment matched the source's SHA-256. A row added only to the restored app
+persisted after another reload, while the original retained its initial row.
+Closing a save popup before unlock allowed a fresh retry. App logout made an
+already-open app require sign-in on its next read; normal SSO reopened the
+restored data. Hosted issuer-side revocation, forced expiry and mobile
+physical-device coverage remain separate checks.
+
+To repeat this journey, use a dedicated synthetic workspace containing chat,
+an attachment, committed code, one SQL row and a distinct KV marker. Finish
+agents and proposed changes,
 choose **Workspace in Vault → Save workspace to Vault**, then unlock and
 review the source in Mikaki before saving. Verify the app's completion receipt.
 
