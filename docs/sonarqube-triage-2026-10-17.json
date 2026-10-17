@@ -1257,5 +1257,15 @@
     "typescript:S7786": 1,
     "typescript:S6557": 1,
     "typescript:S1854": 1
+  },
+  "cloudReview": {
+    "date": "2026-10-17",
+    "falsePositive": {
+      "logout-event-uri": 4,
+      "structured-log": 2,
+      "policy-revision-log": 1,
+      "deterministic-order": 89
+    },
+    "note": "Verified through the public issues API; existing fixed findings are excluded from these counts. Other dispositions are repository review records, not code-fix claims."
   }
 }

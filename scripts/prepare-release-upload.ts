@@ -85,7 +85,10 @@ export async function promotionDirectory(root: string, input: string): Promise<s
     join(resolve(root), 'artifacts'),
     'Invalid promotion directory',
   );
-  assert.match(name, /^promotion-[A-Za-z0-9]{6}$/, 'Invalid promotion directory');
+  assert.ok(
+    name.length === 16 && /^promotion-[A-Za-z0-9]{6}$/.test(name),
+    'Invalid promotion directory',
+  );
   // Resolve both the checkout and candidate: /tmp aliases are fine; an artifacts
   // or promotion symlink escaping the checkout is not an authorized release input.
   assert.equal(

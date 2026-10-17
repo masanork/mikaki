@@ -17,8 +17,10 @@ test('promotion inputs reject sibling prefixes, nested paths and symlink escapes
       join(root, 'artifacts/promotion-Ab12cd/../outside'),
       join(root, 'artifacts/promotion-Ab12cd\n'),
       join(root, 'artifacts-elsewhere/promotion-Ab12cd'),
-    ])
-      await assert.rejects(promotionDirectory(root, path));
+    ]) {
+      await mkdir(path, { recursive: true });
+      await assert.rejects(promotionDirectory(root, path), /Invalid promotion directory/);
+    }
     await mkdir(join(root, 'outside'));
     const link = join(root, 'artifacts/promotion-Ef34gh');
     await symlink(join(root, 'outside'), link, 'dir');

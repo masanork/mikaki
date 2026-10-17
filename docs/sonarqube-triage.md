@@ -51,6 +51,12 @@ References: [Node child-process semantics](https://nodejs.org/api/child_process.
 [RFC 9562 UUIDv5](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-5),
 and the repository's [attestation policy](webauthn-attestation.md).
 
+Cloud review on 2026-10-17 marked the four event-URI, three logging and 89
+sorting findings as false positives, with the reasoning recorded on each issue.
+Compatibility and operator-boundary findings retain their review rationale in
+this inventory; they are not represented as code fixes. Code-hardening findings
+remain open until the merged code is analyzed.
+
 ## Reliability and maintainability follow-up
 
 All 89 high reliability findings are `S2871` suggestions to use `localeCompare`.
