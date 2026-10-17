@@ -146,7 +146,8 @@ try {
     [`mcp_servers.${clientId}.oauth.callback_url`]: callback,
     [`mcp_servers.${clientId}.oauth.callback_port`]: 43123,
     mcp_oauth_credentials_store: 'file',
-    log_dir: complete ? '/tmp/probe-logs' : join(dir, 'logs'),
+    // /probe is created inside this disposable container, never a shared /tmp path.
+    log_dir: complete ? '/probe/logs' : join(dir, 'logs'),
   }))
     args.push('-c', `${key}=${JSON.stringify(value)}`);
   const configArgs = args.slice(args.indexOf('-c'));

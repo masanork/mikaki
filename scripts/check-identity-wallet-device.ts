@@ -25,6 +25,7 @@ const defaults: Dependencies = {
   run: (command, args, input) =>
     execFileSync(command, args, {
       encoding: 'utf8',
+      shell: false,
       input,
       timeout: 60000,
       maxBuffer: 256 * 1024,
@@ -48,15 +49,27 @@ export function selectDevice(output: string, serial?: string): string {
   return choices[0][0];
 }
 export function verifiedLinks(output: string): boolean {
+  // Parse one trimmed line at a time; whitespace must never consume another section.
+  const lines = output.split('\n').map((line) => line.trim());
   if (
-    !/^\s*app\.mikaki\.org:\s*verified\s*$/m.test(output) ||
-    !/^\s*Verification link handling allowed:\s*true\s*$/m.test(output)
+    !lines.includes('app.mikaki.org: verified') ||
+    !lines.includes('Verification link handling allowed: true')
   )
     return false;
-  const disabled = output.split(/\bDisabled:\s*\n/)[1];
-  return !disabled || !disabled.split(/\n\s*\w[^\n]*:/)[0].includes('app.mikaki.org');
+  const disabled = lines.indexOf('Disabled:');
+  if (disabled < 0) return true;
+  for (const line of lines.slice(disabled + 1)) {
+    if (/^\w[^:]*:/.test(line)) break;
+    if (line.includes('app.mikaki.org')) return false;
+  }
+  return true;
 }
 export async function walletDevicePreflight(options: Options, deps: Dependencies = defaults) {
+  // These are operator-selected local files, not paths received from a service.
+  // Absolute operands cannot become apksigner/apkanalyzer command options, even
+  // when the original filename starts with a dash. execFileSync never uses a shell.
+  const sdk = resolve(options.sdk);
+  const apkPath = options.apk === undefined ? undefined : resolve(options.apk);
   const checks: Check[] = [];
   const pass = (name: string) => checks.push({ name, status: 'pass' });
   const blocked = (name: string, reason: string) =>
@@ -182,31 +195,31 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
     blocked('native_profile', 'profile_validation_failed');
   }
   let artifact: { sha256: string; signing_fingerprint: string } | undefined;
-  if (options.apk) {
+  if (apkPath) {
     try {
       const version = deps
-        .list(join(options.sdk, 'build-tools'))
+        .list(join(sdk, 'build-tools'))
         .filter((s) => /^\d+\.\d+\.\d+$/.test(s))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
         .at(-1);
       if (!version) throw new Error();
-      const output = deps.run(join(options.sdk, 'build-tools', version, 'apksigner'), [
+      const output = deps.run(join(sdk, 'build-tools', version, 'apksigner'), [
         'verify',
         '--print-certs',
-        options.apk,
+        apkPath,
       ]);
       const fingerprints = [
         ...output.matchAll(/^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})\s*$/gim),
       ];
       if (fingerprints.length !== 1) throw new Error();
       const fingerprint = fingerprints[0][1].toUpperCase().match(/../g)!.join(':');
-      const id = deps.run(join(options.sdk, 'cmdline-tools', 'latest', 'bin', 'apkanalyzer'), [
+      const id = deps.run(join(sdk, 'cmdline-tools', 'latest', 'bin', 'apkanalyzer'), [
         'manifest',
         'application-id',
-        options.apk,
+        apkPath,
       ]);
       if (id.trim() !== 'app.tossa.mikaki') throw new Error();
-      const apk = deps.read(options.apk);
+      const apk = deps.read(apkPath);
       artifact = {
         sha256: createHash('sha256').update(apk).digest('hex'),
         signing_fingerprint: fingerprint,
@@ -235,7 +248,7 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
   let deviceStage = 'android_device';
   let deviceReason = 'adb_unavailable';
   try {
-    const adb = join(options.sdk, 'platform-tools', 'adb');
+    const adb = join(sdk, 'platform-tools', 'adb');
     const devices = deps.run(adb, ['devices', '-l']);
     deviceReason = 'device_unavailable_or_ambiguous';
     const serial = selectDevice(devices, options.serial);
@@ -262,7 +275,7 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
     deviceReason = 'installed_apk_hash_unavailable';
     const installedPath = paths[0].slice('package:'.length);
     const digest = deps.run(adb, [...prefix, 'sha256sum', installedPath]).trim();
-    const match = /^([0-9a-f]{64})\s+(.+)$/i.exec(digest);
+    const match = /^([0-9a-f]{64})[ \t]+(\/[^ \t\r\n]+)$/i.exec(digest);
     if (!match || match[2] !== installedPath) throw new Error();
     deviceReason = 'installed_apk_differs_from_selected_artifact';
     if (match[1].toLowerCase() !== artifact.sha256) throw new Error();
@@ -295,6 +308,13 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
     ...(artifact ? { artifact } : {}),
   };
 }
+export function writeWalletReport(path: string, report: unknown): void {
+  // Do not overwrite an operator file or follow an existing symlink.
+  writeFileSync(resolve(path), JSON.stringify(report, null, 2) + '\n', {
+    flag: 'wx',
+    mode: 0o600,
+  });
+}
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const { values } = parseArgs({
     options: {
@@ -314,6 +334,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     serial: values.serial,
   });
   console.log(JSON.stringify(report, null, 2));
-  if (values.report) writeFileSync(values.report, JSON.stringify(report, null, 2) + '\n');
+  if (values.report) writeWalletReport(values.report, report);
   process.exitCode = report.prerequisites_ready ? 0 : 1;
 }

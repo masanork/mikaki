@@ -1,0 +1,1303 @@
+{
+  "project": "masanork_mikaki",
+  "reviewDate": "2026-10-17",
+  "analysis": {
+    "key": "493e5790-7544-476b-9127-d552bf7ed8cc",
+    "revision": "ff24024db5e69ab63ac21ace491ae7f1b8fecc0d",
+    "date": "2026-10-17T09:30:40+0000"
+  },
+  "implementationBase": "30b8bad6",
+  "scope": "All 94 open security findings and all 89 high reliability sorting findings reviewed. Other reliability/maintainability findings inventoried by rule; not all individually adjudicated.",
+  "cloudStatus": "Review dispositions are repository evidence; cloud issue state is tracked separately. No blanket rule exclusions or NOSONAR suppression.",
+  "counts": {
+    "security": 94,
+    "reliability": 163,
+    "maintainability": 819
+  },
+  "reviewGroups": {
+    "local-toolchain": {
+      "disposition": "retained-trust-boundary",
+      "rationale": "Local developer/CI tools intentionally use the selected toolchain PATH. Literal executable names and argument arrays do not invoke a shell. The operator and CI image must control PATH; running these helpers is not a sandbox for untrusted agents.",
+      "count": 58
+    },
+    "git-object-id": {
+      "disposition": "retained-protocol",
+      "rationale": "SHA-1 is the existing Git object/pack format, not an authorization digest. Independent SHA-256 commitments remain required for disclosure, consent and release evidence.",
+      "count": 7
+    },
+    "standard-identifier": {
+      "disposition": "retained-protocol",
+      "rationale": "SHA-1 derives an X.509/U2F certificate key identifier, UUIDv5 or macOS signing-identity lookup. It does not select SHA-1 for new signatures or token issuance.",
+      "count": 5
+    },
+    "tpm-compatibility": {
+      "disposition": "retained-compatibility",
+      "rationale": "TPM nameAlg is part of the attested structure; RS1 is a bounded verification compatibility profile. Keep algorithm allow lists and ADR 0008; this is not approval for SHA-1 issuance.",
+      "count": 1
+    },
+    "logout-event-uri": {
+      "disposition": "false-positive-reviewed",
+      "rationale": "This exact HTTP URI is the OpenID Back-Channel Logout events claim member name, never a network destination.",
+      "count": 4
+    },
+    "structured-log": {
+      "disposition": "false-positive-reviewed",
+      "rationale": "Remote values are emitted through JSON.stringify, which escapes embedded newlines. Upstream revisions and release versions are validated before the upstream-pins report.",
+      "count": 2
+    },
+    "policy-revision-log": {
+      "disposition": "false-positive-reviewed",
+      "rationale": "validateWorkerPolicyProjection verifies both revisions as 64-character SHA-256 hexadecimal identifiers before logging. These policy digests are public identifiers, not credentials.",
+      "count": 1
+    },
+    "operator-file": {
+      "disposition": "retained-trust-boundary",
+      "rationale": "The explicit CLI operand selects an operator-owned local configuration, SDK, APK, policy or output. These tools do not receive remote path input and do not claim to confine an untrusted agent. Dry-run/remote selection, strict parsing and existing write guards still apply.",
+      "count": 10
+    },
+    "apk-operand": {
+      "disposition": "hardened-pending-analysis",
+      "rationale": "Resolve APK and SDK operands to absolute paths and explicitly disable shell invocation. Option-looking APK names cannot become apksigner/apkanalyzer flags; regression tests exercise dash and shell-metacharacter names.",
+      "count": 2
+    },
+    "report-create": {
+      "disposition": "hardened-pending-analysis",
+      "rationale": "The explicitly selected output is created exclusively with wx and mode 0600. Existing files and symlink targets cannot be overwritten; tested with disposable files.",
+      "count": 1
+    },
+    "promotion-input": {
+      "disposition": "hardened-pending-analysis",
+      "rationale": "Require a direct promotion-XXXXXX child of this checkout artifacts directory, verify canonical paths and reject redirected parents or candidates before reading the manifest or supplying Wrangler operands.",
+      "count": 2
+    },
+    "probe-log-directory": {
+      "disposition": "hardened-pending-analysis",
+      "rationale": "The container probe now writes under /probe/logs in the disposable container. Host logs already use a private mkdtemp directory.",
+      "count": 1
+    },
+    "deterministic-order": {
+      "disposition": "retained-deterministic-order",
+      "rationale": "The reported sites compare field/name sets or produce canonical protocol/evidence ordering. Default UTF-16 ordering is intentional; localeCompare is not an appropriate replacement for deterministic canonicalization. This is not a claim that every future sort may omit a comparator.",
+      "count": 89
+    }
+  },
+  "security": [
+    {
+      "key": "AaFIFWV0aEN-A-Q_9LiD",
+      "rule": "javascript:S4790",
+      "path": "apps/mikaki-client/scripts/macos-passkeys.mjs",
+      "line": 32,
+      "reviewGroup": "standard-identifier"
+    },
+    {
+      "key": "AaFIFV9OaEN-A-Q_9LX8",
+      "rule": "tssecurity:S5145",
+      "path": "scripts/check-identity-haip-production.ts",
+      "line": 90,
+      "reviewGroup": "structured-log"
+    },
+    {
+      "key": "AaFIFV8vaEN-A-Q_9LXy",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-identity-labpki.ts",
+      "line": 71,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWBraEN-A-Q_9LaV",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-activation-inputs.ts",
+      "line": 110,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3RaEN-A-Q_9LU_",
+      "rule": "typescript:S4036",
+      "path": "scripts/probe-civ-kenmen-interop.ts",
+      "line": 18,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3RaEN-A-Q_9LVB",
+      "rule": "typescript:S4036",
+      "path": "scripts/probe-civ-kenmen-interop.ts",
+      "line": 139,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWAOaEN-A-Q_9LZu",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-release.ts",
+      "line": 129,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWAOaEN-A-Q_9LZv",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-release.ts",
+      "line": 145,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWFIaEN-A-Q_9Lae",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-worker-configs.ts",
+      "line": 162,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWAjaEN-A-Q_9LaA",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-binding-plan.ts",
+      "line": 263,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYX",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 127,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYf",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 288,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYg",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 327,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYh",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 355,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYk",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 422,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYq",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 484,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-paEN-A-Q_9LYx",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-work-code-copy.ts",
+      "line": 51,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-paEN-A-Q_9LYy",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-work-code-copy.ts",
+      "line": 99,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3AaEN-A-Q_9LU-",
+      "rule": "tssecurity:S8705",
+      "path": "scripts/deploy-production.ts",
+      "line": 333,
+      "reviewGroup": "promotion-input"
+    },
+    {
+      "key": "AaFIFV_faEN-A-Q_9LY_",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-work-code-source.ts",
+      "line": 64,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_faEN-A-Q_9LZA",
+      "rule": "typescript:S4790",
+      "path": "scripts/prepare-work-code-source.ts",
+      "line": 122,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFV_faEN-A-Q_9LZB",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-work-code-source.ts",
+      "line": 156,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWIqaEN-A-Q_9LcT",
+      "rule": "typescript:S4036",
+      "path": "scripts/register-work-code-source.ts",
+      "line": 76,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4laEN-A-Q_9LVe",
+      "rule": "typescript:S4036",
+      "path": "scripts/complete-work-authority.ts",
+      "line": 54,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4laEN-A-Q_9LVf",
+      "rule": "typescript:S4036",
+      "path": "scripts/complete-work-authority.ts",
+      "line": 58,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4laEN-A-Q_9LVi",
+      "rule": "typescript:S4036",
+      "path": "scripts/complete-work-authority.ts",
+      "line": 158,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4laEN-A-Q_9LVj",
+      "rule": "typescript:S4036",
+      "path": "scripts/complete-work-authority.ts",
+      "line": 171,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWIQaEN-A-Q_9LcP",
+      "rule": "typescript:S4036",
+      "path": "scripts/adopt-work-production.ts",
+      "line": 108,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8ZaEN-A-Q_9LXY",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-authority-deployment.ts",
+      "line": 401,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8ZaEN-A-Q_9LXm",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-authority-deployment.ts",
+      "line": 689,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8ZaEN-A-Q_9LXn",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-authority-deployment.ts",
+      "line": 710,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_saEN-A-Q_9LZN",
+      "rule": "typescript:S4036",
+      "path": "scripts/allocate-work-authority.ts",
+      "line": 303,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_saEN-A-Q_9LZO",
+      "rule": "typescript:S4036",
+      "path": "scripts/allocate-work-authority.ts",
+      "line": 306,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_saEN-A-Q_9LZP",
+      "rule": "typescript:S4036",
+      "path": "scripts/allocate-work-authority.ts",
+      "line": 363,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_saEN-A-Q_9LZQ",
+      "rule": "typescript:S4036",
+      "path": "scripts/allocate-work-authority.ts",
+      "line": 378,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWG9aEN-A-Q_9Lbi",
+      "rule": "typescript:S4036",
+      "path": "scripts/inspect-work-artifacts.ts",
+      "line": 433,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWG9aEN-A-Q_9Lbj",
+      "rule": "typescript:S4036",
+      "path": "scripts/inspect-work-artifacts.ts",
+      "line": 436,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWG9aEN-A-Q_9Lbk",
+      "rule": "typescript:S4036",
+      "path": "scripts/inspect-work-artifacts.ts",
+      "line": 441,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIMGSdbrs6aLKO1Pv5",
+      "rule": "rust:S4790",
+      "path": "crates/auth/src/work/selected_snapshot.rs",
+      "line": 8,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFV4RaEN-A-Q_9LVY",
+      "rule": "typescript:S4790",
+      "path": "scripts/work-git-readback.ts",
+      "line": 34,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFWHOaEN-A-Q_9Lb4",
+      "rule": "tssecurity:S5145",
+      "path": "scripts/check-upstream-pins.ts",
+      "line": 71,
+      "reviewGroup": "structured-log"
+    },
+    {
+      "key": "AaFIFWBDaEN-A-Q_9LaO",
+      "rule": "typescript:S4790",
+      "path": "scripts/work-git-copy.ts",
+      "line": 87,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFVnKaEN-A-Q_9LN_",
+      "rule": "typescript:S4790",
+      "path": "crates/work-source-worker/src/core.ts",
+      "line": 80,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFV9ZaEN-A-Q_9LX-",
+      "rule": "typescript:S4036",
+      "path": "scripts/build-work-store-qualification.ts",
+      "line": 49,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4_aEN-A-Q_9LVs",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-artifacts-git.ts",
+      "line": 86,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4_aEN-A-Q_9LVt",
+      "rule": "typescript:S4790",
+      "path": "scripts/work-artifacts-git.ts",
+      "line": 142,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFV2zaEN-A-Q_9LUt",
+      "rule": "typescript:S4790",
+      "path": "scripts/work-candidate-payload.ts",
+      "line": 64,
+      "reviewGroup": "git-object-id"
+    },
+    {
+      "key": "AaFIFWHyaEN-A-Q_9LcA",
+      "rule": "typescript:S4036",
+      "path": "scripts/work-git-disclosure.ts",
+      "line": 49,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFVODaEN-A-Q_9LHx",
+      "rule": "typescript:S5332",
+      "path": "crates/helpdesk-rp/oidc.ts",
+      "line": 466,
+      "reviewGroup": "logout-event-uri"
+    },
+    {
+      "key": "AaFIFV70aEN-A-Q_9LXO",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-docs-production.ts",
+      "line": 56,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-AaEN-A-Q_9LYH",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-docs-release.ts",
+      "line": 127,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8LaEN-A-Q_9LXT",
+      "rule": "typescript:S4036",
+      "path": "scripts/plan-owner-vault-reset.ts",
+      "line": 177,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8LaEN-A-Q_9LXU",
+      "rule": "typescript:S4036",
+      "path": "scripts/plan-owner-vault-reset.ts",
+      "line": 179,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIMGYGbrs6aLKO1PwI",
+      "rule": "rust:S4790",
+      "path": "crates/identity/src/credential_certificate.rs",
+      "line": 186,
+      "reviewGroup": "standard-identifier"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbU",
+      "rule": "tssecurity:S8705",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 26,
+      "reviewGroup": "apk-operand"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbV",
+      "rule": "tssecurity:S8701",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 26,
+      "reviewGroup": "apk-operand"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbS",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 97,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbX",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 188,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbT",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 209,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWGgaEN-A-Q_9LbW",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/check-identity-wallet-device.ts",
+      "line": 317,
+      "reviewGroup": "report-create"
+    },
+    {
+      "key": "AaFIFWA4aEN-A-Q_9LaI",
+      "rule": "typescript:S4036",
+      "path": "scripts/health.ts",
+      "line": 38,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFVpEaEN-A-Q_9LPO",
+      "rule": "javascript:S4036",
+      "path": "website/capture-onboarding.mjs",
+      "line": 22,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFVpEaEN-A-Q_9LPP",
+      "rule": "javascript:S4036",
+      "path": "website/capture-onboarding.mjs",
+      "line": 25,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFVpEaEN-A-Q_9LPQ",
+      "rule": "javascript:S4036",
+      "path": "website/capture-onboarding.mjs",
+      "line": 33,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFVpEaEN-A-Q_9LPR",
+      "rule": "javascript:S4036",
+      "path": "website/capture-onboarding.mjs",
+      "line": 34,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4aaEN-A-Q_9LVa",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-website.ts",
+      "line": 3,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4aaEN-A-Q_9LVb",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-website.ts",
+      "line": 4,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4aaEN-A-Q_9LVc",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-website.ts",
+      "line": 6,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV4aaEN-A-Q_9LVd",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-website.ts",
+      "line": 12,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3AaEN-A-Q_9LU0",
+      "rule": "typescript:S4036",
+      "path": "scripts/deploy-production.ts",
+      "line": 317,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3AaEN-A-Q_9LU9",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/deploy-production.ts",
+      "line": 326,
+      "reviewGroup": "promotion-input"
+    },
+    {
+      "key": "AaFIFV5TaEN-A-Q_9LVx",
+      "rule": "typescript:S4036",
+      "path": "scripts/check_docs.ts",
+      "line": 11,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV18aEN-A-Q_9LUJ",
+      "rule": "typescript:S4036",
+      "path": "scripts/prepare-release-upload.ts",
+      "line": 62,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV3haEN-A-Q_9LVC",
+      "rule": "typescript:S5443",
+      "path": "scripts/probe-agent-oauth-clients.ts",
+      "line": 149,
+      "reviewGroup": "probe-log-directory"
+    },
+    {
+      "key": "AaFIFV8kaEN-A-Q_9LXp",
+      "rule": "typescript:S4036",
+      "path": "scripts/release-inventory.ts",
+      "line": 49,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV8kaEN-A-Q_9LXx",
+      "rule": "typescript:S4036",
+      "path": "scripts/release-inventory.ts",
+      "line": 164,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV-zaEN-A-Q_9LYz",
+      "rule": "typescript:S4790",
+      "path": "scripts/build_cbom.ts",
+      "line": 125,
+      "reviewGroup": "standard-identifier"
+    },
+    {
+      "key": "AaFIFV-zaEN-A-Q_9LY0",
+      "rule": "typescript:S4036",
+      "path": "scripts/build_cbom.ts",
+      "line": 136,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFV_0aEN-A-Q_9LZS",
+      "rule": "typescript:S4036",
+      "path": "scripts/check_product_sources.ts",
+      "line": 11,
+      "reviewGroup": "local-toolchain"
+    },
+    {
+      "key": "AaFIFWGQaEN-A-Q_9La7",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/policy-design.ts",
+      "line": 193,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFV0eaEN-A-Q_9LTn",
+      "rule": "typescript:S5332",
+      "path": "local/rp.ts",
+      "line": 221,
+      "reviewGroup": "logout-event-uri"
+    },
+    {
+      "key": "AaFIFWHlaEN-A-Q_9Lb_",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/bootstrap-admin.ts",
+      "line": 30,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWHlaEN-A-Q_9Lb-",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/bootstrap-admin.ts",
+      "line": 42,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFV92aEN-A-Q_9LYD",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/client-admin.ts",
+      "line": 70,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFV92aEN-A-Q_9LYE",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/client-admin.ts",
+      "line": 77,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWIaaEN-A-Q_9LcQ",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/activate-worker-policy.ts",
+      "line": 40,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWIaaEN-A-Q_9LcR",
+      "rule": "tssecurity:S8707",
+      "path": "scripts/activate-worker-policy.ts",
+      "line": 50,
+      "reviewGroup": "operator-file"
+    },
+    {
+      "key": "AaFIFWIaaEN-A-Q_9LcS",
+      "rule": "tssecurity:S8689",
+      "path": "scripts/activate-worker-policy.ts",
+      "line": 53,
+      "reviewGroup": "policy-revision-log"
+    },
+    {
+      "key": "AaFIMGdlbrs6aLKO1Pwf",
+      "rule": "rust:S4790",
+      "path": "crates/webauthn/src/attestation.rs",
+      "line": 126,
+      "reviewGroup": "standard-identifier"
+    },
+    {
+      "key": "AaFIMGdlbrs6aLKO1Pwg",
+      "rule": "rust:S4790",
+      "path": "crates/webauthn/src/attestation.rs",
+      "line": 320,
+      "reviewGroup": "standard-identifier"
+    },
+    {
+      "key": "AaFIMGdJbrs6aLKO1Pwb",
+      "rule": "rust:S4790",
+      "path": "crates/webauthn/src/attestation/tpm.rs",
+      "line": 52,
+      "reviewGroup": "tpm-compatibility"
+    },
+    {
+      "key": "AaFIFV0OaEN-A-Q_9LTi",
+      "rule": "typescript:S5332",
+      "path": "local/logout-delivery.ts",
+      "line": 171,
+      "reviewGroup": "logout-event-uri"
+    },
+    {
+      "key": "AaFIFV0eaEN-A-Q_9LTm",
+      "rule": "typescript:S5332",
+      "path": "local/rp.ts",
+      "line": 218,
+      "reviewGroup": "logout-event-uri"
+    },
+    {
+      "key": "AaFIFWA4aEN-A-Q_9LaJ",
+      "rule": "typescript:S4036",
+      "path": "scripts/health.ts",
+      "line": 49,
+      "reviewGroup": "local-toolchain"
+    }
+  ],
+  "sorting": [
+    {
+      "key": "AaFIFVX8aEN-A-Q_9LKn",
+      "path": "crates/worker/ui/vault-workspace-snapshot.ts",
+      "line": 25
+    },
+    {
+      "key": "AaFIFVX8aEN-A-Q_9LKq",
+      "path": "crates/worker/ui/vault-workspace-snapshot.ts",
+      "line": 146
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbq",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 55
+    },
+    {
+      "key": "AaFIFV9OaEN-A-Q_9LX7",
+      "path": "scripts/check-identity-haip-production.ts",
+      "line": 49
+    },
+    {
+      "key": "AaFIFV40aEN-A-Q_9LVm",
+      "path": "scripts/identity-haip-profile.ts",
+      "line": 54
+    },
+    {
+      "key": "AaFIFV40aEN-A-Q_9LVo",
+      "path": "scripts/identity-haip-profile.ts",
+      "line": 55
+    },
+    {
+      "key": "AaFIFV40aEN-A-Q_9LVp",
+      "path": "scripts/identity-haip-profile.ts",
+      "line": 71
+    },
+    {
+      "key": "AaFIFV-KaEN-A-Q_9LYO",
+      "path": "scripts/identity-test-profile.ts",
+      "line": 139
+    },
+    {
+      "key": "AaFIFWRTaEN-A-Q_9Lgs",
+      "path": "services/android-attestation-verifier/bridge/worker.mjs",
+      "line": 80
+    },
+    {
+      "key": "AaFIFV-KaEN-A-Q_9LYJ",
+      "path": "scripts/identity-test-profile.ts",
+      "line": 52
+    },
+    {
+      "key": "AaFIFV-KaEN-A-Q_9LYK",
+      "path": "scripts/identity-test-profile.ts",
+      "line": 52
+    },
+    {
+      "key": "AaFIFV-KaEN-A-Q_9LYM",
+      "path": "scripts/identity-test-profile.ts",
+      "line": 100
+    },
+    {
+      "key": "AaFIFVf0aEN-A-Q_9LLF",
+      "path": "crates/worker/ui/login-history.ts",
+      "line": 38
+    },
+    {
+      "key": "AaFIFWBraEN-A-Q_9Laa",
+      "path": "scripts/work-copy-activation-inputs.ts",
+      "line": 164
+    },
+    {
+      "key": "AaFIFWBraEN-A-Q_9Lab",
+      "path": "scripts/work-copy-activation-inputs.ts",
+      "line": 170
+    },
+    {
+      "key": "AaFIFWAOaEN-A-Q_9LZw",
+      "path": "scripts/work-copy-runtime-release.ts",
+      "line": 187
+    },
+    {
+      "key": "AaFIFWAOaEN-A-Q_9LZ2",
+      "path": "scripts/work-copy-runtime-release.ts",
+      "line": 230
+    },
+    {
+      "key": "AaFIFWAOaEN-A-Q_9LZ3",
+      "path": "scripts/work-copy-runtime-release.ts",
+      "line": 231
+    },
+    {
+      "key": "AaFIFWFIaEN-A-Q_9Laj",
+      "path": "scripts/work-copy-worker-configs.ts",
+      "line": 217
+    },
+    {
+      "key": "AaFIFWFIaEN-A-Q_9Lak",
+      "path": "scripts/work-copy-worker-configs.ts",
+      "line": 223
+    },
+    {
+      "key": "AaFIFWAjaEN-A-Q_9LaD",
+      "path": "scripts/work-copy-binding-plan.ts",
+      "line": 339
+    },
+    {
+      "key": "AaFIFWAjaEN-A-Q_9LaE",
+      "path": "scripts/work-copy-binding-plan.ts",
+      "line": 345
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYY",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 162
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYa",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 188
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYc",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 217
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYp",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 481
+    },
+    {
+      "key": "AaFIFV-VaEN-A-Q_9LYv",
+      "path": "scripts/work-copy-runtime-packet.ts",
+      "line": 514
+    },
+    {
+      "key": "AaFIFV87aEN-A-Q_9LX2",
+      "path": "scripts/work-authority-bootstrap.ts",
+      "line": 126
+    },
+    {
+      "key": "AaFIFV87aEN-A-Q_9LX3",
+      "path": "scripts/work-authority-bootstrap.ts",
+      "line": 134
+    },
+    {
+      "key": "AaFIFV7haEN-A-Q_9LXE",
+      "path": "scripts/work-administration-policy.ts",
+      "line": 16
+    },
+    {
+      "key": "AaFIFV7haEN-A-Q_9LXF",
+      "path": "scripts/work-administration-policy.ts",
+      "line": 17
+    },
+    {
+      "key": "AaFIFV2JaEN-A-Q_9LUk",
+      "path": "scripts/production-work-adoption.ts",
+      "line": 40
+    },
+    {
+      "key": "AaFIFV7DaEN-A-Q_9LW3",
+      "path": "scripts/work-authority-packet.ts",
+      "line": 237
+    },
+    {
+      "key": "AaFIFV8ZaEN-A-Q_9LXj",
+      "path": "scripts/work-authority-deployment.ts",
+      "line": 623
+    },
+    {
+      "key": "AaFIFV8ZaEN-A-Q_9LXk",
+      "path": "scripts/work-authority-deployment.ts",
+      "line": 628
+    },
+    {
+      "key": "AaFIFVmnaEN-A-Q_9LNh",
+      "path": "crates/work-checkpoint-worker/bootstrap.ts",
+      "line": 45
+    },
+    {
+      "key": "AaFIFVmnaEN-A-Q_9LNi",
+      "path": "crates/work-checkpoint-worker/bootstrap.ts",
+      "line": 45
+    },
+    {
+      "key": "AaFIFV87aEN-A-Q_9LX1",
+      "path": "scripts/work-authority-bootstrap.ts",
+      "line": 79
+    },
+    {
+      "key": "AaFIFV7DaEN-A-Q_9LW_",
+      "path": "scripts/work-authority-packet.ts",
+      "line": 341
+    },
+    {
+      "key": "AaFIFV7DaEN-A-Q_9LXB",
+      "path": "scripts/work-authority-packet.ts",
+      "line": 342
+    },
+    {
+      "key": "AaFIFVh9aEN-A-Q_9LMt",
+      "path": "crates/work-git-host-worker/worker.ts",
+      "line": 283
+    },
+    {
+      "key": "AaFIFV3AaEN-A-Q_9LUx",
+      "path": "scripts/deploy-production.ts",
+      "line": 68
+    },
+    {
+      "key": "AaFIFV3AaEN-A-Q_9LUy",
+      "path": "scripts/deploy-production.ts",
+      "line": 69
+    },
+    {
+      "key": "AaFIFV6naEN-A-Q_9LWf",
+      "path": "scripts/build-service-catalog.ts",
+      "line": 25
+    },
+    {
+      "key": "AaFIFWBDaEN-A-Q_9LaN",
+      "path": "scripts/work-git-copy.ts",
+      "line": 51
+    },
+    {
+      "key": "AaFIFVm1aEN-A-Q_9LNu",
+      "path": "crates/work-checkpoint-worker/worker.ts",
+      "line": 505
+    },
+    {
+      "key": "AaFIFVm1aEN-A-Q_9LNv",
+      "path": "crates/work-checkpoint-worker/worker.ts",
+      "line": 505
+    },
+    {
+      "key": "AaFIFVm1aEN-A-Q_9LNl",
+      "path": "crates/work-checkpoint-worker/worker.ts",
+      "line": 45
+    },
+    {
+      "key": "AaFIFVm1aEN-A-Q_9LNn",
+      "path": "crates/work-checkpoint-worker/worker.ts",
+      "line": 45
+    },
+    {
+      "key": "AaFIFVjraEN-A-Q_9LNC",
+      "path": "crates/work-effect-worker/protocol.ts",
+      "line": 116
+    },
+    {
+      "key": "AaFIFVjraEN-A-Q_9LND",
+      "path": "crates/work-effect-worker/protocol.ts",
+      "line": 116
+    },
+    {
+      "key": "AaFIFVWTaEN-A-Q_9LKJ",
+      "path": "crates/worker/ui/vault-owner-store.ts",
+      "line": 83
+    },
+    {
+      "key": "AaFIFVWTaEN-A-Q_9LKK",
+      "path": "crates/worker/ui/vault-owner-store.ts",
+      "line": 98
+    },
+    {
+      "key": "AaFIFVWTaEN-A-Q_9LKM",
+      "path": "crates/worker/ui/vault-owner-store.ts",
+      "line": 186
+    },
+    {
+      "key": "AaFIFV70aEN-A-Q_9LXL",
+      "path": "scripts/deploy-docs-production.ts",
+      "line": 35
+    },
+    {
+      "key": "AaFIFV70aEN-A-Q_9LXN",
+      "path": "scripts/deploy-docs-production.ts",
+      "line": 36
+    },
+    {
+      "key": "AaFIFV-AaEN-A-Q_9LYG",
+      "path": "scripts/prepare-docs-release.ts",
+      "line": 76
+    },
+    {
+      "key": "AaFIFV18aEN-A-Q_9LUc",
+      "path": "scripts/prepare-release-upload.ts",
+      "line": 237
+    },
+    {
+      "key": "AaFIFV8kaEN-A-Q_9LXt",
+      "path": "scripts/release-inventory.ts",
+      "line": 74
+    },
+    {
+      "key": "AaFIFV60aEN-A-Q_9LWi",
+      "path": "scripts/production-worker-inventory.ts",
+      "line": 174
+    },
+    {
+      "key": "AaFIFV60aEN-A-Q_9LWj",
+      "path": "scripts/production-worker-inventory.ts",
+      "line": 211
+    },
+    {
+      "key": "AaFIFVXRaEN-A-Q_9LKe",
+      "path": "crates/worker/ui/recipient-directory-v2.ts",
+      "line": 61
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbm",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 48
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbn",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 48
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbo",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 50
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbp",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 51
+    },
+    {
+      "key": "AaFIFWHGaEN-A-Q_9Lbr",
+      "path": "scripts/check-worker-budgets.ts",
+      "line": 66
+    },
+    {
+      "key": "AaFIFVnfaEN-A-Q_9LOc",
+      "path": "website/audit-public.ts",
+      "line": 72
+    },
+    {
+      "key": "AaFIFVnfaEN-A-Q_9LOd",
+      "path": "website/audit-public.ts",
+      "line": 72
+    },
+    {
+      "key": "AaFIFVnfaEN-A-Q_9LOl",
+      "path": "website/audit-public.ts",
+      "line": 196
+    },
+    {
+      "key": "AaFIFVnfaEN-A-Q_9LOm",
+      "path": "website/audit-public.ts",
+      "line": 196
+    },
+    {
+      "key": "AaFIFWBMaEN-A-Q_9LaP",
+      "path": "scripts/check-web-signin-smoke.ts",
+      "line": 17
+    },
+    {
+      "key": "AaFIFV0qaEN-A-Q_9LTy",
+      "path": "local/mds.ts",
+      "line": 118
+    },
+    {
+      "key": "AaFIFV18aEN-A-Q_9LUf",
+      "path": "scripts/prepare-release-upload.ts",
+      "line": 245
+    },
+    {
+      "key": "AaFIFV3haEN-A-Q_9LVE",
+      "path": "scripts/probe-agent-oauth-clients.ts",
+      "line": 204
+    },
+    {
+      "key": "AaFIFV8kaEN-A-Q_9LXs",
+      "path": "scripts/release-inventory.ts",
+      "line": 73
+    },
+    {
+      "key": "AaFIFWGQaEN-A-Q_9La4",
+      "path": "scripts/policy-design.ts",
+      "line": 101
+    },
+    {
+      "key": "AaFIFWGQaEN-A-Q_9La6",
+      "path": "scripts/policy-design.ts",
+      "line": 180
+    },
+    {
+      "key": "AaFIFV6HaEN-A-Q_9LWI",
+      "path": "scripts/recipient-key-admin.ts",
+      "line": 25
+    },
+    {
+      "key": "AaFIFWHZaEN-A-Q_9Lb8",
+      "path": "scripts/check_i18n.ts",
+      "line": 13
+    },
+    {
+      "key": "AaFIFV8AaEN-A-Q_9LXP",
+      "path": "scripts/client-admin-store.ts",
+      "line": 8
+    },
+    {
+      "key": "AaFIFV8AaEN-A-Q_9LXQ",
+      "path": "scripts/client-admin-store.ts",
+      "line": 8
+    },
+    {
+      "key": "AaFIFWACaEN-A-Q_9LZa",
+      "path": "scripts/metrics.ts",
+      "line": 185
+    },
+    {
+      "key": "AaFIFWACaEN-A-Q_9LZb",
+      "path": "scripts/metrics.ts",
+      "line": 186
+    },
+    {
+      "key": "AaFIFWACaEN-A-Q_9LZc",
+      "path": "scripts/metrics.ts",
+      "line": 275
+    },
+    {
+      "key": "AaFIFWACaEN-A-Q_9LZd",
+      "path": "scripts/metrics.ts",
+      "line": 276
+    },
+    {
+      "key": "AaFIFWACaEN-A-Q_9LZe",
+      "path": "scripts/metrics.ts",
+      "line": 277
+    },
+    {
+      "key": "AaFIFWHZaEN-A-Q_9Lb5",
+      "path": "scripts/check_i18n.ts",
+      "line": 11
+    },
+    {
+      "key": "AaFIFWHZaEN-A-Q_9Lb6",
+      "path": "scripts/check_i18n.ts",
+      "line": 11
+    }
+  ],
+  "remainingReliabilityByRule": {
+    "typescript:S7773": 4,
+    "javascript:S7723": 10,
+    "typescript:S8786": 13,
+    "typescript:S7737": 1,
+    "typescript:S7503": 12,
+    "typescript:S7758": 11,
+    "javascript:S8786": 2,
+    "javascript:S7781": 2,
+    "typescript:S7781": 3,
+    "typescript:S7723": 16
+  },
+  "maintainabilityByRule": {
+    "typescript:S9382": 232,
+    "javascript:S3358": 21,
+    "typescript:S3776": 58,
+    "javascript:S9382": 68,
+    "javascript:S4624": 10,
+    "rust:S3776": 24,
+    "typescript:S6353": 8,
+    "typescript:S7773": 4,
+    "typescript:S6582": 52,
+    "typescript:S4624": 28,
+    "typescript:S7747": 8,
+    "typescript:S3358": 53,
+    "javascript:S3776": 3,
+    "javascript:S7723": 10,
+    "rust:S2208": 74,
+    "typescript:S7780": 10,
+    "typescript:S7765": 4,
+    "typescript:S4043": 6,
+    "typescript:S7722": 26,
+    "typescript:S6535": 3,
+    "typescript:S7776": 3,
+    "typescript:S7737": 1,
+    "typescript:S6594": 4,
+    "typescript:S7785": 5,
+    "typescript:S7721": 6,
+    "typescript:S7503": 12,
+    "typescript:S1128": 4,
+    "typescript:S6564": 1,
+    "typescript:S7763": 1,
+    "typescript:S3863": 6,
+    "typescript:S6606": 4,
+    "typescript:S2933": 5,
+    "typescript:S5869": 1,
+    "typescript:S1871": 1,
+    "javascript:S1788": 1,
+    "typescript:S7758": 11,
+    "typescript:S5843": 1,
+    "javascript:S6353": 2,
+    "javascript:S3696": 2,
+    "rust:S1612": 1,
+    "typescript:S2486": 3,
+    "javascript:S7781": 2,
+    "typescript:S2925": 8,
+    "typescript:S1994": 2,
+    "javascript:S6326": 1,
+    "javascript:S2004": 1,
+    "typescript:S7781": 3,
+    "javascript:S7761": 1,
+    "javascript:S1481": 1,
+    "javascript:S1854": 1,
+    "rust:S9045": 1,
+    "typescript:S107": 2,
+    "typescript:S7723": 16,
+    "typescript:S7786": 1,
+    "typescript:S6557": 1,
+    "typescript:S1854": 1
+  },
+  "cloudReview": {
+    "date": "2026-10-17",
+    "falsePositive": {
+      "logout-event-uri": 4,
+      "structured-log": 2,
+      "policy-revision-log": 1,
+      "deterministic-order": 89
+    },
+    "note": "Verified through the public issues API; existing fixed findings are excluded from these counts. Other dispositions are repository review records, not code-fix claims."
+  },
+  "pullRequestReview": {
+    "number": 258,
+    "analysisRevision": "4c386b6930b4189c4e24eb6cdb81f16617f11b8c",
+    "disposition": "false-positive",
+    "reason": "Explicit trusted-operator CLI file selection and purpose-specific preceding checks: SDK selection, signature/package-verified APK read, exclusive wx/0600 report creation and canonical direct-child promotion-directory stat. Regression evidence and per-flow reasons recorded in Cloud. These are not untrusted-agent filesystem sandbox APIs.",
+    "issues": [
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHn",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 201
+      },
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHo",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 222
+      },
+      {
+        "key": "AaFJ4BEqBynKBKHRwxHp",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/check-identity-wallet-device.ts",
+        "line": 313
+      },
+      {
+        "key": "AaFJ4A7_BynKBKHRwxHm",
+        "rule": "tssecurity:S8707",
+        "path": "scripts/prepare-release-upload.ts",
+        "line": 99
+      }
+    ]
+  }
+}
