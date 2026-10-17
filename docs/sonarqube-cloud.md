@@ -50,3 +50,9 @@ After several representative PRs, assess additional actionable findings, overlap
 - [GitHub Actions analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/ci-based-analysis/github-actions-for-sonarcloud)
 - [Rust analysis and Clippy imports](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/rust)
 - [Coverage report parameters](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/test-coverage/test-coverage-parameters)
+
+## Initial review
+
+See the [initial findings review](sonarqube-triage.md) for input hardening,
+protocol/trust-boundary decisions, remaining rule inventory and owner-key
+coverage regression checks.

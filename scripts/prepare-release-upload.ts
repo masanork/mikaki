@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { appendFile, mkdir, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkWorkerBundle, measureWorkerUpload } from './worker-bundle-size.ts';
 import {
@@ -64,6 +74,27 @@ function extractMember(archive: Buffer, name: string): Buffer {
     maxBuffer: limit,
     timeout: 30_000,
   });
+}
+
+/** Accept only a direct mkdtemp promotion directory in this checkout's artifacts. */
+export async function promotionDirectory(root: string, input: string): Promise<string> {
+  const destination = resolve(input);
+  const name = basename(destination);
+  assert.equal(
+    dirname(destination),
+    join(resolve(root), 'artifacts'),
+    'Invalid promotion directory',
+  );
+  assert.match(name, /^promotion-[A-Za-z0-9]{6}$/, 'Invalid promotion directory');
+  // Resolve both the checkout and candidate: /tmp aliases are fine; an artifacts
+  // or promotion symlink escaping the checkout is not an authorized release input.
+  assert.equal(
+    await realpath(destination),
+    join(await realpath(root), 'artifacts', name),
+    'Promotion directory must not be redirected by symlinks',
+  );
+  assert.ok((await stat(destination)).isDirectory(), 'Expected a promotion directory');
+  return destination;
 }
 
 export async function prepareReleaseUpload(
@@ -277,8 +308,7 @@ async function main() {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = releaseSource(root);
   if (action === 'verify') {
-    const destination = resolve(operands[0]!);
-    assert.ok(destination.startsWith(join(root, 'artifacts/promotion-')));
+    const destination = await promotionDirectory(root, operands[0]!);
     const result = JSON.parse(
       (await boundedFile(join(destination, 'upload-manifest.json'))).toString('utf8'),
     ) as Awaited<ReturnType<typeof prepareReleaseUpload>>['result'];

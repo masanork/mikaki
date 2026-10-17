@@ -23,6 +23,10 @@ const child = spawn(
       'vault-note',
       'vault-freshness',
       'vault-lifecycle',
+      'vault-owner-key',
+      'vault-owner-store',
+      'vault-record-userinfo',
+      'vault-record-approval',
       'vault-owner-name-sharing',
       'vault-owner-note-proposals',
       'vault-owner-agent-grants',
@@ -73,6 +77,9 @@ if (exit === 0) {
     'vault-freshness.ts': { lines: 95, branches: 90 },
     'vault-lifecycle.ts': { lines: 90, branches: 75 },
     'vault-note.ts': { lines: 95, branches: 90 },
+    'vault-owner-crypto.ts': { lines: 95, branches: 80 },
+    'vault-owner-store.ts': { lines: 85, branches: 85 },
+    'vault-owner-session.ts': { lines: 95, branches: 65 },
   } as const;
   const failures: string[] = [];
   for (const [name, minimum] of Object.entries(minimums)) {
@@ -116,5 +123,8 @@ if (exit === 0) {
   if (failures.length) {
     console.error(`Frontend coverage regression:\n${failures.join('\n')}`);
     process.exitCode = 1;
-  } else console.log('Frontend coverage regression gate passed for 5 directly tested modules');
+  } else
+    console.log(
+      `Frontend coverage regression gate passed for ${Object.keys(minimums).length} directly tested modules`,
+    );
 }

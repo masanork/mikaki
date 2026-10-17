@@ -42,7 +42,11 @@ function regularUstarMembers(tar: Buffer) {
   const members: { path: string; bytes: Buffer }[] = [];
   const names = new Set<string>();
   const octal = (field: Buffer) => {
-    const value = field.toString('ascii').replace(/\0.*$/, '').trim();
+    const end = field.indexOf(0);
+    const value = field
+      .subarray(0, end < 0 ? field.length : end)
+      .toString('ascii')
+      .trim();
     assert.match(value, /^[0-7]+$/, 'copy_release_header_denied');
     const number = Number.parseInt(value, 8);
     assert.ok(Number.isSafeInteger(number), 'copy_release_header_denied');

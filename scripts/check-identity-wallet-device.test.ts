@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createECDH, createHash } from 'node:crypto';
 import { before, test } from 'node:test';
 import {
   selectDevice,
   verifiedLinks,
   walletDevicePreflight,
+  writeWalletReport,
 } from './check-identity-wallet-device.ts';
 const root = 'https://auth.mikaki.org';
 const issuer = `${root}/identity/issuer`;
@@ -321,5 +325,69 @@ test('device blockers distinguish missing, ambiguous, unauthorized and unavailab
       ),
     );
     assert.ok(!JSON.stringify(report).includes('private-'));
+  }
+});
+
+test('APK filenames are absolute operands and cannot inject SDK-tool options or shell commands', async () => {
+  for (const apk of [
+    '--help',
+    '-J-Djava.security.manager',
+    'wallet;echo injected.apk',
+    'wallet $(id).apk',
+  ]) {
+    const { deps } = fixture();
+    const ordinary = deps.run;
+    let tools = 0;
+    deps.run = (command, args, input) => {
+      if (command.endsWith('apksigner') || command.endsWith('apkanalyzer')) {
+        tools++;
+        assert.equal(args.at(-1), resolve(apk));
+        assert.ok(!args.at(-1)!.startsWith('-'));
+      }
+      return ordinary(command, args, input);
+    };
+    const report = await walletDevicePreflight(
+      { sdk: '/fixture/sdk', apk, configuration: 'config', online: true },
+      deps,
+    );
+    assert.equal(tools, 2);
+    assert.equal(report.prerequisites_ready, true);
+  }
+});
+
+test('app-link parsing does not join separate lines and stops at the next section', () => {
+  assert.equal(
+    verifiedLinks('app.mikaki.org:\nverified\nVerification link handling allowed: true'),
+    false,
+  );
+  assert.equal(
+    verifiedLinks('app.mikaki.org: verified\nVerification link handling allowed:\ntrue'),
+    false,
+  );
+  assert.equal(
+    verifiedLinks(
+      '  app.mikaki.org: verified\r\n  Verification link handling allowed: true\r\n  Disabled:\r\n    other.example\r\n  Enabled:\r\n    app.mikaki.org',
+    ),
+    true,
+  );
+  assert.equal(verifiedLinks(' '.repeat(200000) + 'app.mikaki.org: failed'), false);
+});
+
+test('device report creation is private and never overwrites a file or symlink target', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mikaki-device-report-'));
+  try {
+    const path = join(directory, 'report.json');
+    writeWalletReport(path, { version: 1 });
+    assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), { version: 1 });
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.throws(() => writeWalletReport(path, { version: 2 }), { code: 'EEXIST' });
+    const target = join(directory, 'operator-file');
+    await writeFile(target, 'preserve me');
+    const link = join(directory, 'link.json');
+    await symlink(target, link);
+    assert.throws(() => writeWalletReport(link, {}), { code: 'EEXIST' });
+    assert.equal(await readFile(target, 'utf8'), 'preserve me');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

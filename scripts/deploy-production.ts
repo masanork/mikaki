@@ -5,7 +5,7 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseSource } from './release-inventory.ts';
-import { verifyPreparedUpload } from './prepare-release-upload.ts';
+import { promotionDirectory, verifyPreparedUpload } from './prepare-release-upload.ts';
 import { readdirSync } from 'node:fs';
 import { BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
 import { assertProductionOwnerSchema } from './production-owner-schema.ts';
@@ -306,8 +306,7 @@ export function productionWorkSchema(vars: Record<string, string>) {
 async function main() {
   const root = fileURLToPath(new URL('../', import.meta.url));
   assert.equal(process.argv.length, 3, 'Usage: deploy-production.ts <promotion-directory>');
-  const destination = resolve(process.argv[2]!);
-  assert.ok(destination.startsWith(join(root, 'artifacts/promotion-')));
+  const destination = await promotionDirectory(root, process.argv[2]!);
   const source = releaseSource(root);
   assert.equal(process.env.GITHUB_EVENT_NAME, 'push');
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
