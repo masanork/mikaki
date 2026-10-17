@@ -85,9 +85,9 @@ MIKAKI_CLOUDFLARE_OS_SOURCE=/absolute/path/to/cloudflare-os \
   node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
 ```
 
-Hosted origins, real Passkey devices, popup policy and independent-session
-behavior still require deployed qualification. This slice does not close #115
-or the live messaging gates.
+Local fixtures do not qualify hosted origins, real Passkeys or popup/session
+behavior; see [hosted qualification](#hosted-qualification) for that separate
+evidence. This slice does not close #115 or the live messaging gates.
 
 After merging the Passkey login/Vault handoff from main on 2026-10-15, the
 combined Vault script measures **342,007 raw bytes**. Its local level-9 gzip
