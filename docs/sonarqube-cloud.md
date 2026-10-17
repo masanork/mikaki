@@ -4,7 +4,7 @@ The `SonarQube Cloud (evaluation)` job in [CI](../.github/workflows/ci.yml) anal
 
 ## Connected project
 
-The public [Mikaki project](https://sonarcloud.io/project/overview?id=masanork_mikaki) was created in the `masanork` OSS organization on 2026-10-17. The GitHub App is restricted to `masanork/mikaki`; automatic repository import and automatic analysis are disabled. Repository Actions variables are `SONAR_ORGANIZATION=masanork` and `SONAR_PROJECT_KEY=masanork_mikaki`. The analysis secret and the first CI-based analysis must be verified separately from this project-registration evidence.
+The public [Mikaki project](https://sonarcloud.io/project/overview?id=masanork_mikaki) was created in the `masanork` OSS organization on 2026-10-17. The GitHub App is restricted to `masanork/mikaki`; automatic repository import and automatic analysis are disabled. Repository Actions variables are `SONAR_ORGANIZATION=masanork` and `SONAR_PROJECT_KEY=masanork_mikaki`. The `SONAR_TOKEN` repository Actions secret was registered with the owner's approval. The initial automatic main-branch analysis completed before automatic analysis was disabled; this does not verify Rust or CI report imports. A CI-based scan must be verified separately from this connection evidence.
 
 ## One-time setup
 
