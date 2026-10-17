@@ -2,7 +2,10 @@
 
 The first integration is an owner-reviewed browser handoff from an authenticated
 Cloudflare OS conversation to Mikaki's existing Owner Vault. It needs no export
-file. This is a local implementation, without hosted connection or deployment.
+file. The isolated hosted installation is **https://cfos.mikaki.org**, using
+**https://auth.mikaki.org/vault** as its receiver. Owner login, managed Workers
+AI chat and a reviewed save/restore roundtrip with a physical Passkey have
+been verified on a synthetic desktop fixture.
 
 ## First user journey
 
@@ -28,11 +31,12 @@ entire review may create another copy; it is not a deduplicated retry.
 
 ## Authentication and custody
 
-The apps currently have independent sessions. Cloudflare OS's authentication
-gatekeepers resolve verified emails; Mikaki uses issuer and pairwise subject
-identity. This save does not merge identities or replace Cloudflare OS sign-in.
-Later SSO needs an explicit `(iss, sub)` account/linking contract, without
-manufacturing an email or equating accounts by an asserted address.
+The hosted installation uses Mikaki OIDC sign-in with an explicit issuer and
+pairwise-subject identity. It does not manufacture an email or merge an older
+email-keyed Cloudflare OS account. The app and Vault still have separate
+sessions and authority: app login does not unlock the Vault or release its
+keys. Other Cloudflare OS installations may retain their existing authentication
+gatekeepers; this browser save does not replace their sign-in.
 
 `mikaki-archive-v1` pins the popup/opener, exact origin and random transfer
 channel. HTTPS is required except for loopback development. A receiver requests
@@ -81,9 +85,9 @@ MIKAKI_CLOUDFLARE_OS_SOURCE=/absolute/path/to/cloudflare-os \
   node --expose-gc --test local/conformance/vault-owner-workspace-browser.test.ts
 ```
 
-Hosted origins, real Passkey devices, popup policy and independent-session
-behavior still require deployed qualification. This slice does not close #115
-or the live messaging gates.
+Local fixtures do not qualify hosted origins, real Passkeys or popup/session
+behavior; see [hosted qualification](#hosted-qualification) for that separate
+evidence. This slice does not close #115 or the live messaging gates.
 
 After merging the Passkey login/Vault handoff from main on 2026-10-15, the
 combined Vault script measures **342,007 raw bytes**. Its local level-9 gzip
@@ -95,7 +99,9 @@ uncompressed** limit. See the [budget measurements](worker-budgets.md) for
 the bundle totals and CI evidence. These are build-size estimates, not network
 timing.
 
-## Workspace snapshots: local implementation
+<a id="workspace-snapshots-local-implementation"></a>
+
+## Workspace snapshots
 
 Cloudflare OS adds **Save workspace to Vault** and **Restore workspace from
 Vault** with the same optional frontend URL setting. These are deliberate,
@@ -230,7 +236,42 @@ the new-session business-data checks above. The test grants local-network access
 only to the fixture's loopback origin, so Chromium can reach that backend.
 The Workshop account/session and Mikaki login/Passkey PRF remain fixtures.
 
-This has not been deployed; hosted login/session/popup and physical-device
-qualification remain. The Cloudflare OS preview preflight requires a target
-account/subdomain, matching Access application (`CF_ACCESS_AUD`, `CF_ACCESS_ISS`),
-preview administrator and deployed Mikaki `/vault` URL.
+## Hosted qualification
+
+The isolated Cloudflare OS deployment now uses **https://cfos.mikaki.org**.
+The earlier staging page URLs redirect to it. Its dedicated Mikaki OIDC client
+and migrated pairwise subject retain the owner's existing application data.
+This deployment uses direct OIDC, with no Cloudflare Access gate. The app's
+Workers AI binding supplies the model provider without a personal API token.
+
+Hosted owner sign-in, existing workspace visibility and an AI response have
+been verified. On **2026-10-17**, Chrome/macOS with a real Passkey completed
+Vault unlock, reviewed encrypted save and restoration into a new workspace.
+Chat, committed code, SQL and KV survived reload; the restored 106-byte
+attachment matched the source's SHA-256. A row added only to the restored app
+persisted after another reload, while the original retained its initial row.
+Closing a save popup before unlock allowed a fresh retry. App logout made an
+already-open app require sign-in on its next read; normal SSO reopened the
+restored data. Hosted issuer-side revocation, forced expiry and mobile
+physical-device coverage remain separate checks.
+
+To repeat this journey, use a dedicated synthetic workspace containing chat,
+an attachment, committed code, one SQL row and a distinct KV marker. Finish
+agents and proposed changes,
+choose **Workspace in Vault → Save workspace to Vault**, then unlock and
+review the source in Mikaki before saving. Verify the app's completion receipt.
+
+Restore that selected copy to the same `https://cfos.mikaki.org` origin through
+**Restore workspace from Vault** and review the plaintext disclosure. It must
+open a different workspace. Reload, compare chat, attachment contents, code,
+SQL and KV, then add a row only to the restored app and confirm that the source
+is unchanged. Do not seed data in the gadget constructor, which could mask
+missing restored state. Check cancellation/retry and hosted app-session
+invalidation separately. Keep physical-device results distinct from the
+complete local UI test above.
+
+The Cloudflare OS companion documents its
+[hosted qualification checklist](https://github.com/masanork/cloudflare-os/blob/main/docs/mikaki-vault.md#hosted-installation-and-qualification)
+and [direct Mikaki authentication configuration](https://github.com/masanork/cloudflare-os/blob/main/docs/mikaki-auth.md).
+New installations need their own storage and explicit authentication setup;
+Access preview configuration is not the configuration of this OIDC deployment.
