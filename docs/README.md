@@ -21,6 +21,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Review encrypted conversation search | [Sorane-inspired SQLite/FTS5 investigation and implementation gates](vault-thread-search.md) |
 | Review unified Vault key opening | [Candidate owner-key format, bounded lease and adoption gates](vault-owner-key-contract.md) |
 | Review tests and coverage | [Product test coverage and CI evidence](test-quality.md) |
+| Configure advisory static analysis | [SonarQube Cloud evaluation and setup](sonarqube-cloud.md) |
 | Work on the code | [Development guide](contributing.md) |
 | Connect an AI agent and review remaining work | [Agent integration and local MCP](agent-integration.md) |
 
