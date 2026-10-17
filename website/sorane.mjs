@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { pages, groupFor, header, footer, breadcrumbs, sectionNav, hero } from './layout.mjs';
 import { register } from 'tsx/esm/api';
+import { headingText } from '../scripts/html-markup.ts';
 
 register();
 const { renderMarkdown, escapeHtml } = await import('@sorane/core');
@@ -91,9 +92,7 @@ for (const lang of ['ja', 'en']) {
     content = content.replace(
       /<h([23]) id="([^"]+)">([\s\S]*?)<\/h\1>/g,
       (full, level, id, body) => {
-        const label = body
-          .replace(/<a class="heading-anchor"[\s\S]*?<\/a>/g, '')
-          .replace(/<[^>]*>/g, '');
+        const label = headingText(body);
         return full.replace(
           '<a class="heading-anchor"',
           `<a aria-label="${escapeHtml(ja ? `${label}へのリンク` : `Link to ${label}`)}" class="heading-anchor"`,
@@ -131,9 +130,7 @@ for (const lang of ['ja', 'en']) {
       if (headings.length >= 3) {
         const items = headings
           .map(([, id, heading]) => {
-            const label = heading
-              .replace(/<a [^>]*class="heading-anchor"[\s\S]*?<\/a>/g, '')
-              .replace(/<[^>]*>/g, '');
+            const label = escapeHtml(headingText(heading));
             return `<li><a href="#${id}">${label}</a></li>`;
           })
           .join('');

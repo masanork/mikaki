@@ -1,5 +1,7 @@
 import { SignJWT, importJWK, jwtVerify, decodeProtectedHeader, type JWTPayload } from 'jose';
 import policy from './generated/policy.json' with { type: 'json' };
+import { sqlParts } from './sql-parts.ts';
+export { sqlParts } from './sql-parts.ts';
 
 export const OP = 'http://localhost:18877';
 export const RP = 'http://127.0.0.1:18878';
@@ -54,12 +56,6 @@ export const json = (body: unknown, status = 200, headers: Record<string, string
   response(JSON.stringify(body), status, { 'Content-Type': 'application/json', ...headers });
 export const redirect = (location: string, headers: Record<string, string> = {}) =>
   response(null, 303, { Location: location, ...headers });
-export const sqlParts = (sql: string) =>
-  sql
-    .replace(/^\s*--.*$/gm, '')
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean);
 // SQL determines row shapes at runtime; callers narrow results at the query site.
 export const query = (db: any, sql: string, args: unknown[] = []) => db.prepare(sql).bind(...args);
 export const row = (db: any, sql: string, args: unknown[] = []) => query(db, sql, args).first();
