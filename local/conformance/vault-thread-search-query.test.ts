@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { threadSearchTerms } from '../../crates/worker/ui/vault-thread-search-query.ts';
 
+// Construct malformed UTF-16 at runtime; literal values break Sonar's UTF-8 AST transport.
+const invalidQuery = String.fromCharCode(0xd800) + 'abc';
+
 test('shared query validation accepts exactly eight terms and rejects unsupported input before dispatch', () => {
   assert.deepEqual(threadSearchTerms('ＡＢＣ　住所\t申請'), ['abc', '住所', '申請']);
   assert.deepEqual(threadSearchTerms('園 '.repeat(8)), Array(8).fill('園'));
   assert.deepEqual(threadSearchTerms('園　'.repeat(8)), Array(8).fill('園'));
   assert.deepEqual(threadSearchTerms(' \t\n'), []);
   assert.deepEqual(threadSearchTerms('a'.repeat(256)), ['a'.repeat(256)]);
-  for (const value of ['園 '.repeat(9), '園　'.repeat(9), 'a'.repeat(257), '\ud800abc', null, 123])
+  for (const value of ['園 '.repeat(9), '園　'.repeat(9), 'a'.repeat(257), invalidQuery, null, 123])
     assert.throws(() => threadSearchTerms(value), /invalid query/);
 });
 
@@ -61,10 +64,13 @@ test('real SQLite preserves literal NUL queries and rejects lossy Unicode projec
       1,
       'invalid query keeps the valid projection usable',
     );
-    assert.throws(() => projection.replace(record('\ud800abc')), /invalid archive unicode/);
+    assert.throws(() => projection.replace(record(invalidQuery)), /invalid archive unicode/);
     assert.throws(() => projection.search('abc', ['selected']), /locked/);
     projection.replace(record('\uFFFDabc'));
-    assert.throws(() => projection.search('\ud801abc', ['selected']), /invalid query/);
+    assert.throws(
+      () => projection.search(String.fromCharCode(0xd801) + 'abc', ['selected']),
+      /invalid query/,
+    );
     assert.equal(projection.search('\uFFFDabc', ['selected']).hits.length, 1);
   } finally {
     projection.dispose();

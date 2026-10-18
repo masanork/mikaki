@@ -184,11 +184,12 @@ test('WebMCP reads and searches only selected exact revisions, clears temporary 
 });
 test('WebMCP rejects bad input, stale records, hidden/locked pages, and permissions changed during verification', async () => {
   const f = fixture();
+  // Construct malformed UTF-16 at runtime; literal values break Sonar's UTF-8 AST transport.
   for (const [name, args] of [
     ['mikaki_search_selected', { query: 'a'.repeat(257) }],
     ['mikaki_get_vault_state', { secret: true }],
     ['mikaki_read_selected', { target: 'name', thread_id: 'approved' }],
-    ['mikaki_prepare_note_edit', { title: 'x', text: '\ud800' }],
+    ['mikaki_prepare_note_edit', { title: 'x', text: String.fromCharCode(0xd800) }],
     ['mikaki_review_vault_action', { action: 'execute_sql' }],
   ] as const)
     await assert.rejects(f.invoke(name, args), { code: 'invalid_input' });
