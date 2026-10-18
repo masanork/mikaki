@@ -3,6 +3,7 @@ updates:
   - package-ecosystem: cargo
     directories:
       - /
+      - /apps/mikaki-client/plugins/identity-proximity
       - /apps/mikaki-client/src-tauri
       - /design/probes/es256
       - /design/probes/jose
