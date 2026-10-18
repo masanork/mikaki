@@ -503,7 +503,8 @@ test('source identity and authority are exact, bounded, authenticated, and immut
     ]) {
       assert.equal((await f.ownerRequest('/grants', { ...v2.input, ...changed })).status, 409);
     }
-    for (const text of ['é'.repeat(257), '\ud800']) {
+    // Construct malformed UTF-16 at runtime; literal values break Sonar's UTF-8 AST transport.
+    for (const text of ['é'.repeat(257), String.fromCharCode(0xd800)]) {
       const envelope = await sealRecordAgentSnapshot(
         [{ ...v2.document, text }],
         { public_jwk: publicJwk, key_id: keyId, resource },

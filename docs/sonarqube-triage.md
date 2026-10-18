@@ -110,6 +110,36 @@ whitespace so a synchronous backtracking regression cannot hang the test runner.
 The suite runs in core CI. These changes require a fresh Cloud analysis before
 the corresponding findings can be counted as closed.
 
+### AST transport follow-up (2026-10-18)
+
+The main scan of `a4956c74` logged four invalid-UTF-8 Protobuf deserialization
+errors despite completing analysis. Four test files contained eight string
+literals whose decoded values include deliberately unpaired UTF-16 surrogates:
+owner-note validation, selected agent record grants, WebMCP input validation and
+thread search query validation. These are valid JavaScript fixtures in valid
+UTF-8 source files; their decoded values cannot be transported as Protobuf UTF-8
+string fields.
+
+The SonarJS `14.1.0.46226` serializer puts decoded literal values in
+`Literal.valueString`. A local reproduction used its pinned
+[serializer](https://github.com/SonarSource/SonarJS/blob/dce7aac558697a3d1b3b4163820e394af561da29/packages/analysis/src/jsts/parsers/ast.ts),
+[schema](https://github.com/SonarSource/SonarJS/blob/dce7aac558697a3d1b3b4163820e394af561da29/packages/analysis/src/jsts/parsers/estree.proto),
+parser `8.71.0`, TypeScript `6.0.3` and protobufjs `8.8.0`, with `protoc 36.2`
+decoding the resulting AST messages. All four original files failed UTF-8
+decoding; all four modified files decoded successfully. Runtime construction
+with `String.fromCharCode` retains the exact malformed code units while keeping
+the AST's literal strings well formed. Unicode validation and the production
+surrogate-rejection expressions are unchanged. No test or analyzer exclusion is
+added. All 484 scoped JavaScript/TypeScript files parse without malformed decoded
+string literals after the change. The four changed suites retain their rejection
+and positive Unicode cases.
+
+This reproduction identifies a transport incompatibility, not a defect in the
+application's Unicode validation. Cloud verification must reanalyze these changed
+files; a PR analysis that merely reuses cached ASTs would not prove the fix. Main
+needs its own post-merge scan before the original scan errors can be considered
+cleared there.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

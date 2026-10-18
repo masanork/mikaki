@@ -17,11 +17,12 @@ test('note v1 preserves Unicode and self-asserted provenance within UTF-8 limits
   assert.equal(ownerNoteInputError('title', 'あ'.repeat(1366)), 'text');
   assert.throws(() => newOwnerNote('あ'.repeat(86), 'text'));
   assert.throws(() => newOwnerNote('title', 'あ'.repeat(1366)));
-  for (const title of ['', ' ', 'a\n', '\ud800', '\udfff']) {
+  // Construct malformed UTF-16 at runtime; literal values break Sonar's UTF-8 AST transport.
+  for (const title of ['', ' ', 'a\n', String.fromCharCode(0xd800), String.fromCharCode(0xdfff)]) {
     assert.throws(() => newOwnerNote(title, 'text'));
     assert.equal(ownerNoteInputError(title, 'text'), 'title');
   }
-  for (const body of ['', ' ', '\u0000', '\u007f', '\ud800']) {
+  for (const body of ['', ' ', '\u0000', '\u007f', String.fromCharCode(0xd800)]) {
     assert.throws(() => newOwnerNote('title', body));
     assert.equal(ownerNoteInputError('title', body), 'text');
   }
