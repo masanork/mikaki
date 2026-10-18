@@ -27,6 +27,7 @@ const child = spawn(
       'vault-owner-store',
       'vault-record-userinfo',
       'vault-record-approval',
+      'vault-app-archive-handoff',
       'vault-owner-name-sharing',
       'vault-owner-note-proposals',
       'vault-owner-agent-grants',

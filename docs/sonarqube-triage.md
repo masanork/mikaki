@@ -159,6 +159,14 @@ code-unit semantics. These sites retain their implementation and issue status.
 No analyzer exclusions are added. A fresh Cloud analysis is required to confirm
 closure of the 35 changed sites.
 
+The first PR scan reported no new reliability or security issues, but failed its
+coverage gate because the existing archive handoff tests were not included in
+the Node coverage runner. Add that suite to the measured run rather than exclude
+the changed file. Its sequence-ID rejection cases also cover missing/non-string
+IDs, non-ASCII digits and unsafe integers. The same expression uses `\d` for the
+trailing ASCII digits to address the scan's `S6353` style finding without changing
+the accepted IDs.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic
