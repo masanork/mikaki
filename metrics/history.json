@@ -3003,7 +3003,7 @@
   },
   {
     "date": "2026-10-18",
-    "commit": "918b861",
+    "commit": "41eafdb",
     "code": {
       "implementationLines": 85537,
       "testLines": 13463,
@@ -3036,12 +3036,12 @@
       },
       "sourceLines": {
         "npmRuntime": 371701,
-        "rustRuntime": 1286609,
-        "total": 1658310
+        "rustRuntime": 1286197,
+        "total": 1657898
       },
       "sourcePackages": {
         "npmRuntime": 119,
-        "rustRuntime": 169
+        "rustRuntime": 168
       },
       "names": {
         "npmRuntime": [
