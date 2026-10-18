@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "svelte": "5.57.2",
-    "svelte-check": "4.7.6",
+    "svelte-check": "4.7.7",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

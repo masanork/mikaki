@@ -33,8 +33,7 @@ const report = {
   ),
   implementation_sha256: digest(await readFile(new URL('./probe.ts', import.meta.url), 'utf8')),
   network_source_sha256: digest(await readFile(new URL('./network.ts', import.meta.url), 'utf8')),
-  verifier:
-    'OWF OAuth2 0.7.0 DPoP protocol verification; JOSE signature callback; post-verification bounded in-memory replay gate',
+  verifier: `OWF OAuth2 ${dpopProfile.libraryVersion} DPoP protocol verification; JOSE signature callback; post-verification bounded in-memory replay gate`,
   issuance:
     'DPoP-required wrapper over the anonymous pre-authorized issuer fixture; not client authentication or a FAPI AS',
   transport:

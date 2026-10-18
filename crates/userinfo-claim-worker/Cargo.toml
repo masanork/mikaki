@@ -17,7 +17,7 @@ conformance-gate = []
 aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
 base64.workspace = true
 hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
-ml-kem = { version = "=0.3.2", default-features = false, features = ["zeroize"] }
+ml-kem = { version = "=0.3.3", default-features = false, features = ["zeroize"] }
 serde.workspace = true
 url.workspace = true
 serde_json.workspace = true
