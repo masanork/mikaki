@@ -41,7 +41,7 @@ function destination(value: string, hosts: string[]) {
     (u.port && u.port !== '443') ||
     !hosts.includes(u.hostname)
   )
-    throw Error('mds_destination');
+    throw new Error('mds_destination');
   return u;
 }
 export async function download(
@@ -58,13 +58,13 @@ export async function download(
     if ([301, 302, 303, 307, 308].includes(r.status)) {
       const location = r.headers.get('location');
       await r.body?.cancel();
-      if (!location) throw Error('mds_redirect');
+      if (!location) throw new Error('mds_redirect');
       url = new URL(location, u).href;
       continue;
     }
     if (!r.ok || !r.body) {
       await r.body?.cancel();
-      throw Error(`mds_http_${r.status}`);
+      throw new Error(`mds_http_${r.status}`);
     }
     const reader = r.body.getReader();
     const chunks: Uint8Array[] = [];
@@ -75,7 +75,7 @@ export async function download(
         const { value, done } = await reader.read();
         if (done) return Buffer.concat(chunks);
         size += value.byteLength;
-        if (size > limit) throw Error('mds_size');
+        if (size > limit) throw new Error('mds_size');
         chunks.push(value);
       }
     } catch (error) {
@@ -83,7 +83,7 @@ export async function download(
       throw error;
     }
   }
-  throw Error('mds_redirect_limit');
+  throw new Error('mds_redirect_limit');
 }
 
 export class MdsStore {
@@ -101,7 +101,7 @@ export class MdsStore {
       !config.allowed_hosts.length ||
       config.allowed_hosts.length > 32
     )
-      throw Error('mds_config');
+      throw new Error('mds_config');
     destination(config.url, config.allowed_hosts);
     this.config = structuredClone(config);
     this.verifier = verifier;
@@ -122,7 +122,7 @@ export class MdsStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const old = this.db.prepare('SELECT channel FROM mds_state WHERE id=1').get()!;
-      if (old.channel && old.channel !== channel) throw Error('mds_channel_changed');
+      if (old.channel && old.channel !== channel) throw new Error('mds_channel_changed');
       this.db.prepare('UPDATE mds_state SET channel=? WHERE id=1').run(channel);
       this.db.exec('COMMIT');
     } catch (error) {
@@ -144,7 +144,7 @@ export class MdsStore {
       input.profile !== this.config.profile ||
       input.anchor_spki !== this.config.anchor_spki
     )
-      throw Error('mds_input');
+      throw new Error('mds_input');
     const v = this.verifier.verify(input);
     if (
       !integer(v.number) ||
@@ -153,7 +153,7 @@ export class MdsStore {
       v.entries.length > 10000 ||
       (v.issued_at !== null && !integer(v.issued_at))
     )
-      throw Error('mds_verified');
+      throw new Error('mds_verified');
     const issued = v.issued_at ?? firstSeen;
     if (
       (this.config.profile === 'mds3.1.1' && v.issued_at === null) ||
@@ -162,12 +162,12 @@ export class MdsStore {
       input.now - issued > this.config.max_age_seconds ||
       input.now - firstSeen > this.config.max_age_seconds
     )
-      throw Error('mds_stale');
+      throw new Error('mds_stale');
     if (
       this.config.profile === 'mds3.0' &&
       (v.next_update === null || !integer(v.next_update) || input.now > v.next_update)
     )
-      throw Error('mds_stale');
+      throw new Error('mds_stale');
     return v;
   }
   accept(input: Input): Verified {
@@ -181,7 +181,7 @@ export class MdsStore {
         (v.number < previous.verified.number ||
           (v.number === previous.verified.number && hash(input.jwt) !== hash(previous.input.jwt)))
       )
-        throw Error('mds_rollback');
+        throw new Error('mds_rollback');
       const first_seen = previous?.verified.number === v.number ? previous.first_seen : input.now;
       this.validate(input, first_seen);
       const snapshot: Snapshot = { input, verified: v, first_seen, validated_at: input.now };
@@ -197,7 +197,7 @@ export class MdsStore {
   }
   forRegistration(now = Math.floor(Date.now() / 1000)): Verified {
     const snapshot = this.saved();
-    if (!snapshot) throw Error('mds_unavailable');
+    if (!snapshot) throw new Error('mds_unavailable');
     // Includes CRL and certificate validity at usage time. Cache alone is insufficient.
     return this.validate({ ...snapshot.input, now }, snapshot.first_seen);
   }
@@ -230,7 +230,7 @@ export class MdsStore {
         await download(this.config.url, this.config.allowed_hosts, 4194304, fetcher)
       ).toString('utf8');
       const urls = this.verifier.crlUrls(jwt, this.config.profile);
-      if (!urls.length || urls.length > 12) throw Error('mds_crls');
+      if (!urls.length || urls.length > 12) throw new Error('mds_crls');
       const crls: string[] = [];
       for (const url of [...new Set(urls)])
         crls.push(
@@ -250,7 +250,7 @@ export class MdsStore {
           ? error.message
           : 'mds_verification_or_transport';
       this.db.prepare('UPDATE mds_state SET last_attempt=?,failure=? WHERE id=1').run(now, reason);
-      throw Error(reason);
+      throw new Error(reason);
     }
   }
 }

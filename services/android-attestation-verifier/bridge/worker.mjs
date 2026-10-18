@@ -3,7 +3,7 @@
 const unavailable = () =>
   Response.json({ verified: false }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
 async function bounded(stream, limit) {
-  if (!stream) throw Error('missing body');
+  if (!stream) throw new Error('missing body');
   const reader = stream.getReader();
   const chunks = [];
   let size = 0;
@@ -12,7 +12,7 @@ async function bounded(stream, limit) {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) throw Error('body limit');
+      if (size > limit) throw new Error('body limit');
       chunks.push(value);
     }
   } catch (e) {
@@ -48,13 +48,13 @@ export default {
         target.hash ||
         target.href !== env.ANDROID_VERIFIER_URL
       )
-        throw Error('configuration');
+        throw new Error('configuration');
       if (!/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(env.ANDROID_VERIFIER_TOKEN || ''))
-        throw Error('configuration');
+        throw new Error('configuration');
       if (!ready && request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json')
-        throw Error('content type');
+        throw new Error('content type');
       if (ready && !/^[A-Za-z0-9_-]{43}$/.test(env.ANDROID_VERIFIER_POLICY_HASH || ''))
-        throw Error('configuration');
+        throw new Error('configuration');
       const body = ready ? undefined : await bounded(request.body, 65536);
       const response = await fetch(ready ? new URL('/readyz', target) : target, {
         method: ready ? 'GET' : 'POST',
@@ -70,7 +70,7 @@ export default {
         response.status !== 200 ||
         response.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json'
       )
-        throw Error('upstream');
+        throw new Error('upstream');
       const result = await bounded(response.body, 4096);
       if (ready) {
         const value = JSON.parse(new TextDecoder().decode(result));
@@ -84,7 +84,7 @@ export default {
           !Number.isSafeInteger(value.status_valid_until) ||
           value.status_valid_until <= Math.floor(Date.now() / 1000) ||
           value.status_valid_until > Math.floor(Date.now() / 1000) + 3600
-        ) throw Error('readiness');
+        ) throw new Error('readiness');
       }
       return new Response(result, {
         status: 200,

@@ -438,7 +438,7 @@ $('#identity-wallet-start').addEventListener('click', async () => {
         : {}),
     });
     if (generation !== walletGeneration) return;
-    if (result.phase !== 'pending') throw Error('invalid_response');
+    if (result.phase !== 'pending') throw new Error('invalid_response');
     walletPhase = 'pending';
     $('#identity-wallet-status').textContent =
       'ブラウザでアカウントと属性を確認し、この端末への発行を承認してください。';
@@ -472,7 +472,7 @@ $('#identity-wallet-receive').addEventListener('click', async () => {
         (result.format === 'mso_mdoc' ? 'mdoc' : 'SD-JWT') +
         `属性証明書を${result.credential_count ?? 1}件受け取り、全件の署名を確認しました。有効期限: ` +
         new Date(result.expires_at * 1000).toLocaleTimeString();
-    } else throw Error('invalid_response');
+    } else throw new Error('invalid_response');
   } catch (error) {
     if (generation === walletGeneration) {
       walletActive = false;
