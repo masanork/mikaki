@@ -156,7 +156,7 @@
     "@babel/parser": "8.0.7",
     "@babel/traverse": "8.0.7",
     "@babel/types": "8.0.6",
-    "@cloudflare/workers-types": "^5.20261015.1",
+    "@cloudflare/workers-types": "^5.20261018.1",
     "@inlang/paraglide-js": "^2.29.0",
     "@inlang/plugin-message-format": "^4.5.4",
     "@jridgewell/trace-mapping": "0.3.31",
@@ -170,7 +170,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "esbuild": "0.28.2",
     "jsonc-parser": "3.3.1",
-    "parse5": "7.3.0",
+    "parse5": "8.0.1",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",
     "remark-gfm": "4.0.1",
@@ -180,7 +180,7 @@
     "typescript": "7.0.2",
     "unified": "11.0.5",
     "vite": "8.3.4",
-    "wrangler": "4.151.0"
+    "wrangler": "4.151.1"
   },
   "overrides": {
     "katex": "0.18.2",

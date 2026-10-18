@@ -21,7 +21,7 @@ import { IssuerFixture, jsonResponse, profile, type Transport } from '../oid4vci
 
 export const dpopProfile = {
   algorithm: 'ES256',
-  libraryVersion: '0.7.0',
+  libraryVersion: '0.8.0',
   maxAgeSeconds: 60,
   clockSkewSeconds: 10,
   replayCapacity: 1000,

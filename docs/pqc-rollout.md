@@ -20,7 +20,7 @@ The system Grant only permits a future claim service to consider the attribute; 
 
 An assigned COSE number does not establish support in an available FIDO device, browser, or OS. An existing credential cannot be converted to PQC on the server. Enroll a new credential on verified hardware and run it alongside ES256 before migration. Do not advertise `-49` in `pubKeyCredParams` until verification works, or label an implicit fallback as PQC support.
 
-At the time of the probe, Cloudflare Workers' WebCrypto compatibility table did not list ML-KEM or ML-DSA. Begin with isolated Rust/Wasm validation rather than assuming built-in support. The candidate RustCrypto `ml-kem 0.3.2` and `ml-dsa 0.1.1`, and the noble comparison implementation, state that they lack independent audit. Before product integration, extend known-answer coverage across parameters, review key/signature size bounds and dependencies, and measure resources in the actual Worker and browser.
+At the time of the probe, Cloudflare Workers' WebCrypto compatibility table did not list ML-KEM or ML-DSA. Begin with isolated Rust/Wasm validation rather than assuming built-in support. The candidate RustCrypto `ml-kem 0.3.3` and `ml-dsa 0.1.1`, and the noble comparison implementation, state that they lack independent audit. Before product integration, extend known-answer coverage across parameters, review key/signature size bounds and dependencies, and measure resources in the actual Worker and browser.
 
 The product envelope currently names draft-04 and decrypted one official [draft-05 vector](../design/probes/pqc/hpke-pq-draft05-vector.json) for ML-KEM-768/HKDF-SHA256/AES-128-GCM. The product AES-256-GCM sender and independent RustCrypto receiver interoperate locally and with the live seed in a synthetic probe. Recovery, full owner flow, and final suite versioning remain gates before enabling writes.
 
@@ -31,6 +31,6 @@ The product envelope currently names draft-04 and decrypted one official [draft-
 - [FIDO Server Requirements 2.3 Review Draft](https://fidoalliance.org/specs/fidoserver/fido-server-v2.3-rd-20260226.html) (review draft, not hardware evidence)
 - [WebAuthn Level 3](https://www.w3.org/TR/webauthn/)
 - [Cloudflare Workers WebCrypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)
-- [RustCrypto ML-KEM](https://docs.rs/ml-kem/0.3.2/ml_kem/) and [ML-DSA](https://docs.rs/ml-dsa/0.1.1/ml_dsa/)
+- [RustCrypto ML-KEM](https://docs.rs/ml-kem/0.3.3/ml_kem/) and [ML-DSA](https://docs.rs/ml-dsa/0.1.1/ml_dsa/)
 - [NIST ACVP samples](https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files) and [noble-post-quantum](https://github.com/paulmillr/noble-post-quantum)
 - [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05) (working draft; product format undecided)
