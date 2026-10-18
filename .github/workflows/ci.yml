@@ -52,6 +52,7 @@ jobs:
           set -o pipefail
           npm run generate:i18n
           node scripts/check_design.ts
+          npm run test:markup
           npm run test:sql
           npm run test:release
           node --test scripts/static-sql.test.ts

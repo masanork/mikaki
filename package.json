@@ -140,7 +140,8 @@
     "build:fonts": "node scripts/build-fonts.mjs",
     "test:fonts": "node --test local/conformance/font-assets.test.ts",
     "preview:fonts": "node scripts/preview-fonts.mjs",
-    "check:fonts-reproducible": "node scripts/build-fonts.mjs --check"
+    "check:fonts-reproducible": "node scripts/build-fonts.mjs --check",
+    "test:markup": "node --test scripts/markup-parsers.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -164,15 +165,20 @@
     "@sorane/core": "0.5.0",
     "@sorane/okf": "0.5.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/mdast": "4.0.4",
     "@types/node": "^26.6.5",
     "@typescript/native": "npm:typescript@7.0.2",
     "esbuild": "0.28.2",
     "jsonc-parser": "3.3.1",
+    "parse5": "7.3.0",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
     "smol-toml": "1.9.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
+    "unified": "11.0.5",
     "vite": "8.3.4",
     "wrangler": "4.151.0"
   },

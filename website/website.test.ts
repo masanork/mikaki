@@ -270,6 +270,14 @@ test('public websites keep app callbacks code-free and render the woven material
         error: /canonical/,
       },
       {
+        // Browsers keep the first duplicate attribute. A later valid URL must
+        // not hide the incorrect canonical URL from the audit.
+        path: '/en/',
+        from: 'rel="canonical" href="https://mikaki.org/en/"',
+        to: 'rel="canonical" href="https://mikaki.org/" href="https://mikaki.org/en/"',
+        error: /canonical/,
+      },
+      {
         path: '/getting-started',
         from: 'hreflang="en" href="https://mikaki.org/en/getting-started"',
         to: 'hreflang="en" href="https://mikaki.org/en/faq"',

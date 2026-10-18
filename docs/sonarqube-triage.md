@@ -92,6 +92,24 @@ Cloud issue keys. Keep the advisory gate while those changes are qualified in
 small, behavior-tested units. No rule-wide exclusions or `NOSONAR` blanket
 suppressions are added.
 
+### Parser follow-up (2026-10-18)
+
+The ten remaining `S8786` sites in the 2026-10-17 inventory are addressed by
+replacing the Markdown and HTML extraction expressions with parsers, and by
+filtering local SQL fixture comments one line at a time. Markdown reference and
+heading extraction uses the site's existing GFM parser versions. HTML inspection
+uses the existing parse5 version, including browser rules for duplicate
+attributes, entities, comments and raw script text. Heading labels are escaped
+when inserted into generated HTML after extracting decoded text. The local SQL
+helper still accepts the same restricted semicolon-separated fixture format.
+
+`npm run test:markup` covers source locations, balanced link destinations,
+Unicode and duplicate heading slugs, code fences, HTML attributes and SQL token
+separation. A child process with a timeout checks long unfinished markup and
+whitespace so a synchronous backtracking regression cannot hang the test runner.
+The suite runs in core CI. These changes require a fresh Cloud analysis before
+the corresponding findings can be counted as closed.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

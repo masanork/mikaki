@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { htmlElements } from '../scripts/html-markup.ts';
 
 const origin = 'https://mikaki.org';
 const decode = (text: string) =>
@@ -10,13 +11,6 @@ const decode = (text: string) =>
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
-const tags = (html: string, name: string) =>
-  [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, 'g'))].map((match) =>
-    Object.fromEntries(
-      [...match[0].matchAll(/([\w:-]+)="([^"]*)"/g)].map((m) => [m[1], decode(m[2])]),
-    ),
-  );
-
 /** Require an explicit hash grant that survives every enforced script policy. */
 export function permitsScriptHash(csp: string | null, hash: string) {
   // Headers combines repeated CSP fields with commas; browsers enforce their intersection.
@@ -76,7 +70,7 @@ export async function auditPublicWebsite(
   const catalog = await (await get('/catalog.jsonld', 'json')).text();
   JSON.parse(catalog);
   const llms = await (await get('/llms.txt', 'text/plain')).text();
-  const pages = new Map<string, { title: string; html: string; links: string[] }>();
+  const pages = new Map<string, { title: string; ids: Set<string>; links: string[] }>();
   const titles = new Set<string>();
   const images = new Map<string, { width: number; height: number }>();
   for (const path of paths) {
@@ -88,8 +82,11 @@ export async function auditPublicWebsite(
     const title = html.match(/<title>([^<]+)<\/title>/)?.[1];
     assert.ok(title && !titles.has(title), `${path}: missing or duplicate title`);
     titles.add(title);
-    const meta = tags(html, 'meta');
-    const links = tags(html, 'link');
+    const elements = htmlElements(html);
+    const tags = (name: string) =>
+      elements.filter((element) => element.tag === name).map((element) => element.attributes);
+    const meta = tags('meta');
+    const links = tags('link');
     const value = (key: string) => meta.find((m) => m.name === key || m.property === key)?.content;
     assert.ok(value('description')?.trim(), `${path}: description`);
     assert.doesNotMatch(value('robots') ?? '', /noindex|none/i, `${path}: noindex meta`);
@@ -137,7 +134,7 @@ export async function auditPublicWebsite(
         `${path}: JSON-LD blocked by CSP`,
       );
     }
-    for (const image of tags(html, 'img')) {
+    for (const image of tags('img')) {
       assert.ok(image.alt?.trim(), `${path}: image alt`);
       const url = new URL(image.src, `${origin}${path}`);
       assert.equal(url.origin, origin, `${path}: image origin`);
@@ -152,7 +149,7 @@ export async function auditPublicWebsite(
       assert.equal(Number(image.width), dimensions.width, `${path}: image width`);
       assert.equal(Number(image.height), dimensions.height, `${path}: image height`);
     }
-    const anchors = tags(html, 'a').map((a) => new URL(a.href, `${origin}${path}`));
+    const anchors = tags('a').map((a) => new URL(a.href, `${origin}${path}`));
     for (const link of anchors) {
       if (
         lang === 'en' &&
@@ -163,7 +160,7 @@ export async function auditPublicWebsite(
     }
     pages.set(path, {
       title,
-      html,
+      ids: new Set(elements.flatMap(({ attributes }) => (attributes.id ? [attributes.id] : []))),
       links: anchors.filter((a) => a.origin === origin).map((a) => a.href),
     });
     assert.ok(catalog.includes(`${origin}${path}`), `${path}: catalog`);
@@ -175,10 +172,7 @@ export async function auditPublicWebsite(
       assert.ok(target, `${path}: link missing from sitemap: ${url.pathname}`);
       if (url.hash) {
         const id = decodeURIComponent(url.hash.slice(1));
-        assert.ok(
-          tags(target.html, '[a-zA-Z][a-zA-Z0-9]*').some((tag) => tag.id === id),
-          `${path}: missing fragment ${href}`,
-        );
+        assert.ok(target.ids.has(id), `${path}: missing fragment ${href}`);
       }
     }
   }
