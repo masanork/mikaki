@@ -5,14 +5,22 @@ use mutable_certificate::Certificate;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use der::{
     Decode, Encode,
-    asn1::{BitString, ObjectIdentifier, OctetString},
+    asn1::{BitString, Ia5String, ObjectIdentifier, OctetString},
 };
 use mikaki_identity::{
-    credential_certificate::{Purpose, SigningTrust, verify},
+    credential_certificate::{Purpose, SigningTrust, pinned_leaf, validate_roots, verify},
     issuance::PublicJwk,
 };
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
-use x509_cert::ext::pkix::{AuthorityKeyIdentifier, BasicConstraints};
+use x509_cert::ext::{
+    Extension,
+    pkix::{
+        AuthorityKeyIdentifier, BasicConstraints, CrlDistributionPoints, ExtendedKeyUsage,
+        IssuerAltName, KeyUsage, KeyUsages, SubjectKeyIdentifier,
+        crl::dp::{DistributionPoint, Reasons},
+        name::{DistributionPointName, GeneralName},
+    },
+};
 const NOW: u64 = 1791000000;
 fn bytes(name: &str) -> Vec<u8> {
     std::fs::read(format!(
@@ -40,6 +48,26 @@ fn mutate(name: &str, edit: impl FnOnce(&mut Certificate)) -> String {
 }
 fn check(t: &SigningTrust, p: Purpose) -> bool {
     verify(t, &PublicJwk::from_key(key(4).verifying_key()), p, NOW).is_ok()
+}
+fn extension<'a>(c: &'a mut Certificate, oid: &str) -> &'a mut Extension {
+    c.tbs_certificate
+        .extensions
+        .as_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|e| e.extn_id.to_string() == oid)
+        .unwrap()
+}
+fn set_extension(c: &mut Certificate, oid: &str, value: &impl Encode) {
+    extension(c, oid).extn_value = OctetString::new(value.to_der().unwrap()).unwrap();
+}
+fn pinned(encoded: &str, purpose: Purpose, now: u64) -> Result<u64, &'static str> {
+    pinned_leaf(
+        &B64.decode(encoded).unwrap(),
+        &PublicJwk::from_key(key(4).verifying_key()),
+        purpose,
+        now,
+    )
 }
 #[test]
 fn separate_credentials_bind_chain_key_purpose_and_current_validity() {
@@ -213,4 +241,241 @@ fn configured_crls_reject_revoked_stale_missing_and_untrusted_status() {
     *bad.last_mut().unwrap() ^= 1;
     t.revocation.as_mut().unwrap().crls = vec![B64.encode(bad)];
     assert!(!check(&t, Purpose::Mdoc));
+}
+
+#[test]
+fn pinned_validity_is_inclusive_at_start_and_exclusive_at_end() {
+    let leaf = Certificate::from_der(&bytes("mdoc-signer")).unwrap();
+    let validity = leaf.tbs_certificate.validity;
+    let start = validity.not_before.to_unix_duration().as_secs();
+    let end = validity.not_after.to_unix_duration().as_secs();
+    let encoded = B64.encode(bytes("mdoc-signer"));
+    assert_eq!(pinned(&encoded, Purpose::Mdoc, start), Ok(end));
+    assert_eq!(pinned(&encoded, Purpose::Mdoc, end - 1), Ok(end));
+    for now in [start - 1, end] {
+        assert_eq!(
+            pinned(&encoded, Purpose::Mdoc, now),
+            Err("invalid_credential_certificate")
+        );
+    }
+}
+
+#[test]
+fn mdoc_subject_requires_one_country_and_nonempty_supported_common_name() {
+    for (subject, accepted) in [
+        ("C=JP,CN=Signer", true),
+        ("C=JP,CN=#13065369676e6572", true),
+        ("C=JP,CN=署名者,OU=Wallet", true),
+        ("C=JP+CN=Signer,O=Issuer", true),
+        ("C=JP,C=US,CN=Signer", false),
+        ("C=jp,CN=Signer", false),
+        ("C=JPN,CN=Signer", false),
+        ("C=#0c024a50,CN=Signer", false),
+        ("CN=Signer", false),
+        ("C=JP", false),
+        ("C=JP,CN=", false),
+        ("C=JP,CN=#16065369676e6572", false),
+        ("C=JP,CN=Signer,O=#1606497373756572", false),
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            c.tbs_certificate.subject = subject.parse().unwrap();
+        });
+        assert_eq!(
+            pinned(&encoded, Purpose::Mdoc, NOW).is_ok(),
+            accepted,
+            "{subject}"
+        );
+    }
+}
+
+#[test]
+fn mdoc_contacts_key_identifiers_and_signing_purpose_are_bound() {
+    for (contact, accepted) in [
+        (
+            GeneralName::Rfc822Name(Ia5String::new("issuer@example.test").unwrap()),
+            true,
+        ),
+        (
+            GeneralName::UniformResourceIdentifier(
+                Ia5String::new("https://issuer.example.test").unwrap(),
+            ),
+            true,
+        ),
+        (
+            GeneralName::DnsName(Ia5String::new("issuer.example.test").unwrap()),
+            false,
+        ),
+        (GeneralName::Rfc822Name(Ia5String::new("").unwrap()), false),
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            set_extension(c, "2.5.29.18", &IssuerAltName(vec![contact]));
+        });
+        assert_eq!(pinned(&encoded, Purpose::Mdoc, NOW).is_ok(), accepted);
+    }
+    let bad_ski = mutate("mdoc-signer", |c| {
+        set_extension(
+            c,
+            "2.5.29.14",
+            &SubjectKeyIdentifier(OctetString::new([0; 20]).unwrap()),
+        );
+    });
+    assert_eq!(
+        pinned(&bad_ski, Purpose::Mdoc, NOW),
+        Err("invalid_credential_certificate")
+    );
+    let missing_aki_key = mutate("mdoc-signer", |c| {
+        set_extension(c, "2.5.29.35", &AuthorityKeyIdentifier::default());
+    });
+    assert_eq!(
+        pinned(&missing_aki_key, Purpose::Mdoc, NOW),
+        Err("invalid_credential_certificate")
+    );
+    for oids in [
+        vec![],
+        vec!["1.3.6.1.5.5.7.3.3"],
+        vec!["1.0.18013.5.1.2", "1.3.6.1.5.5.7.3.3"],
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            set_extension(
+                c,
+                "2.5.29.37",
+                &ExtendedKeyUsage(oids.into_iter().map(|s| s.parse().unwrap()).collect()),
+            );
+        });
+        assert_eq!(
+            pinned(&encoded, Purpose::Mdoc, NOW),
+            Err("invalid_credential_certificate")
+        );
+    }
+}
+
+#[test]
+fn mdoc_distribution_points_reject_partial_or_indirect_revocation() {
+    let uri = GeneralName::UniformResourceIdentifier(
+        Ia5String::new("https://issuer.example.test/status.crl").unwrap(),
+    );
+    let valid = DistributionPoint {
+        distribution_point: Some(DistributionPointName::FullName(vec![uri.clone()])),
+        reasons: None,
+        crl_issuer: None,
+    };
+    let mut partial = valid.clone();
+    partial.reasons = Some(Reasons::KeyCompromise.into());
+    let mut indirect = valid.clone();
+    indirect.crl_issuer = Some(vec![uri]);
+    let mut dns_only = valid.clone();
+    dns_only.distribution_point =
+        Some(DistributionPointName::FullName(vec![GeneralName::DnsName(
+            Ia5String::new("issuer.example.test").unwrap(),
+        )]));
+    for (points, accepted) in [
+        (vec![valid.clone()], true),
+        (vec![], false),
+        (vec![partial], false),
+        (vec![indirect], false),
+        (vec![dns_only.clone()], false),
+        (vec![dns_only, valid], true),
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            set_extension(c, "2.5.29.31", &CrlDistributionPoints(points));
+        });
+        assert_eq!(pinned(&encoded, Purpose::Mdoc, NOW).is_ok(), accepted);
+    }
+}
+
+#[test]
+fn mdoc_rejects_unsupported_extensions_and_malformed_profile_values() {
+    for oid in [
+        "2.5.29.33",
+        "2.5.29.30",
+        "2.5.29.36",
+        "2.5.29.54",
+        "2.5.29.46",
+        "1.2.3.4",
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            c.tbs_certificate
+                .extensions
+                .as_mut()
+                .unwrap()
+                .push(Extension {
+                    extn_id: oid.parse().unwrap(),
+                    critical: oid == "1.2.3.4",
+                    extn_value: OctetString::new([0x30, 0]).unwrap(),
+                });
+        });
+        assert_eq!(
+            pinned(&encoded, Purpose::Mdoc, NOW),
+            Err("invalid_credential_certificate"),
+            "{oid}"
+        );
+    }
+    for oid in [
+        "2.5.29.15",
+        "2.5.29.14",
+        "2.5.29.18",
+        "2.5.29.37",
+        "2.5.29.35",
+        "2.5.29.31",
+    ] {
+        let encoded = mutate("mdoc-signer", |c| {
+            extension(c, oid).extn_value = OctetString::new([0xff]).unwrap();
+        });
+        assert_eq!(
+            pinned(&encoded, Purpose::Mdoc, NOW),
+            Err("invalid_credential_certificate"),
+            "{oid}"
+        );
+    }
+}
+
+#[test]
+fn certificate_usage_and_sd_jwt_errors_retain_their_priority() {
+    let eku = |c: &mut Certificate| {
+        c.tbs_certificate
+            .extensions
+            .as_mut()
+            .unwrap()
+            .push(Extension {
+                extn_id: "2.5.29.37".parse().unwrap(),
+                critical: false,
+                extn_value: OctetString::new([0xff]).unwrap(),
+            });
+    };
+    let encoded = mutate("sd-signer", eku);
+    assert_eq!(
+        pinned(&encoded, Purpose::SdJwt, NOW),
+        Err("unsupported_credential_eku")
+    );
+    let encoded = mutate("sd-signer", |c| {
+        eku(c);
+        extension(c, "2.5.29.15").critical = false;
+    });
+    assert_eq!(
+        pinned(&encoded, Purpose::SdJwt, NOW),
+        Err("invalid_credential_certificate")
+    );
+    let encoded = mutate("sd-signer", |c| {
+        set_extension(
+            c,
+            "2.5.29.19",
+            &BasicConstraints {
+                ca: true,
+                path_len_constraint: None,
+            },
+        );
+    });
+    assert_eq!(
+        pinned(&encoded, Purpose::SdJwt, NOW),
+        Err("invalid_credential_certificate")
+    );
+    for usage in [KeyUsages::DigitalSignature, KeyUsages::CRLSign] {
+        let encoded = mutate("mdoc-ca", |c| {
+            set_extension(c, "2.5.29.15", &KeyUsage(usage.into()));
+        });
+        assert_eq!(
+            validate_roots(&[encoded], Purpose::Mdoc, NOW),
+            Err("invalid_credential_certificate")
+        );
+    }
 }
