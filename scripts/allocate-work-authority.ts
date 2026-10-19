@@ -509,14 +509,15 @@ export async function runAuthorityAllocation(mode: 'inventory' | 'allocate') {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
   if (!rest.length && (mode === 'inventory' || mode === 'allocate')) {
-    runAuthorityAllocation(mode)
-      .then((value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n'))
-      .catch((error: unknown) => {
-        process.stderr.write(
-          error instanceof Error ? error.message + '\n' : 'authority_allocation_failed\n',
-        );
-        process.exitCode = 1;
-      });
+    try {
+      const value = await runAuthorityAllocation(mode);
+      process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+    } catch (error) {
+      process.stderr.write(
+        error instanceof Error ? error.message + '\n' : 'authority_allocation_failed\n',
+      );
+      process.exitCode = 1;
+    }
   } else {
     process.stderr.write('usage: allocate-work-authority.ts inventory|allocate\n');
     process.exitCode = 1;

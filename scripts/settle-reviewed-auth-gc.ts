@@ -217,9 +217,11 @@ async function main() {
   }
 }
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  main().catch(() => {
+  try {
+    await main();
+  } catch {
     // The private RPC/SQL exception may include provider details. Do not print it.
     console.error('reviewed_gc_settlement_failed; inspect private journal and current markers');
     process.exitCode = 1;
-  });
+  }
 }
