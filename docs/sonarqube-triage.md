@@ -224,6 +224,32 @@ bodies, independent rate limits before CSRF/session checks, and localized 503
 responses when delegated database operations fail. No rule exclusions, issue
 dispositions or quality-gate changes are made.
 
+### Agent Worker routing follow-up (2026-10-19)
+
+Source at `71d7c1dd` retains three complexity findings in the Agent Worker:
+tool execution (27), the private owner entrypoint (38), and public fetch (34).
+Separate snapshot/operation dispatch, authenticated owner handlers, public OAuth
+routing and public record proposals. The existing named owner entrypoint remains
+separate from public fetch; caller-supplied owner headers cannot select it.
+OAuth enablement, exact method/query/origin guards, body limits and bearer
+challenges retain their existing endpoint-specific behavior.
+
+Tool execution still checks the active grant before dispatch, awaits the audit,
+rechecks the grant and expiration, refreshes record-proposal receipts, and only
+then attaches provenance and returns data. Recipient and initial grant failures
+retain their outer error boundaries. Owner failures deliberately retain an
+opaque 409 response so grant/storage details are not disclosed; the catch now
+documents this rationale. Tool descriptions use a separate selector instead of
+a nested ternary. No analysis rules, issue dispositions or gate settings change.
+
+Local SonarJS reproduces all three original scores and reports 10, 14 and 12
+after refactoring, with no extracted function above 15. The synthetic
+Worker/SQLite suite adds public/private routing, disabled OAuth and rejected
+service-call cases; its existing post-audit race and proposal retry tests remain.
+The real workerd suites separately qualify the private OP bridge, OAuth PKCE,
+SDK MCP calls, revocation, rollback and browser review. Cloud analysis on the
+final PR and post-merge main revisions must confirm closure.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

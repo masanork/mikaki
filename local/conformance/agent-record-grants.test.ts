@@ -1116,3 +1116,157 @@ for (const [label, mutation] of Object.entries({
       f.sqlite.close();
     }
   });
+
+test('public routing rejects forged owner headers, wrong methods and origin/query violations before storage', async () => {
+  const f = fixture();
+  let dispatches = 0;
+  f.env.AUTH_STORE.fetch = () => {
+    dispatches += 1;
+    return Promise.reject(new Error('sensitive storage detail'));
+  };
+  const agentOrigin = new URL(resource).origin;
+  try {
+    const cases: Array<{
+      path: string;
+      method: string;
+      headers?: Record<string, string>;
+      status: number;
+    }> = [
+      {
+        path: '/grants',
+        method: 'POST',
+        headers: { 'X-Mikaki-Account': 'owner', 'X-Mikaki-Session-Hash': f.owner.secretHash },
+        status: 404,
+      },
+      { path: '/oauth/token', method: 'GET', status: 404 },
+      { path: '/oauth/token?unexpected=1', method: 'POST', status: 404 },
+      { path: '/.well-known/oauth-authorization-server?unexpected=1', method: 'GET', status: 404 },
+      {
+        path: '/oauth/token',
+        method: 'POST',
+        headers: { Origin: 'https://foreign.test' },
+        status: 403,
+      },
+      { path: '/record-proposals?unexpected=1', method: 'POST', status: 403 },
+      {
+        path: '/record-proposals',
+        method: 'POST',
+        headers: { Origin: 'https://foreign.test' },
+        status: 403,
+      },
+      { path: '/record-proposals', method: 'POST', status: 415 },
+      {
+        path: '/record-proposals',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        status: 401,
+      },
+    ];
+    await Promise.all(
+      cases.map(async ({ path, method, headers, status }) => {
+        const response = await worker.fetch(
+          new Request(`${agentOrigin}${path}`, { method, headers }),
+          f.env,
+        );
+        assert.equal(response.status, status, path);
+        assert.doesNotMatch(await response.text(), /sensitive storage detail/);
+      }),
+    );
+    const wrongOrigin = await worker.fetch(new Request('https://foreign.test/mcp'), f.env);
+    assert.equal(wrongOrigin.status, 403);
+    const ownerAgent = new OwnerAgents({}, f.env);
+    const unauthenticated = await ownerAgent.fetch(new Request(`${agentOrigin}/unknown`));
+    assert.equal(unauthenticated.status, 401);
+    assert.deepEqual(await unauthenticated.json(), { error: 'authentication_required' });
+    assert.equal(dispatches, 0);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+test('disabled OAuth keeps discovery and owner-only routes closed without storage access', async () => {
+  const f = fixture();
+  const disabled = { ...f.env, AGENT_OWNER_URL: '' };
+  let dispatches = 0;
+  disabled.AUTH_STORE.fetch = () => {
+    dispatches += 1;
+    return Promise.reject(new Error('sensitive storage detail'));
+  };
+  const agentOrigin = new URL(resource).origin;
+  try {
+    const discovery = await worker.fetch(
+      new Request(`${agentOrigin}/.well-known/oauth-protected-resource/mcp`),
+      disabled,
+    );
+    assert.equal(discovery.status, 200);
+    assert.equal(Object.hasOwn(await discovery.json(), 'authorization_servers'), false);
+    await Promise.all(
+      [
+        ['GET', '/.well-known/oauth-authorization-server'],
+        ['GET', '/oauth/authorize'],
+        ['POST', '/oauth/token'],
+        ['POST', '/oauth/revoke'],
+      ].map(async ([method, path]) => {
+        assert.equal(
+          (await worker.fetch(new Request(`${agentOrigin}${path}`, { method }), disabled)).status,
+          404,
+        );
+      }),
+    );
+    const proposal = await worker.fetch(
+      new Request(`${agentOrigin}/record-proposals`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer moa_${id()}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+      disabled,
+    );
+    assert.equal(proposal.status, 401);
+    assert.equal(dispatches, 0);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+for (const endpoint of ['owner-status', 'mcp', 'record-proposals'] as const)
+  test(`${endpoint} retains its error response when a delegated storage call rejects`, async () => {
+    const f = fixture();
+    const serviceFetch = f.env.AUTH_STORE.fetch;
+    let dispatches = 0;
+    f.env.AUTH_STORE.fetch = async (url, init) => {
+      dispatches += 1;
+      if (dispatches > 1) throw new Error('sensitive storage detail');
+      return await serviceFetch(url, init);
+    };
+    try {
+      const url = endpoint === 'mcp' ? resource : new URL('/record-proposals', resource);
+      const response =
+        endpoint === 'owner-status'
+          ? await f.ownerRequest('/status')
+          : await worker.fetch(
+              new Request(url, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer mag_${id()}`,
+                  'Content-Type': 'application/json',
+                },
+                body: '{}',
+              }),
+              f.env,
+            );
+      assert.equal(
+        dispatches,
+        2,
+        'the initial owner/recipient check precedes the failing operation',
+      );
+      assert.equal(response.status, endpoint === 'mcp' ? 401 : 409);
+      if (endpoint === 'mcp')
+        assert.match(response.headers.get('WWW-Authenticate') ?? '', /Bearer resource_metadata=/);
+      else
+        assert.deepEqual(await response.json(), {
+          error: endpoint === 'owner-status' ? 'operation_failed' : 'access_denied',
+        });
+    } finally {
+      f.sqlite.close();
+    }
+  });
