@@ -7,10 +7,7 @@ import { htmlElements } from '../scripts/html-markup.ts';
 
 const origin = 'https://mikaki.org';
 const decode = (text: string) =>
-  text
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+  text.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'");
 /** Require an explicit hash grant that survives every enforced script policy. */
 export function permitsScriptHash(csp: string | null, hash: string) {
   // Headers combines repeated CSP fields with commas; browsers enforce their intersection.

@@ -107,7 +107,7 @@ export function outcome(
             value,
           )
         ? Date.parse(value) / 1000
-        : NaN;
+        : Number.NaN;
     if (!Number.isNaN(retryAt)) next = Math.max(next, retryAt);
   }
   return next >= task.deadline

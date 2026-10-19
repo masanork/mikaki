@@ -10,7 +10,7 @@ await init({
 });
 const [command, configuration, database] = process.argv.slice(2);
 if (!['refresh', 'status', 'watch'].includes(command) || !configuration || !database)
-  throw Error(
+  throw new Error(
     'Usage: node scripts/mds-refresh.ts refresh|status|watch CONFIG.json DATABASE.sqlite',
   );
 const config: Config = JSON.parse(readFileSync(configuration, 'utf8'));

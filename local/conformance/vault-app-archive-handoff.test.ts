@@ -113,6 +113,10 @@ test('an expired review cannot prepare a new save', () => {
 test('source messages preserve opaque sequence identity, reject duplicates/reordering and stay in range', () => {
   assert.deepEqual(parseThreadArchive(archive), archive);
   for (const messages of [
+    [{ ...archive.messages[0], source_id: undefined }],
+    [{ ...archive.messages[0], source_id: 1 }],
+    [{ ...archive.messages[0], source_id: '１' }],
+    [{ ...archive.messages[0], source_id: '9007199254740993' }],
     [{ ...archive.messages[0], source_id: '01' }],
     [{ ...archive.messages[0], source_id: '5' }],
     [archive.messages[0], archive.messages[0]],

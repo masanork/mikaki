@@ -80,7 +80,7 @@ export function packets(bytes: Buffer): (string | null)[] {
   while (offset < bytes.length) {
     const prefix = bytes.subarray(offset, offset + 4).toString('ascii');
     if (!/^[0-9a-f]{4}$/.test(prefix)) throw new Error('git_protocol_invalid');
-    const n = parseInt(prefix, 16);
+    const n = Number.parseInt(prefix, 16);
     offset += 4;
     if (n === 0) {
       lines.push(null);

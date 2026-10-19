@@ -140,6 +140,33 @@ files; a PR analysis that merely reuses cached ASTs would not prove the fix. Mai
 needs its own post-merge scan before the original scan errors can be considered
 cleared there.
 
+### Built-in API follow-up (2026-10-18)
+
+Main analysis `420d92d2` reports 59 open reliability findings. This pass addresses
+26 `S7723` sites with explicit `new Error(...)`, four `S7773` sites with
+`Number.NaN` or `Number.parseInt`, and five `S7781` sites with string `replaceAll`.
+The native Error constructor accepts both invocation forms with equivalent
+behavior ([ECMAScript](https://tc39.es/ecma262/2022/multipage/fundamental-objects.html#sec-error-constructor)).
+Error messages, catch boundaries, numeric validation, radix 16, replacement order
+and exact literal matching are retained. Existing MDS, logout, native Wallet,
+Git packet, website and workerd bridge tests qualify the changes.
+
+The remaining 24 reliability findings require separate contract review: 12
+promise-returning functions (`S7503`), 11 byte/code-unit conversions (`S7758`)
+and one default object parameter (`S7737`). Removing `async` can change rejected
+promises into synchronous throws, and byte/base64 codecs require their existing
+code-unit semantics. These sites retain their implementation and issue status.
+No analyzer exclusions are added. A fresh Cloud analysis is required to confirm
+closure of the 35 changed sites.
+
+The first PR scan reported no new reliability or security issues, but failed its
+coverage gate because the existing archive handoff tests were not included in
+the Node coverage runner. Add that suite to the measured run rather than exclude
+the changed file. Its sequence-ID rejection cases also cover missing/non-string
+IDs, non-ASCII digits and unsafe integers. The same expression uses `\d` for the
+trailing ASCII digits to address the scan's `S6353` style finding without changing
+the accepted IDs.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

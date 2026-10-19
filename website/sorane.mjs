@@ -109,10 +109,10 @@ for (const lang of ['ja', 'en']) {
       const name = id
         ? `aria-labelledby="${escapeHtml(id)}"`
         : `aria-label="${ja ? '表' : 'Table'} ${++tableNumber}"`;
-      return `<div class="table-scroll" role="region" ${name} tabindex="0"><table>${body.replace(/<th>/g, '<th scope="col">')}</table></div>`;
+      return `<div class="table-scroll" role="region" ${name} tabindex="0"><table>${body.replaceAll('<th>', '<th scope="col">')}</table></div>`;
     });
-    content = content.replace(
-      /<pre>/g,
+    content = content.replaceAll(
+      '<pre>',
       `<pre tabindex="0" aria-label="${ja ? 'コード例・横スクロール可能' : 'Code sample, horizontally scrollable'}">`,
     );
     let body;

@@ -127,7 +127,7 @@ export function parseThreadArchive(value: unknown): ThreadArchive {
     };
     if (!source) return message;
     const id = m['source_id'];
-    const sequence = typeof id === 'string' && /^(0|[1-9][0-9]*)$/.test(id) ? Number(id) : NaN;
+    const sequence = typeof id === 'string' && /^(0|[1-9]\d*)$/.test(id) ? Number(id) : Number.NaN;
     if (
       !Number.isSafeInteger(sequence) ||
       sequence <= previousSequence ||

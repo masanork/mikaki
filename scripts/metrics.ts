@@ -489,7 +489,7 @@ function lineChart(
   }
   series.forEach((item) => {
     const points = rows
-      .map((row) => ({ x: xp(row.date), y: yp(item.value(row) ?? NaN) }))
+      .map((row) => ({ x: xp(row.date), y: yp(item.value(row) ?? Number.NaN) }))
       .filter((p) => Number.isFinite(p.y));
     if (points.length) {
       body += `<path d="${points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${item.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
