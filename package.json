@@ -81,7 +81,7 @@
     "build:op-authority": "node scripts/build-service-catalog.ts --check && node scripts/build-op-authority.ts",
     "test:work-delegation": "npm run build:work-owner-fixture && node --test --test-concurrency=1 scripts/work-git-disclosure.test.ts scripts/work-git-copy.test.ts local/conformance/work-delegation.test.ts local/conformance/work-owner.test.ts local/conformance/work-disclosure.test.ts local/conformance/work-sources.test.ts local/conformance/work-preparation-restart.test.ts local/conformance/work-prepared-authority.test.ts local/conformance/work-credential-custody.test.ts local/conformance/work-candidate-payload.test.ts local/conformance/work-authority-checkpoint.test.ts local/conformance/work-effect-gate.test.ts local/conformance/work-mint-gate.test.ts local/conformance/work-mint-recovery.test.ts local/conformance/work-mint-closure.test.ts local/conformance/work-git-gate.test.ts local/conformance/work-preparation-evidence.test.ts scripts/work-git-pack.test.ts",
     "check:work-sources": "node_modules/typescript/bin/tsc --project crates/work-source-worker/tsconfig.qualification.json",
-    "test:work-checkpoint": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-authority-checkpoint.test.ts",
+    "test:work-checkpoint": "npm run build:work-owner-fixture && node --test --test-concurrency=1 local/conformance/work-authority-checkpoint.test.ts local/conformance/reviewed-auth-gc-recovery.test.ts",
     "check:work-checkpoint": "node_modules/typescript/bin/tsc --project crates/work-checkpoint-worker/tsconfig.json",
     "test:work-op-boundaries": "node --test --test-concurrency=1 local/conformance/work-op-boundaries.test.ts local/conformance/work-credential-key-admin.test.ts",
     "test:work-preparation-evidence": "node scripts/build-work-store-qualification.ts && node --test --test-concurrency=1 local/conformance/work-preparation-evidence.test.ts",
@@ -141,7 +141,8 @@
     "test:fonts": "node --test local/conformance/font-assets.test.ts",
     "preview:fonts": "node scripts/preview-fonts.mjs",
     "check:fonts-reproducible": "node scripts/build-fonts.mjs --check",
-    "test:markup": "node --test scripts/markup-parsers.test.ts"
+    "test:markup": "node --test scripts/markup-parsers.test.ts",
+    "test:auth-gc-recovery": "node --test local/conformance/reviewed-auth-gc-recovery.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
