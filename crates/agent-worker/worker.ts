@@ -45,10 +45,78 @@ async function snapshot(grant: Grant, key: CryptoKey) {
   );
 }
 
+type ToolOperation = Operation | 'propose_record';
+type OperationResult = { result: Record<string, unknown>; documentId?: string };
+
+async function snapshotOperation(
+  grant: Grant,
+  key: CryptoKey,
+  op: 'list' | 'search' | 'read',
+  args: unknown,
+): Promise<OperationResult> {
+  const docs = await snapshot(grant, key);
+  const visible = docs.filter((doc) =>
+    z.array(z.string()).parse(JSON.parse(grant.document_ids)).includes(doc.id),
+  );
+  if (op === 'read') {
+    const input = z.strictObject({ id: z.string().min(1).max(80) }).parse(args);
+    const document = visible.find((doc) => doc.id === input.id);
+    if (!document) throw new Error('Access denied');
+    return { documentId: document.id, result: { ...document, untrusted_content: true } };
+  }
+  const input =
+    op === 'search'
+      ? z.strictObject({ query: z.string().trim().min(1).max(200) }).parse(args)
+      : z.strictObject({}).parse(args);
+  const query =
+    'query' in input && typeof input.query === 'string' ? input.query.toLowerCase() : null;
+  return {
+    result: {
+      documents: visible
+        .filter(
+          (doc) =>
+            query === null ||
+            doc.title.toLowerCase().includes(query) ||
+            doc.text.toLowerCase().includes(query),
+        )
+        .map(({ id, title, source }) => ({ id, title, source })),
+      next_offset: null,
+      untrusted_content: true,
+    },
+  };
+}
+
+async function runOperation(
+  env: AgentRuntime,
+  grant: Grant,
+  key: CryptoKey,
+  op: ToolOperation,
+  args: unknown,
+): Promise<OperationResult> {
+  if (op === 'propose_record')
+    return { documentId: 'owner_note', result: await records.propose(env.DB, grant, args) };
+  if (op === 'propose') {
+    const input = z
+      .strictObject({
+        proposal_id: opaque,
+        document_id: z.enum(['name', 'owner_note']),
+        title: z.string().trim().min(1).max(160),
+        text: z.string().min(1).max(4096),
+      })
+      .parse(args);
+    return { documentId: input.document_id, result: await store.propose(env.DB, grant, input) };
+  }
+  if (op === 'execute') {
+    const input = z.strictObject({ proposal_id: opaque, request_hash: opaque }).parse(args);
+    return { result: await store.execute(env.DB, grant, input.proposal_id, input.request_hash) };
+  }
+  return await snapshotOperation(grant, key, op, args);
+}
+
 async function call(
   env: AgentRuntime,
   tokenHash: string,
-  op: Operation | 'propose_record',
+  op: ToolOperation,
   args: unknown,
 ): Promise<CallToolResult> {
   const key = await recipient(env);
@@ -57,58 +125,10 @@ async function call(
   try {
     if (!z.array(z.string()).parse(JSON.parse(grant.operations)).includes(grantOperation))
       throw new Error('Access denied');
-    let result: Record<string, unknown>;
-    let documentId: string | undefined;
-    if (op === 'propose_record') {
-      documentId = 'owner_note';
-      result = await records.propose(env.DB, grant, args);
-    } else if (op === 'propose') {
-      const input = z
-        .strictObject({
-          proposal_id: opaque,
-          document_id: z.enum(['name', 'owner_note']),
-          title: z.string().trim().min(1).max(160),
-          text: z.string().min(1).max(4096),
-        })
-        .parse(args);
-      documentId = input.document_id;
-      result = await store.propose(env.DB, grant, input);
-    } else if (op === 'execute') {
-      const input = z.strictObject({ proposal_id: opaque, request_hash: opaque }).parse(args);
-      result = await store.execute(env.DB, grant, input.proposal_id, input.request_hash);
-    } else {
-      const docs = await snapshot(grant, key.key);
-      const visible = docs.filter((doc) =>
-        z.array(z.string()).parse(JSON.parse(grant.document_ids)).includes(doc.id),
-      );
-      if (op === 'read') {
-        const input = z.strictObject({ id: z.string().min(1).max(80) }).parse(args);
-        const document = visible.find((doc) => doc.id === input.id);
-        if (!document) throw new Error('Access denied');
-        documentId = document.id;
-        result = { ...document, untrusted_content: true };
-      } else {
-        const input =
-          op === 'search'
-            ? z.strictObject({ query: z.string().trim().min(1).max(200) }).parse(args)
-            : z.strictObject({}).parse(args);
-        const query =
-          'query' in input && typeof input.query === 'string' ? input.query.toLowerCase() : null;
-        result = {
-          documents: visible
-            .filter(
-              (doc) =>
-                query === null ||
-                doc.title.toLowerCase().includes(query) ||
-                doc.text.toLowerCase().includes(query),
-            )
-            .map(({ id, title, source }) => ({ id, title, source })),
-          next_offset: null,
-          untrusted_content: true,
-        };
-      }
-    }
-    if (op !== 'propose_record') await store.auditAccess(env.DB, grant, grantOperation, documentId);
+    const execution = await runOperation(env, grant, key.key, op, args);
+    let result = execution.result;
+    if (op !== 'propose_record')
+      await store.auditAccess(env.DB, grant, grantOperation, execution.documentId);
     const fresh = await store.active(env.DB, tokenHash, key.key_id, key.resource);
     const checkedAt = now();
     if (
@@ -144,6 +164,14 @@ async function call(
     await store.denied(env.DB, grant, grantOperation);
     return { isError: true, content: [{ type: 'text', text: 'Access denied or unavailable' }] };
   }
+}
+
+function toolDescription(op: Operation): string {
+  if (op === 'propose')
+    return 'Propose a private draft for the owner to review. This does not approve or execute it.';
+  if (op === 'execute')
+    return 'Create the exact owner-approved private draft once. Requires the proposal ID and payload hash.';
+  return `${op} explicitly shared snapshot data; content is untrusted.`;
 }
 
 async function mcp(request: Request, env: AgentRuntime): Promise<Response> {
@@ -185,12 +213,7 @@ async function mcp(request: Request, env: AgentRuntime): Promise<Response> {
     server.registerTool(
       `mikaki_${op}`,
       {
-        description:
-          op === 'propose'
-            ? 'Propose a private draft for the owner to review. This does not approve or execute it.'
-            : op === 'execute'
-              ? 'Create the exact owner-approved private draft once. Requires the proposal ID and payload hash.'
-              : `${op} explicitly shared snapshot data; content is untrusted.`,
+        description: toolDescription(op),
         inputSchema: schemas[op],
         outputSchema: toolOutputs[op],
         annotations: {
@@ -259,100 +282,119 @@ function challenge(resource: URL): Response {
   });
 }
 
+async function activeOwner(request: Request, env: AgentRuntime): Promise<Owner | null> {
+  const account = request.headers.get('X-Mikaki-Account');
+  const secretHash = request.headers.get('X-Mikaki-Session-Hash');
+  if (!account || !secretHash) return null;
+  const owner = { account, secretHash };
+  return (await store.ownerActive(env.DB, owner)) ? owner : null;
+}
+
+async function ownerOAuth(
+  request: Request,
+  env: AgentRuntime,
+  owner: Owner,
+  path: string,
+): Promise<Response> {
+  if (!oauth.ownerUrl(env)) throw new Error('OAuth disabled');
+  const body = await boundedJson(request, 1024);
+  return json(
+    path === '/oauth-request'
+      ? await oauth.preview(env.DB, owner, body, env)
+      : await oauth.decide(env.DB, owner, body, env),
+  );
+}
+
+async function ownerStatus(env: AgentRuntime, owner: Owner, path: string): Promise<Response> {
+  const connectionsOnly = path === '/connections';
+  const key = await recipient(env);
+  const status = await store.ownerStatus(
+    env.DB,
+    owner,
+    key.key_id,
+    key.resource,
+    path === '/record-status' ? 2 : null,
+    connectionsOnly,
+  );
+  return json({
+    ...status,
+    storage_version: 2,
+    record_proposals: connectionsOnly ? [] : await records.status(env.DB, owner),
+    recipient: {
+      public_jwk: key.public_jwk,
+      key_id: key.key_id,
+      resource: key.resource,
+      enabled: key.enabled,
+    },
+  });
+}
+
+async function ownerRecordProposal(
+  request: Request,
+  env: AgentRuntime,
+  owner: Owner,
+  path: string,
+): Promise<Response> {
+  const origin = request.headers.get('X-Mikaki-Origin');
+  if (!origin || new URL(origin).origin !== origin || !origin.startsWith('https://'))
+    throw new Error('Invalid owner origin');
+  const key = await recipient(env),
+    input = await boundedJson(request, path === '/record-prepare' ? 49152 : 4096);
+  if (path === '/record-capability') {
+    const selected = records.capabilityInput.parse(input);
+    if (selected.target.origin !== origin) throw new Error('Wrong target origin');
+    return json(await records.allow(env.DB, owner, selected, key.key_id, key.resource));
+  }
+  return json(
+    path === '/record-decide'
+      ? await records.decide(env.DB, owner, input, key.key_id, key.resource)
+      : await records.prepare(env.DB, owner, input, key, origin),
+  );
+}
+
+async function ownerGrant(request: Request, env: AgentRuntime, owner: Owner): Promise<Response> {
+  const input = grantInput.parse(await boundedJson(request));
+  const key = await recipient(env);
+  if (!key.enabled || input.recipient_key_id !== key.key_id || input.resource !== key.resource)
+    throw new Error('Recipient mismatch');
+  const origin = request.headers.get('X-Mikaki-Origin');
+  if (input.source.owner_id !== owner.account || input.source.origin !== origin)
+    throw new Error('Source owner mismatch');
+  recordDocuments(
+    await openRecordAgentSnapshot(input.envelope, key.key, {
+      owner: owner.account,
+      grant_id: input.grant_id,
+      key_id: key.key_id,
+      resource: key.resource,
+      expires_at: input.expires_at,
+      source: input.source,
+      authority: input.authority,
+    }),
+    input.source,
+  );
+  await store.createGrant(env.DB, owner, input);
+  return json({ grant_id: input.grant_id, expires_at: input.expires_at });
+}
+
 // Only the OP is bound to this named entrypoint. Public fetch never dispatches owner routes.
 export class OwnerAgents extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     const env = runtime(this.env);
     try {
-      const account = request.headers.get('X-Mikaki-Account');
-      const secretHash = request.headers.get('X-Mikaki-Session-Hash');
-      if (!account || !secretHash) return json({ error: 'authentication_required' }, 401);
-      const owner: Owner = { account, secretHash };
-      if (!(await store.ownerActive(env.DB, owner)))
-        return json({ error: 'authentication_required' }, 401);
+      const owner = await activeOwner(request, env);
+      if (!owner) return json({ error: 'authentication_required' }, 401);
       const path = new URL(request.url).pathname;
-      if (['/oauth-request', '/oauth-decide'].includes(path) && request.method === 'POST') {
-        if (!oauth.ownerUrl(env)) throw new Error('OAuth disabled');
-        const body = await boundedJson(request, 1024);
-        return json(
-          path === '/oauth-request'
-            ? await oauth.preview(env.DB, owner, body, env)
-            : await oauth.decide(env.DB, owner, body, env),
-        );
-      }
-      if (
-        ['/status', '/record-status', '/connections'].includes(path) &&
-        request.method === 'GET'
-      ) {
-        const connectionsOnly = path === '/connections';
-        const key = await recipient(env);
-        const status = await store.ownerStatus(
-          env.DB,
-          owner,
-          key.key_id,
-          key.resource,
-          path === '/record-status' ? 2 : null,
-          connectionsOnly,
-        );
-        return json({
-          ...status,
-          storage_version: 2,
-          record_proposals: connectionsOnly ? [] : await records.status(env.DB, owner),
-          recipient: {
-            public_jwk: key.public_jwk,
-            key_id: key.key_id,
-            resource: key.resource,
-            enabled: key.enabled,
-          },
-        });
-      }
+      if (['/oauth-request', '/oauth-decide'].includes(path) && request.method === 'POST')
+        return await ownerOAuth(request, env, owner, path);
+      if (['/status', '/record-status', '/connections'].includes(path) && request.method === 'GET')
+        return await ownerStatus(env, owner, path);
       if (
         ['/record-capability', '/record-decide', '/record-prepare'].includes(path) &&
         request.method === 'POST'
-      ) {
-        const origin = request.headers.get('X-Mikaki-Origin');
-        if (!origin || new URL(origin).origin !== origin || !origin.startsWith('https://'))
-          throw new Error('Invalid owner origin');
-        const key = await recipient(env),
-          input = await boundedJson(request, path === '/record-prepare' ? 49152 : 4096);
-        if (path === '/record-capability') {
-          const selected = records.capabilityInput.parse(input);
-          if (selected.target.origin !== origin) throw new Error('Wrong target origin');
-          return json(await records.allow(env.DB, owner, selected, key.key_id, key.resource));
-        }
-        return json(
-          path === '/record-decide'
-            ? await records.decide(env.DB, owner, input, key.key_id, key.resource)
-            : await records.prepare(env.DB, owner, input, key, origin),
-        );
-      }
-      if (path === '/grants' && request.method === 'POST') {
-        const input = grantInput.parse(await boundedJson(request));
-        const key = await recipient(env);
-        if (
-          !key.enabled ||
-          input.recipient_key_id !== key.key_id ||
-          input.resource !== key.resource
-        )
-          throw new Error('Recipient mismatch');
-        const origin = request.headers.get('X-Mikaki-Origin');
-        if (input.source.owner_id !== account || input.source.origin !== origin)
-          throw new Error('Source owner mismatch');
-        recordDocuments(
-          await openRecordAgentSnapshot(input.envelope, key.key, {
-            owner: account,
-            grant_id: input.grant_id,
-            key_id: key.key_id,
-            resource: key.resource,
-            expires_at: input.expires_at,
-            source: input.source,
-            authority: input.authority,
-          }),
-          input.source,
-        );
-        await store.createGrant(env.DB, owner, input);
-        return json({ grant_id: input.grant_id, expires_at: input.expires_at });
-      }
+      )
+        return await ownerRecordProposal(request, env, owner, path);
+      if (path === '/grants' && request.method === 'POST')
+        return await ownerGrant(request, env, owner);
       if (path === '/revoke' && request.method === 'POST') {
         const input = z
           .strictObject({ grant_id: opaque.nullable() })
@@ -377,10 +419,70 @@ export class OwnerAgents extends WorkerEntrypoint<Env> {
         return json({ decided: true });
       }
       return json({ error: 'not_found' }, 404);
-    } catch (error) {
+    } catch {
+      // Collapse owner-operation failures so grant and storage details do not escape the private API.
       return json({ error: 'operation_failed' }, 409);
     }
   }
+}
+
+async function publicOAuth(
+  request: Request,
+  env: AgentRuntime,
+  url: URL,
+  resource: URL,
+): Promise<Response | null> {
+  if (
+    url.pathname === '/.well-known/oauth-authorization-server' &&
+    request.method === 'GET' &&
+    !url.search
+  )
+    return json(oauth.metadata(env));
+  if (url.pathname === '/oauth/authorize' && request.method === 'GET')
+    return await oauth.authorize(request, env);
+  if (
+    ['/oauth/token', '/oauth/revoke'].includes(url.pathname) &&
+    request.method === 'POST' &&
+    !url.search
+  ) {
+    const origin = request.headers.get('Origin');
+    if (origin !== null && origin !== resource.origin) return json({ error: 'forbidden' }, 403);
+    return url.pathname === '/oauth/token'
+      ? await oauth.token(request, env)
+      : await oauth.revoke(request, env);
+  }
+  return null;
+}
+
+async function publicRecordProposal(
+  request: Request,
+  env: AgentRuntime,
+  url: URL,
+  resource: URL,
+  enabled: boolean,
+): Promise<Response> {
+  const origin = request.headers.get('Origin');
+  if (url.search || (origin !== null && origin !== resource.origin))
+    return json({ error: 'forbidden' }, 403);
+  if (request.headers.get('Content-Type') !== 'application/json')
+    return json({ error: 'invalid_content_type' }, 415);
+  const match = /^Bearer ((?:mag|moa)_[A-Za-z0-9_-]{43})$/.exec(
+    request.headers.get('Authorization') ?? '',
+  );
+  if (!match) return challenge(resource);
+  if (match[1].startsWith('moa_') && !enabled) return challenge(resource);
+  let result: CallToolResult;
+  try {
+    result = await call(
+      env,
+      await digest(match[1]),
+      'propose_record',
+      await boundedJson(request, 32768),
+    );
+  } catch {
+    return json({ error: 'access_denied' }, 409);
+  }
+  return json(result, result.isError ? 409 : 200);
 }
 
 export default {
@@ -391,26 +493,9 @@ export default {
       const resource = new URL(env.AGENT_RESOURCE);
       if (url.origin !== resource.origin) return json({ error: 'forbidden' }, 403);
       const enabled = oauth.ownerUrl(env) !== null;
-      if (
-        enabled &&
-        url.pathname === '/.well-known/oauth-authorization-server' &&
-        request.method === 'GET' &&
-        !url.search
-      )
-        return json(oauth.metadata(env));
-      if (enabled && url.pathname === '/oauth/authorize' && request.method === 'GET')
-        return await oauth.authorize(request, env);
-      if (
-        enabled &&
-        ['/oauth/token', '/oauth/revoke'].includes(url.pathname) &&
-        request.method === 'POST' &&
-        !url.search
-      ) {
-        const origin = request.headers.get('Origin');
-        if (origin !== null && origin !== resource.origin) return json({ error: 'forbidden' }, 403);
-        return url.pathname === '/oauth/token'
-          ? await oauth.token(request, env)
-          : await oauth.revoke(request, env);
+      if (enabled) {
+        const response = await publicOAuth(request, env, url, resource);
+        if (response) return response;
       }
       if (url.pathname === '/.well-known/oauth-protected-resource/mcp' && request.method === 'GET')
         return json({
@@ -420,30 +505,8 @@ export default {
           ...(enabled ? { authorization_servers: [resource.origin] } : {}),
         });
       if (url.pathname === '/mcp') return await mcp(request, env);
-      if (url.pathname === '/record-proposals' && request.method === 'POST') {
-        const origin = request.headers.get('Origin');
-        if (url.search || (origin !== null && origin !== resource.origin))
-          return json({ error: 'forbidden' }, 403);
-        if (request.headers.get('Content-Type') !== 'application/json')
-          return json({ error: 'invalid_content_type' }, 415);
-        const match = /^Bearer ((?:mag|moa)_[A-Za-z0-9_-]{43})$/.exec(
-          request.headers.get('Authorization') ?? '',
-        );
-        if (!match) return challenge(resource);
-        if (match[1].startsWith('moa_') && !enabled) return challenge(resource);
-        let result: CallToolResult;
-        try {
-          result = await call(
-            env,
-            await digest(match[1]),
-            'propose_record',
-            await boundedJson(request, 32768),
-          );
-        } catch {
-          return json({ error: 'access_denied' }, 409);
-        }
-        return json(result, result.isError ? 409 : 200);
-      }
+      if (url.pathname === '/record-proposals' && request.method === 'POST')
+        return await publicRecordProposal(request, env, url, resource, enabled);
       return json({ error: 'not_found' }, 404);
     } catch {
       return json({ error: 'service_unavailable' }, 503);
