@@ -3153,16 +3153,16 @@
   },
   {
     "date": "2026-10-19",
-    "commit": "e0cf323",
+    "commit": "ad7189e",
     "code": {
       "implementationLines": 86031,
-      "testLines": 14068,
+      "testLines": 14076,
       "implementationFiles": 302,
       "testFiles": 39,
       "byLanguage": {
         "typescript": {
           "implementationLines": 38157,
-          "testLines": 2875
+          "testLines": 2883
         },
         "rust": {
           "implementationLines": 39804,
