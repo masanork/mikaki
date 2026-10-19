@@ -532,7 +532,7 @@ test('original unknown D1 failure is recorded before quarantine without leaking 
     assert.deepEqual(
       errors.map((entry) => [entry.stage, entry.category, entry.sequence]),
       [
-      ['d1_batch', 'sqlite_error', before.sequence + 1],
+        ['d1_batch', 'sqlite_error', before.sequence + 1],
         ['settlement_observation', 'previous_marker_quarantined', before.sequence + 1],
       ],
     );
