@@ -8,6 +8,8 @@ mod app_association;
 mod auth_resources;
 #[cfg(target_arch = "wasm32")]
 mod branding;
+#[cfg(any(target_arch = "wasm32", test))]
+mod checkpoint_diagnostics;
 #[cfg(target_arch = "wasm32")]
 mod dpop;
 #[cfg(target_arch = "wasm32")]

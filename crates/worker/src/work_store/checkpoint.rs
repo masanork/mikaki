@@ -4,6 +4,53 @@ use serde::Serialize;
 use worker::{D1Result, Env, Method, RequestInit};
 
 const RELEASE: u64 = 1;
+
+fn storage_category(error: &worker::Error) -> &'static str {
+    if let worker::Error::UnknownJsError {
+        cause: Some(cause), ..
+    } = error
+    {
+        let nested = storage_category(cause);
+        if nested != "unknown" && nested != "d1_unknown" {
+            return nested;
+        }
+    }
+    if let worker::Error::D1(error) = error {
+        let nested = crate::checkpoint_diagnostics::storage_category(&error.cause());
+        if nested != "unknown" {
+            return nested;
+        }
+        // Current D1 errors may carry the useful message on the outer Error,
+        // while older wrappers expose it only as cause.message.
+        let outer: &js_sys::Error = error.as_ref();
+        return crate::checkpoint_diagnostics::storage_category(&String::from(outer.message()));
+    }
+    crate::checkpoint_diagnostics::storage_category(&error.to_string())
+}
+
+fn failure(stage: &'static str, sequence: Option<u64>, category: &'static str) {
+    worker::console_error!(
+        "{}",
+        serde_json::json!({
+            "event":"authority_checkpoint_failure",
+            "stage":stage,
+            "sequence":sequence,
+            "category":category,
+        })
+    );
+}
+
+fn observe<T>(result: Result<T>, stage: &'static str, sequence: Option<u64>) -> Result<T> {
+    if let Err(error) = &result {
+        let category = match error {
+            StoreError::Storage(error) => storage_category(error),
+            StoreError::Denied(Denied::StaleAuthority) => "stale_authority",
+            StoreError::Denied(_) => "protocol_denied",
+        };
+        failure(stage, sequence, category);
+    }
+    result
+}
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AuthorityCheckpoint {
@@ -149,23 +196,49 @@ impl WorkStore {
     /// with CAS advancement before reconciling; never replay business SQL.
     async fn settle_checkpoint(&self, p: &Permit, definitive_abort: bool) -> Result<()> {
         p.validate()?;
-        let mut current = self.primary_checkpoint().await?;
+        let mut current = observe(
+            self.primary_checkpoint().await,
+            "settlement_read",
+            Some(p.next.sequence),
+        )?;
         if current == p.previous {
             // An old marker after a lost result can also be a restored DB. It
             // must stay quarantined; absence is never proof of non-commit.
             if !definitive_abort {
+                failure(
+                    "settlement_observation",
+                    Some(p.next.sequence),
+                    "previous_marker_quarantined",
+                );
                 return Err(Denied::StaleAuthority.into());
             }
             // This CAS is serialized at D1 primary. A late original batch has
             // the same leading CAS+guard and must abort if this wins first.
-            self.db.batch(vec![self.checkpoint_step(p)?]).await?;
-            current = self.primary_checkpoint().await?;
+            observe(
+                self.db
+                    .batch(vec![self.checkpoint_step(p)?])
+                    .await
+                    .map_err(StoreError::from),
+                "settlement_fence",
+                Some(p.next.sequence),
+            )?;
+            current = observe(
+                self.primary_checkpoint().await,
+                "settlement_read",
+                Some(p.next.sequence),
+            )?;
         }
         if current != p.next {
+            failure(
+                "settlement_observation",
+                Some(p.next.sequence),
+                "marker_mismatch",
+            );
             return Err(Denied::StaleAuthority.into());
         }
-        let committed: AuthorityCheckpoint = self.checkpoint_call(serde_json::json!({"action":"commit","release":RELEASE,"permit":p,"observed":current})).await?;
+        let committed: AuthorityCheckpoint = observe(self.checkpoint_call(serde_json::json!({"action":"commit","release":RELEASE,"permit":p,"observed":current})).await, "permit_commit", Some(p.next.sequence))?;
         if committed != p.next {
+            failure("permit_commit", Some(p.next.sequence), "response_mismatch");
             return Err(Denied::BindingMismatch.into());
         }
         Ok(())
@@ -192,35 +265,56 @@ impl WorkStore {
             }
             return Err(Denied::StaleAuthority.into());
         }
-        let expected = self.primary_checkpoint().await?;
+        let expected = observe(self.primary_checkpoint().await, "primary_read", None)?;
         let operation = opaque()?;
-        let p: Permit = self.checkpoint_call(serde_json::json!({"action":"begin","release":RELEASE,"expected":expected,"operation":operation})).await?;
-        p.validate()?;
+        let p: Permit = observe(self.checkpoint_call(serde_json::json!({"action":"begin","release":RELEASE,"expected":expected,"operation":operation})).await, "permit_begin", Some(expected.sequence))?;
+        observe(p.validate(), "permit_validation", Some(expected.sequence))?;
         if p.previous != expected || p.operation != operation {
+            failure(
+                "permit_validation",
+                Some(expected.sequence),
+                "response_mismatch",
+            );
             return Err(Denied::BindingMismatch.into());
         }
-        let framed = self.authority_frame_schema().await?;
-        if framed {
-            statements.insert(
+        let framed = observe(
+            self.authority_frame_schema().await,
+            "batch_prepare",
+            Some(p.next.sequence),
+        )?;
+        let prepared = (|| -> Result<_> {
+            if framed {
+                statements.insert(
                 0,
                 self.statement(
                     "INSERT INTO work_authority_frame(id,sequence,tip,closure) VALUES(1,?1,?2,1)",
                     &[number(p.next.sequence)?, text(&p.next.tip)],
                 )?,
             );
-            statements.push(self.statement("DELETE FROM work_authority_frame WHERE id=1", &[])?);
+                statements
+                    .push(self.statement("DELETE FROM work_authority_frame WHERE id=1", &[])?);
+            }
+            let guard = opaque()?;
+            statements.insert(
+                0,
+                self.statement(include_str!("../../sql/work/guard.sql"), &[text(&guard)])?,
+            );
+            statements.insert(0, self.checkpoint_step(&p)?);
+            statements.push(self.statement(
+                "DELETE FROM work_transition_guard WHERE guard_id=?1",
+                &[text(&guard)],
+            )?);
+            Ok(statements)
+        })();
+        let result = self
+            .db
+            .batch(observe(prepared, "batch_prepare", Some(p.next.sequence))?)
+            .await;
+        // Preserve the original failure's closed category before settlement can
+        // replace it with StaleAuthority. Never log SQL or provider error text.
+        if let Err(error) = &result {
+            failure("d1_batch", Some(p.next.sequence), storage_category(error));
         }
-        let guard = opaque()?;
-        statements.insert(
-            0,
-            self.statement(include_str!("../../sql/work/guard.sql"), &[text(&guard)])?,
-        );
-        statements.insert(0, self.checkpoint_step(&p)?);
-        statements.push(self.statement(
-            "DELETE FROM work_transition_guard WHERE guard_id=?1",
-            &[text(&guard)],
-        )?);
-        let result = self.db.batch(statements).await;
         // Publication failure must not return a dispatch authorization. A future
         // explicit reconciliation settles only the checkpoint, not business I/O.
         let definitive_abort = result.as_ref().err().is_some_and(|e| {

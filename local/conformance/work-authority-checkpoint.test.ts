@@ -70,6 +70,7 @@ async function fixture(
         }
       : {}),
   };
+  const checkpointLogs: string[] = [];
   let op = await preparationFixture(
     directory,
     bindings,
@@ -78,6 +79,7 @@ async function fixture(
     undefined,
     undefined,
     product,
+    checkpointLogs,
   );
   let stopped = false;
   try {
@@ -129,6 +131,7 @@ async function fixture(
         undefined,
         undefined,
         product,
+        checkpointLogs,
       );
       stopped = false;
     }
@@ -151,6 +154,7 @@ async function fixture(
       checkpoint,
       current,
       state,
+      checkpointLogs,
       stop,
       restart,
       backup,
@@ -471,6 +475,7 @@ test('definitive audit abort rolls business state back while settling one empty 
   const f = await fixture();
   try {
     const before = await f.current();
+    f.checkpointLogs.length = 0;
     const audits = await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n');
     await f.DB.prepare(
       "CREATE TRIGGER fixture_checkpoint_audit_failure BEFORE INSERT ON work_audit BEGIN SELECT RAISE(ABORT,'fixture_checkpoint_audit_failure'); END",
@@ -481,8 +486,58 @@ test('definitive audit abort rolls business state back while settling one empty 
     const after = await f.current();
     assert.equal(after.sequence, before.sequence + 1);
     assert.equal((await f.state()).pending, null);
+    const errors = f.checkpointLogs
+      .filter((line) => line.includes('authority_checkpoint_failure'))
+      .map((line) => JSON.parse(line));
+    assert.ok(
+      errors.some(
+        (entry) =>
+          entry.stage === 'd1_batch' &&
+          entry.category === 'sqlite_constraint' &&
+          entry.sequence === after.sequence,
+      ),
+    );
+    assert.ok(
+      errors.every((entry) => !JSON.stringify(entry).includes('fixture_checkpoint_audit_failure')),
+    );
     await f.DB.prepare('DROP TRIGGER fixture_checkpoint_audit_failure').run();
     assert.equal((await f.call({ action: 'dispatch-preparation', id: f.p.id })).started, true);
+  } finally {
+    await f.close();
+  }
+});
+
+test('original unknown D1 failure is recorded before quarantine without leaking the provider message', async () => {
+  const f = await fixture();
+  try {
+    const before = await f.current();
+    const audits = await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n');
+    await f.DB.prepare(
+      'CREATE TRIGGER fixture_unknown_checkpoint_error BEFORE INSERT ON work_audit BEGIN SELECT PRIVATE_CHECKPOINT_PROVIDER_CAUSE(); END',
+    ).run();
+    f.checkpointLogs.length = 0;
+    await f.native({ action: 'dispatch-preparation', id: f.p.id }, 409);
+    assert.equal((await f.call({ action: 'get-preparation', id: f.p.id })).state, 'reserved');
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n'), audits);
+    assert.deepEqual(
+      await f.DB.prepare(
+        'SELECT authority,epoch,sequence,tip FROM work_authority_checkpoint WHERE id=1',
+      ).first(),
+      before,
+    );
+    assert.ok((await f.state()).pending);
+    const errors = f.checkpointLogs
+      .filter((line) => line.includes('authority_checkpoint_failure'))
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      errors.map((entry) => [entry.stage, entry.category, entry.sequence]),
+      [
+      ['d1_batch', 'd1_unknown', before.sequence + 1],
+        ['settlement_observation', 'previous_marker_quarantined', before.sequence + 1],
+      ],
+    );
+    assert.ok(!JSON.stringify(errors).includes('PRIVATE_CHECKPOINT_PROVIDER_CAUSE'));
+    assert.ok(!JSON.stringify(errors).includes(f.p.id));
   } finally {
     await f.close();
   }

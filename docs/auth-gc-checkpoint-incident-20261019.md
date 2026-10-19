@@ -96,7 +96,20 @@ returned 200, and the CFOS home screen was visible. Read-only RP/OP checks found
 one new CFOS session with a fresh authentication time and a new parent attached
 only to CFOS. Existing baseline sessions were preserved.
 
-The initial storage failure remains unresolved. Future work should retain a
-bounded, redacted storage-failure category and stage before checkpoint settlement
-can mask it. This incident-specific tool does not automatically cure a future
-unknown write failure.
+The initial storage failure remains unresolved. Checkpoint writes now emit
+`authority_checkpoint_failure` with a fixed stage, sequence and closed category
+before settlement can mask the original D1 error. The category recognizes known
+D1 reset, network, quota, overload and SQLite/guard errors, including nested
+JavaScript causes. Raw provider messages, SQL, bindings, account/session IDs,
+permits and credentials are omitted. Unrecognized D1 errors become `d1_unknown`;
+other unrecognized messages become `unknown`.
+
+The diagnostic category does not determine whether a write aborted. The existing
+definitive-abort conditions are unchanged; unknown results at the previous marker
+remain quarantined. A runtime regression test injects an unknown D1 error and
+checks the original category is logged before quarantine, without business
+changes or the private cause text in the diagnostic. The existing definitive
+constraint-abort case also checks its category and settled state.
+
+This incident-specific tool does not automatically cure a future unknown write
+failure.
