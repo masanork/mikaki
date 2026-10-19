@@ -149,6 +149,12 @@ function fixture() {
 }
 test('WebMCP reads and searches only selected exact revisions, clears temporary plaintext, and stages drafts', async () => {
   const f = fixture();
+  const listed = (await f.invoke('mikaki_list_selected')) as { records: { target: string }[] };
+  assert.deepEqual(
+    listed.records.map((record) => record.target),
+    ['name', 'owner_note', 'thread'],
+  );
+  assert.equal(f.reads.length, 0);
   assert.deepEqual(
     ((await f.invoke('mikaki_search_selected', { query: 'sentence' })) as { hits: unknown[] }).hits
       .length,

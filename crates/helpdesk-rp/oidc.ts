@@ -39,7 +39,7 @@ function issuerKeys(issuer: string): ReturnType<typeof createRemoteJWKSet> {
 const now = () => Math.floor(Date.now() / 1000);
 const random = () => crypto.randomUUID() + crypto.randomUUID();
 const b64 = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
+  btoa(String.fromCodePoint(...bytes))
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replaceAll('=', '');

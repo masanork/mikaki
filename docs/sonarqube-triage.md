@@ -167,6 +167,37 @@ IDs, non-ASCII digits and unsafe integers. The same expression uses `\d` for the
 trailing ASCII digits to address the scan's `S6353` style finding without changing
 the accepted IDs.
 
+### Contract follow-up (2026-10-19)
+
+Following PR #264, this pass addresses the 24 retained reliability findings in
+source reviewed at `d712895b`. No Cloud issue dispositions, rule exclusions or
+quality-gate thresholds are changed.
+
+- Twelve `S7503` sites retain their Promise contracts. D1 capabilities that always
+  refuse now return explicit rejected promises. Database, qualification RPC and
+  asset-fetch adapters keep `async` and await their delegated operation, so setup
+  errors still become rejections. The two private WebMCP projection callbacks
+  return plain values to guards that accept either a value or a Promise; the
+  guards still await the result between their existing authority checks.
+- Eleven `S7758` sites use code-point APIs with their input domains preserved.
+  Base64 helpers operate on `Uint8Array` elements or `atob` byte strings, whose
+  values are all in 0–255; this is not UTF-8 decoding. Woven material still hashes
+  the canonical URL origin and retains its established profile. Note validation
+  iterates code points, accepting complete surrogate pairs while rejecting lone
+  surrogates before UTF-8 encoding. It does not replace malformed input.
+- The `S7737` inventory budget is initialized inside each independent call and
+  passed unchanged to recursion. Explicit caller-supplied budgets still collect
+  shared entry/byte usage. No shared default object or module-level counter is
+  introduced.
+
+Tests verify rejected D1 promises without service dispatch, all 256 byte values
+against Node's independent Base64url encoding, all 2,048 lone surrogates and valid
+boundary pairs, the retained woven profile, and independent/concurrent inventory
+calls with shared recursive limits. Existing RPC, WebMCP, recipient, logout,
+helpdesk and website suites remain in use. The frontend coverage run includes the
+WebMCP and woven-profile suites so changed UI code is measured. Main needs a
+post-merge scan before these 24 findings can be counted as closed there.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

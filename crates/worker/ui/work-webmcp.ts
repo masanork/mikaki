@@ -87,7 +87,7 @@ function publicState(snapshot: WorkAssistantSnapshot) {
   return result;
 }
 function adapter(host: WorkWebMcpHost, contentPermission: () => string | null) {
-  async function guarded<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
+  async function guarded<T>(signal: AbortSignal, run: () => T | Promise<T>): Promise<T> {
     signal.throwIfAborted();
     if (!host.visible()) throw new WebMcpFailure('unavailable');
     const { version, busy } = host.snapshot();
@@ -154,7 +154,7 @@ function commonTools({ host, guarded, act, tool }: Adapter): WebMcpTool[] {
       schema({}),
       async (args, { signal }) => {
         input(args, []);
-        return guarded(signal, async () => publicState(host.snapshot()));
+        return guarded(signal, () => publicState(host.snapshot()));
       },
       true,
     ),

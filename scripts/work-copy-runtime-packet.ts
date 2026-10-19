@@ -83,24 +83,26 @@ function memberPath(path: unknown): asserts path is string {
 export async function copyRuntimeInventory(
   directory: string,
   prefix = '',
-  budget = { entries: 0, bytes: 0 },
+  budget?: { entries: number; bytes: number },
 ): Promise<Member[]> {
+  const currentBudget = budget === undefined ? { entries: 0, bytes: 0 } : budget;
   assert.ok(prefix.split('/').length <= COPY_PACKET_LIMITS.depth, 'copy_packet_depth_limit');
   const found: Member[] = [];
   const entries = await opendir(join(directory, prefix));
   for await (const entry of entries) {
-    assert.ok(++budget.entries <= COPY_PACKET_LIMITS.entries, 'copy_packet_entry_limit');
+    assert.ok(++currentBudget.entries <= COPY_PACKET_LIMITS.entries, 'copy_packet_entry_limit');
     const path = prefix ? `${prefix}/${entry.name}` : entry.name;
     memberPath(path);
     if (path === 'manifest.json') continue;
     const location = join(directory, path);
     const info = await lstat(location);
     assert.ok(!info.isSymbolicLink(), 'copy_packet_link_denied');
-    if (info.isDirectory()) found.push(...(await copyRuntimeInventory(directory, path, budget)));
+    if (info.isDirectory())
+      found.push(...(await copyRuntimeInventory(directory, path, currentBudget)));
     else {
       assert.ok(info.isFile() && info.nlink === 1, 'copy_packet_member_denied');
-      budget.bytes += info.size;
-      assert.ok(budget.bytes <= COPY_PACKET_LIMITS.bytes, 'copy_packet_total_limit');
+      currentBudget.bytes += info.size;
+      assert.ok(currentBudget.bytes <= COPY_PACKET_LIMITS.bytes, 'copy_packet_total_limit');
       found.push({ path, digest: digest(await packetFile(location, maximum)) });
     }
   }

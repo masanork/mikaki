@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { mkdir, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -11,6 +12,7 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import {
   COPY_RUNTIME_MODULES,
   COPY_PACKET_LIMITS,
+  copyRuntimeInventory,
   prepareCopyRuntimePacket,
   verifyCopyRuntimePacket,
 } from './work-copy-runtime-packet.ts';
@@ -34,6 +36,42 @@ const privatePaths: Record<string, string> = {
   'git-transport': '/git-exchange',
   preparation: '/verify-preparation',
 };
+
+test('inventory shares limits across nested directories and isolates independent calls', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mikaki-copy-inventory-'));
+  try {
+    await mkdir(join(directory, 'nested'));
+    await writeFile(join(directory, 'root'), 'a');
+    await writeFile(join(directory, 'nested', 'child'), 'b');
+    const expected = ['nested/child', 'root'];
+    const inventories = await Promise.all([
+      copyRuntimeInventory(directory),
+      copyRuntimeInventory(directory),
+    ]);
+    for (const inventory of inventories)
+      assert.deepEqual(
+        inventory.map((member) => member.path),
+        expected,
+      );
+    const budget = { entries: 0, bytes: 0 };
+    await copyRuntimeInventory(directory, '', budget);
+    assert.deepEqual(budget, { entries: 3, bytes: 2 });
+    await assert.rejects(
+      copyRuntimeInventory(directory, '', { entries: COPY_PACKET_LIMITS.entries - 2, bytes: 0 }),
+      /copy_packet_entry_limit/,
+    );
+    await assert.rejects(
+      copyRuntimeInventory(directory, '', { entries: 0, bytes: COPY_PACKET_LIMITS.bytes - 1 }),
+      /copy_packet_total_limit/,
+    );
+    assert.deepEqual(
+      (await copyRuntimeInventory(directory)).map((member) => member.path),
+      expected,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('committed companion packet loads real bundles cold and rejects substitution, extra members and links', async (t) => {
   const packet = await prepareCopyRuntimePacket(parent);

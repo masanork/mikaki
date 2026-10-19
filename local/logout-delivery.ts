@@ -60,7 +60,7 @@ export async function claim(db: any, at = now()) {
   // Claim only when ready to execute. SQLite serializes this entire predicate
   // and update, including the client-wide concurrency limit across invocations.
   const lease = uuid();
-  return row(
+  return await row(
     db,
     `UPDATE logout_delivery SET state='leased',lease=?,lease_until=?,attempts=attempts+1
     WHERE id=(SELECT d.id FROM logout_delivery d
@@ -122,7 +122,7 @@ export async function settle(
   status: number,
   at = now(),
 ) {
-  return query(
+  return await query(
     db,
     `UPDATE logout_delivery SET state=?,reason=?,next_at=?,last_status=?,
       lease=NULL,lease_until=NULL,finished_at=?,gc_after=MAX(COALESCE(gc_after,0),?)

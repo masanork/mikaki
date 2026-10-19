@@ -1,6 +1,6 @@
 export function weaveProfile(origin: string) {
   let seed = 2166136261;
-  for (const c of new URL(origin).origin) seed = Math.imul(seed ^ c.charCodeAt(0), 16777619);
+  for (const c of new URL(origin).origin) seed = Math.imul(seed ^ c.codePointAt(0)!, 16777619);
   seed >>>= 0;
   return {
     hue: (seed + 125) % 360,

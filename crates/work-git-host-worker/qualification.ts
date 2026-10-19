@@ -20,19 +20,19 @@ export class WorkGitHostQualification extends WorkerEntrypoint<GitHostQualificat
   }
   async prepare(...args: unknown[]) {
     if (args.length || !configured(this.env)) throw new Error('qualification_denied');
-    return this.env.GIT_HOST.getByName(
+    return await this.env.GIT_HOST.getByName(
       `${this.env.WORK_AUTHORITY_ID}:${this.env.WORK_GIT_DISCLOSURE_DIGEST}`,
     ).prepare();
   }
   async status(...args: unknown[]) {
     if (args.length || !configured(this.env)) throw new Error('qualification_denied');
-    return this.env.GIT_HOST.getByName(
+    return await this.env.GIT_HOST.getByName(
       `${this.env.WORK_AUTHORITY_ID}:${this.env.WORK_GIT_DISCLOSURE_DIGEST}`,
     ).status();
   }
   async qualifyRestart(...args: unknown[]) {
     if (args.length || !configured(this.env)) throw new Error('qualification_denied');
-    return this.env.GIT_HOST.getByName(
+    return await this.env.GIT_HOST.getByName(
       `${this.env.WORK_AUTHORITY_ID}:${this.env.WORK_GIT_DISCLOSURE_DIGEST}`,
     ).qualifyRestart();
   }

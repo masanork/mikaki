@@ -24,12 +24,10 @@ function exact(value: unknown, keys: string[]): asserts value is Record<string, 
 function text(value: unknown, limit: number, multiline: boolean): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0) throw new Error('Invalid note text');
   // Reject lone UTF-16 surrogates instead of silently encoding a replacement character.
-  for (let index = 0; index < value.length; index++) {
-    const unit = value.charCodeAt(index);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = value.charCodeAt(++index);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) throw new Error('Invalid note Unicode');
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) throw new Error('Invalid note Unicode');
+  // Iteration combines valid pairs and yields lone surrogates unchanged.
+  for (const character of value) {
+    const point = character.codePointAt(0)!;
+    if (point >= 0xd800 && point <= 0xdfff) throw new Error('Invalid note Unicode');
   }
   const forbidden = multiline
     ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/

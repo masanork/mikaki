@@ -28,6 +28,29 @@ test('note v1 preserves Unicode and self-asserted provenance within UTF-8 limits
   }
 });
 
+test('note Unicode validation accepts surrogate pairs and rejects every lone surrogate', () => {
+  for (const high of [0xd800, 0xdbff]) {
+    for (const low of [0xdc00, 0xdfff]) {
+      const value = String.fromCharCode(high, low);
+      const note = newOwnerNote(value, value);
+      assert.deepEqual(decodeOwnerNote(encodeOwnerNote(note)), note);
+      assert.equal(ownerNoteInputError(value, value), null);
+    }
+  }
+  for (let unit = 0xd800; unit <= 0xdfff; unit++) {
+    const value = String.fromCharCode(unit);
+    assert.throws(() => newOwnerNote(value + 'a', 'text'), /Invalid note Unicode/);
+    assert.throws(() => newOwnerNote('title', 'a' + value), /Invalid note Unicode/);
+  }
+  for (const units of [
+    [0xd800, 0xd800],
+    [0xdc00, 0xd800],
+    [0xd800, 0xdc00, 0xd800],
+    [0xd800, 0xdc00, 0xdc00],
+  ])
+    assert.throws(() => newOwnerNote('title', String.fromCharCode(...units)));
+});
+
 test('incompatible, ambiguous and misleading note input is rejected without fallback', () => {
   const note = newOwnerNote('Title', 'Body');
   for (const value of [
