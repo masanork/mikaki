@@ -28,6 +28,7 @@ export async function preparationFixture(
   },
   gitExecutor?: (request: Request) => Promise<Response>,
   productCopy = false,
+  checkpointLogs?: string[],
 ) {
   const root = new URL('../../..', import.meta.url).pathname;
   const modulesRoot = join(root, 'local/generated/work-store-main');
@@ -80,6 +81,9 @@ export async function preparationFixture(
     : {};
   const mf = new Miniflare(
     convertV4MiniflareOptions({
+      ...(checkpointLogs
+        ? { handleStructuredLogs: (entry) => checkpointLogs.push(entry.message) }
+        : {}),
       unsafeTriggerHandlers: copyEnabled,
       workers: [
         {
