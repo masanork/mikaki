@@ -164,6 +164,87 @@ test('OP owner work transport uses live SSO, bounded projections and guarded rev
     const f = await base(first, 'owner-http');
 
     await t.test(
+      'closed routes and feature gates precede origin, session and body checks',
+      async () => {
+        const attempts = () =>
+          DB.prepare('SELECT coalesce(sum(attempts),0) AS n FROM auth_request_window').first('n');
+        const before = await attempts();
+        const headers = { Origin: 'https://foreign.test', 'Content-Type': 'text/plain' };
+        const closed: [string, string][] = [
+          ['POST', '/work/preparations'],
+          ...['GET', 'POST', 'DELETE', 'PUT'].flatMap((method) =>
+            ['copy', 'copy-consent'].map((action): [string, string] => [
+              method,
+              `/work/preparations/bad%2Fid/${action}`,
+            ]),
+          ),
+          ['GET', '/work/grants/id/revoke'],
+          ['POST', '/work/grants/id/revoke/extra'],
+          ['PUT', '/work/session'],
+        ];
+        for (const [method, path] of closed) {
+          const r = await http(path, undefined, {
+            method,
+            headers,
+            ...(method === 'POST' ? { body: 'x'.repeat(17000) } : {}),
+          });
+          assert.equal(r.status, 404, `${method} ${path}`);
+          assert.deepEqual(r.body, { error: 'not_found' });
+        }
+        assert.equal(await attempts(), before, 'Closed routes consume no owner ingress');
+        for (const path of [
+          '/work/requests/' + 'x'.repeat(513),
+          '/work/requests?' + 'q'.repeat(257),
+        ]) {
+          assert.equal((await http(path, undefined, { headers })).status, 400, path);
+          assert.equal((await http(path, undefined, { headers }, disabled)).status, 404, path);
+        }
+        assert.equal(await attempts(), before, 'Length guards precede owner ingress');
+      },
+    );
+
+    await t.test(
+      'origin and request shape precede ingress while mutation JSON follows authentication',
+      async () => {
+        const attempts = () =>
+          DB.prepare('SELECT coalesce(sum(attempts),0) AS n FROM auth_request_window').first('n');
+        const before = await attempts();
+        for (const path of [
+          '/work/grants/bad%2Fid',
+          '/work/requests?owner=foreign',
+          '/work/requests/',
+        ]) {
+          const foreign = await http(path, undefined, {
+            headers: { Origin: 'https://foreign.test' },
+          });
+          assert.equal(foreign.status, 403, path);
+          assert.deepEqual(foreign.body, { error: 'invalid_origin' });
+          assert.equal((await http(path)).status, 400, path);
+        }
+        for (const path of ['/work/session?after=valid', `/work/requests/${f.digest}?after=valid`])
+          assert.equal((await http(path)).status, 400, path);
+        const revokePath = `/work/grants/${f.grant}/revoke`;
+        assert.equal(
+          (await http(revokePath, undefined, { method: 'POST', body: '{' })).status,
+          403,
+        );
+        assert.equal(
+          await attempts(),
+          before,
+          'Origin and shape failures consume no owner ingress',
+        );
+        const unauthenticated = await http(revokePath, undefined, {
+          method: 'POST',
+          headers: { Origin: 'https://work.test', 'Content-Type': 'text/plain' },
+          body: 'x'.repeat(257),
+        });
+        assert.equal(unauthenticated.status, 401);
+        assert.deepEqual(unauthenticated.body, { error: 'authentication_required' });
+        assert.equal((await http(`/work/grants/${f.grant}`, first)).body.record.revoked, false);
+      },
+    );
+
+    await t.test(
       'disabled transport returns 404; cookies, not headers/bearer claims, authenticate owners',
       async () => {
         assert.equal((await http('/work/requests', first, {}, disabled)).status, 404);
