@@ -313,6 +313,9 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await expect(page.locator('#unlock')).toHaveCount(0);
     // The in-document handoff retains the existing lock, ordinary-save and
     // history rules; the login result cannot reopen a newly locked scope.
+    // The note loads independently; locking during that read asks to discard
+    // unfinished work, which Playwright dismisses without a dialog handler.
+    await expect(page.locator('#owner-note')).toHaveAttribute('aria-busy', 'false');
     await page.getByRole('button', { name: 'Lock Vault', exact: true }).click();
     await page.getByRole('button', { name: 'Check session and reopen', exact: true }).click();
     await expect(page.locator('#name')).toHaveCount(0);

@@ -305,6 +305,41 @@ Signature verification remains P-256/SHA-256. This refactor leaves that profile
 and finding unchanged. No rule exclusions, issue dispositions or gate thresholds
 change. Cloud must confirm the final PR and post-merge results.
 
+### Work owner routing follow-up (2026-10-19)
+
+Source at `66ac9af8` retains `rust:S3776` on the Work owner HTTP handler
+(135 against a limit of 30). Represent supported method/path combinations as
+private routes and separate input guards, authenticated dispatch, session leases,
+listing, revocation, preparation composition, copy consent and copy execution.
+Feature gates still run before Origin, identifier/query validation and ingress
+admission. Source/review routes keep their existing delegated handlers.
+
+Ingress admission, D1 access, live SSO lookup and request-scoped store creation
+retain their order. Session leases still recheck SSO after checkpoint I/O.
+Copy account configuration is checked before body parsing. Content types,
+256/4,096/16,384-byte body limits, JSON depth limits, version/digest checks and
+endpoint-specific validation remain unchanged; revocation retains its existing
+Serde validation. Expected input refusals remain HTTP responses and header
+transport errors retain the outer Worker error boundary. Cleanup still requires
+the current review digest before it can stop a copy job, then rereads the result.
+Storage failures retain the existing opaque 503 response.
+
+Two additional workerd/D1 test matrices verify disabled/unsupported routes,
+length limits, Origin and identifier/query rejection before ingress, and
+authentication before mutation JSON validation. They pass against the original
+handler as well as the refactor. Existing product entry, stale checkpoint,
+owner/session isolation, audit rollback, compose, consent and Workflow/Git copy
+suites qualify the extracted operations. Worker Rust remains outside the
+existing native coverage scope; these runtime tests do not claim a coverage
+percentage. Cloud must verify the final PR and merged revisions.
+
+The product journey also waits for the independently loaded Owner note's
+`aria-busy` state to clear before testing manual lock. Clicking during that read
+correctly asks to discard unfinished work; Playwright's default dialog dismissal
+had intermittently kept the Vault open. The explicit readiness assertion keeps
+the existing lock and authenticator assertions. No analysis rules, issue
+dispositions or gate thresholds change.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic
