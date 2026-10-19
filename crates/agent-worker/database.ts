@@ -41,11 +41,11 @@ export class ServiceDatabase implements D1Database {
   getBookmark(): string | null {
     return null;
   } // every invocation uses first-primary
-  async exec(): Promise<D1ExecResult> {
-    throw new Error('Arbitrary SQL denied');
+  exec(): Promise<D1ExecResult> {
+    return Promise.reject(new Error('Arbitrary SQL denied'));
   }
-  async dump(): Promise<ArrayBuffer> {
-    throw new Error('Database export denied');
+  dump(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('Database export denied'));
   }
 }
 class Statement implements D1PreparedStatement {
@@ -72,8 +72,8 @@ class Statement implements D1PreparedStatement {
   }
   raw<T = unknown[]>(options: { columnNames: true }): Promise<[string[], ...T[]]>;
   raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>;
-  async raw(): Promise<never> {
-    throw new Error('Raw query denied');
+  raw(): Promise<never> {
+    return Promise.reject(new Error('Raw query denied'));
   }
 }
 

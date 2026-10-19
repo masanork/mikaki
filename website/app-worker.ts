@@ -17,6 +17,6 @@ export default {
         },
       });
     }
-    return env.ASSETS.fetch(request);
+    return await env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;

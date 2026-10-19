@@ -442,7 +442,7 @@ export async function retireBackchannelLogout(
 }
 
 export async function listClients(db: any) {
-  return db
+  return await db
     .prepare(
       "SELECT c.client_id,c.revision,c.active,c.auth_method,c.sector_identifier,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_redirect_uri WHERE client_id=c.client_id) AS redirect_uris,(SELECT json_group_array(json_object('uri',redirect_uri,'active',active)) FROM client_post_logout_redirect_uri WHERE client_id=c.client_id) AS post_logout_redirect_uris,(SELECT json_object('uri',logout_uri,'active',active) FROM client_backchannel_logout_uri WHERE client_id=c.client_id) AS backchannel_logout_uri,(SELECT json_group_array(json_object('kid',kid,'revision',revision,'active',active,'algorithm',algorithm,'public_key_sec1_hex',hex(public_key_sec1))) FROM client_key WHERE client_id=c.client_id) AS keys FROM client c WHERE c.client_id<>'mikaki-internal-enrollment' ORDER BY c.client_id",
     )

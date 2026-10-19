@@ -17,7 +17,7 @@ export const RECIPIENT_CHECKPOINT = 'mikaki:userinfo-recipient:v1';
 function canonicalBase64Url(value: string): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('invalid recipient key encoding');
   const binary = atob(value.replaceAll('-', '+').replaceAll('_', '/'));
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const bytes = Uint8Array.from(binary, (character) => character.codePointAt(0)!);
   if (base64Url(bytes) !== value) throw new Error('noncanonical recipient key encoding');
   return bytes;
 }
@@ -25,7 +25,7 @@ function canonicalBase64Url(value: string): Uint8Array<ArrayBuffer> {
 function base64Url(bytes: Uint8Array<ArrayBuffer>): string {
   let binary = '';
   for (let index = 0; index < bytes.length; index += 8192) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+    binary += String.fromCodePoint(...bytes.subarray(index, index + 8192));
   }
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }

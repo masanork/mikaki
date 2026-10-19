@@ -80,10 +80,13 @@ function memberPath(path: unknown): asserts path is string {
   assert.ok(typeof path === 'string' && /^[A-Za-z0-9_@.\/-]+$/.test(path));
   assert.ok(!path.startsWith('/') && path.split('/').every((p) => p && p !== '.' && p !== '..'));
 }
+function freshInventoryBudget() {
+  return { entries: 0, bytes: 0 };
+}
 export async function copyRuntimeInventory(
   directory: string,
   prefix = '',
-  budget = { entries: 0, bytes: 0 },
+  budget = freshInventoryBudget(),
 ): Promise<Member[]> {
   assert.ok(prefix.split('/').length <= COPY_PACKET_LIMITS.depth, 'copy_packet_depth_limit');
   const found: Member[] = [];

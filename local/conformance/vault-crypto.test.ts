@@ -17,6 +17,11 @@ test('canonical base64url codec matches standard vectors and round-trips binary 
     assert.deepEqual(decodeBase64Url(encoded), bytes);
   }
 
+  const allBytes = Uint8Array.from({ length: 256 }, (_, index) => index);
+  const standard = Buffer.from(allBytes).toString('base64url');
+  assert.equal(encodeBase64Url(allBytes), standard);
+  assert.deepEqual(decodeBase64Url(standard), allBytes);
+
   for (const length of [2, 4, 8191, 8192, 8193, 16385]) {
     const bytes = crypto.getRandomValues(new Uint8Array(length));
     assert.deepEqual(decodeBase64Url(encodeBase64Url(bytes)), bytes);

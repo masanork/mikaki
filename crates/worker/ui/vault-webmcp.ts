@@ -89,7 +89,7 @@ function selected(host: VaultWebMcpHost): WebMcpSelection {
 export function createVaultWebMcpTools(host: VaultWebMcpHost): WebMcpTool[] {
   async function guarded<T>(
     signal: AbortSignal,
-    run: (store: OwnerWorkspaceStore, selection: WebMcpSelection) => Promise<T>,
+    run: (store: OwnerWorkspaceStore, selection: WebMcpSelection) => T | Promise<T>,
   ): Promise<T> {
     signal.throwIfAborted();
     if (!host.visible() || host.blocked()) throw new WebMcpFailure('unavailable');
@@ -203,7 +203,7 @@ export function createVaultWebMcpTools(host: VaultWebMcpHost): WebMcpTool[] {
     ),
     tool('mikaki_list_selected', 'List selected records.', schema({}), async (args, { signal }) => {
       input(args, []);
-      return guarded(signal, async (_store, selection) => ({
+      return guarded(signal, (_store, selection) => ({
         records: [
           ...(selection.name === null ? [] : [{ target: 'name', revision: selection.name }]),
           ...(selection.note === null ? [] : [{ target: 'owner_note', revision: selection.note }]),

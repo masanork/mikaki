@@ -13,7 +13,7 @@ export const p = <K extends PolicyKey>(key: K): (typeof policy)[K] => policy[key
 export const now = () => Math.floor(Date.now() / 1000);
 export const uuid = () => crypto.randomUUID();
 export const b64 = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
+  btoa(String.fromCodePoint(...bytes))
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replaceAll('=', '');
