@@ -720,12 +720,13 @@ async function run(args: string[]) {
   );
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run(process.argv.slice(2))
-    .then((value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n'))
-    .catch(() => {
-      process.stderr.write(
-        'authority_deployment_refused; retain existing packet/allocation; inspect without replay or replacement\n',
-      );
-      process.exitCode = 1;
-    });
+  try {
+    const value = await run(process.argv.slice(2));
+    process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+  } catch {
+    process.stderr.write(
+      'authority_deployment_refused; retain existing packet/allocation; inspect without replay or replacement\n',
+    );
+    process.exitCode = 1;
+  }
 }

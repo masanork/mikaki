@@ -290,10 +290,13 @@ async function main() {
     await rm(temporary, { recursive: true, force: true });
   }
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-  main().catch(() => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch {
     console.error(
       'Source operation stopped. Inspect retained metadata; do not recreate or replay registration.',
     );
     process.exitCode = 1;
-  });
+  }
+}

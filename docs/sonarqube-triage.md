@@ -340,6 +340,27 @@ had intermittently kept the Vault open. The explicit readiness assertion keeps
 the existing lock and authenticator assertions. No analysis rules, issue
 dispositions or gate thresholds change.
 
+### Operator CLI startup follow-up (2026-10-19)
+
+Source at `e0cf323a` retains five `typescript:S7785` findings in authority
+allocation/completion, offline deployment preparation, source registration and
+reviewed auth-GC settlement. Use top-level `await` inside the existing direct
+entrypoint guards, with explicit `try`/`catch`. Keep JSON serialization and
+stdout writes inside those error boundaries. Allocation/completion retain their
+Error-message and non-Error fallback handling; the other tools retain their
+fixed redacted messages. Failure still sets `process.exitCode = 1`, and each
+operation's awaited cleanup remains in its existing function.
+
+Existing allocation, completion, deployment, source-version and local
+workerd/D1 GC recovery suites pass all 38 tests. Eight additional smoke cases
+run copied source modules in a disposable unborn Git checkout: importing all
+five modules, caught failures in each CLI and the two usage errors. Before/after
+results have identical exit statuses and byte-for-byte stdout/stderr, including
+the fixed messages that omit raw arguments. These checks preserve the existing
+operation guards, journal identities and recovery behavior. Final PR and
+post-merge Cloud analyses must confirm closure; no rule settings, issue
+dispositions or coverage exclusions change.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

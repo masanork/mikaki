@@ -352,16 +352,17 @@ export async function runAuthorityCompletion(mode: 'inspect' | 'complete') {
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
-  if (!rest.length && (mode === 'inspect' || mode === 'complete'))
-    runAuthorityCompletion(mode)
-      .then((value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n'))
-      .catch((error: unknown) => {
-        process.stderr.write(
-          error instanceof Error ? error.message + '\n' : 'authority_completion_failed\n',
-        );
-        process.exitCode = 1;
-      });
-  else {
+  if (!rest.length && (mode === 'inspect' || mode === 'complete')) {
+    try {
+      const value = await runAuthorityCompletion(mode);
+      process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+    } catch (error) {
+      process.stderr.write(
+        error instanceof Error ? error.message + '\n' : 'authority_completion_failed\n',
+      );
+      process.exitCode = 1;
+    }
+  } else {
     process.stderr.write('usage: complete-work-authority.ts inspect|complete\n');
     process.exitCode = 1;
   }
