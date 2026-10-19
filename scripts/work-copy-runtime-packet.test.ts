@@ -57,6 +57,10 @@ test('inventory shares limits across nested directories and isolates independent
     await copyRuntimeInventory(directory, '', budget);
     assert.deepEqual(budget, { entries: 3, bytes: 2 });
     await assert.rejects(
+      Reflect.apply(copyRuntimeInventory, undefined, [directory, '', null]),
+      TypeError,
+    );
+    await assert.rejects(
       copyRuntimeInventory(directory, '', { entries: COPY_PACKET_LIMITS.entries - 2, bytes: 0 }),
       /copy_packet_entry_limit/,
     );

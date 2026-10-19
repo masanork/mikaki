@@ -185,10 +185,10 @@ quality-gate thresholds are changed.
   the canonical URL origin and retains its established profile. Note validation
   iterates code points, accepting complete surrogate pairs while rejecting lone
   surrogates before UTF-8 encoding. It does not replace malformed input.
-- The `S7737` inventory budget is initialized inside each independent call and
-  passed unchanged to recursion. Explicit caller-supplied budgets still collect
-  shared entry/byte usage. No shared default object or module-level counter is
-  introduced.
+- The `S7737` inventory budget is initialized by a factory for each independent
+  call and passed unchanged to recursion. Explicit caller-supplied budgets still collect
+  shared entry/byte usage. An explicit `null` remains invalid. No shared default
+  object or module-level counter is introduced.
 
 Tests verify rejected D1 promises without service dispatch, all 256 byte values
 against Node's independent Base64url encoding, all 2,048 lone surrogates and valid
