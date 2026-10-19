@@ -393,7 +393,7 @@ async function callback(
   return redirect(env, destination, cookieHeader(SESSION, secret, valid.parent - now()));
 }
 
-async function backchannel(request: Request, env: SessionContext): Promise<Response> {
+async function readLogoutToken(request: Request): Promise<string> {
   if (request.headers.get('content-type')?.split(';')[0] !== 'application/x-www-form-urlencoded')
     fail(415, 'unsupported_media_type');
   const reader = request.body?.getReader();
@@ -426,9 +426,13 @@ async function backchannel(request: Request, env: SessionContext): Promise<Respo
   }
   const tokens = params.getAll('logout_token');
   if (tokens.length !== 1 || tokens[0].length > 12000) fail(400, 'invalid_logout_token');
+  return tokens[0];
+}
+
+async function verifiedLogoutPayload(token: string, env: SessionContext) {
   let header;
   try {
-    header = decodeProtectedHeader(tokens[0]);
+    header = decodeProtectedHeader(token);
   } catch {
     fail(400, 'invalid_logout_token');
   }
@@ -443,7 +447,7 @@ async function backchannel(request: Request, env: SessionContext): Promise<Respo
     fail(400, 'invalid_logout_token');
   let payload;
   try {
-    ({ payload } = await jwtVerify(tokens[0], issuerKeys(env.ISSUER), {
+    ({ payload } = await jwtVerify(token, issuerKeys(env.ISSUER), {
       issuer: env.ISSUER,
       audience: env.CLIENT_ID,
       algorithms: ['ES256'],
@@ -460,6 +464,12 @@ async function backchannel(request: Request, env: SessionContext): Promise<Respo
       fail(503, 'issuer_keys_unavailable');
     fail(400, 'invalid_logout_token');
   }
+  return payload;
+}
+
+async function backchannel(request: Request, env: SessionContext): Promise<Response> {
+  const token = await readLogoutToken(request);
+  const payload = await verifiedLogoutPayload(token, env);
   const event = payload.events;
   const marker =
     event && typeof event === 'object' && !Array.isArray(event)

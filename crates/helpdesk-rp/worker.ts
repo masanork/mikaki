@@ -1,6 +1,5 @@
 import {
   BROWSER,
-  SESSION,
   now,
   random,
   hash,
@@ -19,6 +18,7 @@ import {
   login,
   callback,
   backchannel,
+  logout,
   cleanup,
 } from './oidc';
 import {
@@ -248,173 +248,242 @@ async function mutateTicket(
   return redirect(env, `/tickets/${id}`);
 }
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const strings = catalog(selectLocale(request));
-    const t = (key: MessageKey) => escape(strings.message(key));
-    try {
-      const url = new URL(request.url);
-      const issuer = new URL(env.ISSUER);
-      const rp = new URL(env.RP_ORIGIN);
-      if (
-        url.origin !== env.RP_ORIGIN ||
-        issuer.origin !== env.ISSUER ||
-        rp.origin !== env.RP_ORIGIN ||
-        (env.LOCAL_ONLY !== 'true' && (issuer.protocol !== 'https:' || rp.protocol !== 'https:')) ||
-        !env.CLIENT_ID
-      )
-        fail(400, 'invalid_configuration');
-      if (env.DEMO_ONLY === 'true') {
-        const demo = demoMessages(strings.locale);
-        if (
-          ![
-            '/',
-            '/health',
-            '/login',
-            '/callback',
-            '/backchannel',
-            '/logout',
-            '/session',
-            '/session/check',
-          ].includes(url.pathname)
-        )
-          fail(404, 'not_found');
-        if (request.method === 'GET' && url.pathname === '/health') {
-          if (!env.RP_PRIVATE_JWK || !env.DEMO_LIMITER) fail(503, 'invalid_configuration');
-          await env.DB.prepare('SELECT token_hash FROM rp_session LIMIT 1').first();
-          return Response.json(
-            { status: 'ok', issuer: env.ISSUER, origin: env.RP_ORIGIN, mode: 'login-demo' },
-            { headers: baseHeaders(env) },
-          );
-        }
-        if (request.method === 'POST' && ['/login', '/session/check'].includes(url.pathname)) {
-          if (!env.DEMO_LIMITER) fail(503, 'invalid_configuration');
-          if (!(await env.DEMO_LIMITER.limit({ key: `mikaki-demo:${url.pathname}` })).success)
-            return html(
-              env,
-              strings,
-              `<h1>${escape(demo.title)}</h1><p>${escape(demo.rateLimited)}</p>`,
-              429,
-            );
-        }
-        if (request.method === 'GET' && url.pathname === '/') {
-          const browser = cookie(request, BROWSER) || random();
-          const session = await current(request, env);
-          const prefix = strings.locale === 'en' ? '/en' : '';
-          return html(
-            env,
-            strings,
-            `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.home)}</h1><p>${escape(demo.intro)}</p></header><section class="task-panel" aria-labelledby="demo-action-title"><h2 id="demo-action-title"${session ? ' class="status"' : ''}>${escape(session ? demo.active : demo.start)}</h2>${session ? `<p><a class="button" href="/session">${escape(demo.session)}</a></p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${escape(demo.login)}</button></form>`}</section><section class="demo-steps" aria-labelledby="demo-steps-title"><h2 id="demo-steps-title">${escape(demo.steps)}</h2><ol><li>${escape(demo.stepLogin)}</li><li>${escape(demo.stepCheck)}</li><li>${escape(demo.stepLogout)}</li></ol></section><aside class="privacy-note" aria-labelledby="demo-privacy-title"><h2 id="demo-privacy-title">${escape(demo.privacyTitle)}</h2><p>${escape(demo.privacy)}</p><a href="https://mikaki.org${prefix}/contact">${escape(demo.invitation)}</a><a href="https://mikaki.org${prefix}/integration-demo">${escape(demo.guide)}</a></aside>`,
-            200,
-            cookieHeader(BROWSER, browser, 86400),
-          );
-        }
-        if (
-          (request.method === 'GET' && url.pathname === '/session') ||
-          (request.method === 'POST' && url.pathname === '/session/check')
-        ) {
-          const force = request.method === 'POST';
-          if (force) await readForm(request, env);
-          const session = await requireSession(request, env, force);
-          if (force) return redirect(env, '/session');
-          const csrf = formCsrf(await browserCsrf(request));
-          return html(
-            env,
-            strings,
-            `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.session)}</h1></header><section class="task-panel"><h2 class="status">${escape(demo.active)}</h2><p>${escape(demo.sessionBody)}</p><dl class="session-times"><div><dt>${escape(demo.lease)}</dt><dd><time datetime="${new Date(session.lease_until * 1000).toISOString()}">${escape(formatDemoTime(session.lease_until, strings.locale))}</time></dd></div><div><dt>${escape(demo.expires)}</dt><dd><time datetime="${new Date(session.parent_expires_at * 1000).toISOString()}">${escape(formatDemoTime(session.parent_expires_at, strings.locale))}</time></dd></div></dl><div class="session-actions"><form method="post" action="/session/check">${csrf}<button>${escape(demo.check)}</button></form><form method="post" action="/logout">${csrf}<button class="secondary">${escape(demo.logout)}</button></form></div><p class="logout-note">${escape(demo.logoutBody)}</p></section><details class="op-logout"><summary>${escape(demo.opLogoutDetails)}</summary><p>${escape(demo.opLogoutWarning)}</p><a href="${env.ISSUER}/logout">${escape(demo.opLogout)}</a></details>`,
-            200,
-            undefined,
-            '/session',
-          );
-        }
-      }
-      if (request.method === 'GET' && url.pathname === '/') {
-        let browser = cookie(request, BROWSER);
-        if (!browser) browser = random();
-        const session = await current(request, env);
-        return html(
-          env,
-          strings,
-          `<h1>${t('helpHomeHeading')}</h1><p>${t('helpHomeBody')}</p><p><a href="/help">${t('helpReadArticles')}</a> · <a href="/tickets">${t('helpTickets')}</a></p>${session ? `<p>${t('helpLoggedIn')}</p>` : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${t('helpLogin')}</button></form>`}`,
-          200,
-          cookieHeader(BROWSER, browser, 86400),
-        );
-      }
-      if (request.method === 'GET' && url.pathname === '/help')
-        return html(
-          env,
-          strings,
-          `<h1>${t('helpHeading')}</h1>${ARTICLES.map((article) => `<article><a href="/help/${article.slug}">${t(article.title_key)}</a></article>`).join('')}`,
-          200,
-          undefined,
-          url.pathname,
-        );
-      if (request.method === 'GET' && url.pathname.startsWith('/help/')) {
-        const article = ARTICLES.find((entry) => `/help/${entry.slug}` === url.pathname);
-        if (!article) fail(404, 'not_found');
-        return html(
-          env,
-          strings,
-          `<h1>${t(article.title_key)}</h1><p>${t(article.body_key)}</p>`,
-          200,
-          undefined,
-          url.pathname,
-        );
-      }
-      if (request.method === 'POST' && url.pathname === '/login')
-        return await login(request, env, strings.locale);
-      if (request.method === 'POST' && url.pathname === '/backchannel')
-        return await backchannel(request, env);
-      if (request.method === 'GET' && url.pathname === '/callback')
-        return await callback(
-          request,
-          env,
-          url,
-          env.DEMO_ONLY === 'true' ? '/session' : '/tickets',
-        );
-      if (request.method === 'POST' && url.pathname === '/logout') {
-        await readForm(request, env);
-        const token = cookie(request, SESSION);
-        if (token)
-          await env.DB.prepare('DELETE FROM rp_session WHERE token_hash=?')
-            .bind(await hash(token))
-            .run();
-        return redirect(env, '/', cookieHeader(SESSION, '', 0));
-      }
-      if (request.method === 'GET' && url.pathname === '/tickets')
-        return await ticketList(request, env, strings);
-      if (request.method === 'GET' && url.pathname === '/tickets/new') {
-        await requireSession(request, env);
-        return html(
-          env,
-          strings,
-          `<h1>${t('helpNewTicket')}</h1><form method="post" action="/tickets">${formCsrf(await browserCsrf(request))}<label>${t('helpSubject')}<input type="text" name="title" maxlength="120" required></label><label>${t('helpMessage')}<textarea name="message" maxlength="4000" required></textarea></label><p><button>${t('helpSend')}</button></p></form>`,
-          200,
-          undefined,
-          url.pathname,
-        );
-      }
-      if (request.method === 'POST' && url.pathname === '/tickets')
-        return await createTicket(request, env);
-      const match = /^\/tickets\/([0-9a-f-]{36})(?:\/(reply|close))?$/.exec(url.pathname);
-      if (match && request.method === 'GET' && !match[2])
-        return await ticketPage(request, env, match[1], strings);
-      if (match && request.method === 'POST' && (match[2] === 'reply' || match[2] === 'close'))
-        return await mutateTicket(request, env, match[1], match[2]);
-      fail(404, 'not_found');
-    } catch (error) {
-      const failure =
-        error instanceof HttpError ? error : new HttpError(503, 'service_unavailable');
-      if (!(error instanceof HttpError))
-        console.error('helpdesk_request_failed', error instanceof Error ? error.name : 'unknown');
+function validatedRequestUrl(request: Request, env: Env): URL {
+  const url = new URL(request.url);
+  const issuer = new URL(env.ISSUER);
+  const rp = new URL(env.RP_ORIGIN);
+  if (
+    url.origin !== env.RP_ORIGIN ||
+    issuer.origin !== env.ISSUER ||
+    rp.origin !== env.RP_ORIGIN ||
+    (env.LOCAL_ONLY !== 'true' && (issuer.protocol !== 'https:' || rp.protocol !== 'https:')) ||
+    !env.CLIENT_ID
+  )
+    fail(400, 'invalid_configuration');
+  return url;
+}
+
+async function demoHealth(env: Env): Promise<Response> {
+  if (!env.RP_PRIVATE_JWK || !env.DEMO_LIMITER) fail(503, 'invalid_configuration');
+  await env.DB.prepare('SELECT token_hash FROM rp_session LIMIT 1').first();
+  return Response.json(
+    { status: 'ok', issuer: env.ISSUER, origin: env.RP_ORIGIN, mode: 'login-demo' },
+    { headers: baseHeaders(env) },
+  );
+}
+
+async function demoHome(request: Request, env: Env, strings: Catalog): Promise<Response> {
+  const demo = demoMessages(strings.locale);
+  const browser = cookie(request, BROWSER) || random();
+  const session = await current(request, env);
+  const prefix = strings.locale === 'en' ? '/en' : '';
+  const action = session
+    ? `<p><a class="button" href="/session">${escape(demo.session)}</a></p>`
+    : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${escape(demo.login)}</button></form>`;
+  return html(
+    env,
+    strings,
+    `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.home)}</h1><p>${escape(demo.intro)}</p></header><section class="task-panel" aria-labelledby="demo-action-title"><h2 id="demo-action-title"${session ? ' class="status"' : ''}>${escape(session ? demo.active : demo.start)}</h2>${action}</section><section class="demo-steps" aria-labelledby="demo-steps-title"><h2 id="demo-steps-title">${escape(demo.steps)}</h2><ol><li>${escape(demo.stepLogin)}</li><li>${escape(demo.stepCheck)}</li><li>${escape(demo.stepLogout)}</li></ol></section><aside class="privacy-note" aria-labelledby="demo-privacy-title"><h2 id="demo-privacy-title">${escape(demo.privacyTitle)}</h2><p>${escape(demo.privacy)}</p><a href="https://mikaki.org${prefix}/contact">${escape(demo.invitation)}</a><a href="https://mikaki.org${prefix}/integration-demo">${escape(demo.guide)}</a></aside>`,
+    200,
+    cookieHeader(BROWSER, browser, 86400),
+  );
+}
+
+async function demoSession(request: Request, env: Env, strings: Catalog): Promise<Response> {
+  const demo = demoMessages(strings.locale);
+  const force = request.method === 'POST';
+  if (force) await readForm(request, env);
+  const session = await requireSession(request, env, force);
+  if (force) return redirect(env, '/session');
+  const csrf = formCsrf(await browserCsrf(request));
+  return html(
+    env,
+    strings,
+    `<header class="demo-intro"><p class="eyebrow">${escape(demo.title)}</p><h1>${escape(demo.session)}</h1></header><section class="task-panel"><h2 class="status">${escape(demo.active)}</h2><p>${escape(demo.sessionBody)}</p><dl class="session-times"><div><dt>${escape(demo.lease)}</dt><dd><time datetime="${new Date(session.lease_until * 1000).toISOString()}">${escape(formatDemoTime(session.lease_until, strings.locale))}</time></dd></div><div><dt>${escape(demo.expires)}</dt><dd><time datetime="${new Date(session.parent_expires_at * 1000).toISOString()}">${escape(formatDemoTime(session.parent_expires_at, strings.locale))}</time></dd></div></dl><div class="session-actions"><form method="post" action="/session/check">${csrf}<button>${escape(demo.check)}</button></form><form method="post" action="/logout">${csrf}<button class="secondary">${escape(demo.logout)}</button></form></div><p class="logout-note">${escape(demo.logoutBody)}</p></section><details class="op-logout"><summary>${escape(demo.opLogoutDetails)}</summary><p>${escape(demo.opLogoutWarning)}</p><a href="${env.ISSUER}/logout">${escape(demo.opLogout)}</a></details>`,
+    200,
+    undefined,
+    '/session',
+  );
+}
+
+async function demoResponse(
+  request: Request,
+  env: Env,
+  strings: Catalog,
+  url: URL,
+): Promise<Response | null> {
+  if (
+    ![
+      '/',
+      '/health',
+      '/login',
+      '/callback',
+      '/backchannel',
+      '/logout',
+      '/session',
+      '/session/check',
+    ].includes(url.pathname)
+  )
+    fail(404, 'not_found');
+  if (request.method === 'GET' && url.pathname === '/health') return await demoHealth(env);
+  if (request.method === 'POST' && ['/login', '/session/check'].includes(url.pathname)) {
+    if (!env.DEMO_LIMITER) fail(503, 'invalid_configuration');
+    if (!(await env.DEMO_LIMITER.limit({ key: `mikaki-demo:${url.pathname}` })).success) {
+      const demo = demoMessages(strings.locale);
       return html(
         env,
         strings,
-        `<h1>${failure.status === 404 ? t('helpNotFound') : t('helpErrorHeading')}</h1><p>${escape(env.DEMO_ONLY === 'true' && failure.message === 'login_required' ? demoMessages(strings.locale).loginRequired : errorMessage(strings, failure.message))}</p><p><a href="/">${t('helpBackHome')}</a></p>`,
-        failure.status,
-        undefined,
-        new URL(request.url).pathname,
+        `<h1>${escape(demo.title)}</h1><p>${escape(demo.rateLimited)}</p>`,
+        429,
       );
+    }
+  }
+  if (request.method === 'GET' && url.pathname === '/')
+    return await demoHome(request, env, strings);
+  if (
+    (request.method === 'GET' && url.pathname === '/session') ||
+    (request.method === 'POST' && url.pathname === '/session/check')
+  )
+    return await demoSession(request, env, strings);
+  return null;
+}
+
+async function helpHome(request: Request, env: Env, strings: Catalog): Promise<Response> {
+  const t = (key: MessageKey) => escape(strings.message(key));
+  let browser = cookie(request, BROWSER);
+  if (!browser) browser = random();
+  const session = await current(request, env);
+  const action = session
+    ? `<p>${t('helpLoggedIn')}</p>`
+    : `<form method="post" action="/login">${formCsrf(await hash(browser))}<button>${t('helpLogin')}</button></form>`;
+  return html(
+    env,
+    strings,
+    `<h1>${t('helpHomeHeading')}</h1><p>${t('helpHomeBody')}</p><p><a href="/help">${t('helpReadArticles')}</a> · <a href="/tickets">${t('helpTickets')}</a></p>${action}`,
+    200,
+    cookieHeader(BROWSER, browser, 86400),
+  );
+}
+
+async function publicHelpResponse(
+  request: Request,
+  env: Env,
+  strings: Catalog,
+  url: URL,
+): Promise<Response | null> {
+  const t = (key: MessageKey) => escape(strings.message(key));
+  if (request.method !== 'GET') return null;
+  if (url.pathname === '/') return await helpHome(request, env, strings);
+  if (url.pathname === '/help') {
+    const articles = ARTICLES.map(
+      (article) => `<article><a href="/help/${article.slug}">${t(article.title_key)}</a></article>`,
+    ).join('');
+    return html(
+      env,
+      strings,
+      `<h1>${t('helpHeading')}</h1>${articles}`,
+      200,
+      undefined,
+      url.pathname,
+    );
+  }
+  if (url.pathname.startsWith('/help/')) {
+    const article = ARTICLES.find((entry) => `/help/${entry.slug}` === url.pathname);
+    if (!article) fail(404, 'not_found');
+    return html(
+      env,
+      strings,
+      `<h1>${t(article.title_key)}</h1><p>${t(article.body_key)}</p>`,
+      200,
+      undefined,
+      url.pathname,
+    );
+  }
+  return null;
+}
+
+async function newTicket(request: Request, env: Env, strings: Catalog): Promise<Response> {
+  const t = (key: MessageKey) => escape(strings.message(key));
+  await requireSession(request, env);
+  return html(
+    env,
+    strings,
+    `<h1>${t('helpNewTicket')}</h1><form method="post" action="/tickets">${formCsrf(await browserCsrf(request))}<label>${t('helpSubject')}<input type="text" name="title" maxlength="120" required></label><label>${t('helpMessage')}<textarea name="message" maxlength="4000" required></textarea></label><p><button>${t('helpSend')}</button></p></form>`,
+    200,
+    undefined,
+    '/tickets/new',
+  );
+}
+
+async function ticketResponse(
+  request: Request,
+  env: Env,
+  strings: Catalog,
+  url: URL,
+): Promise<Response | null> {
+  if (request.method === 'GET' && url.pathname === '/tickets')
+    return await ticketList(request, env, strings);
+  if (request.method === 'GET' && url.pathname === '/tickets/new')
+    return await newTicket(request, env, strings);
+  if (request.method === 'POST' && url.pathname === '/tickets')
+    return await createTicket(request, env);
+  const match = /^\/tickets\/([0-9a-f-]{36})(?:\/(reply|close))?$/.exec(url.pathname);
+  if (match && request.method === 'GET' && !match[2])
+    return await ticketPage(request, env, match[1], strings);
+  if (match && request.method === 'POST' && (match[2] === 'reply' || match[2] === 'close'))
+    return await mutateTicket(request, env, match[1], match[2]);
+  return null;
+}
+
+function requestFailure(request: Request, env: Env, strings: Catalog, error: unknown): Response {
+  const t = (key: MessageKey) => escape(strings.message(key));
+  const failure = error instanceof HttpError ? error : new HttpError(503, 'service_unavailable');
+  if (!(error instanceof HttpError))
+    console.error('helpdesk_request_failed', error instanceof Error ? error.name : 'unknown');
+  return html(
+    env,
+    strings,
+    `<h1>${failure.status === 404 ? t('helpNotFound') : t('helpErrorHeading')}</h1><p>${escape(env.DEMO_ONLY === 'true' && failure.message === 'login_required' ? demoMessages(strings.locale).loginRequired : errorMessage(strings, failure.message))}</p><p><a href="/">${t('helpBackHome')}</a></p>`,
+    failure.status,
+    undefined,
+    new URL(request.url).pathname,
+  );
+}
+
+async function authResponse(
+  request: Request,
+  env: Env,
+  strings: Catalog,
+  url: URL,
+): Promise<Response | null> {
+  if (request.method === 'POST' && url.pathname === '/login')
+    return await login(request, env, strings.locale);
+  if (request.method === 'POST' && url.pathname === '/backchannel')
+    return await backchannel(request, env);
+  if (request.method === 'GET' && url.pathname === '/callback')
+    return await callback(request, env, url, env.DEMO_ONLY === 'true' ? '/session' : '/tickets');
+  if (request.method === 'POST' && url.pathname === '/logout') return await logout(request, env);
+  return null;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const strings = catalog(selectLocale(request));
+    try {
+      const url = validatedRequestUrl(request, env);
+      if (env.DEMO_ONLY === 'true') {
+        const demo = await demoResponse(request, env, strings, url);
+        if (demo) return demo;
+      }
+      const page = await publicHelpResponse(request, env, strings, url);
+      if (page) return page;
+      const auth = await authResponse(request, env, strings, url);
+      if (auth) return auth;
+      const ticket = await ticketResponse(request, env, strings, url);
+      if (ticket) return ticket;
+      fail(404, 'not_found');
+    } catch (error) {
+      return requestFailure(request, env, strings, error);
     }
   },
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {

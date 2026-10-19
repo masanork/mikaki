@@ -325,3 +325,75 @@ test('helpdesk RP completes passkey login and protects tickets', async () => {
     await local.close();
   }
 });
+
+test('helpdesk routing keeps method, origin, logout body and async failure boundaries', async () => {
+  const local = await startLocal({ scheduler: false, helpdesk: true });
+  try {
+    const wrongOrigin = await local.rp.fetch('http://unexpected.invalid/help', {
+      headers: { 'Accept-Language': 'en' },
+    });
+    assert.equal(wrongOrigin.status, 400);
+    assert.equal(wrongOrigin.headers.get('Content-Language'), 'en');
+    const wrongMethods = await Promise.all(
+      [
+        ['GET', '/login'],
+        ['GET', '/logout'],
+        ['POST', '/help'],
+        ['GET', '/tickets/00000000-0000-4000-8000-000000000001/reply'],
+      ].map(([method, path]) => local.rp.fetch(`${RP}${path}`, { method })),
+    );
+    assert.deepEqual(
+      wrongMethods.map((response) => response.status),
+      [404, 404, 404, 404],
+    );
+    const invalidBodies = [
+      { type: 'application/json', body: '{}', status: 415 },
+      { type: 'application/x-www-form-urlencoded', body: '', status: 400 },
+      { type: 'application/x-www-form-urlencoded', body: Uint8Array.of(0xff), status: 400 },
+      { type: 'application/x-www-form-urlencoded', body: 'x'.repeat(16385), status: 413 },
+      {
+        type: 'application/x-www-form-urlencoded',
+        body: `logout_token=${'x'.repeat(12001)}`,
+        status: 400,
+      },
+      {
+        type: 'application/x-www-form-urlencoded',
+        body: 'logout_token=x&logout_token=y',
+        status: 400,
+      },
+      { type: 'application/x-www-form-urlencoded', body: 'logout_token=invalid', status: 400 },
+    ];
+    await Promise.all(
+      invalidBodies.map(async ({ type, body, status }) => {
+        const response = await local.rp.fetch(`${RP}/backchannel`, {
+          method: 'POST',
+          headers: { 'Content-Type': type, 'Accept-Language': 'en' },
+          body,
+        });
+        assert.equal(response.status, status);
+        assert.equal(response.headers.get('Content-Language'), 'en');
+      }),
+    );
+    assert.equal(await local.rpDB.prepare('SELECT sid FROM logout_tombstone').first(), null);
+    await local.rpDB.prepare('DROP TABLE login_transaction').run();
+    const browser = 'request-failure-boundary';
+    const failure = await local.rp.fetch(`${RP}/login`, {
+      method: 'POST',
+      headers: {
+        Origin: RP,
+        Cookie: `__Host-help-browser=${browser}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept-Language': 'en',
+      },
+      body: new URLSearchParams({ csrf: await hash(browser) }),
+    });
+    assert.equal(failure.status, 503);
+    assert.equal(failure.headers.get('Content-Language'), 'en');
+    assert.match(failure.headers.get('Content-Type') ?? '', /text\/html/);
+    const errorPage = await failure.text();
+    assert.match(errorPage, /The service is currently unavailable/);
+    assert.doesNotMatch(errorPage, /login_transaction|D1_ERROR|local_runtime_error/);
+  } finally {
+    await local.close();
+  }
+});

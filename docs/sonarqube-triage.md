@@ -198,6 +198,32 @@ helpdesk and website suites remain in use. The frontend coverage run includes th
 WebMCP and woven-profile suites so changed UI code is measured. Main needs a
 post-merge scan before these 24 findings can be counted as closed there.
 
+### Helpdesk request routing follow-up (2026-10-19)
+
+Source at `31d853a7` has two Helpdesk RP complexity findings: the request
+handler (`S3776`, 92) and backchannel logout handler (22). Separate configuration
+validation, demo-only routing, public help pages, authentication endpoints,
+ticket routing and localized error rendering. Reuse the existing OIDC logout
+implementation. The demo allowlist and rate limiter still run before shared
+routes, CSRF validation and session checks. Await every delegated route so
+rejections reach the request's existing error boundary.
+
+Backchannel logout now separates bounded form decoding and cryptographic token
+verification from claim validation and session revocation. Body/token limits,
+fatal UTF-8 decoding, JWT header restrictions, issuer/audience/algorithm checks,
+claim checks, primary session reads and tombstone writes retain their order.
+Named HTML fragments remove five nested-template findings in the moved pages
+without changing their contents. The local SonarJS rules reproduce the original
+scores; the request handler is now 7, backchannel is 6, and all extracted
+functions are at most 14 against the existing limit of 15. Cloud must confirm
+these results on the final PR revision.
+
+The existing passkey/ticket and login-demo browser scenarios remain. Additional
+real Worker tests cover method/origin rejection, malformed and oversized logout
+bodies, independent rate limits before CSRF/session checks, and localized 503
+responses when delegated database operations fail. No rule exclusions, issue
+dispositions or quality-gate changes are made.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

@@ -193,3 +193,59 @@ test('login-only RP isolates data, checks active leases and removes known revoke
     await local.close();
   }
 });
+
+test('demo routing rejects methods and limits requests before CSRF or session checks', async () => {
+  const local = await startLocal({ scheduler: false, helpdesk: true, demo: true });
+  try {
+    const wrongMethods = await Promise.all(
+      [
+        ['DELETE', '/tickets'],
+        ['POST', '/health'],
+        ['GET', '/session/check'],
+        ['GET', '/logout'],
+      ].map(([method, path]) => local.rp.fetch(`${RP}${path}`, { method })),
+    );
+    assert.deepEqual(
+      wrongMethods.map((response) => response.status),
+      [404, 404, 404, 404],
+    );
+    await Promise.all(
+      ['/login', '/session/check'].map(async (path) => {
+        const invalidForm = {
+          method: 'POST',
+          headers: {
+            Origin: RP,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept-Language': 'ja',
+          },
+          body: 'csrf=wrong',
+        };
+        const burst = await Promise.all(
+          Array.from({ length: 61 }, () => local.rp.fetch(`${RP}${path}`, invalidForm)),
+        );
+        const statuses = burst.map((response) => response.status);
+        assert.ok(statuses.includes(403), 'CSRF must reject before looking up a session');
+        assert.ok(statuses.every((status) => status === 403 || status === 429));
+        const limited = await local.rp.fetch(`${RP}${path}`, invalidForm);
+        assert.equal(limited.status, 429, `${path} must enforce its own request limit`);
+        assert.match(await limited.text(), /短時間に操作が集中/);
+      }),
+    );
+    assert.equal(
+      await local.rpDB.prepare('SELECT state_hash FROM login_transaction').first(),
+      null,
+    );
+    assert.equal(await local.rpDB.prepare('SELECT sid FROM rp_session').first(), null);
+    await local.rpDB.prepare('DROP TABLE rp_session').run();
+    const health = await local.rp.fetch(`${RP}/health`, {
+      headers: { 'Accept-Language': 'en' },
+    });
+    assert.equal(health.status, 503);
+    assert.equal(health.headers.get('Content-Language'), 'en');
+    const errorPage = await health.text();
+    assert.match(errorPage, /The service is currently unavailable/);
+    assert.doesNotMatch(errorPage, /rp_session|D1_ERROR|local_runtime_error/);
+  } finally {
+    await local.close();
+  }
+});
