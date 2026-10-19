@@ -3153,11 +3153,11 @@
   },
   {
     "date": "2026-10-19",
-    "commit": "51697fd",
+    "commit": "66ac9af",
     "code": {
-      "implementationLines": 85722,
-      "testLines": 13769,
-      "implementationFiles": 301,
+      "implementationLines": 85944,
+      "testLines": 14068,
+      "implementationFiles": 302,
       "testFiles": 39,
       "byLanguage": {
         "typescript": {
@@ -3165,8 +3165,8 @@
           "testLines": 2875
         },
         "rust": {
-          "implementationLines": 39495,
-          "testLines": 10894
+          "implementationLines": 39717,
+          "testLines": 11193
         },
         "svelte": {
           "implementationLines": 8070,
@@ -3285,19 +3285,19 @@
     },
     "coverage": {
       "lines": {
-        "covered": 11901,
-        "count": 13452,
-        "percent": 88.47011596788582
+        "covered": 11969,
+        "count": 13512,
+        "percent": 88.58052101835405
       },
       "regions": {
-        "covered": 19261,
-        "count": 22685,
-        "percent": 84.90632576592462
+        "covered": 19363,
+        "count": 22763,
+        "percent": 85.06348020911128
       },
       "functions": {
-        "covered": 1091,
-        "count": 1271,
-        "percent": 85.83792289535798
+        "covered": 1101,
+        "count": 1280,
+        "percent": 86.015625
       }
     }
   }
