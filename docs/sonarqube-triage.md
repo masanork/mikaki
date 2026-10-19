@@ -250,6 +250,34 @@ The real workerd suites separately qualify the private OP bridge, OAuth PKCE,
 SDK MCP calls, revocation, rollback and browser review. Cloud analysis on the
 final PR and post-merge main revisions must confirm closure.
 
+### DCQL selection follow-up (2026-10-19)
+
+Source at `3aeabc57` retains `rust:S3776` on DCQL selection (75 against a limit
+of 30) and a wildcard import (`S2208`). Separate credential type checks, claim
+path validation, whole-query matching, set-reference validation and ordered
+selection. Import the used names explicitly. Validation still covers every
+query and option before selecting credentials, including optional/nonmatching
+entries. A potentially matching query's fields are checked before receipt
+availability is considered. Authority validation retains its own error code.
+
+The bounded wallet profile still chooses the first complete option for every
+required set, merges indices in first-seen order, and omits optional sets when
+required sets exist. Its existing optional-only fallback chooses the first
+complete option across sets. Missing required credentials never yield a partial
+result. Array/string limits, byte-based identifiers, supported formats, claim
+retention and error categories are unchanged. See
+[OpenID4VP credential selection](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html#name-selecting-credentials)
+for the surrounding protocol; this change does not extend the supported profile.
+
+Five focused unit tests cover all 256 availability masks for eight credentials
+using independent bit-mask expectations, ordered/deduplicated required-set
+unions, optional-only fallback, validation errors on unselected entries, maximum
+query/set/option dimensions and availability-length mismatch. Existing signed
+request, mixed SD-JWT/mdoc inventory, authority, encrypted response and retrieval
+one-use tests remain. Native coverage measures the changed Rust source. Cloud
+analysis must verify the final PR and merged revision; no exclusions, issue
+dispositions or gate thresholds are changed.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic

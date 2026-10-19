@@ -1,5 +1,10 @@
 //! Bounded selection for the Wallet's linked-document types and one validated receipt.
-use super::*;
+use super::{Claim, Dcql, Query, authorities};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+const UNSUPPORTED_QUERY: &str = "unsupported_query";
+const UNSATISFIED_QUERY: &str = "credential_query_unsatisfied";
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -46,110 +51,148 @@ pub(super) fn select_available(
     vct: &str,
     available: Option<&[bool]>,
 ) -> Result<Vec<usize>, &'static str> {
-    let invalid = "unsupported_query";
-    if available.is_some_and(|a| a.len() != dcql.credentials.len()) {
-        return Err(invalid);
-    }
-    if dcql.credentials.is_empty() || dcql.credentials.len() > 8 {
-        return Err(invalid);
-    }
-    let mut ids = HashSet::new();
-    let mut matches = Vec::new();
-    for q in &dcql.credentials {
-        if !id(&q.id) || !ids.insert(q.id.as_str()) || q.claims.len() > 7 {
-            return Err(invalid);
-        }
-        let type_matches = match q.format.as_str() {
-            "dc+sd-jwt" => {
-                if q.meta.doctype_value.is_some() {
-                    return Err(invalid);
-                }
-                match &q.meta.vct_values {
-                    None => true,
-                    Some(types) => {
-                        if types.is_empty()
-                            || types.len() > 8
-                            || types.iter().any(|t| t.is_empty() || t.len() > 1024)
-                        {
-                            return Err(invalid);
-                        }
-                        types.iter().any(|t| t == vct)
-                    }
-                }
-            }
-            "mso_mdoc" => {
-                if q.meta.vct_values.is_some() {
-                    return Err(invalid);
-                }
-                match &q.meta.doctype_value {
-                    None => true,
-                    Some(t) if !t.is_empty() && t.len() <= 1024 => t == crate::mdoc::DOCTYPE,
-                    _ => return Err(invalid),
-                }
-            }
-            _ => return Err(invalid),
-        };
-        if let Some(a) = &q.trusted_authorities {
-            authorities::validate(a)?;
-        }
-        let mut paths = HashSet::new();
-        for c in &q.claims {
-            if !paths.insert(&c.path) || c.path.iter().any(|p| p.is_empty() || p.len() > 1024) {
-                return Err(invalid);
-            }
-            match (q.format.as_str(), c.path.as_slice()) {
-                ("dc+sd-jwt", [_]) if c.intent_to_retain.is_none() => {}
-                ("mso_mdoc", [_, _]) => {}
-                _ => return Err(invalid),
-            }
-        }
-        // Claim/authority evaluation is deferred to the actual validated receipt.
-        // Unknown claims on a potentially matching type remain unsupported.
-        if type_matches {
-            fields(q)?;
-        }
-        matches.push(type_matches && available.is_none_or(|a| a[matches.len()]));
-    }
-    let index = |name: &str| {
-        dcql.credentials
-            .iter()
-            .position(|q| q.id == name)
-            .ok_or(invalid)
-    };
+    let matches = matching_credentials(dcql, vct, available)?;
     let Some(sets) = &dcql.credential_sets else {
         if matches.iter().any(|m| !m) {
-            return Err("credential_query_unsatisfied");
+            return Err(UNSATISFIED_QUERY);
         }
         return Ok((0..matches.len()).collect());
     };
+    validate_sets(dcql, sets)?;
+    select_sets(dcql, sets, &matches)
+}
+
+fn credential_type_matches(query: &Query, vct: &str) -> Result<bool, &'static str> {
+    match query.format.as_str() {
+        "dc+sd-jwt" => {
+            if query.meta.doctype_value.is_some() {
+                return Err(UNSUPPORTED_QUERY);
+            }
+            match &query.meta.vct_values {
+                None => Ok(true),
+                Some(types) => {
+                    if types.is_empty()
+                        || types.len() > 8
+                        || types.iter().any(|t| t.is_empty() || t.len() > 1024)
+                    {
+                        return Err(UNSUPPORTED_QUERY);
+                    }
+                    Ok(types.iter().any(|t| t == vct))
+                }
+            }
+        }
+        "mso_mdoc" => {
+            if query.meta.vct_values.is_some() {
+                return Err(UNSUPPORTED_QUERY);
+            }
+            match &query.meta.doctype_value {
+                None => Ok(true),
+                Some(t) if !t.is_empty() && t.len() <= 1024 => Ok(t == crate::mdoc::DOCTYPE),
+                _ => Err(UNSUPPORTED_QUERY),
+            }
+        }
+        _ => Err(UNSUPPORTED_QUERY),
+    }
+}
+
+fn validate_claim_paths(query: &Query) -> Result<(), &'static str> {
+    let mut paths = HashSet::new();
+    for claim in &query.claims {
+        if !paths.insert(&claim.path) || claim.path.iter().any(|p| p.is_empty() || p.len() > 1024) {
+            return Err(UNSUPPORTED_QUERY);
+        }
+        match (query.format.as_str(), claim.path.as_slice()) {
+            ("dc+sd-jwt", [_]) if claim.intent_to_retain.is_none() => {}
+            ("mso_mdoc", [_, _]) => {}
+            _ => return Err(UNSUPPORTED_QUERY),
+        }
+    }
+    Ok(())
+}
+
+fn matching_credentials(
+    dcql: &Dcql,
+    vct: &str,
+    available: Option<&[bool]>,
+) -> Result<Vec<bool>, &'static str> {
+    if available.is_some_and(|a| a.len() != dcql.credentials.len()) {
+        return Err(UNSUPPORTED_QUERY);
+    }
+    if dcql.credentials.is_empty() || dcql.credentials.len() > 8 {
+        return Err(UNSUPPORTED_QUERY);
+    }
+    let mut ids = HashSet::new();
+    let mut matches = Vec::new();
+    for query in &dcql.credentials {
+        if !id(&query.id) || !ids.insert(query.id.as_str()) || query.claims.len() > 7 {
+            return Err(UNSUPPORTED_QUERY);
+        }
+        let type_matches = credential_type_matches(query, vct)?;
+        if let Some(authorities) = &query.trusted_authorities {
+            authorities::validate(authorities)?;
+        }
+        validate_claim_paths(query)?;
+        // Claim/authority evaluation is deferred to the actual validated receipt.
+        // Unknown claims on a potentially matching type remain unsupported.
+        if type_matches {
+            fields(query)?;
+        }
+        matches.push(type_matches && available.is_none_or(|a| a[matches.len()]));
+    }
+    Ok(matches)
+}
+
+fn credential_index(dcql: &Dcql, name: &str) -> Result<usize, &'static str> {
+    dcql.credentials
+        .iter()
+        .position(|query| query.id == name)
+        .ok_or(UNSUPPORTED_QUERY)
+}
+
+fn validate_sets(dcql: &Dcql, sets: &[CredentialSet]) -> Result<(), &'static str> {
     if sets.is_empty() || sets.len() > 8 {
-        return Err(invalid);
+        return Err(UNSUPPORTED_QUERY);
     }
     for set in sets {
         if set.options.is_empty() || set.options.len() > 8 {
-            return Err(invalid);
+            return Err(UNSUPPORTED_QUERY);
         }
         for option in &set.options {
             if option.is_empty() || option.len() > 8 {
-                return Err(invalid);
+                return Err(UNSUPPORTED_QUERY);
             }
             let mut seen = HashSet::new();
             for name in option {
-                index(name)?;
+                credential_index(dcql, name)?;
                 if !seen.insert(name) {
-                    return Err(invalid);
+                    return Err(UNSUPPORTED_QUERY);
                 }
             }
         }
     }
-    let required: Vec<_> = sets.iter().filter(|s| s.required).collect();
+    Ok(())
+}
+
+// Set references have all been validated before checking whether an option is satisfiable.
+fn option_matches(dcql: &Dcql, option: &[String], matches: &[bool]) -> bool {
+    option
+        .iter()
+        .all(|name| matches[credential_index(dcql, name).expect("validated ID")])
+}
+
+fn select_sets(
+    dcql: &Dcql,
+    sets: &[CredentialSet],
+    matches: &[bool],
+) -> Result<Vec<usize>, &'static str> {
+    let required: Vec<_> = sets.iter().filter(|set| set.required).collect();
     for set in &required {
         if !set
             .options
             .iter()
-            .any(|o| o.iter().all(|n| matches[index(n).expect("validated ID")]))
+            .any(|option| option_matches(dcql, option, matches))
         {
-            return Err("credential_query_unsatisfied");
+            return Err(UNSATISFIED_QUERY);
         }
     }
     let mut selected = Vec::new();
@@ -158,23 +201,23 @@ pub(super) fn select_available(
         let option = set
             .options
             .iter()
-            .find(|o| o.iter().all(|n| matches[index(n).expect("validated ID")]))
-            .ok_or("credential_query_unsatisfied")?;
+            .find(|option| option_matches(dcql, option, matches))
+            .ok_or(UNSATISFIED_QUERY)?;
         for name in option {
-            let i = index(name)?;
-            if !selected.contains(&i) {
-                selected.push(i);
+            let index = credential_index(dcql, name)?;
+            if !selected.contains(&index) {
+                selected.push(index);
             }
         }
     }
     if required.is_empty() {
         let option = sets
             .iter()
-            .flat_map(|s| &s.options)
-            .find(|o| o.iter().all(|n| matches[index(n).expect("validated ID")]))
-            .ok_or("credential_query_unsatisfied")?;
+            .flat_map(|set| &set.options)
+            .find(|option| option_matches(dcql, option, matches))
+            .ok_or(UNSATISFIED_QUERY)?;
         for name in option {
-            selected.push(index(name)?);
+            selected.push(credential_index(dcql, name)?);
         }
     }
     Ok(selected)
@@ -188,10 +231,10 @@ pub(super) fn fields(query: &Query) -> Result<(Vec<String>, Vec<String>), &'stat
         let name = match (query.format.as_str(), claim.path.as_slice()) {
             ("dc+sd-jwt", [name]) if claim.intent_to_retain.is_none() => name,
             ("mso_mdoc", [ns, name]) if ns == crate::mdoc::NAMESPACE => name,
-            _ => return Err("unsupported_query"),
+            _ => return Err(UNSUPPORTED_QUERY),
         };
         if !crate::claim_profile::supported(name) || !names.insert(name) {
-            return Err("unsupported_query");
+            return Err(UNSUPPORTED_QUERY);
         }
         fields.push(name.clone());
         if claim.intent_to_retain == Some(true) {
@@ -200,3 +243,6 @@ pub(super) fn fields(query: &Query) -> Result<(Vec<String>, Vec<String>), &'stat
     }
     Ok((fields, retained))
 }
+
+#[cfg(test)]
+mod tests;
