@@ -74,6 +74,21 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
         return Err(ERR);
     }
     let c = Certificate::from_der(bytes).map_err(|_| ERR)?;
+    validate_certificate_header(&c, now)?;
+    validate_extensions(&c, ca, purpose)?;
+    let ku = validate_key_usage(&c, ca)?;
+    // This ecosystem uses unrestricted credential certificates for SD-JWT only.
+    if purpose == Purpose::SdJwt && ext(&c, "2.5.29.37").is_ok() {
+        return Err("unsupported_credential_eku");
+    }
+    validate_basic_constraints(&c, ca, purpose, &ku)?;
+    if purpose == Purpose::Mdoc {
+        validate_mdoc_profile(&c, ca)?;
+    }
+    Ok(c)
+}
+
+fn validate_certificate_header(c: &Certificate, now: u64) -> Result<(), &'static str> {
     let t = c.tbs_certificate();
     let start = t.validity().not_before.to_unix_duration().as_secs();
     let end = t.validity().not_after.to_unix_duration().as_secs();
@@ -88,9 +103,13 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
     {
         return Err(ERR);
     }
-    public(&c)?;
+    public(c)?;
+    Ok(())
+}
+
+fn validate_extensions(c: &Certificate, ca: bool, purpose: Purpose) -> Result<(), &'static str> {
     let mut ids = HashSet::new();
-    for e in t.extensions().ok_or(ERR)? {
+    for e in c.tbs_certificate().extensions().ok_or(ERR)? {
         if !ids.insert(e.extn_id)
             || (e.critical
                 && !(e.extn_id.to_string() == "2.5.29.15"
@@ -100,7 +119,11 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
             return Err(ERR);
         }
     }
-    let ku_ext = ext(&c, "2.5.29.15")?;
+    Ok(())
+}
+
+fn validate_key_usage(c: &Certificate, ca: bool) -> Result<KeyUsage, &'static str> {
+    let ku_ext = ext(c, "2.5.29.15")?;
     let ku = KeyUsage::from_der(ku_ext.extn_value.as_bytes()).map_err(|_| ERR)?;
     if !ku_ext.critical
         || (!ca && ku.0.bits() != 1)
@@ -108,12 +131,17 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
     {
         return Err(ERR);
     }
-    // This ecosystem uses unrestricted credential certificates for SD-JWT only.
-    if purpose == Purpose::SdJwt && ext(&c, "2.5.29.37").is_ok() {
-        return Err("unsupported_credential_eku");
-    }
+    Ok(ku)
+}
+
+fn validate_basic_constraints(
+    c: &Certificate,
+    ca: bool,
+    purpose: Purpose,
+    ku: &KeyUsage,
+) -> Result<(), &'static str> {
     if ca {
-        let e = ext(&c, "2.5.29.19")?;
+        let e = ext(c, "2.5.29.19")?;
         let bc = BasicConstraints::from_der(e.extn_value.as_bytes()).map_err(|_| ERR)?;
         if !e.critical
             || !bc.ca
@@ -122,94 +150,135 @@ fn parse(bytes: &[u8], ca: bool, purpose: Purpose, now: u64) -> Result<Certifica
         {
             return Err(ERR);
         }
-    } else if let Ok(e) = ext(&c, "2.5.29.19")
+    } else if let Ok(e) = ext(c, "2.5.29.19")
         && BasicConstraints::from_der(e.extn_value.as_bytes())
             .map_err(|_| ERR)?
             .ca
     {
         return Err(ERR);
     }
-    if purpose == Purpose::Mdoc {
-        if end.saturating_sub(start) > if ca { 7305 * 86400 } else { 457 * 86400 } {
+    Ok(())
+}
+
+fn validate_mdoc_profile(c: &Certificate, ca: bool) -> Result<(), &'static str> {
+    let validity = c.tbs_certificate().validity();
+    let start = validity.not_before.to_unix_duration().as_secs();
+    let end = validity.not_after.to_unix_duration().as_secs();
+    if end.saturating_sub(start) > if ca { 7305 * 86400 } else { 457 * 86400 } {
+        return Err(ERR);
+    }
+    for oid in [
+        "2.5.29.33",
+        "2.5.29.30",
+        "2.5.29.36",
+        "2.5.29.54",
+        "2.5.29.46",
+    ] {
+        if ext(c, oid).is_ok() {
             return Err(ERR);
-        }
-        for oid in [
-            "2.5.29.33",
-            "2.5.29.30",
-            "2.5.29.36",
-            "2.5.29.54",
-            "2.5.29.46",
-        ] {
-            if ext(&c, oid).is_ok() {
-                return Err(ERR);
-            }
-        }
-        let mut country = false;
-        let mut cn = false;
-        for rdn in t.subject().iter_rdn() {
-            for at in rdn.iter() {
-                let oid = at.oid.to_string();
-                if oid == "2.5.4.6" {
-                    let b = at.value.value();
-                    if country
-                        || at.value.tag() != Tag::PrintableString
-                        || b.len() != 2
-                        || !b.iter().all(u8::is_ascii_uppercase)
-                    {
-                        return Err(ERR);
-                    }
-                    country = true;
-                }
-                if oid == "2.5.4.3" {
-                    cn = true;
-                    if at.value.value().is_empty() {
-                        return Err(ERR);
-                    }
-                }
-                if ["2.5.4.3", "2.5.4.7", "2.5.4.8", "2.5.4.10", "2.5.4.11"].contains(&oid.as_str())
-                    && !matches!(at.value.tag(), Tag::PrintableString | Tag::Utf8String)
-                {
-                    return Err(ERR);
-                }
-            }
-        }
-        if !country || !cn {
-            return Err(ERR);
-        }
-        let ski = SubjectKeyIdentifier::from_der(ext(&c, "2.5.29.14")?.extn_value.as_bytes())
-            .map_err(|_| ERR)?;
-        let bits = t
-            .subject_public_key_info()
-            .subject_public_key
-            .as_bytes()
-            .ok_or(ERR)?;
-        if bits.first() != Some(&4) || ski.0.as_bytes() != &Sha1::digest(bits)[..] {
-            return Err(ERR);
-        }
-        let contact = IssuerAltName::from_der(ext(&c, "2.5.29.18")?.extn_value.as_bytes())
-            .map_err(|_| ERR)?;
-        if !contact.0.iter().any(|n| matches!(n,GeneralName::Rfc822Name(s)|GeneralName::UniformResourceIdentifier(s) if !s.as_str().is_empty())) { return Err(ERR); }
-        if !ca {
-            let e = ext(&c, "2.5.29.37")?;
-            let eku = ExtendedKeyUsage::from_der(e.extn_value.as_bytes()).map_err(|_| ERR)?;
-            if !e.critical || eku.0.len() != 1 || eku.0[0].to_string() != "1.0.18013.5.1.2" {
-                return Err(ERR);
-            }
-            AuthorityKeyIdentifier::from_der(ext(&c, "2.5.29.35")?.extn_value.as_bytes())
-                .map_err(|_| ERR)?
-                .key_identifier
-                .ok_or(ERR)?;
-        }
-        if !ca || ext(&c, "2.5.29.31").is_ok() {
-            let points =
-                CrlDistributionPoints::from_der(ext(&c, "2.5.29.31")?.extn_value.as_bytes())
-                    .map_err(|_| ERR)?;
-            if points.0.is_empty() || points.0.iter().any(|p| p.reasons.is_some() || p.crl_issuer.is_some())
-                || !points.0.iter().any(|p|matches!(&p.distribution_point,Some(DistributionPointName::FullName(names)) if names.iter().any(|n|matches!(n,GeneralName::UniformResourceIdentifier(s) if !s.as_str().is_empty())))) { return Err(ERR); }
         }
     }
-    Ok(c)
+    validate_mdoc_subject(c)?;
+    validate_mdoc_identifiers(c)?;
+    if !ca {
+        validate_mdoc_signer(c)?;
+    }
+    if !ca || ext(c, "2.5.29.31").is_ok() {
+        validate_crl_distribution_points(c)?;
+    }
+    Ok(())
 }
+
+fn validate_mdoc_subject(c: &Certificate) -> Result<(), &'static str> {
+    let mut country = false;
+    let mut cn = false;
+    for at in c.tbs_certificate().subject().iter() {
+        let oid = at.oid.to_string();
+        if oid == "2.5.4.6" {
+            let b = at.value.value();
+            if country
+                || at.value.tag() != Tag::PrintableString
+                || b.len() != 2
+                || !b.iter().all(u8::is_ascii_uppercase)
+            {
+                return Err(ERR);
+            }
+            country = true;
+        }
+        if oid == "2.5.4.3" {
+            cn = true;
+            if at.value.value().is_empty() {
+                return Err(ERR);
+            }
+        }
+        if ["2.5.4.3", "2.5.4.7", "2.5.4.8", "2.5.4.10", "2.5.4.11"].contains(&oid.as_str())
+            && !matches!(at.value.tag(), Tag::PrintableString | Tag::Utf8String)
+        {
+            return Err(ERR);
+        }
+    }
+    if !country || !cn {
+        return Err(ERR);
+    }
+    Ok(())
+}
+
+fn validate_mdoc_identifiers(c: &Certificate) -> Result<(), &'static str> {
+    let ski = SubjectKeyIdentifier::from_der(ext(c, "2.5.29.14")?.extn_value.as_bytes())
+        .map_err(|_| ERR)?;
+    let bits = c
+        .tbs_certificate()
+        .subject_public_key_info()
+        .subject_public_key
+        .as_bytes()
+        .ok_or(ERR)?;
+    if bits.first() != Some(&4) || ski.0.as_bytes() != &Sha1::digest(bits)[..] {
+        return Err(ERR);
+    }
+    let contact =
+        IssuerAltName::from_der(ext(c, "2.5.29.18")?.extn_value.as_bytes()).map_err(|_| ERR)?;
+    if !contact.0.iter().any(|name| {
+        matches!(name, GeneralName::Rfc822Name(s) | GeneralName::UniformResourceIdentifier(s)
+            if !s.as_str().is_empty())
+    }) {
+        return Err(ERR);
+    }
+    Ok(())
+}
+
+fn validate_mdoc_signer(c: &Certificate) -> Result<(), &'static str> {
+    let e = ext(c, "2.5.29.37")?;
+    let eku = ExtendedKeyUsage::from_der(e.extn_value.as_bytes()).map_err(|_| ERR)?;
+    if !e.critical || eku.0.len() != 1 || eku.0[0].to_string() != "1.0.18013.5.1.2" {
+        return Err(ERR);
+    }
+    AuthorityKeyIdentifier::from_der(ext(c, "2.5.29.35")?.extn_value.as_bytes())
+        .map_err(|_| ERR)?
+        .key_identifier
+        .ok_or(ERR)?;
+    Ok(())
+}
+
+fn validate_crl_distribution_points(c: &Certificate) -> Result<(), &'static str> {
+    let points = CrlDistributionPoints::from_der(ext(c, "2.5.29.31")?.extn_value.as_bytes())
+        .map_err(|_| ERR)?;
+    if points.0.is_empty()
+        || points
+            .0
+            .iter()
+            .any(|point| point.reasons.is_some() || point.crl_issuer.is_some())
+        || !points.0.iter().any(|point| {
+            matches!(&point.distribution_point, Some(DistributionPointName::FullName(names))
+            if names.iter().any(|name| {
+                matches!(name, GeneralName::UniformResourceIdentifier(s) if !s.as_str().is_empty())
+            }))
+        })
+    {
+        return Err(ERR);
+    }
+    Ok(())
+}
+
 /// Pinned-key receipt compatibility: validates the presented leaf and signed expiry.
 /// It does not infer trust from x5c; the caller's independently pinned key supplies trust.
 pub fn pinned_leaf(

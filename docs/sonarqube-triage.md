@@ -278,6 +278,33 @@ one-use tests remain. Native coverage measures the changed Rust source. Cloud
 analysis must verify the final PR and merged revision; no exclusions, issue
 dispositions or gate thresholds are changed.
 
+### Credential certificate validation follow-up (2026-10-19)
+
+Source at `51697fd5` retains `rust:S3776` on credential certificate parsing
+(92 against a limit of 30). Separate certificate header/public-key checks,
+extension allowlisting, key usage, basic constraints and the mdoc profile's
+subject, identifiers, signer purpose and CRL distribution points. The parser
+still runs these stages in their original order, including SD-JWT's distinct
+`unsupported_credential_eku` error after key usage and before basic constraints.
+Subject attributes retain their encoded traversal order, including across
+multi-valued relative distinguished names.
+
+Six added tests cover exact validity boundaries, accepted/rejected subject
+encodings, contact alternatives, key identifiers, exact signer EKU, partial or
+indirect CRL pointers, forbidden extensions, malformed extension DER, CA/leaf
+usage and error priority. These tests also pass against the original parser.
+Existing chain, pinned-key receipt and fail-closed offline revocation suites
+remain. Certificate URLs are never fetched and trust still comes from separately
+provisioned roots or the caller's independently pinned key.
+
+The retained `S4790` site compares the existing SHA-1 subject-key identifier
+profile with the public-key bits; it does not select the certificate signature
+algorithm. This identifier form is described in
+[RFC 5280 section 4.2.1.2](https://www.rfc-editor.org/rfc/rfc5280.html#section-4.2.1.2).
+Signature verification remains P-256/SHA-256. This refactor leaves that profile
+and finding unchanged. No rule exclusions, issue dispositions or gate thresholds
+change. Cloud must confirm the final PR and post-merge results.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic
