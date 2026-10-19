@@ -361,6 +361,14 @@ operation guards, journal identities and recovery behavior. Final PR and
 post-merge Cloud analyses must confirm closure; no rule settings, issue
 dispositions or coverage exclusions change.
 
+CI also exposed a minute-boundary race in the existing demo RP rate-limit
+test: its final request could land in a new native limiter window and return
+403 instead of 429. A 30-second test deadline bounds the burst to at most two
+60-second windows. Sending 121 requests exceeds their combined budget, and
+checking a 429 response within that burst preserves the localized refusal,
+per-route limits, CSRF checks and absence of session writes. Both demo RP tests
+pass on the local runtime; production limiter settings remain unchanged.
+
 ## Coverage regression checks
 
 `npm run test:frontend-coverage` now includes existing owner-key cryptographic
