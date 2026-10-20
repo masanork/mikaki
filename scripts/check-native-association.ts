@@ -17,7 +17,10 @@ assert.deepEqual(JSON.parse(readFileSync('assetlinks.json', 'utf8')), [
 ]);
 assert.deepEqual(JSON.parse(readFileSync('credential-assetlinks.json', 'utf8')), [
   {
-    relation: ['delegate_permission/common.get_login_creds'],
+    relation: [
+      'delegate_permission/common.handle_all_urls',
+      'delegate_permission/common.get_login_creds',
+    ],
     target: {
       namespace: 'android_app',
       package_name: 'app.tossa.mikaki',
