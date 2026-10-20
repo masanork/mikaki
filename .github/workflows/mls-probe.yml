@@ -13,7 +13,9 @@ concurrency:
 jobs:
   lifecycle:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Three browser engines, clean Rust/Wasm builds and mapped coverage share
+    # this job. Bound it with headroom for cold caches and instrumented Chromium.
+    timeout-minutes: 90
     env:
       MIKAKI_MESSAGING_COVERAGE: '1'
       WRANGLER_SEND_METRICS: 'false'
