@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { readFile } from 'node:fs/promises';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
@@ -18,7 +18,7 @@ function requiredHeader(
   return value;
 }
 
-test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Chromium', async () => {
+test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody and signs in again in Chromium', async () => {
   const issuer = 'https://mikaki.test';
   const redirectUri = 'https://rp.example/callback';
   const harness = createTestHarness({
@@ -222,31 +222,26 @@ test('bootstrap passkey enrollment, Vault PRF encryption, and sign-in work in Ch
       (cookie) => cookie.name === '__Host-op-sso',
     );
     assert.ok(firstSso);
-    await page.goto(`${issuer}/vault?storage=legacy-v1`);
-    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
-    await page.getByLabel('表示名', { exact: true }).fill('Vault browser test');
-    await page.getByRole('button', { name: '保存', exact: true }).click();
-    await page.getByRole('status').getByText('保存しました').waitFor();
+    await page.goto(`${issuer}/vault`);
+    await expect(page.getByRole('link', { name: 'Walletアプリで開く', exact: true })).toBeVisible();
+    assert.deepEqual(await page.locator('.mvp-tabs button').allTextContents(), ['Wallet', 'Chat']);
+    assert.equal(await page.locator('#name,#owner-note-save,#archive-file').count(), 0);
+    await page.getByRole('button', { name: 'Chat', exact: true }).click();
+    await page.getByRole('button', { name: 'Passkeyで開く', exact: true }).click();
+    await expect(
+      page.getByText('この接続先ではChatをまだ利用できません。', { exact: true }),
+    ).toBeVisible();
+    const ownerKey = await DB.prepare('SELECT * FROM vault_owner_key_head').all();
+    assert.equal(ownerKey.results.length, 1);
     await page.reload();
-    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
-    await page.waitForFunction(
-      () =>
-        (document.querySelector('#name') as HTMLInputElement | null)?.value ===
-        'Vault browser test',
-    );
-    assert.equal(
-      await page.getByLabel('表示名', { exact: true }).inputValue(),
-      'Vault browser test',
-    );
-    await page.getByLabel('表示名', { exact: true }).fill('Updated vault name');
-    await page.getByRole('button', { name: '保存', exact: true }).click();
-    await page.getByRole('status').getByText('保存しました').waitFor();
-    await page.reload();
-    await page.getByRole('button', { name: 'Passkeyで開く' }).click();
-    await page.waitForFunction(
-      () =>
-        (document.querySelector('#name') as HTMLInputElement | null)?.value ===
-        'Updated vault name',
+    await page.getByRole('button', { name: 'Passkeyで開く', exact: true }).click();
+    await expect(
+      page.getByText('この接続先ではChatをまだ利用できません。', { exact: true }),
+    ).toBeVisible();
+    assert.deepEqual(
+      (await DB.prepare('SELECT * FROM vault_owner_key_head').all()).results,
+      ownerKey.results,
+      'reopening the actual product preserves the enrolled owner key',
     );
     assert.equal(
       (await DB.prepare('SELECT closed FROM bootstrap_state WHERE id=1').first()).closed,

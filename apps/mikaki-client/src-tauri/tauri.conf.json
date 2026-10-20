@@ -16,7 +16,7 @@
         "minWidth": 360,
         "minHeight": 500,
         "create": false,
-        "url": "https://auth.mikaki.org/vault"
+        "url": "index.html"
       }
     ],
     "security": {

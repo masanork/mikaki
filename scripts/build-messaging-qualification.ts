@@ -16,8 +16,12 @@ for (const base of [join(homedir(), 'Library/Caches'), join(homedir(), '.cache')
   for (const tool of ['worker-build', '.wasm-pack']) {
     const directory = join(base, tool);
     for (const entry of await readdir(directory).catch(() => [] as string[])) {
-      if (entry.startsWith('wasm-bindgen-') && entry.endsWith(version))
+      if (entry.startsWith('wasm-bindgen-')) {
+        // wasm-pack and worker-build use different version/platform directory
+        // orders. The executable's exact locked version is checked below.
         candidates.push(join(directory, entry, 'wasm-bindgen'));
+        candidates.push(join(directory, entry, 'bin', 'wasm-bindgen'));
+      }
     }
   }
 }

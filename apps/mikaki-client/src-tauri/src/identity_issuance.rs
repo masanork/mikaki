@@ -831,6 +831,10 @@ pub fn receive_product_link(app: &AppHandle, url: &url::Url) -> bool {
     }
     use tauri::Emitter;
     let _ = app.emit("product-wallet-ready", ());
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::web::show_wallet(&handle);
+    });
     true
 }
 
