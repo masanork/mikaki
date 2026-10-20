@@ -64,7 +64,27 @@ release, independently verified by pulling the installed APK and comparing its
 SHA-256. The ADB debugging port was removed and the original screen preference
 remained off. App data was retained.
 
-After an approved execution, independently inspect both markers and scheduled
-GC, then repeat real-device login. A completed settlement alone does not qualify
-login or Vault unlock. Production recovery and successful device authentication
-are not yet claimed.
+## Production result
+
+The user explicitly approved the incident-specific settlement. The private
+operator journal records the exact next D1 marker at 2026-10-20 03:29:01.053 UTC
+and completion of the existing permit at 03:29:01.160 UTC, sequence 9705.
+No retention SQL or other business changes were replayed by the operator tool.
+
+Independent post-recovery reads found D1 primary and the separate checkpoint
+equal at sequence 9706, with no pending permit, floor 1 and `frozen: false`.
+The normal scheduled collector recorded `auth_gc` at 03:29:19.432 UTC and
+reclaimed 44 expired rows. These observations confirm that subsequent ordinary
+updates resumed; they do not qualify real-device login or Vault unlock.
+
+Fresh authentication in the normal signed Android release then succeeded.
+Production `POST /login/finish` returned 200 at 03:32:33.633 and 03:32:52.041 UTC;
+a read-only aggregate confirmed fresh SSO authentication timestamps. The Pixel
+displayed the Vault with its profile and private-note sections marked unlocked.
+This qualifies the observed device login and Vault unlock, not document reading
+or any external disclosure or copy operation.
+
+The initial failure is now identified as a lost D1 network connection. The
+coordinator's quarantine policy remains unchanged, so another unknown storage
+outcome can require operator review again. This recovery does not claim a
+general automatic cure for that availability problem.
