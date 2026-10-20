@@ -74,6 +74,9 @@ test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody 
       Object.defineProperty(credentials, 'get', {
         configurable: true,
         value: (options: CredentialRequestOptions) => {
+          // The ordinary owner sign-in exercises its real PRF handoff. The
+          // cancellation fixture below belongs to the separate RP login flow.
+          if (options.publicKey?.extensions?.prf) return get(options);
           calls += 1;
           if (calls !== 1) {
             if (calls === 2) {
@@ -98,6 +101,8 @@ test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody 
       });
     });
     const cdp = await context.newCDPSession(page);
+    let assertions = 0;
+    cdp.on('WebAuthn.credentialAsserted', () => assertions++);
     await cdp.send('WebAuthn.enable', { enableUI: false });
     const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
       options: {
@@ -173,6 +178,18 @@ test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody 
             return;
           }
           const response = responses[0];
+          if (response.status === 302) {
+            const location = requiredHeader(response, 'location');
+            assert.equal(new URL(location).origin, issuer);
+            // Start a fresh mocked request for a browser redirect; cookies and
+            // the actual server-selected continuation remain unchanged.
+            await route.fulfill({
+              status: 200,
+              headers: { ...Object.fromEntries(response.headers), 'Content-Type': 'text/html' },
+              body: `<script>location.replace(${JSON.stringify(location)})</script>`,
+            });
+            return;
+          }
           await route.fulfill({
             status: response.status,
             headers: Object.fromEntries(response.headers),
@@ -242,6 +259,27 @@ test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody 
       (await DB.prepare('SELECT * FROM vault_owner_key_head').all()).results,
       ownerKey.results,
       'reopening the actual product preserves the enrolled owner key',
+    );
+    await context.clearCookies({ name: '__Host-op-sso' });
+    const beforeSignIn = assertions;
+    await page.goto(`${issuer}/signin?lang=ja`);
+    await page.waitForURL(`${issuer}/vault?lang=ja`);
+    await expect(page.getByRole('heading', { name: 'Wallet', exact: true })).toBeVisible();
+    assert.deepEqual(await page.locator('.mvp-tabs button').allTextContents(), ['Wallet', 'Chat']);
+    assert.equal(await page.locator('#name,#owner-note-save,#archive-file').count(), 0);
+    await page.getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(
+      page.getByText('この接続先ではChatをまだ利用できません。', { exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      assertions,
+      beforeSignIn + 1,
+      'sign-in opens the product with one Passkey assertion',
+    );
+    assert.equal(await page.getByRole('button', { name: 'Passkeyで開く', exact: true }).count(), 0);
+    assert.deepEqual(
+      (await DB.prepare('SELECT * FROM vault_owner_key_head').all()).results,
+      ownerKey.results,
     );
     assert.equal(
       (await DB.prepare('SELECT closed FROM bootstrap_state WHERE id=1').first()).closed,

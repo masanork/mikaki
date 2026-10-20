@@ -48,23 +48,51 @@ or shape of any Chat tables, browser/device compatibility, or current load limit
 
 Keep Chat disabled until the following work is qualified together:
 
-1. A source-bound release path must build the `messaging-beta` feature and
+1. Package and test the production service facade with the beta shim.
+   `build-op-authority.ts` currently writes the ordinary `build/worker/service.mjs`;
+   the beta journey points directly at `build-messaging-beta/worker/shim.mjs`.
+   The beta package must retain all named storage/authority entrypoints and their
+   public/RPC denials. Run the product journey through that same package.
+2. Make this product qualification a dependency of release verification and
+   promotion. The separate MLS workflow now runs the product journey, but main
+   CI's `verify`/`supply-chain`/`deploy` dependency graph does not wait for it.
+   A source-bound release path must build the `messaging-beta` feature and
    include the generated `assets/chat/client.js` and `crypto.wasm` in its
    attested static asset inventory. The ordinary release builds without this
-   feature, even if a runtime flag is set.
-2. Apply the reviewed messaging migration chain through a separate configuration
+   feature, even if a runtime flag is set. The existing beta tests enforce
+   server/lazy-asset size caps; add commit-bound hashes and complete facade upload
+   measurements to the promotion evidence.
+3. Separate Chat ingress policy, counters and bounded cleanup from authentication.
+   `messaging_beta::api` currently calls `auth_resources::admit_work`, consuming
+   the same `auth_request_window` and deployment budget as login. The browser
+   fixture raises the shared limits to 2000/4000; that does not qualify normal
+   load. Verify that exhausting Chat returns 429 without exhausting login, and
+   that authentication traffic cannot consume Chat's independent budget.
+4. Apply the reviewed messaging migration chain through a separate configuration
    and migration ledger. Preserve the owner migration directory/ledger. Inspect
    existing device rows before the unique one-device-per-owner index is applied.
-3. Extend the exact production schema audit to validate the separately reviewed
+   Extend the exact production schema audit to validate the separately reviewed
    Chat schema and its ledger. The current owner/Work schema comparison does not
    allow these extra tables. Applying them ahead of that release-path change
    would block later normal promotions.
-4. Provision the independent Ed25519 signing key through the existing protected
+5. Provision the independent Ed25519 signing key through the existing protected
    secret/version workflow. Check the public key and same-origin configuration
    without exposing its private component. The compile feature and
    `MESSAGING_BETA_ENABLED=true` must agree with the staged artifact.
-5. Qualify real Passkey/PRF, two-person messaging, restart, lock, missing local
+6. Rehearse disable and code rollback after actual enrollment and delivery on a
+   disposable environment. Verify that login still works, messaging routes close,
+   existing rows/history remain, and re-enabling resumes the same device and
+   conversation. The current disabled tests start without a Chat schema/key;
+   they do not establish this populated-database rollback behavior.
+7. Qualify real Passkey/PRF, two-person messaging, restart, lock, missing local
    profile, Chat-to-native presentation and card receipt on supported devices.
+
+The 2026-10-20 E2EE handoff referred to conflicted snapshot `00990d83`. Those
+conflicts are resolved, and the release branch is based on main. The normal entry
+is `OwnerVaultSession` → `ProductWorkspace` → `ProductChat` → the canonical
+`ui/messaging` runtime; probe wrappers reuse that runtime. There is no competing
+`ui/chat` implementation or ordinary `0004_messaging.sql`. Keep these bounded
+release tasks ahead of adding more recovery permutations.
 
 The [D1 migration documentation](https://developers.cloudflare.com/d1/reference/migrations/)
 allows a custom migration directory and ledger table. Worker code rollback does
