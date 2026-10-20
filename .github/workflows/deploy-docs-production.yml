@@ -1,6 +1,11 @@
 name: deploy-docs-production
 on:
   workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      DOCS_RP_PRIVATE_JWK:
+        required: false
 permissions:
   contents: read
   actions: read

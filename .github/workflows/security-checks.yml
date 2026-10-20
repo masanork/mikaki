@@ -1,0 +1,30 @@
+name: security-checks
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  checks:
+    name: Secrets and Actions security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install checksum-pinned security tools
+        id: tools
+        run: bash scripts/install-security-tools.sh "$RUNNER_TEMP/mikaki-security-tools"
+      - name: Verify detection and failure handling with inert fixtures
+        id: selftest
+        run: node --test scripts/security-checks.test.ts
+      - name: Scan all reachable commit history for secrets
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' && steps.selftest.outcome == 'success' }}
+        run: gitleaks git --log-opts=HEAD --ignore-gitleaks-allow --redact=100 --no-banner --log-level=warn --timeout=300 .
+      - name: Audit workflows, composite actions and Dependabot
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' && steps.selftest.outcome == 'success' }}
+        run: zizmor --offline --strict-collection --min-severity=medium --format=github --no-progress .github

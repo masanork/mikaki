@@ -6,6 +6,8 @@ This file records user-visible project changes from 2026-09-23 onward. Mikaki ha
 
 ### Changed
 
+- Gate verification and promotion on checksum-pinned Gitleaks history scans and zizmor workflow checks, with inert detection/redaction regressions and exact historical finding exceptions. Restrict reusable workflow secrets to named inputs and apply a seven-day cooldown to Dependabot version updates.
+
 - Combine first-party web sign-in and Vault opening in one Passkey/PRF assertion with a document-local handoff. Keep non-PRF login usable, require fresh unlock after lock/navigation, and adopt existing random-input roots through an immutable same-credential login wrapper without changing data or grants.
 
 - Preserve strong Vault revision ETags with `no-transform` so Cloudflare compression cannot stop Passkey unlock, record operations or access changes. The Workspace browser regression models edge ETag weakening.

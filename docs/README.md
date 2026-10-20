@@ -22,6 +22,7 @@ The [README](../README.md) is the entry point. This index routes readers to the 
 | Review unified Vault key opening | [Candidate owner-key format, bounded lease and adoption gates](vault-owner-key-contract.md) |
 | Review tests and coverage | [Product test coverage and CI evidence](test-quality.md) |
 | Plan security hardening and penetration testing | [Assurance plan](security-assurance-plan.md), [threat model and attack scenarios](security-threat-model.md), and [verification inventory](security-verification-inventory.md) |
+| Run security CI checks | [Scanner scope, reviewed historical findings and local commands](security-ci.md) |
 | Configure advisory static analysis | [SonarQube Cloud evaluation and setup](sonarqube-cloud.md) |
 | [SonarQube findings review](sonarqube-triage.md) | Initial findings, remediation evidence and retained protocol boundaries |
 | Work on the code | [Development guide](contributing.md) |
