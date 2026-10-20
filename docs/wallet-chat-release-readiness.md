@@ -16,6 +16,20 @@ presentation consent remain in place.
   behavior. Ordinary test screenshots go under ignored `local/generated/`.
 - CI and physical-device results are distinct from these local checks.
 
+## Physical checkpoint: 2026-10-20
+
+A signed candidate was installed on a Pixel 10 Pro using an in-place update.
+Its signing certificate matches the previously installed app. Cold launch opens
+Wallet; Wallet/Chat navigation and settings/return work on the physical device.
+No app storage was cleared. These checks do not qualify card receipt, Passkey/PRF,
+encrypted delivery or presentation to a real verifier.
+
+The candidate has no compiled `MIKAKI_HAIP_WALLET` operator configuration, so the
+HAIP receipt task stays hidden. A qualified receipt build must include the
+reviewed public issuer/attester trust configuration described in
+[native wallet issuance](identity-card-issuance.md#opt-in-native-wallet-issuance-commands-and-ui).
+Do not enable the task by bypassing that native trust check.
+
 ## Production checkpoint: 2026-10-20
 
 Read-only inspection of account `4b749427a0c80c547e726a42aff4b6fc`, Worker
