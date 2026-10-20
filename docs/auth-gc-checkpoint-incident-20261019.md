@@ -1,5 +1,9 @@
 # Auth GC checkpoint incident, 2026-10-19
 
+This is a historical incident report. The operator CLI is now pinned to the
+distinct [2026-10-20 recurrence](auth-gc-checkpoint-incident-20261020.md); the
+earlier permit is no longer accepted by its current command.
+
 Passkey verification succeeded, but `POST /login/finish` returned 500 with
 `authority_unavailable`. A separate Cloudflare analytics beacon CSP warning
 did not explain the server failure.

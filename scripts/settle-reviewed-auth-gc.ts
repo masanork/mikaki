@@ -40,13 +40,13 @@ export interface GcRecoveryIO {
   journal(event: Record<string, unknown>): Promise<void>;
 }
 
-// Reviewed trace: scheduled auth GC, 2026-10-17 11:12:30 UTC, source ff24024d.
+// Incident trace: scheduled auth GC, 2026-10-19 22:13:30 UTC, source ad7189e7.
 // This pin prevents the CLI from retiring any other pending operation.
 export const incidentReview: GcReview = {
   authority: 'mikaki-auth-work-v1',
   object_id: '1d06c242fcae199a9308facb664bdf3544d6a31cf9b96ef21d9a59f5a9ae46c3',
-  permit_sha256: '161de12cf0c21595367f6caa59d22d3c679f72df5704fd2869546732664fd026',
-  previous_sequence: 8829,
+  permit_sha256: 'fe59bfb978fc59e75a333e2e9e51a9c67b1f1e3c6f6e74a2b8fbf00dd29f160d',
+  previous_sequence: 9704,
 };
 function marker(c: Checkpoint) {
   assert.match(c.authority, /^[a-zA-Z0-9_.:-]{1,128}$/);
