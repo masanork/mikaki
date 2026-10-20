@@ -94,6 +94,8 @@ if (target.dataset['page'] === 'home') {
             app.dataset['workSourceReview'] === 'true' ? 'true' : 'false';
           target.dataset['workPreparationReview'] =
             app.dataset['workPreparationReview'] === 'true' ? 'true' : 'false';
+          target.dataset['cloudflareOsVault'] =
+            app.dataset['cloudflareOsVault'] === 'true' ? 'true' : 'false';
           document.querySelector('link[href="/login/login.css"]')?.remove();
           document.title = page.title;
           document.documentElement.lang = vaultLocale;
