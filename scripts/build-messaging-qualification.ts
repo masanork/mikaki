@@ -12,6 +12,8 @@ if (!version) throw new Error('Locked wasm-bindgen version is missing');
 const configured = process.env.MIKAKI_MESSAGING_BINDGEN;
 if (configured && !isAbsolute(configured))
   throw new Error('MIKAKI_MESSAGING_BINDGEN must be an absolute executable path');
+const cargoHome = process.env.CARGO_HOME ?? join(homedir(), '.cargo');
+if (!isAbsolute(cargoHome)) throw new Error('CARGO_HOME must be an absolute directory');
 const candidates = [configured, join(homedir(), '.cargo/bin/wasm-bindgen')].filter(
   (v): v is string => !!v,
 );
@@ -50,7 +52,7 @@ if (!bindgen)
   throw new Error(`Install wasm-bindgen-cli ${version} or set MIKAKI_MESSAGING_BINDGEN`);
 await mkdir(out, { recursive: true });
 const compilation = spawnSync(
-  'cargo',
+  join(cargoHome, 'bin/cargo'),
   [
     'build',
     '--locked',
