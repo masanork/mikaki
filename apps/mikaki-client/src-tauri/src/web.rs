@@ -1,13 +1,51 @@
 use serde::Deserialize;
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::{Arc, Mutex};
 use tauri::{webview::PageLoadEvent, Manager, Url, WebviewWindow, WebviewWindowBuilder};
 
 const WALLET_PATH: &str = "/native/wallet";
 #[derive(Clone, Default)]
-pub struct NavigationState(Arc<AtomicU64>);
+pub struct NavigationState(Arc<Mutex<NavigationProgress>>);
+
+#[derive(Default)]
+struct NavigationProgress {
+    epoch: u64,
+    pending: Option<Url>,
+}
+
+impl NavigationState {
+    fn begin(&self, url: &Url) -> u64 {
+        let mut progress = self.0.lock().unwrap();
+        progress.epoch += 1;
+        progress.pending = Some(url.clone());
+        progress.epoch
+    }
+
+    fn cancel(&self) {
+        self.0.lock().unwrap().pending = None;
+    }
+
+    fn finish(&self, url: &Url) {
+        let mut progress = self.0.lock().unwrap();
+        if progress.pending.as_ref() == Some(url) {
+            progress.pending = None;
+        }
+    }
+
+    fn pending_epoch(&self) -> Option<u64> {
+        let progress = self.0.lock().unwrap();
+        progress.pending.as_ref().map(|_| progress.epoch)
+    }
+
+    fn expire(&self, epoch: u64) -> bool {
+        let mut progress = self.0.lock().unwrap();
+        if progress.epoch == epoch && progress.pending.is_some() {
+            progress.pending = None;
+            true
+        } else {
+            false
+        }
+    }
+}
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -122,24 +160,26 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
         config.url =
             tauri::WebviewUrl::External(origin.join("/vault").expect("fixed developer path"));
     }
+    let state = app.state::<NavigationState>().inner().clone();
+    if let tauri::WebviewUrl::External(url) = &config.url {
+        state.begin(url);
+    }
+    let navigation_state = state.clone();
+    let completion_state = state.clone();
     let handle = app.handle().clone();
     let window = WebviewWindowBuilder::from_config(app, &config)?
         // Cosmetic feature detection only. Remote origins receive no IPC capability.
         .initialization_script("Object.defineProperty(window,'__MIKAKI_NATIVE__',{value:true});")
         .on_navigation(move |url| match classify(url) {
             Navigation::Web => {
+                let epoch = navigation_state.begin(url);
                 if let Some(window) = handle.get_webview_window("main") {
-                    expect_navigation(&window);
+                    arm_timeout(window, navigation_state.clone(), epoch);
                 }
                 true
             }
             Navigation::Local => {
-                if let Some(window) = handle.get_webview_window("main") {
-                    window
-                        .state::<NavigationState>()
-                        .0
-                        .fetch_add(1, Ordering::AcqRel);
-                }
+                navigation_state.cancel();
                 true
             }
             Navigation::Wallet => {
@@ -151,38 +191,30 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
             }
             Navigation::Blocked => false,
         })
-        .on_page_load(|window, payload| {
-            let state = window.state::<NavigationState>().0.clone();
-            if matches!(payload.event(), PageLoadEvent::Finished)
-                && window.url().ok().as_ref() == Some(payload.url())
-            {
-                state.fetch_add(1, Ordering::AcqRel);
+        .on_page_load(move |_window, payload| {
+            // Android delivers this callback on its UI thread. Querying window.url()
+            // here waits for that same thread and Wry's late response can panic.
+            if matches!(payload.event(), PageLoadEvent::Finished) {
+                completion_state.finish(payload.url());
             }
         })
         .build()?;
     // A TLS failure can happen before WebKit emits any page-load callback.
-    let state = window.state::<NavigationState>().0.clone();
-    if state
-        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-    {
-        arm_timeout(window, state, 1);
+    if let Some(epoch) = state.pending_epoch() {
+        arm_timeout(window, state, epoch);
     }
     Ok(())
 }
 
-fn expect_navigation(window: &WebviewWindow) {
-    let state = window.state::<NavigationState>().0.clone();
-    let epoch = state.fetch_add(1, Ordering::AcqRel) + 1;
+fn expect_navigation(window: &WebviewWindow, url: &Url) {
+    let state = window.state::<NavigationState>().inner().clone();
+    let epoch = state.begin(url);
     arm_timeout(window.clone(), state, epoch);
 }
-fn arm_timeout(window: WebviewWindow, state: Arc<AtomicU64>, epoch: u64) {
+fn arm_timeout(window: WebviewWindow, state: NavigationState, epoch: u64) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(20));
-        if state
-            .compare_exchange(epoch, epoch + 1, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-        {
+        if state.expire(epoch) {
             let _ = window.navigate(local_url("connection"));
         }
     });
@@ -190,10 +222,7 @@ fn arm_timeout(window: WebviewWindow, state: Arc<AtomicU64>, epoch: u64) {
 
 pub fn show_wallet(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
-        window
-            .state::<NavigationState>()
-            .0
-            .fetch_add(1, Ordering::AcqRel);
+        window.state::<NavigationState>().cancel();
         window.navigate(local_url("wallet"))?;
     }
     Ok(())
@@ -203,15 +232,47 @@ pub fn show_wallet(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// have no capability and cannot invoke any Wallet signing/credential command.
 #[tauri::command]
 pub fn open_mikaki_web(window: WebviewWindow, destination: Destination) -> Result<(), String> {
-    expect_navigation(&window);
+    let url = destination.url();
+    expect_navigation(&window, &url);
     window
-        .navigate(destination.url())
+        .navigate(url)
         .map_err(|_| "webview unavailable".to_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_page_completion_does_not_cancel_redirect_timeout() {
+        let state = NavigationState::default();
+        let vault = Url::parse("https://auth.mikaki.org/vault").unwrap();
+        let signin = Url::parse("https://auth.mikaki.org/signin").unwrap();
+        let initial = state.begin(&vault);
+        let redirect = state.begin(&signin);
+        state.finish(&vault);
+        assert!(!state.expire(initial));
+        assert_eq!(state.pending_epoch(), Some(redirect));
+        assert!(state.expire(redirect));
+        assert!(!state.expire(redirect));
+    }
+
+    #[test]
+    fn completed_pages_and_local_wallet_cancel_connection_fallback() {
+        let state = NavigationState::default();
+        let url = Url::parse("https://auth.mikaki.org/vault").unwrap();
+        let finished = state.begin(&url);
+        state.finish(&url);
+        assert!(!state.expire(finished));
+        let cancelled = state.begin(&url);
+        state.cancel();
+        assert!(!state.expire(cancelled));
+        assert_eq!(state.pending_epoch(), None);
+        let retry = state.begin(&url);
+        assert!(!state.expire(cancelled));
+        assert!(state.expire(retry));
+    }
+
     #[test]
     fn navigation_pins_origins_and_wallet_switch_has_no_authority_payload() {
         for value in ["https://auth.mikaki.org/vault", "https://docs.mikaki.org/"] {
