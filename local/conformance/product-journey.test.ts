@@ -305,6 +305,8 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
     await page.getByRole('button', { name: 'Sign in with passkey', exact: true }).click();
     await page.waitForURL(`${issuer}/vault?lang=en`);
     await expect(page.locator('#name')).toHaveValue('Unified journey owner updated');
+    await expect(page.locator('#app')).toHaveAttribute('data-cloudflare-os-vault', 'false');
+    await expect(page.locator('#workspace-snapshots-heading')).toHaveCount(0);
     assert.equal(
       ownerAssertions,
       beforeWebLogin + 1,
