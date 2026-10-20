@@ -1,5 +1,14 @@
 # Cloudflare OS copies and workspace snapshots in Owner Vault
 
+As of **2026-10-20**, this integration is hidden from the normal product UI.
+Separate Vault unlock/review windows and transfer deadlines do not yet provide
+the intended seamless experience, and physical mobile qualification is incomplete.
+The receiver components mount only when an operator explicitly sets
+`CLOUDFLARE_OS_VAULT_UI_ENABLED=true`; the local interoperability fixture opts in.
+The CFOS installation also leaves `VITE_MIKAKI_VAULT_URL` empty to hide its sender
+controls. Existing encrypted records and the snapshot/transfer implementation are
+retained. The procedures below document the experimental path.
+
 The first integration is an owner-reviewed browser handoff from an authenticated
 Cloudflare OS conversation to Mikaki's existing Owner Vault. It needs no export
 file. The isolated hosted installation is **https://cfos.mikaki.org**, using

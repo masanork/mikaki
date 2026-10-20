@@ -57,9 +57,17 @@ pub async fn page(request: Request, context: RouteContext<()>) -> worker::Result
             .env
             .var("WORK_PREPARATION_REVIEW_ENABLED")
             .is_ok_and(|v| v.to_string() == "true");
+    let cloudflare_os_vault = context
+        .env
+        .var("CLOUDFLARE_OS_VAULT_UI_ENABLED")
+        .is_ok_and(|v| v.to_string() == "true");
     let replacements = [
         ("{{locale}}", strings.locale),
         ("{{title}}", strings.message("vaultTitle")),
+        (
+            "{{cloudflare_os_vault}}",
+            if cloudflare_os_vault { "true" } else { "false" },
+        ),
         (
             "{{work_preparation_review}}",
             if preparation_review { "true" } else { "false" },

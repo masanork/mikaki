@@ -36,7 +36,7 @@ test('new owner Vault preserves revision ETags through edge compression and uses
     workers: [
       {
         configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
-        vars: { MIKAKI_ISSUER: origin },
+        vars: { MIKAKI_ISSUER: origin, CLOUDFLARE_OS_VAULT_UI_ENABLED: 'true' },
       },
     ],
   });

@@ -30,6 +30,7 @@
   const sourceReview = document.getElementById('app')?.dataset['workSourceReview'] === 'true';
   const preparationReview =
     document.getElementById('app')?.dataset['workPreparationReview'] === 'true';
+  const cloudflareOsVault = document.getElementById('app')?.dataset['cloudflareOsVault'] === 'true';
   const context = vaultContext(),
     scope = context.current();
   let owner: OwnerVaultController | null = $state(null);
@@ -637,14 +638,14 @@
                 busy = value;
               }}
             />{/if}
-          {#if owner}<OwnerWorkspaceSnapshots
+          {#if owner && cloudflareOsVault}<OwnerWorkspaceSnapshots
               {owner}
               disabled={editingBlocked || pending !== null}
               onbusy={(value) => (busy = value)}
             />{/if}
           <section id="threads" aria-labelledby="threads-heading" aria-busy={busy}>
             <h2 id="threads-heading">{m.ownerWorkspaceThreads()}</h2>
-            {#if owner}<OwnerAppArchiveImport
+            {#if owner && cloudflareOsVault}<OwnerAppArchiveImport
                 {owner}
                 disabled={editingBlocked || pending !== null}
                 onbusy={(value) => (busy = value)}
