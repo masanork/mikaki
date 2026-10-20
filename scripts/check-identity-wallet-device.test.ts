@@ -185,6 +185,26 @@ test('actual Rust profile validator gates a redacted device preflight without cl
   assert.ok(!JSON.stringify(report).includes('private-device-id'));
   assert.ok(!JSON.stringify(report).includes('private-fixture-registration'));
 });
+test('randomized Android installation paths retain exact APK verification without leaking the path', async () => {
+  const { deps } = fixture();
+  const run = deps.run;
+  const installed = '/data/app/~~private-random/app.tossa.mikaki-random==/base.apk';
+  deps.run = (path, args, input) => {
+    if (args.includes('path')) return `package:${installed}`;
+    if (args.includes('sha256sum')) {
+      assert.equal(args.at(-1), installed);
+      return `${createHash('sha256').update('fixture APK').digest('hex')}  ${installed}\n`;
+    }
+    return run(path, args, input);
+  };
+  const report = await walletDevicePreflight(
+    { sdk: '/fixture/sdk', apk: 'apk', configuration: 'config', online: true },
+    deps,
+  );
+  assert.equal(report.prerequisites_ready, true);
+  assert.ok(report.checks.some((c) => c.name === 'installed_artifact' && c.status === 'pass'));
+  assert.ok(!JSON.stringify(report).includes('private-random'));
+});
 test('ambiguous JSON from a public endpoint cannot bypass native parsing', async () => {
   const { deps, documents } = fixture();
   const url = `${root}/.well-known/openid-credential-issuer/identity/issuer`;
