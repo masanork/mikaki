@@ -1,6 +1,6 @@
 # Direct dependency inventory
 
-Snapshot: `2026-10-20` / commit `8cd807a`
+Snapshot: `2026-10-20` / commit `2c139b0`
 
 Runtime dependency source: 1,657,898 lines total (371,701 npm, 1,286,197 Rust; 119 npm packages, 168 Rust crates in the resolved runtime graph).
 
@@ -10,6 +10,6 @@ Runtime dependency source: 1,657,898 lines total (371,701 npm, 1,286,197 Rust; 1
 | Rust build | 0 | — |
 | Rust development | 11 | `base64`, `ciborium`, `getrandom`, `p256`, `rand_core`, `rusqlite`, `serde_json`, `serde_urlencoded`, `sha2`, `tiny_http`, `wasm-bindgen-test` |
 | npm runtime | 6 | `@modelcontextprotocol/sdk`, `@noble/post-quantum`, `@sqlite.org/sqlite-wasm`, `jose`, `svelte`, `zod` |
-| npm development | 29 | `@axe-core/playwright`, `@babel/parser`, `@babel/traverse`, `@babel/types`, `@cloudflare/workers-types`, `@inlang/paraglide-js`, `@inlang/plugin-message-format`, `@jridgewell/trace-mapping`, `@playwright/test`, `@sorane/cli`, `@sorane/core`, `@sorane/okf`, `@sveltejs/vite-plugin-svelte`, `@types/mdast`, `@types/node`, `@typescript/native`, `esbuild`, `jsonc-parser`, `parse5`, `prettier`, `prettier-plugin-svelte`, `remark-gfm`, `remark-parse`, `smol-toml`, `tsx`, `typescript`, `unified`, `vite`, `wrangler` |
+| npm development | 33 | `@axe-core/playwright`, `@babel/parser`, `@babel/traverse`, `@babel/types`, `@cloudflare/workers-types`, `@inlang/paraglide-js`, `@inlang/plugin-message-format`, `@jridgewell/trace-mapping`, `@playwright/test`, `@sorane/cli`, `@sorane/core`, `@sorane/okf`, `@sveltejs/vite-plugin-svelte`, `@types/mdast`, `@types/node`, `@typescript/native`, `esbuild`, `istanbul-lib-coverage`, `istanbul-lib-report`, `istanbul-reports`, `jsonc-parser`, `parse5`, `prettier`, `prettier-plugin-svelte`, `remark-gfm`, `remark-parse`, `smol-toml`, `tsx`, `typescript`, `unified`, `v8-to-istanbul`, `vite`, `wrangler` |
 
 The inventory lists direct manifest dependencies; the source-line total includes transitive packages resolved for the runtime.

@@ -3303,23 +3303,23 @@
   },
   {
     "date": "2026-10-20",
-    "commit": "8cd807a",
+    "commit": "2c139b0",
     "code": {
-      "implementationLines": 86051,
-      "testLines": 14084,
-      "implementationFiles": 302,
+      "implementationLines": 96100,
+      "testLines": 14089,
+      "implementationFiles": 324,
       "testFiles": 39,
       "byLanguage": {
         "typescript": {
-          "implementationLines": 38159,
-          "testLines": 2883
+          "implementationLines": 45309,
+          "testLines": 2888
         },
         "rust": {
-          "implementationLines": 39821,
+          "implementationLines": 42458,
           "testLines": 11201
         },
         "svelte": {
-          "implementationLines": 8071,
+          "implementationLines": 8333,
           "testLines": 0
         }
       }
@@ -3327,7 +3327,7 @@
     "dependencies": {
       "npm": {
         "runtime": 6,
-        "dev": 29
+        "dev": 33
       },
       "rust": {
         "runtime": 32,
@@ -3370,6 +3370,9 @@
           "@types/node",
           "@typescript/native",
           "esbuild",
+          "istanbul-lib-coverage",
+          "istanbul-lib-report",
+          "istanbul-reports",
           "jsonc-parser",
           "parse5",
           "prettier",
@@ -3380,6 +3383,7 @@
           "tsx",
           "typescript",
           "unified",
+          "v8-to-istanbul",
           "vite",
           "wrangler"
         ],
