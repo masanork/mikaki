@@ -50,16 +50,22 @@ test('WebView app origins require the pinned signing key and preserve signed cha
       ),
       { actor: 'native-passkey-test', reason: 'APK origin qualification' },
     );
-    for (const [host, relation] of [
-      [issuer, 'delegate_permission/common.get_login_creds'],
-      ['https://app.mikaki.org', 'delegate_permission/common.handle_all_urls'],
+    for (const [host, relations] of [
+      [
+        issuer,
+        [
+          'delegate_permission/common.handle_all_urls',
+          'delegate_permission/common.get_login_creds',
+        ],
+      ],
+      ['https://app.mikaki.org', ['delegate_permission/common.handle_all_urls']],
     ]) {
       const response = await worker.fetch(`${host}/.well-known/assetlinks.json`);
       assert.equal(response.status, 200);
       assert.match(response.headers.get('content-type')!, /application\/json/);
       assert.deepEqual(await response.json(), [
         {
-          relation: [relation],
+          relation: relations,
           target: {
             namespace: 'android_app',
             package_name: 'app.tossa.mikaki',

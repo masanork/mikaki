@@ -23,7 +23,7 @@ fn apple_document(team_id: &str) -> Option<serde_json::Value> {
 }
 
 fn android_document(fingerprint: &str) -> Option<serde_json::Value> {
-    android_association(fingerprint, "delegate_permission/common.handle_all_urls")
+    android_association(fingerprint, &["delegate_permission/common.handle_all_urls"])
 }
 
 fn apple_credentials_document(team_id: &str) -> Option<serde_json::Value> {
@@ -34,10 +34,19 @@ fn apple_credentials_document(team_id: &str) -> Option<serde_json::Value> {
 }
 
 fn android_credentials_document(fingerprint: &str) -> Option<serde_json::Value> {
-    android_association(fingerprint, "delegate_permission/common.get_login_creds")
+    // Android's passkey RP validation still requires handle_all_urls as well as
+    // get_login_creds. This does not add an auth-host intent filter to the app.
+    // https://developers.google.com/identity/fido/android/native-apps
+    android_association(
+        fingerprint,
+        &[
+            "delegate_permission/common.handle_all_urls",
+            "delegate_permission/common.get_login_creds",
+        ],
+    )
 }
 
-fn android_association(fingerprint: &str, relation: &str) -> Option<serde_json::Value> {
+fn android_association(fingerprint: &str, relations: &[&str]) -> Option<serde_json::Value> {
     let parts: Vec<&str> = fingerprint.split(':').collect();
     if parts.len() != 32
         || !parts
@@ -47,7 +56,7 @@ fn android_association(fingerprint: &str, relation: &str) -> Option<serde_json::
         return None;
     }
     Some(serde_json::json!([{
-        "relation": [relation],
+        "relation": relations,
         "target": {
             "namespace": "android_app",
             "package_name": APP_ID,
@@ -165,7 +174,7 @@ mod tests {
     };
 
     #[test]
-    fn credential_associations_do_not_claim_callback_links() {
+    fn credential_associations_include_passkey_rp_validation_and_pin_apps() {
         assert_eq!(
             apple_credentials_document("ABCDEFGHIJ").unwrap(),
             serde_json::json!({
@@ -176,8 +185,12 @@ mod tests {
         let document = android_credentials_document(&["ab"; 32].join(":")).unwrap();
         assert_eq!(
             document[0]["relation"],
-            serde_json::json!(["delegate_permission/common.get_login_creds"])
+            serde_json::json!([
+                "delegate_permission/common.handle_all_urls",
+                "delegate_permission/common.get_login_creds"
+            ])
         );
+        assert_eq!(document[0]["target"]["package_name"], "app.tossa.mikaki");
         assert!(android_credentials_document("AB:CD").is_none());
     }
 
@@ -209,6 +222,10 @@ mod tests {
             ["AB"; 32].join(":")
         );
         assert_eq!(document[0]["target"]["package_name"], "app.tossa.mikaki");
+        assert_eq!(
+            document[0]["relation"],
+            serde_json::json!(["delegate_permission/common.handle_all_urls"])
+        );
         assert!(android_document("AB:CD").is_none());
     }
 }

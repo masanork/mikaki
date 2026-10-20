@@ -46,8 +46,13 @@ qualify a Passkey ceremony.
 
 Android enables WebAuthn in `WEB_AUTHENTICATION_SUPPORT_FOR_APP` mode when the
 installed WebView supports it, using Credential Manager 1.6.0. The issuer serves
-`/.well-known/assetlinks.json` with `get_login_creds` for the configured release
-signing fingerprint. The separate app.mikaki.org callback host retains only
+`/.well-known/assetlinks.json` with both `handle_all_urls` and `get_login_creds`
+for the configured release signing fingerprint. Android's passkey RP validation
+requires `handle_all_urls`; `get_login_creds` alone can fail with
+`RP ID cannot be validated` even when Google's credential-sharing check succeeds.
+See [Google's association requirements](https://developers.google.com/identity/fido/android/native-apps#interoperability_with_your_website).
+The app's intent filters do not claim auth-host navigation. The separate
+app.mikaki.org callback host retains only
 `handle_all_urls`. WebView app-mode client data uses an `android:apk-key-hash`
 origin: the server accepts only the exact configured signing-key hash, then
 still verifies the signed challenge, RP ID, user verification and replay state.
