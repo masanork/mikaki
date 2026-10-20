@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import reports from 'istanbul-reports';
+import { boundLcovHitCounts, MAX_LCOV_HIT_COUNT } from './lcov-for-sonar.mjs';
 
 const root = process.cwd();
 const directory = join(root, 'artifacts/messaging-coverage');
@@ -53,6 +54,9 @@ for (const name of [
 await mkdir(directory, { recursive: true });
 const context = libReport.createContext({ dir: directory, coverageMap });
 reports.create('lcovonly', { file: 'messaging-coverage.lcov' }).execute(context);
+const lcovPath = join(directory, 'messaging-coverage.lcov');
+const bounded = boundLcovHitCounts(await readFile(lcovPath, 'utf8'));
+await writeFile(lcovPath, bounded.lcov);
 reports.create('text-summary').execute(context);
 await writeFile(
   join(directory, 'summary.json'),
@@ -62,6 +66,11 @@ await writeFile(
       scope:
         'Actual Chromium V8 ranges remapped with exact TypeScript source maps; includes statement/function/branch counters',
       source: sources,
+      lcov: {
+        maxHitCount: MAX_LCOV_HIT_COUNT,
+        saturatedHitCounts: bounded.saturatedHitCounts,
+        largestRawHitCount: bounded.largestRawHitCount,
+      },
       summary: coverageMap.getCoverageSummary().toJSON(),
       files: coverageMap
         .files()
