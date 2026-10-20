@@ -1,6 +1,25 @@
 name: deploy-production
 on:
   workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      OP_PRIVATE_JWK:
+        required: false
+      MIKAKI_READY_TOKEN:
+        required: false
+      WAITLIST_MAIL_KEY:
+        required: false
+      WORK_CREDENTIAL_KEY_V1:
+        required: false
+      IDENTITY_ISSUER_JWK:
+        required: false
+      IDENTITY_TRUSTED_KEYS:
+        required: false
+      IDENTITY_ATTESTER_SIGNING:
+        required: false
+      IDENTITY_CREDENTIAL_ENCRYPTION_JWK:
+        required: false
     outputs:
       deployed:
         value: ${{ jobs.promote.outputs.deployed }}

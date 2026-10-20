@@ -1,0 +1,250 @@
+# Reviewed historical findings from the initial Gitleaks 8.30.1 assessment.
+# Each exception is an exact commit:path:rule:line fingerprint.
+# New commits and new findings in these same files remain subject to detection.
+# Review record and update procedure: docs/security-ci.md
+
+# crates/webauthn/testdata/attestations.json
+# Synthetic offline attestation/MDS JWT fixtures.
+d0931c39f197325453cf445756af65b54d7fbd7a:crates/webauthn/testdata/attestations.json:jwt:1
+
+# crates/webauthn/testdata/interop-node.json
+# Offline WebAuthn authenticator-data fixture.
+181573ba885bdc49aed25a2b5df8b10ea208abd6:crates/webauthn/testdata/interop-node.json:generic-api-key:1
+
+# crates/webauthn/testdata/mds-operations.json
+# Synthetic offline MDS JWT fixtures.
+95f309dd699fe5298617cfa14b69fbf5ceb35196:crates/webauthn/testdata/mds-operations.json:jwt:1
+
+# crates/webauthn/testdata/optional.json
+# Offline WebAuthn authenticator-data fixtures.
+95f309dd699fe5298617cfa14b69fbf5ceb35196:crates/webauthn/testdata/optional.json:generic-api-key:1
+
+# crates/worker/wrangler.production.jsonc
+# Public operator-card key SHA-256 identifier, not a private key or token.
+5fb16eec72d979ea1c352897ceb5990f71905f7a:crates/worker/wrangler.production.jsonc:generic-api-key:46
+
+# design/probes/pqc/hpke-pq-draft05-vector.json
+# Published HPKE test-vector key and shared-secret material.
+6a04447512e75106b637f0599aa71edb5527a8d8:design/probes/pqc/hpke-pq-draft05-vector.json:generic-api-key:10
+6a04447512e75106b637f0599aa71edb5527a8d8:design/probes/pqc/hpke-pq-draft05-vector.json:generic-api-key:11
+
+# docs/sonarqube-triage-2026-10-17.json
+# Public Sonar analysis and issue identifiers, not credentials.
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:100
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1001
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1006
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1011
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1016
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1021
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1026
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1031
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1036
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1041
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1046
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1051
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1056
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1061
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1066
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:107
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1071
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1076
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1081
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1086
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1091
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1096
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1101
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1106
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1111
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1116
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1121
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1126
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1131
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1136
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:114
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1141
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1146
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1151
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1156
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1161
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1166
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1171
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1176
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1181
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1186
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:121
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1278
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:128
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1284
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1290
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:1296
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:135
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:142
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:156
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:163
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:170
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:177
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:184
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:191
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:198
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:205
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:212
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:219
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:226
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:233
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:240
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:247
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:254
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:261
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:268
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:275
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:282
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:289
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:296
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:303
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:310
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:317
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:324
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:331
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:338
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:345
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:352
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:359
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:366
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:373
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:380
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:387
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:394
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:401
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:408
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:415
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:422
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:429
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:436
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:443
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:450
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:457
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:464
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:471
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:478
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:485
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:492
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:499
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:5
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:506
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:513
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:520
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:527
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:534
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:541
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:548
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:555
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:562
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:569
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:576
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:583
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:590
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:597
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:604
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:611
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:618
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:625
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:632
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:639
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:646
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:653
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:660
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:667
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:674
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:681
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:688
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:695
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:702
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:709
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:716
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:723
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:730
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:737
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:746
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:751
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:756
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:761
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:766
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:771
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:776
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:781
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:786
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:791
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:796
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:801
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:806
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:811
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:816
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:821
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:826
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:831
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:836
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:841
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:846
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:851
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:856
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:86
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:861
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:866
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:871
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:876
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:881
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:886
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:891
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:896
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:901
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:906
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:911
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:916
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:921
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:926
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:93
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:931
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:936
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:941
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:946
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:951
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:956
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:961
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:966
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:971
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:976
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:981
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:986
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:991
+a4956c74e3a325400abee5b6cdebf16b4e6fd7a5:docs/sonarqube-triage-2026-10-17.json:generic-api-key:996
+
+# local/conformance/manifest-2026-09-22.json
+# Public source-file SHA-256 measurement.
+d0931c39f197325453cf445756af65b54d7fbd7a:local/conformance/manifest-2026-09-22.json:generic-api-key:10
+
+# local/conformance/results-2026-09-22.md
+# Public source/module SHA-256 measurements.
+d0931c39f197325453cf445756af65b54d7fbd7a:local/conformance/results-2026-09-22.md:generic-api-key:114
+d0931c39f197325453cf445756af65b54d7fbd7a:local/conformance/results-2026-09-22.md:generic-api-key:59
+d0931c39f197325453cf445756af65b54d7fbd7a:local/conformance/results-2026-09-22.md:generic-api-key:60
+
+# local/conformance/support/official-wallet-suite.ts
+# Public OpenID conformance test-case identifier.
+559a73a4a96851631c982adc9284b78515ce5407:local/conformance/support/official-wallet-suite.ts:generic-api-key:14
+
+# local/conformance/worker-readiness.test.ts
+# Synthetic readiness token confined to the disposable local Worker fixture.
+95f309dd699fe5298617cfa14b69fbf5ceb35196:local/conformance/worker-readiness.test.ts:generic-api-key:15
+
+# scripts/plan-owner-vault-reset.test.ts
+# Synthetic resource identifiers in offline reset-plan assertions.
+140baec376116cffa6118dff6cde73af4064309d:scripts/plan-owner-vault-reset.test.ts:generic-api-key:68
+95ab1c16483ee57f6fc89b2d9dbbf120a6f9a2a5:scripts/plan-owner-vault-reset.test.ts:generic-api-key:60
+
+# design/probes/mls/Cargo.lock
+# Cargo package names libcrux-secrets and libcrux-sha3 in the dependency list.
+2c139b075032881f7d117a497fa6cf4a7c9af061:design/probes/mls/Cargo.lock:generic-api-key:1004
+
+# docs/wallet-chat-release-readiness.md
+# Ordinary product-scope prose; the generic rule matched adjacent words across a sentence.
+2c139b075032881f7d117a497fa6cf4a7c9af061:docs/wallet-chat-release-readiness.md:generic-api-key:103
