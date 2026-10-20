@@ -1,91 +1,16 @@
 /** Product host qualification: real main Worker, usual SSO/Vault and native MLS.
  * Only WebAuthn PRF and the upstream authenticated session are test fixtures. */
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { parse } from 'jsonc-parser';
-import { createTestHarness } from 'wrangler';
 import { gzipSync } from 'node:zlib';
 import { chromium, expect, type Page } from '@playwright/test';
-import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { trackMessagingCoverage } from './support/messaging-coverage.ts';
+import { messagingFixture as fixture } from './support/messaging-product-fixture.ts';
 
 const root = new URL('../../', import.meta.url).pathname;
 const origin = 'https://mikaki.test';
-async function fixture(enabled: boolean, defaultBuild = false) {
-  const config = parse(await readFile(`${root}crates/worker/wrangler.jsonc`, 'utf8'));
-  config.main = `${root}crates/worker/${defaultBuild ? 'build' : 'build-messaging-beta'}/worker/service.mjs`;
-  config.assets.directory = `${root}assets`;
-  config.d1_databases[0].migrations_dir = `${root}crates/worker/migrations`;
-  config.vars = { MIKAKI_ISSUER: origin, MESSAGING_BETA_ENABLED: String(enabled || defaultBuild) };
-  if (enabled) {
-    const jwk = generateKeyPairSync('ed25519').privateKey.export({ format: 'jwk' });
-    config.vars.MESSAGING_ISSUER_KEY = JSON.stringify({
-      kty: jwk.kty,
-      crv: jwk.crv,
-      x: jwk.x,
-      d: jwk.d,
-    });
-  }
-  const harness = createTestHarness({ root, workers: [{ config }] });
-  await harness.listen();
-  try {
-    const worker = harness.getWorker('mikaki-op-worker');
-    await worker.applyD1Migrations('DB');
-    const { DB } = await worker.getEnv();
-    const policy = JSON.parse(await readFile(`${root}local/generated/worker-policy.json`, 'utf8'));
-    await activateWorkerPolicy(DB, policy, { actor: 'test', reason: 'Messaging product host' });
-    // Exercise the product limiter, with a local budget large enough for the
-    // sequential fixture's journal witnesses. Deployment tuning remains separate.
-    await DB.prepare(
-      'UPDATE auth_resource_policy SET source_per_minute=2000,deployment_per_minute=4000 WHERE id=1',
-    ).run();
-    if (enabled) {
-      for (const name of ['0001_messaging.sql', '0002_beta_profile.sql']) {
-        const sql = (
-          await readFile(`${root}crates/worker/messaging-migrations/${name}`, 'utf8')
-        ).replace(/^--.*$/gm, '');
-        await DB.batch(
-          sql
-            .split(';')
-            .map((s: string) => s.trim())
-            .filter(Boolean)
-            .map((s: string) => DB.prepare(s)),
-        );
-      }
-    }
-    const seed = async () => {
-      const account = randomUUID(),
-        credential = randomBytes(32),
-        id = credential.toString('base64url'),
-        secret = randomBytes(32).toString('base64url'),
-        session = randomUUID();
-      await DB.batch([
-        DB.prepare('INSERT INTO account_security VALUES(?,1,1)').bind(account),
-        DB.prepare('INSERT INTO credential VALUES(?,?,1)').bind(id, account),
-        DB.prepare(
-          "INSERT INTO passkey_credential VALUES(?,'fixture-public-key','fixture-user',0,0,0,1)",
-        ).bind(id),
-        DB.prepare('INSERT INTO sso_session VALUES(?,?,?,1,unixepoch()+3600,0)').bind(
-          session,
-          account,
-          id,
-        ),
-        DB.prepare('INSERT INTO sso_context VALUES(?,?,unixepoch())').bind(
-          session,
-          createHash('sha256').update(secret).digest('base64url'),
-        ),
-      ]);
-      return { account, credential: [...credential], secret, session };
-    };
-    return { harness, worker, DB, seed };
-  } catch (error) {
-    await harness.close();
-    throw error;
-  }
-}
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Actor = Awaited<ReturnType<Fixture['seed']>>;
 async function client(
@@ -274,7 +199,7 @@ test(
   'default product build ignores the runtime beta flag without a messaging schema or key',
   { timeout: 60_000 },
   async () => {
-    const f = await fixture(false, true);
+    const f = await fixture(false, { defaultBuild: true });
     try {
       const actor = await f.seed();
       const response = await f.worker.fetch(`${origin}/vault/messaging-config`, {

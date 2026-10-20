@@ -2634,6 +2634,9 @@ pub async fn scheduled(
     if auth_resources::collect(&env).await.is_err() {
         worker::console_error!("{{\"event\":\"auth_gc_failure\"}}");
     }
+    if messaging_beta::collect(&env).await.is_err() {
+        worker::console_error!("{{\"event\":\"messaging_gc_failure\"}}");
+    }
     if identity::purge(&env).await.is_err() {
         worker::console_error!("{{\"event\":\"identity_gc_failure\"}}");
     }
