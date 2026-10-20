@@ -19,7 +19,10 @@ async function config(owner: OwnerVaultController): Promise<Configuration> {
   if (!response.ok || !value || typeof value !== 'object') throw new Error('messaging_unavailable');
   const v = value as Configuration;
   if (
-    Object.keys(v).sort().join() !== 'enabled,issuer,public_key,registered_device_id' ||
+    Object.keys(v).length !== 4 ||
+    !['enabled', 'issuer', 'public_key', 'registered_device_id'].every((key) =>
+      Object.hasOwn(v, key),
+    ) ||
     v.enabled !== true ||
     v.issuer !== location.origin ||
     typeof v.public_key !== 'string' ||
@@ -44,7 +47,9 @@ function checkedProfile(value: unknown): Profile | undefined {
     throw new Error('invalid_profile');
   const { device, phase } = value as Record<string, unknown>;
   if (
-    Object.keys(value).sort().join() !== 'device,phase' ||
+    Object.keys(value).length !== 2 ||
+    !Object.hasOwn(value, 'device') ||
+    !Object.hasOwn(value, 'phase') ||
     typeof device !== 'string' ||
     !UUID.test(device) ||
     (phase !== 'enrolling' && phase !== 'active')

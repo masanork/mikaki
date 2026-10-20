@@ -6,7 +6,9 @@ function parse(value: unknown): Head {
     throw new Error('invalid_witness_response');
   const head = value as Head;
   if (
-    Object.keys(head).sort().join(',') !== 'hash,revision' ||
+    Object.keys(head).length !== 2 ||
+    !Object.hasOwn(head, 'hash') ||
+    !Object.hasOwn(head, 'revision') ||
     !Number.isSafeInteger(head.revision) ||
     head.revision < 0 ||
     (head.revision === 0

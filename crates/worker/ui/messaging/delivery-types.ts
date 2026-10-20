@@ -115,7 +115,7 @@ export function channel(value: DeliveryChannel): DeliveryChannel {
 export function encode(bytes: Uint8Array): string {
   let result = '';
   for (let i = 0; i < bytes.length; i += 16384)
-    result += String.fromCharCode(...bytes.subarray(i, i + 16384));
+    result += String.fromCodePoint(...bytes.subarray(i, i + 16384));
   return btoa(result).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 export function decode(value: string, size?: number): Uint8Array<ArrayBuffer> {
@@ -125,7 +125,7 @@ export function decode(value: string, size?: number): Uint8Array<ArrayBuffer> {
     atob(
       value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4),
     ),
-    (c) => c.charCodeAt(0),
+    (c) => c.codePointAt(0)!,
   );
   if (
     bytes.length > 65536 ||

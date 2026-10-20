@@ -53,10 +53,10 @@ Keep Chat disabled until the following work is qualified together:
    the beta journey points directly at `build-messaging-beta/worker/shim.mjs`.
    The beta package must retain all named storage/authority entrypoints and their
    public/RPC denials. Run the product journey through that same package.
-2. Make this product qualification a dependency of release verification and
-   promotion. The separate MLS workflow now runs the product journey, but main
-   CI's `verify`/`supply-chain`/`deploy` dependency graph does not wait for it.
-   A source-bound release path must build the `messaging-beta` feature and
+2. Qualify the updated main CI dependency graph. It now calls the MLS/product
+   workflow, waits for it in `verify`, and imports its actual Chromium coverage
+   before Sonar analysis; a completed run remains required evidence.
+   A source-bound release path must still build the `messaging-beta` feature and
    include the generated `assets/chat/client.js` and `crypto.wasm` in its
    attested static asset inventory. The ordinary release builds without this
    feature, even if a runtime flag is set. The existing beta tests enforce

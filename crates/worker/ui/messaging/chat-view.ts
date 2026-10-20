@@ -254,7 +254,7 @@ export class MlsChatView {
         this.#pendingReview = undefined;
     }
   }
-  async #run(action: () => Promise<void>): Promise<void> {
+  async #run(action: () => void | Promise<void>): Promise<void> {
     if (this.#busy || this.#closed) return;
     this.#busy = true;
     this.#error = '';
@@ -395,7 +395,7 @@ export class MlsChatView {
     await this.#refresh();
     await this.#sync();
   }
-  #button(label: string, action: () => Promise<void>, disabled = false): HTMLButtonElement {
+  #button(label: string, action: () => void | Promise<void>, disabled = false): HTMLButtonElement {
     const b = node('button', label);
     b.type = 'button';
     b.disabled = this.#busy || disabled;
@@ -544,7 +544,7 @@ export class MlsChatView {
     if (!stopping && s.invitation && !frozen && !replacing) this.#termination(panel, !!joined);
     if (!stopping && !replacing && (!s.invitation || (frozen && recovery.phase === 'closed')))
       this.#invitationReview(panel);
-    const lock = this.#button('チャットをロック', async () => this.dispose());
+    const lock = this.#button('チャットをロック', () => this.dispose());
     // Lock remains available while a network request is pending.
     lock.disabled = false;
     panel.append(lock);
@@ -1048,7 +1048,7 @@ export class MlsChatView {
     );
     if (canCreate)
       section.append(
-        this.#button('鍵切り替えコードを作る', async () => {
+        this.#button('鍵切り替えコードを作る', () => {
           const endpoints = [
             { scope: s.own.scope, fingerprint: s.own.fingerprint },
             { scope: review.contact.scope, fingerprint: peer.accepted.fingerprint },
@@ -1080,7 +1080,7 @@ export class MlsChatView {
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = code.value.trim();
-      void this.#run(async () => {
+      void this.#run(() => {
         const { previous, next } = parseReplacementCode(value);
         this.#checkReplacement(previous, next);
         this.#replacementProposal = { previous, next };
@@ -1225,7 +1225,7 @@ export class MlsChatView {
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = input.value.trim();
-      void this.#run(async () => {
+      void this.#run(() => {
         const { previous, next } = parseReplacementCode(value);
         this.#stopProposal = { previous, next };
       });
@@ -1336,7 +1336,7 @@ export class MlsChatView {
     ) {
       const peer = snapshot.peer_review;
       section.append(
-        this.#button('招待コードを作る', async () => {
+        this.#button('招待コードを作る', () => {
           const endpoints = [
             { scope: snapshot.own.scope, fingerprint: snapshot.own.fingerprint },
             { scope: peer.contact.scope, fingerprint: peer.verified.fingerprint },
@@ -1356,7 +1356,7 @@ export class MlsChatView {
     }
     if (r && !r.next)
       section.append(
-        this.#button('再参加コードを作る', async () => {
+        this.#button('再参加コードを作る', () => {
           this.#proposal = {
             channel: {
               ...r.offer.channel,
@@ -1381,7 +1381,7 @@ export class MlsChatView {
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = code.value.trim();
-      void this.#run(async () => {
+      void this.#run(() => {
         const offer = parseInvitationCode(value);
         this.#checkOffer(offer);
         this.#proposal = offer;
@@ -1488,7 +1488,7 @@ export class MlsChatView {
     const offer = this.#snapshot!.invitation!.offer;
     if (!this.#confirmStop) {
       panel.append(
-        this.#button(active ? '会話を停止する' : '招待を中止する', async () => {
+        this.#button(active ? '会話を停止する' : '招待を中止する', () => {
           this.#confirmStop = true;
           this.#stopReason = active ? 'leave' : 'cancel_invitation';
         }),
@@ -1532,7 +1532,7 @@ export class MlsChatView {
         await this.#device.closeConversation(offer, reason);
         this.#notice = '会話を停止しました。履歴は保持されています。';
       }),
-      this.#button('戻る', async () => {
+      this.#button('戻る', () => {
         this.#confirmStop = false;
       }),
     );

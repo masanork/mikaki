@@ -11,6 +11,10 @@ import type { MlsChatView } from './chat-view.js';
 import type { Command, PersistentMlsDevice } from './device-store.js';
 import { type DeliveryChannel, type InvitationOffer, type CloseReason } from './delivery-types.ts';
 import { fixture, ORIGIN, pub } from './server-support.ts';
+import {
+  messagingCoverageEnabled,
+  trackMessagingCoverage,
+} from '../../../local/conformance/support/messaging-coverage.ts';
 
 declare global {
   var custodyModule: {
@@ -42,6 +46,7 @@ before(async () => {
       write: false,
       format: 'esm',
       target: 'es2022',
+      sourcemap: messagingCoverageEnabled() ? 'inline' : false,
     })
   ).outputFiles[0].text;
   [script, wasm] = await Promise.all(
@@ -173,6 +178,7 @@ export class Client {
   }
   async newPage() {
     const page = await this.context.newPage();
+    await trackMessagingCoverage(page);
     await page.exposeFunction('custodyReached', (phase: EnrollmentPhase) => this.reached?.(phase));
     await page.goto(ORIGIN);
     await page.evaluate(

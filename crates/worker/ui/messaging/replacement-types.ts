@@ -191,7 +191,13 @@ export function parseReplacementCode(code: string) {
     const value = JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(decode(code.slice(PREFIX.length))),
     ) as Record<string, InvitationOffer>;
-    if (!value || Object.keys(value).sort().join(',') !== 'next,previous') throw new Error();
+    if (
+      !value ||
+      Object.keys(value).length !== 2 ||
+      !Object.hasOwn(value, 'next') ||
+      !Object.hasOwn(value, 'previous')
+    )
+      throw new Error('invalid_replacement_code');
     return replacement(value.previous, value.next);
   } catch {
     throw new Error('invalid_replacement_code');

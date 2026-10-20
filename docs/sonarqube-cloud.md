@@ -1,6 +1,6 @@
 # SonarQube Cloud evaluation
 
-The `SonarQube Cloud (evaluation)` job in [CI](../.github/workflows/ci.yml) analyzes handwritten Rust and JavaScript/TypeScript after `core` succeeds. It reuses that run's Clippy and coverage reports without rebuilding or rerunning tests. The job is advisory (`continue-on-error: true`); it does not wait for the quality gate or make it a required merge check. Repository configuration alone is not evidence of a completed Cloud analysis.
+The `SonarQube Cloud (evaluation)` job in [CI](../.github/workflows/ci.yml) analyzes handwritten Rust and JavaScript/TypeScript after `core` and the reusable messaging qualification succeed. It reuses those jobs' Clippy and coverage reports without rebuilding or rerunning tests. The job is advisory (`continue-on-error: true`); it does not wait for the quality gate or make it a required merge check. Repository configuration alone is not evidence of a completed Cloud analysis.
 
 ## Connected project
 
@@ -33,12 +33,15 @@ The last command prompts for the token. Keep it out of command arguments and she
 - `artifacts/clippy-report.json` comes from the existing locked workspace/all-targets Clippy invocation. The JSON stream is saved while rendered diagnostics remain visible in the CI log; `pipefail` preserves the `-D warnings` failure in `core`.
 - `artifacts/native-coverage.lcov` comes from the existing native workspace measurement, excluding `mikaki-browser-wasm` and `mikaki-worker`.
 - `artifacts/frontend-coverage.lcov` measures flat handwritten `crates/worker/ui/*.ts`, including unloaded modules, excluding `vite.config.ts`. It is Node/V8 coverage, not browser or Svelte DOM coverage.
+- `artifacts/messaging-coverage/messaging-coverage.lcov` contains actual Chromium V8 execution from the canonical messaging suites and product journey, remapped through exact TypeScript source maps using `v8-to-istanbul`. Unexecuted branches and functions remain uncovered. Each mapped source must match the current file hash, and reporting fails if any of the nine messaging implementation modules is absent or entirely unexecuted. Coverage is captured before navigation and closure; no browser state, messages, credentials or runtime values enter the uploaded reports.
 - Coverage exclusions match these existing measurement boundaries. Static analysis still covers unmeasured applications, Workers, and scripts; their exclusion from the coverage percentage does not establish that they have tests. See [test evidence and limits](test-quality.md).
 - Svelte, native mobile languages, dependency audits, and browser/device qualification keep their existing CI checks. This evaluation does not replace them.
 
 ## Workflow behavior
 
-The job runs after `core` on pushes to `main`, same-repository pull requests, and manual CI runs. It skips fork PRs and Dependabot, which do not receive the analysis token. A fresh checkout with full history and the exact artifact ID exported by that run's `core` job keeps source, SCM metadata, and reports together. The `sonar-analysis-reports-<attempt>` artifact contains only the three reports, not browser traces or other build artifacts; downloads reject a digest mismatch. The scan does not execute project build scripts or install project dependencies. Only the configuration check and scanner steps receive `SONAR_TOKEN`.
+The job runs after `core` and `messaging` on pushes to `main`, same-repository pull requests, and manual CI runs. It skips fork PRs and Dependabot, which do not receive the analysis token. A fresh checkout with full history and the exact artifact IDs exported by that run's jobs keep source, SCM metadata, and reports together. The core artifact contains its three reports; the messaging artifact contains only LCOV and a source-hashed summary. Downloads reject a digest mismatch. The scan does not execute project build scripts or install project dependencies. Only the configuration check and scanner steps receive `SONAR_TOKEN`.
+
+The messaging qualification is called by the main CI workflow and is also a dependency of `verify`. Sonar receives its coverage only after all product and protocol tests pass. Release promotion therefore cannot bypass failed product qualification, even when the separate advisory Sonar evaluation is skipped. The default release artifact still builds without the Chat beta; these checks do not enable production messaging.
 
 Without the token or either key variable, CI emits a notice and a job summary, then skips the scan. Scanner/report failures remain visible in the job logs but do not fail CI during evaluation. The pinned scan action verifies the scanner download's GPG signature. Do not add this job or the SonarQube quality gate as a required branch-protection check during the evaluation.
 

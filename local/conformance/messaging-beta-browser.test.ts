@@ -10,6 +10,7 @@ import { gzipSync } from 'node:zlib';
 import { chromium, expect, type Page } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
+import { trackMessagingCoverage } from './support/messaging-coverage.ts';
 
 const root = new URL('../../', import.meta.url).pathname;
 const origin = 'https://mikaki.test';
@@ -151,6 +152,7 @@ async function client(
     });
   });
   const page = await context.newPage();
+  await trackMessagingCoverage(page);
   page.setDefaultTimeout(10_000);
   page.on('pageerror', (e) => errors.push(e.message));
   const openVault = async () => {

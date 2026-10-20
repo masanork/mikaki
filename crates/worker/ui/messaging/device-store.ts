@@ -287,7 +287,7 @@ function exact(value: unknown, keys: string[]): void {
 function base64(bytes: Uint8Array): string {
   let text = '';
   for (let i = 0; i < bytes.length; i += 16384)
-    text += String.fromCharCode(...bytes.subarray(i, i + 16384));
+    text += String.fromCodePoint(...bytes.subarray(i, i + 16384));
   return btoa(text).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 function bytes(text: string, limit = MAX_STATE): Uint8Array<ArrayBuffer> {
@@ -305,7 +305,7 @@ function bytes(text: string, limit = MAX_STATE): Uint8Array<ArrayBuffer> {
   } catch {
     fail('invalid_encoding');
   }
-  const value = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  const value = Uint8Array.from(decoded, (character) => character.codePointAt(0)!);
   if (value.length > limit || base64(value) !== text) fail('invalid_encoding');
   return value;
 }
@@ -373,7 +373,7 @@ async function writeRecord(
   const db = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
-      let failure: unknown;
+      let failure: Error | undefined;
       const tx = db.transaction(STORE, 'readwrite', { durability: 'strict' });
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(failure ?? new Error('storage_commit_failed'));
@@ -383,7 +383,8 @@ async function writeRecord(
         try {
           store.put(change(request.result ?? { version: 1, head: null, pending: null }), key);
         } catch (error) {
-          failure = error;
+          failure =
+            error instanceof Error ? error : new Error('storage_change_failed', { cause: error });
           tx.abort();
         }
       };

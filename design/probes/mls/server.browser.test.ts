@@ -5,6 +5,10 @@ import { readFile } from 'node:fs/promises';
 import { before, test } from 'node:test';
 import { chromium, firefox, webkit, type Page } from '@playwright/test';
 import { build } from 'esbuild';
+import {
+  messagingCoverageEnabled,
+  trackMessagingCoverage,
+} from '../../../local/conformance/support/messaging-coverage.ts';
 import type {
   Command,
   DeviceEngine,
@@ -47,12 +51,14 @@ before(async () => {
             bundle: true,
             format: 'esm',
             target: 'es2022',
+            sourcemap: messagingCoverageEnabled() ? 'inline' : false,
           })
         ).outputFiles[0].text,
     ),
   );
 });
 async function modules(page: Page) {
+  await trackMessagingCoverage(page);
   await page.goto(ORIGIN);
   await page.evaluate(async () => {
     globalThis.enrollmentModule = (await import('/probe.js' as string)) as Module;

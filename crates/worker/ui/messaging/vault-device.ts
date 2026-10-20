@@ -166,7 +166,7 @@ async function write(key: string, previous: Stored | null, next: Stored): Promis
   const db = await database();
   try {
     await new Promise<void>((resolve, reject) => {
-      let failure: unknown;
+      let failure: Error | undefined;
       const tx = db.transaction(STORE, 'readwrite', { durability: 'strict' }),
         store = tx.objectStore(STORE),
         r = store.get(key);
@@ -178,7 +178,8 @@ async function write(key: string, previous: Stored | null, next: Stored): Promis
             fail('custody_conflict');
           store.put(next, key);
         } catch (error) {
-          failure = error;
+          failure =
+            error instanceof Error ? error : new Error('custody_change_failed', { cause: error });
           tx.abort();
         }
       };

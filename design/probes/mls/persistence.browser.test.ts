@@ -14,6 +14,10 @@ import {
   type Page,
 } from '@playwright/test';
 import { build } from 'esbuild';
+import {
+  messagingCoverageEnabled,
+  trackMessagingCoverage,
+} from '../../../local/conformance/support/messaging-coverage.ts';
 import type {
   Command,
   DeviceEngine,
@@ -84,6 +88,7 @@ before(async () => {
     write: false,
     format: 'esm',
     target: 'es2022',
+    sourcemap: messagingCoverageEnabled() ? 'inline' : false,
   });
   bundle = result.outputFiles[0].contents;
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -168,6 +173,7 @@ class Device {
   }
   async pageModule() {
     const page = await this.context.newPage();
+    await trackMessagingCoverage(page);
     await page.exposeFunction('journalRead', (scope: string) => this.witness.read(scope));
     await page.exposeFunction('journalCas', (scope: string, expected: Head, next: Head) =>
       this.witness.cas(scope, expected, next),

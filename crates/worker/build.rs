@@ -268,7 +268,8 @@ fn main() {
             .status()
             .expect("TypeScript is required; run npm ci");
         assert!(status.success(), "Messaging TypeScript compilation failed");
-        let status = Command::new(repository.join("node_modules/.bin/esbuild"))
+        let mut messaging_build = Command::new(repository.join("node_modules/.bin/esbuild"));
+        messaging_build
             .arg(manifest.join("ui/messaging/client.ts"))
             .arg(format!(
                 "--alias:mikaki-chat-crypto={}",
@@ -278,7 +279,11 @@ fn main() {
             .arg(format!(
                 "--outfile={}",
                 output.join("messaging-client.js").display()
-            ))
+            ));
+        if env::var("MIKAKI_UI_COVERAGE").as_deref() == Ok("1") {
+            messaging_build.arg("--sourcemap=external");
+        }
+        let status = messaging_build
             .status()
             .expect("esbuild is required; run npm ci");
         assert!(status.success(), "Messaging client build failed");
