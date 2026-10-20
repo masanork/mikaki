@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withRetiredOwnerUi } from './support/retired-owner-ui.ts';
 import { test } from 'node:test';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { chromium, expect } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 
-test('real Vault UI exposes selected WebMCP data and review-only edits; hide, cancellation and revocation close tools', async () => {
+test('retired editor component exposes selected WebMCP data and review-only edits; hide, cancellation and revocation close tools', async () => {
   const origin = 'https://mikaki.test';
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
@@ -22,7 +23,7 @@ test('real Vault UI exposes selected WebMCP data and review-only edits; hide, ca
   let releaseRead: (() => void) | undefined;
   try {
     await harness.listen();
-    const worker = harness.getWorker('mikaki-op-worker');
+    const worker = await withRetiredOwnerUi(harness.getWorker('mikaki-op-worker'));
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
     await activateWorkerPolicy(

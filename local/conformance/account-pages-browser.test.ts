@@ -140,18 +140,33 @@ test('account pages use the product styles under CSP and fit a mobile viewport',
         ['/admin?lang=ja', '招待を発行'],
         ['/enroll/complete?lang=en', 'Registration complete'],
         ['/logout?lang=ja', 'ログアウト'],
-        ['/vault?lang=en', 'Vault'],
+        ['/vault?lang=en', 'Wallet'],
       ]) {
         await page.goto(`${issuer}${path}`);
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();
         await waitForFonts(page);
         assert.equal(await page.locator('.product-header').count(), 1);
-        {
-          await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
-          assert.equal(
-            await page.locator('.product-origin strong').textContent(),
-            new URL(issuer).host,
+        assert.equal(
+          await page.locator('.product-origin strong').textContent(),
+          new URL(issuer).host,
+        );
+        if (path.startsWith('/vault')) {
+          assert.equal(await page.locator('.gate-background').count(), 0);
+          assert.deepEqual(
+            await page
+              .getByRole('navigation', { name: 'Pages' })
+              .getByRole('button')
+              .allTextContents(),
+            ['Wallet', 'Chat'],
           );
+          assert.equal(
+            await page
+              .locator('.product-mvp')
+              .evaluate((node) => getComputedStyle(node).backgroundColor),
+            'rgb(248, 249, 251)',
+          );
+        } else {
+          await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
           assert.equal(await page.locator('.gate-fallback span').count(), 1);
           assert.match(
             await page

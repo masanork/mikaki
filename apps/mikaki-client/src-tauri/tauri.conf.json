@@ -4,12 +4,7 @@
   "version": "0.1.0",
   "identifier": "app.tossa.mikaki",
   "build": {
-    "frontendDist": [
-      "../ui/index.html",
-      "../ui/app.js",
-      "../ui/style.css",
-      "../ui/brand-icon.svg"
-    ]
+    "frontendDist": ["../ui/index.html", "../ui/app.js", "../ui/style.css", "../ui/brand-icon.svg"]
   },
   "app": {
     "windows": [
@@ -21,16 +16,14 @@
         "minWidth": 360,
         "minHeight": 500,
         "create": false,
-        "url": "https://auth.mikaki.org/vault"
+        "url": "index.html"
       }
     ],
     "security": {
       "capabilities": [
         {
           "identifier": "local-main",
-          "windows": [
-            "main"
-          ],
+          "windows": ["main"],
           "permissions": [
             "core:default",
             "core:app:allow-set-app-theme",
@@ -59,21 +52,13 @@
     "deep-link": {
       "mobile": [
         {
-          "scheme": [
-            "https"
-          ],
+          "scheme": ["https"],
           "host": "app.mikaki.org",
-          "pathPrefix": [
-            "/oidc/native/",
-            "/identity/issuance/callback"
-          ],
+          "pathPrefix": ["/oidc/native/", "/identity/issuance/callback"],
           "appLink": true
         },
         {
-          "scheme": [
-            "openid4vp",
-            "mdoc-openid4vp"
-          ]
+          "scheme": ["openid4vp", "mdoc-openid4vp", "mikaki-wallet"]
         }
       ]
     }

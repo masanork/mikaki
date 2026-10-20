@@ -46,6 +46,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="openid4vp" />
                 <data android:scheme="mdoc-openid4vp" />
+                <data android:scheme="mikaki-wallet" />
             </intent-filter>
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
         </activity>

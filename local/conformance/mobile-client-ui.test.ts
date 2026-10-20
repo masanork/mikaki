@@ -13,12 +13,14 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
         async () => {
           const { page, errors } = await createNativeUiPage(browser, server.url, { platform });
           try {
-            await page.getByRole('button', { name: 'Web版を開く' }).click();
-            await page.getByRole('button', { name: 'Vaultを開く' }).click();
+            await page.locator('#open-settings').click();
+            await page.getByRole('button', { name: 'アカウントを開く' }).click();
+            await page.getByRole('link', { name: 'Chat', exact: true }).click();
+            await page.locator('#open-chat').click();
             const calls = await page.evaluate(() => window.__nativeUiTest.arguments);
             assert.deepEqual(
               calls.filter((call) => call.command === 'open_mikaki_web').map((call) => call.args),
-              [{ destination: 'signin' }, { destination: 'vault' }],
+              [{ destination: 'signin' }, { destination: 'chat' }],
             );
             assert.equal(
               calls.some((call) => /native_session|auth_status|login/.test(call.command)),
@@ -29,7 +31,7 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
             await page.locator('#wallet').waitFor({ state: 'visible' });
             assert.equal(await page.locator('#navigation').isVisible(), true);
             await page.goBack();
-            await page.locator('#home').waitFor({ state: 'visible' });
+            await page.locator('#chat').waitFor({ state: 'visible' });
             assert.deepEqual(errors, []);
           } finally {
             await page.close();
@@ -45,7 +47,8 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
           await page.evaluate(() => {
             window.__nativeUiTest.failures.open_mikaki_web = 'internal failure';
           });
-          await page.getByRole('button', { name: 'Web版を開く' }).click();
+          await page.locator('#open-settings').click();
+          await page.getByRole('button', { name: 'アカウントを開く' }).click();
           assert.match((await page.locator('#status').textContent()) ?? '', /開けませんでした/);
           assert.doesNotMatch(
             (await page.locator('#status').textContent()) ?? '',
@@ -54,7 +57,8 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
           await page.evaluate(() => {
             delete window.__nativeUiTest.failures.open_mikaki_web;
           });
-          await page.getByRole('button', { name: 'Web版を開く' }).click();
+          await page.locator('#open-settings').click();
+          await page.getByRole('button', { name: 'アカウントを開く' }).click();
           assert.match((await page.locator('#status').textContent()) ?? '', /開いています/);
           assert.deepEqual(errors, []);
         } finally {

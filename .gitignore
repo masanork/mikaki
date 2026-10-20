@@ -36,3 +36,6 @@
 /services/android-attestation-verifier/build/
 **/.gradle/
 **/.kotlin/
+
+# Browser Chat runtime built from pinned Rust source.
+/assets/chat/

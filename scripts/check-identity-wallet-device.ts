@@ -263,7 +263,7 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
     // Restrict every character passed through adb shell; never report device paths.
     if (
       !paths.length ||
-      paths.some((p) => !/^package:\/data\/app\/[A-Za-z0-9_+/=.-]+\.apk$/.test(p))
+      paths.some((p) => !/^package:\/data\/app\/[A-Za-z0-9_+/=.~-]+\.apk$/.test(p))
     )
       throw new Error();
     pass('installed_package');

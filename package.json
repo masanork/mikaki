@@ -142,7 +142,12 @@
     "preview:fonts": "node scripts/preview-fonts.mjs",
     "check:fonts-reproducible": "node scripts/build-fonts.mjs --check",
     "test:markup": "node --test scripts/markup-parsers.test.ts",
-    "test:auth-gc-recovery": "node --test local/conformance/reviewed-auth-gc-recovery.test.ts"
+    "test:auth-gc-recovery": "node --test local/conformance/reviewed-auth-gc-recovery.test.ts",
+    "build:messaging-beta": "npm run build:policy && node scripts/build-messaging-beta.ts",
+    "test:messaging-beta": "npm run build:messaging-beta && worker-build --release crates/worker --locked && node --test --test-concurrency=1 local/conformance/messaging-beta-browser.test.ts",
+    "check:messaging": "node_modules/typescript/bin/tsc --project crates/worker/ui/messaging/tsconfig.json --noEmit",
+    "test:wallet-chat": "npm run test:messaging-beta && npm run test:wallet-chat-product",
+    "test:wallet-chat-product": "node --test --test-concurrency=1 local/conformance/wallet-chat-product.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -170,6 +175,9 @@
     "@types/node": "^26.6.5",
     "@typescript/native": "npm:typescript@7.0.2",
     "esbuild": "0.28.2",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
     "jsonc-parser": "3.3.1",
     "parse5": "8.0.1",
     "prettier": "3.9.10",
@@ -180,6 +188,7 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "unified": "11.0.5",
+    "v8-to-istanbul": "9.3.0",
     "vite": "8.3.4",
     "wrangler": "4.151.1"
   },

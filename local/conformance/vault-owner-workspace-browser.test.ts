@@ -1,3 +1,5 @@
+// Retired editors are exercised as components; they are absent from the product entry.
+import { withRetiredOwnerUi } from './support/retired-owner-ui.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash, randomBytes } from 'node:crypto';
@@ -53,7 +55,7 @@ test('new owner Vault preserves revision ETags through edge compression and uses
     | undefined;
   try {
     await harness.listen();
-    const worker = harness.getWorker('mikaki-op-worker');
+    const worker = await withRetiredOwnerUi(harness.getWorker('mikaki-op-worker'));
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
     const policy = JSON.parse(

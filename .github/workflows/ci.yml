@@ -173,9 +173,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  messaging:
+    uses: ./.github/workflows/mls-probe.yml
+
   sonar:
     name: SonarQube Cloud (evaluation)
-    needs: core
+    needs: [core, messaging]
     if: >-
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -216,6 +219,16 @@ jobs:
           test -s artifacts/native-coverage.lcov
           test -s artifacts/frontend-coverage.lcov
           test -s artifacts/clippy-report.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.configuration.outputs.enabled == 'true'
+        with:
+          artifact-ids: ${{ needs.messaging.outputs.coverage_artifact_id }}
+          merge-multiple: true
+          digest-mismatch: error
+          path: artifacts/messaging-coverage/
+      - name: Require measured Chat coverage
+        if: steps.configuration.outputs.enabled == 'true'
+        run: test -s artifacts/messaging-coverage/messaging-coverage.lcov
       - name: Analyze with SonarQube Cloud
         if: steps.configuration.outputs.enabled == 'true'
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
@@ -297,7 +310,7 @@ jobs:
       suite: product
 
   verify:
-    needs: [core, worker-contracts, worker-browser, work-authority, work-effects, work-product]
+    needs: [core, worker-contracts, worker-browser, work-authority, work-effects, work-product, messaging]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -361,7 +374,7 @@ jobs:
           node --input-type=module - <<'JS'
           import assert from 'node:assert/strict';
           const results = JSON.parse(process.env.RESULTS);
-          assert.deepEqual(Object.keys(results).sort(), ['core', 'work-authority', 'work-effects', 'work-product', 'worker-browser', 'worker-contracts']);
+          assert.deepEqual(Object.keys(results).sort(), ['core', 'messaging', 'work-authority', 'work-effects', 'work-product', 'worker-browser', 'worker-contracts']);
           for (const [name, job] of Object.entries(results)) {
             assert.equal(job.result, 'success', `${name}: ${job.result}`);
           }

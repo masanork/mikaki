@@ -529,3 +529,30 @@ pre {
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+
+.wallet-list-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+#wallet > details {
+  border-top: 1px solid var(--line, #dce2e8);
+  padding-block: 1.25rem;
+}
+#wallet > details > summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+#wallet > details > summary + * {
+  margin-top: 1.25rem;
+}
+#wallet-card-detail {
+  padding: 1rem;
+  border: 1px solid var(--line, #dce2e8);
+  border-radius: 0.8rem;
+  margin-block: 1rem;
+}
+.wallet-card small {
+  overflow-wrap: anywhere;
+}

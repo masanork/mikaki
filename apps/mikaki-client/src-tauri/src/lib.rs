@@ -40,6 +40,7 @@ pub fn run() {
             identity_issuance::receive_identity_credential,
             identity_issuance::clear_identity_credential,
             identity_issuance::identity_credential_status,
+            identity_issuance::identity_wallet_inventory,
             identity_issuance::open_identity_management,
             identity_issuance::proximity::start_identity_proximity,
             identity_issuance::proximity::review_identity_proximity,
@@ -76,6 +77,7 @@ pub fn run() {
             identity_issuance::receive_identity_credential,
             identity_issuance::clear_identity_credential,
             identity_issuance::identity_credential_status,
+            identity_issuance::identity_wallet_inventory,
             identity_issuance::open_identity_management,
             identity_issuance::proximity::start_identity_proximity,
             identity_issuance::proximity::review_identity_proximity,
@@ -98,6 +100,9 @@ pub fn run() {
             let handle = app.handle().clone();
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
+                    if identity_issuance::receive_product_link(&handle, &url) {
+                        continue;
+                    }
                     if identity_issuance::haip::receive(&handle, &url) {
                         continue;
                     }
@@ -106,6 +111,9 @@ pub fn run() {
             }
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
+                    if identity_issuance::receive_product_link(&handle, &url) {
+                        continue;
+                    }
                     if identity_issuance::haip::receive(&handle, &url) {
                         continue;
                     }

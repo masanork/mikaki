@@ -14,6 +14,7 @@ import { agentKeyId } from '../../crates/worker/ui/agent-crypto.ts';
 import { sealRecordAgentSnapshot } from '../../crates/worker/ui/agent-record-crypto.ts';
 import { registration } from '../../crates/agent-worker/oauth-client.ts';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
+import { withRetiredOwnerUi } from './support/retired-owner-ui.ts';
 
 const origin = 'https://agent.mikaki.test',
   resource = `${origin}/mcp`;
@@ -45,7 +46,7 @@ test('public-client registration requires exact HTTPS or IP loopback callbacks',
 });
 
 const agentBenchmarkEnabled = process.env.MIKAKI_AGENT_BENCHMARK === '1';
-test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, rollback and browser review in workerd', async () => {
+test('public OAuth PKCE, SDK MCP, token isolation and rollback with the retired owner review host', async () => {
   const benchmarkRequests: Array<{
     kind: 'warmup' | 'sample' | 'negative';
     operation: 'mikaki_list' | 'mikaki_read';
@@ -102,7 +103,7 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
   const clients: Client[] = [];
   try {
     await harness.listen();
-    const op = harness.getWorker('mikaki-op-agent-local'),
+    const op = await withRetiredOwnerUi(harness.getWorker('mikaki-op-agent-local')),
       agent = harness.getWorker('mikaki-agent-local');
     await op.applyD1Migrations('DB');
     const env = await op.getEnv(),
@@ -896,7 +897,8 @@ test('public OAuth PKCE discovery, owner consent, SDK MCP, token isolation, roll
     );
     await page.goto(ownerLocation + '&lang=en');
     await expect(page.locator('#connections')).toHaveAttribute('open', '');
-    // OAuth review opens in the default Workspace; the retired attribute flow is absent.
+    // Preserve protocol/consent coverage in the isolated retired host. Ordinary
+    // sign-in now opens Wallet and Chat without this legacy connection panel.
     await expect(
       page.getByRole('button', { name: 'Unlock with passkey', exact: true }),
     ).toBeVisible();

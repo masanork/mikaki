@@ -106,10 +106,10 @@ fn policy(ctx: &RouteContext<()>) -> worker::Result<(Vec<TrustedKey>, String)> {
 }
 fn trust_policy(env: &worker::Env) -> worker::Result<(Vec<TrustedKey>, String)> {
     let raw = Zeroizing::new(env.secret("IDENTITY_TRUSTED_KEYS")?.to_string());
-    if let Ok(expected) = env.var("IDENTITY_TRUST_POLICY_SHA256") {
-        if expected.to_string() != hash_hex(raw.trim().as_bytes()) {
-            return Err(server_error());
-        }
+    if let Ok(expected) = env.var("IDENTITY_TRUST_POLICY_SHA256")
+        && expected.to_string() != hash_hex(raw.trim().as_bytes())
+    {
+        return Err(server_error());
     }
     let keys: Vec<TrustedKey> = serde_json::from_str(&raw).map_err(|_| server_error())?;
     let mut ids = std::collections::HashSet::new();

@@ -12,6 +12,8 @@ crate-type = ["cdylib", "rlib"]
 default = ["worker-entry"]
 worker-entry = []
 work-qualification = []
+messaging-qualification = []
+messaging-beta = []
 
 [dependencies]
 serde.workspace = true
@@ -48,3 +50,9 @@ name = "work-store-qualification"
 path = "examples/work_store_qualification.rs"
 crate-type = ["cdylib"]
 required-features = ["work-qualification"]
+
+[[example]]
+name = "messaging-qualification"
+path = "examples/messaging_qualification.rs"
+crate-type = ["cdylib"]
+required-features = ["messaging-qualification"]

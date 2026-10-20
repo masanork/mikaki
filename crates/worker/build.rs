@@ -18,6 +18,11 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/vault.ts");
     println!("cargo:rerun-if-changed=ui/VaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
+    println!("cargo:rerun-if-changed=ui/ProductWorkspace.svelte");
+    println!("cargo:rerun-if-changed=ui/ProductChat.svelte");
+    println!("cargo:rerun-if-changed=ui/messaging-module.ts");
+    println!("cargo:rerun-if-changed=ui/messaging");
+
     println!("cargo:rerun-if-changed=ui/OwnerWorkspace.svelte");
     println!("cargo:rerun-if-changed=ui/OwnerAppArchiveImport.svelte");
     println!("cargo:rerun-if-changed=ui/vault-app-archive-handoff.ts");
@@ -242,6 +247,59 @@ fn main() {
         .status()
         .expect("esbuild is required; run npm ci");
     assert!(status.success(), "Work assistant build failed");
+    if env::var_os("CARGO_FEATURE_MESSAGING_BETA").is_some() {
+        let native = output.join("messaging-native");
+        for source in ["src", "Cargo.toml", "Cargo.lock"] {
+            println!("cargo:rerun-if-changed=../../design/probes/mls/{source}");
+        }
+        let status = Command::new("wasm-pack")
+            .arg("build")
+            .arg(repository.join("design/probes/mls"))
+            .args(["--target", "web", "--release", "--out-dir"])
+            .arg(&native)
+            .args(["--", "--locked"])
+            .status()
+            .expect("wasm-pack is required for the Chat beta build");
+        assert!(status.success(), "Messaging Wasm build failed");
+        let status = Command::new(manifest.join("../../node_modules/typescript/bin/tsc"))
+            .arg("--project")
+            .arg(manifest.join("ui/messaging/tsconfig.json"))
+            .arg("--noEmit")
+            .status()
+            .expect("TypeScript is required; run npm ci");
+        assert!(status.success(), "Messaging TypeScript compilation failed");
+        let mut messaging_build = Command::new(repository.join("node_modules/.bin/esbuild"));
+        messaging_build
+            .arg(manifest.join("ui/messaging/client.ts"))
+            .arg(format!(
+                "--alias:mikaki-chat-crypto={}",
+                native.join("mikaki_mls_probe.js").display()
+            ))
+            .args(["--bundle", "--platform=browser", "--format=esm", "--minify"])
+            .arg(format!(
+                "--outfile={}",
+                output.join("messaging-client.js").display()
+            ));
+        if env::var("MIKAKI_UI_COVERAGE").as_deref() == Ok("1") {
+            messaging_build.arg("--sourcemap=external");
+        }
+        let status = messaging_build
+            .status()
+            .expect("esbuild is required; run npm ci");
+        assert!(status.success(), "Messaging client build failed");
+        // Browser assets stay outside the server Wasm and its existing size cap.
+        // Per-Cargo output and atomic replacement avoid concurrent build races.
+        let assets = repository.join("assets/chat");
+        fs::create_dir_all(&assets).expect("Messaging asset directory is required");
+        for (source, name) in [
+            (output.join("messaging-client.js"), "client.js"),
+            (native.join("mikaki_mls_probe_bg.wasm"), "crypto.wasm"),
+        ] {
+            let temporary = assets.join(format!(".{name}.{}.tmp", std::process::id()));
+            fs::copy(source, &temporary).expect("Messaging asset is required");
+            fs::rename(temporary, assets.join(name)).expect("Messaging asset publish failed");
+        }
+    }
     for entry in [
         "login",
         "vault",

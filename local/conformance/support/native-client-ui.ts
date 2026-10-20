@@ -18,6 +18,14 @@ export interface NativeUiScenario {
   identityAgeValue?: boolean;
   identityAgeDocument?: string;
   identityAgeSingleUse?: boolean;
+  identityInventory?: Array<{
+    id: string;
+    title: string;
+    issuer: string;
+    format: string;
+    expires_at: number;
+    fields: Record<string, string>;
+  }>;
   identityFailure?: { code: string; remaining_retries?: number };
 }
 
@@ -88,7 +96,9 @@ export async function createNativeUiPage(
   url: string,
   scenario: NativeUiScenario = {},
 ) {
-  const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const page = await context.newPage();
+  page.setDefaultTimeout(10_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript((initial) => {
@@ -163,6 +173,9 @@ export async function createNativeUiPage(
           break;
         case 'subscribe_identity_updates':
           eventChannel = args?.onEvent as typeof eventChannel;
+          break;
+        case 'identity_wallet_inventory':
+          result = initial.identityInventory ?? [];
           break;
         case 'identity_reader_supported':
           result = initial.identityReader ?? false;

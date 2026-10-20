@@ -206,12 +206,13 @@ test(
           ['POST', '/health'],
           ['GET', '/session/check'],
           ['GET', '/logout'],
-        ].map(([method, path]) => local.rp.fetch(`${RP}${path}`, { method })),
+        ].map(async ([method, path]) => {
+          const response = await local.rp.fetch(`${RP}${path}`, { method });
+          await response.arrayBuffer();
+          return response.status;
+        }),
       );
-      assert.deepEqual(
-        wrongMethods.map((response) => response.status),
-        [404, 404, 404, 404],
-      );
+      assert.deepEqual(wrongMethods, [404, 404, 404, 404]);
       await Promise.all(
         ['/login', '/session/check'].map(async (path) => {
           const invalidForm = {
@@ -227,15 +228,19 @@ test(
           // finishes within 30 seconds, so 121 requests exceed the budget even
           // when the burst spans two windows. Inspect a response in the burst:
           // a later request could fall in a fresh window and legitimately pass.
-          const burst = await Promise.all(
-            Array.from({ length: 121 }, () => local.rp.fetch(`${RP}${path}`, invalidForm)),
-          );
+          const burst: { status: number; body: string }[] = [];
+          // Drain each response before the next request, keeping loopback
+          // sockets bounded while still exceeding both possible rate windows.
+          for (let request = 0; request < 121; request++) {
+            const response = await local.rp.fetch(`${RP}${path}`, invalidForm);
+            burst.push({ status: response.status, body: await response.text() });
+          }
           const statuses = burst.map((response) => response.status);
           assert.ok(statuses.includes(403), 'CSRF must reject before looking up a session');
           assert.ok(statuses.every((status) => status === 403 || status === 429));
           const limited = burst.find((response) => response.status === 429);
           assert.ok(limited, `${path} must enforce its own request limit`);
-          assert.match(await limited.text(), /短時間に操作が集中/);
+          assert.match(limited.body, /短時間に操作が集中/);
         }),
       );
       assert.equal(

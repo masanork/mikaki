@@ -1,5 +1,9 @@
 # Vault usage model and unlock experience
 
+**Current product scope:** the [Wallet and Chat MVP](wallet-chat-mvp.md) supersedes
+the broad workspace layout below. This document retains the earlier design context.
+
+
 **Status:** proposed product model, 2026-10-03. The accompanying interactive prototype uses fictional data and simulated actions. It does not implement authentication, encryption, new storage APIs or production permissions. Current contracts remain authoritative until their replacements are implemented and qualified.
 
 ## Product purpose

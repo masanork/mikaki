@@ -1,7 +1,8 @@
 # Mikaki Tauri client
 
-This experimental Tauri 2 app displays `https://auth.mikaki.org/vault` in its
-main WebView. Account screens, browser session Cookies, Passkeys and Owner
+This experimental Tauri 2 app opens the bundled Wallet collection first.
+Wallet and Chat are its two primary destinations. Chat opens
+`https://auth.mikaki.org/vault#chat` in the same WebView. Account screens, browser session Cookies, Passkeys and Owner
 Vault PRF unlock stay on that HTTPS origin inside the app. Shared WOFF2 fonts
 are fetched from the server, using the normal Web stylesheet and Unicode
 subsets. The app does not open the system browser for ordinary account use.
@@ -14,7 +15,8 @@ HTML, JS, CSS and icon, including when an old generated font directory exists.
 No remote page has Tauri IPC capability or receives keys or native tokens.
 The native marker shown to Web pages is only a cosmetic UI hint.
 
-`open_mikaki_web` navigates the WebView to one of two fixed HTTPS destinations.
+`open_mikaki_web` navigates the WebView to a fixed account, Vault or Chat
+HTTPS destination.
 Top-level navigation is restricted to first-party HTTPS origins and the local
 Wallet document. A stalled load returns to a local retry screen after twenty
 seconds. Retrying remains inside the app. Certificate verification is unchanged.
