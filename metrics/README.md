@@ -1,8 +1,13 @@
 # Project metrics
 
-These charts are refreshed by CI. Pull requests get a current report and charts
-as the `authentication-measurements` artifact; pushes to `main` also append a
-history point and commit the updated SVGs here.
+CI produces current reports and charts as artifacts. Successful verification retains
+`authentication-measurements`; pushes to `main` also produce `project-metrics-*`
+with a proposed history point and refreshed SVGs. The metrics job has read-only
+repository permissions and never pushes to `main`. Publish the downloaded history
+and charts through a reviewed PR; these checked-in charts reflect the last such
+publication. Retain important artifacts before their 30-day expiry. History in a
+new proposal starts from the checked-in history, so unpublished earlier points
+must be reconciled when publishing multiple runs.
 
 ![Stacked source size: Rust implementation, JS/TS implementation, and tests](code-size.svg)
 
@@ -34,8 +39,9 @@ The size chart tracks only code maintained in this repository. Runtime dependenc
 - The dependency inventory lists unique direct names classified from
   `package.json` and Cargo manifests, plus resolved runtime source lines and
   package/crate counts. It does not represent final bundled or linked binary size.
-- History is one snapshot per calendar day. A successful `main` CI run replaces
-  that day's row with the latest commit and refreshes the charts.
+- History is one snapshot per calendar day. The `main` metrics artifact proposes
+  that day's latest measured commit and refreshed charts; it does not update the
+  repository without a PR.
 
 ## Local and frontend evidence
 

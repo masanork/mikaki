@@ -21,7 +21,7 @@ miniz_oxide = "=0.9.1"
 url = "=2.5.8"
 ciborium.workspace = true
 der = { version = "=0.8.2", features = ["alloc", "derive"] }
-rustls-webpki = { version = "=0.103.15", default-features = false, features = ["alloc"] }
+rustls-webpki = { version = "=0.103.16", default-features = false, features = ["alloc"] }
 rustls-pki-types = { version = "=1.15.1", default-features = false, features = ["alloc"] }
 x509-cert = { version = "=0.3.0", default-features = false }
 

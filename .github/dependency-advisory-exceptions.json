@@ -1,0 +1,110 @@
+[
+  {
+    "lockfile": "Cargo.lock",
+    "package": "rsa",
+    "version": "0.10.0-rc.19",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/plugins/identity-proximity/Cargo.lock",
+    "package": "glib",
+    "version": "0.18.5",
+    "advisory": "RUSTSEC-2024-0429",
+    "owner": "masanork",
+    "reason": "Tauri GTK3 pulls glib 0.18; the fix requires the 0.20+ stack and cannot be patched within 0.18. No direct VariantStrIter use was found in application code, but dependency reachability is not proven safe. Linux release qualification remains blocked pending migration. See docs/security-ci.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/plugins/identity-proximity/Cargo.lock",
+    "package": "glib",
+    "version": "0.18.5",
+    "advisory": "GHSA-wrw7-89jp-8q8g",
+    "owner": "masanork",
+    "reason": "Tauri GTK3 pulls glib 0.18; the fix requires the 0.20+ stack and cannot be patched within 0.18. No direct VariantStrIter use was found in application code, but dependency reachability is not proven safe. Linux release qualification remains blocked pending migration. See docs/security-ci.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "glib",
+    "version": "0.18.5",
+    "advisory": "RUSTSEC-2024-0429",
+    "owner": "masanork",
+    "reason": "Tauri GTK3 pulls glib 0.18; the fix requires the 0.20+ stack and cannot be patched within 0.18. No direct VariantStrIter use was found in application code, but dependency reachability is not proven safe. Linux release qualification remains blocked pending migration. See docs/security-ci.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "glib",
+    "version": "0.18.5",
+    "advisory": "GHSA-wrw7-89jp-8q8g",
+    "owner": "masanork",
+    "reason": "Tauri GTK3 pulls glib 0.18; the fix requires the 0.20+ stack and cannot be patched within 0.18. No direct VariantStrIter use was found in application code, but dependency reachability is not proven safe. Linux release qualification remains blocked pending migration. See docs/security-ci.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "rsa",
+    "version": "0.10.0-rc.19",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "rsa",
+    "version": "0.9.10",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/jose-custom/Cargo.lock",
+    "package": "rsa",
+    "version": "0.10.0-rc.19",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/jose/Cargo.lock",
+    "package": "rsa",
+    "version": "0.9.10",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/native-identity-http/Cargo.lock",
+    "package": "rsa",
+    "version": "0.9.10",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/workers-rs/Cargo.lock",
+    "package": "rsa",
+    "version": "0.10.0-rc.19",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "fuzz/Cargo.lock",
+    "package": "rsa",
+    "version": "0.10.0-rc.19",
+    "advisory": "RUSTSEC-2023-0071",
+    "owner": "masanork",
+    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
+    "expires": "2026-11-20"
+  }
+]
