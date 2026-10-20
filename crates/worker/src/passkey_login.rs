@@ -330,7 +330,7 @@ pub(super) async fn get(
         } else {
             "false"
         },
-        login_scope = crate::i18n::html_escape(&login_scope),
+        login_scope = crate::i18n::html_escape(login_scope),
         owner_login = if login.owner_login != 0 {
             "true"
         } else {
