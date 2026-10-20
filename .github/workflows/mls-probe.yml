@@ -74,6 +74,17 @@ jobs:
       - name: Merge actual Chromium coverage
         if: matrix.browser == 'chromium'
         run: node scripts/messaging-coverage.mjs
+      - name: Measure complete Chat service package
+        if: matrix.browser == 'chromium'
+        run: npm run qualify:messaging-package
+      - name: Upload complete Chat package measurements
+        if: matrix.browser == 'chromium'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: messaging-package-${{ github.run_attempt }}
+          path: artifacts/messaging-package/summary.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload source-verified Chat coverage
         if: matrix.browser == 'chromium'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
