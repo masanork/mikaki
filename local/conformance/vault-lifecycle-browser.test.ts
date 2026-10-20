@@ -1,3 +1,5 @@
+// Retired editors are exercised as components; they are absent from the product entry.
+import { withRetiredOwnerUi } from './support/retired-owner-ui.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { startBrowserEvidence } from './support/browser-evidence.ts';
 import { test } from 'node:test';
@@ -27,7 +29,7 @@ async function exerciseLifecycle(notifications: Notifications) {
   let finishOwnerCheck = () => {};
   try {
     await harness.listen();
-    const worker = harness.getWorker('mikaki-op-worker');
+    const worker = await withRetiredOwnerUi(harness.getWorker('mikaki-op-worker'));
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
     const policy = JSON.parse(

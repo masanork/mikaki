@@ -69,7 +69,7 @@ test('current product routes preserve CSP, locale, keyboard and mobile access', 
     });
     for (const locale of ['ja', 'en']) {
       for (const [path, heading] of [
-        ['/vault', 'Vault'],
+        ['/vault', 'mikaki'],
         ['/admin', locale === 'ja' ? '招待を発行' : 'Issue an invitation'],
         ['/enroll/complete', locale === 'ja' ? '登録が完了しました' : 'Registration complete'],
         ['/logout', locale === 'ja' ? 'ログアウト' : 'Log out'],
@@ -79,17 +79,14 @@ test('current product routes preserve CSP, locale, keyboard and mobile access', 
         assert.match(response!.headers()['content-security-policy'], /style-src 'self'/);
         await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
         assert.equal(await page.locator('html').getAttribute('lang'), locale);
-        await expect(page.locator('.product-header')).toHaveCSS('color', 'rgb(255, 255, 255)');
+        await expect(page.locator('.product-header')).toHaveCSS(
+          'color',
+          path === '/vault' ? 'rgb(22, 36, 58)' : 'rgb(255, 255, 255)',
+        );
         if (path === '/vault') {
           await expect(page.locator('.product-origin strong')).toHaveText('mikaki.test');
-          await page.locator('.gate-background[data-renderer="canvas"]').waitFor();
-          assert.match(
-            await page
-              .locator('.vault-shell')
-              .evaluate((node) => node.style.getPropertyValue('--page-hue')),
-            /^\d+$/,
-          );
-          assert.equal(await page.locator('.gate-fallback span').count(), 1);
+          assert.equal(await page.locator('.gate-background').count(), 0);
+          assert.equal(await page.locator('.mvp-tabs button').count(), 2);
           assert.doesNotMatch(response!.headers()['content-security-policy']!, /unsafe-inline/);
         }
         assert.equal(await page.locator('main').count(), 1);

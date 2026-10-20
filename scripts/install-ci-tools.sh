@@ -6,9 +6,9 @@ set -euo pipefail
 case "${1:-}" in
   verify) tools=(wasm-pack@0.15.0 worker-build@0.8.7 cargo-llvm-cov@0.9.1) ;;
   audit) tools=(cargo-audit@0.22.2) ;;
-  worker) tools=(worker-build@0.8.7) ;;
+  worker) tools=(wasm-pack@0.15.0 worker-build@0.8.7) ;;
   probe) tools=(wasm-pack@0.15.0) ;;
-  release) tools=(cargo-cyclonedx@0.5.9 worker-build@0.8.7) ;;
+  release) tools=(cargo-cyclonedx@0.5.9 wasm-pack@0.15.0 worker-build@0.8.7) ;;
   *) echo 'Unknown CI tool profile' >&2; exit 2 ;;
 esac
 

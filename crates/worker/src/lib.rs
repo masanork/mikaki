@@ -12,6 +12,17 @@ mod branding;
 mod checkpoint_diagnostics;
 #[cfg(target_arch = "wasm32")]
 mod dpop;
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "messaging-qualification", feature = "messaging-beta")
+))]
+pub mod messaging;
+#[cfg(all(
+    target_arch = "wasm32",
+    any(feature = "messaging-qualification", feature = "messaging-beta")
+))]
+mod messaging_crypto;
+
 #[cfg(target_arch = "wasm32")]
 mod enrollment_mail;
 #[cfg(target_arch = "wasm32")]
@@ -64,6 +75,8 @@ mod vault_authzen;
 
 #[cfg(target_arch = "wasm32")]
 mod agent_access;
+#[cfg(target_arch = "wasm32")]
+mod messaging_beta;
 #[cfg(target_arch = "wasm32")]
 mod owner_passkeys;
 #[cfg(target_arch = "wasm32")]
@@ -2332,6 +2345,9 @@ pub async fn main(
     {
         return env.service("FONT_ASSETS")?.fetch_request(req).await;
     }
+    if url.path().starts_with("/messaging/") {
+        return messaging_beta::fetch(req, &env).await;
+    }
     if !auth_resources::admit(&req, &env).await? {
         return auth_resources::limited();
     }
@@ -2452,6 +2468,7 @@ pub async fn main(
         .post_async("/identity/attester/challenge", identity::attester_challenge)
         .post_async("/identity/attester/attestation", identity::attester_redeem)
         .get_async("/vault", vault_ui::page)
+        .get_async("/vault/messaging-config", messaging_beta::config)
         .get_async("/vault/session", vault_ui::session)
         .get_async(
             "/vault/record-recipient-keys/userinfo",

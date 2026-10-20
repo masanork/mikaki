@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../node_modules/wrangler/config-schema.json",
+  "name": "mikaki-messaging-qualification",
+  "main": "../../../../local/generated/messaging/worker.mjs",
+  "compatibility_date": "2026-10-19",
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "vars": { "MIKAKI_ISSUER": "https://messaging.test" },
+  "r2_buckets": [{ "binding": "VAULT_BLOBS", "bucket_name": "messaging-custody-qualification", "remote": false }],
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "messaging-qualification",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "../../../../crates/worker/migrations",
+    "remote": false
+  }]
+}

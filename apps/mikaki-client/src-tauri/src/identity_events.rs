@@ -13,7 +13,7 @@ pub struct Notification {
 }
 fn notification(event: &'static str, payload: &str) -> Option<Notification> {
     match event {
-        "identity-presentation-ready" | "identity-issuance-updated" => {
+        "identity-presentation-ready" | "identity-issuance-updated" | "product-wallet-ready" => {
             Some(Notification { event, id: None })
         }
         "identity-proximity-ended" => {
@@ -50,6 +50,7 @@ pub fn subscribe_identity_updates(
         app.unlisten(id);
     }
     for name in [
+        "product-wallet-ready",
         "identity-presentation-ready",
         "identity-proximity-ended",
         "identity-issuance-updated",

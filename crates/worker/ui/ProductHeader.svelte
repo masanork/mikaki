@@ -13,6 +13,7 @@
     session = true,
     onlock,
     material = false,
+    showOrigin = false,
     paused = false,
     vaultHref,
     lockLabel = m.vaultSessionLockAction(),
@@ -23,6 +24,7 @@
     session?: boolean;
     onlock?: () => void;
     material?: boolean;
+    showOrigin?: boolean;
     paused?: boolean;
     vaultHref?: string;
     lockLabel?: string;
@@ -77,7 +79,7 @@
       {#if !material}<BrandMark />{/if}
       mikaki
     </a>
-    {#if material}
+    {#if material || showOrigin}
       <div class="product-origin">
         <span>{m.authOriginLabel()}</span><strong>{page.host}</strong>
       </div>

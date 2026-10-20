@@ -142,7 +142,12 @@
     "preview:fonts": "node scripts/preview-fonts.mjs",
     "check:fonts-reproducible": "node scripts/build-fonts.mjs --check",
     "test:markup": "node --test scripts/markup-parsers.test.ts",
-    "test:auth-gc-recovery": "node --test local/conformance/reviewed-auth-gc-recovery.test.ts"
+    "test:auth-gc-recovery": "node --test local/conformance/reviewed-auth-gc-recovery.test.ts",
+    "build:messaging-beta": "npm run build:policy && node scripts/build-messaging-beta.ts",
+    "test:messaging-beta": "npm run build:messaging-beta && worker-build --release crates/worker --locked && node --test --test-concurrency=1 local/conformance/messaging-beta-browser.test.ts",
+    "check:messaging": "node_modules/typescript/bin/tsc --project crates/worker/ui/messaging/tsconfig.json --noEmit",
+    "test:wallet-chat": "npm run test:messaging-beta && npm run test:wallet-chat-product",
+    "test:wallet-chat-product": "node --test --test-concurrency=1 local/conformance/wallet-chat-product.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

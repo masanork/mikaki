@@ -774,6 +774,66 @@ pub fn identity_credential_status(
     }
 }
 
+/// Verified display metadata only. Credentials, proofs and holder keys stay native.
+#[derive(Serialize)]
+pub struct WalletCard {
+    id: String,
+    title: &'static str,
+    issuer: &'static str,
+    format: String,
+    expires_at: u64,
+    fields: Value,
+}
+#[tauri::command]
+pub fn identity_wallet_inventory(
+    app: AppHandle,
+    state: State<'_, IdentityState>,
+) -> Result<Vec<WalletCard>, String> {
+    let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
+    s.restore_receipts(&app)?;
+    let at = now()?;
+    let mut cards = Vec::new();
+    for receipt in &s.receipts {
+        if receipt.expires_at <= at {
+            continue;
+        }
+        let (expires_at, claims) = receipt.verified_values(ISSUER, at)?;
+        let mut fields = serde_json::Map::new();
+        for field in [
+            "name",
+            "address",
+            "birthdate",
+            "gender",
+            "document_expiry_date",
+            "age_over_18",
+            "age_over_20",
+        ] {
+            if let Some(value) = claims.get(field) {
+                fields.insert(field.into(), value.clone());
+            }
+        }
+        cards.push(WalletCard {
+            id: credential_hash(&receipt.credential),
+            title: "Mikaki本人確認属性証明",
+            issuer: ISSUER,
+            format: receipt.format.clone(),
+            expires_at,
+            fields: Value::Object(fields),
+        });
+    }
+    Ok(cards)
+}
+/// Fixed product navigation carries no proof, credential or authority.
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
+pub fn receive_product_link(app: &AppHandle, url: &url::Url) -> bool {
+    if url.as_str() != "mikaki-wallet:" {
+        return false;
+    }
+    use tauri::Emitter;
+    let _ = app.emit("product-wallet-ready", ());
+    true
+}
+
 #[tauri::command]
 pub fn open_identity_management(app: AppHandle) -> Result<(), String> {
     app.opener()

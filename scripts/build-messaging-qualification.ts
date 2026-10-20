@@ -1,0 +1,76 @@
+/** Local Wasm entrypoint for real SSO/D1 messaging adapters. Never deploy. */
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+const root = new URL('../', import.meta.url).pathname;
+const out = join(root, 'local/generated/messaging');
+const lock = await readFile(join(root, 'Cargo.lock'), 'utf8');
+const version = lock.match(/name = "wasm-bindgen"\nversion = "([^"]+)"/)?.[1];
+if (!version) throw new Error('Locked wasm-bindgen version is missing');
+const candidates = [process.env.MIKAKI_MESSAGING_BINDGEN, 'wasm-bindgen'].filter(
+  (v): v is string => !!v,
+);
+for (const base of [join(homedir(), 'Library/Caches'), join(homedir(), '.cache')]) {
+  for (const tool of ['worker-build', '.wasm-pack']) {
+    const directory = join(base, tool);
+    for (const entry of await readdir(directory).catch(() => [] as string[])) {
+      if (entry.startsWith('wasm-bindgen-') && entry.endsWith(version))
+        candidates.push(join(directory, entry, 'wasm-bindgen'));
+    }
+  }
+}
+const bindgen = candidates.find((file) => {
+  try {
+    return (
+      execFileSync(file, ['--version'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() === `wasm-bindgen ${version}`
+    );
+  } catch {
+    return false;
+  }
+});
+if (!bindgen)
+  throw new Error(`Install wasm-bindgen-cli ${version} or set MIKAKI_MESSAGING_BINDGEN`);
+await mkdir(out, { recursive: true });
+const compilation = spawnSync(
+  'cargo',
+  [
+    'build',
+    '--locked',
+    '-p',
+    'mikaki-worker',
+    '--target',
+    'wasm32-unknown-unknown',
+    '--no-default-features',
+    '--features',
+    'messaging-qualification',
+    '--example',
+    'messaging-qualification',
+  ],
+  { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+);
+await writeFile(join(out, 'cargo.log'), `${compilation.stdout ?? ''}${compilation.stderr ?? ''}`);
+if (compilation.status !== 0)
+  throw new Error(`Messaging qualification build failed; see ${join(out, 'cargo.log')}`);
+execFileSync(
+  bindgen,
+  [
+    join(root, 'target/wasm32-unknown-unknown/debug/examples/messaging_qualification.wasm'),
+    '--target',
+    'web',
+    '--out-dir',
+    out,
+    '--out-name',
+    'qualification',
+    '--no-typescript',
+  ],
+  { cwd: root, stdio: 'inherit' },
+);
+await writeFile(
+  join(out, 'worker.mjs'),
+  await readFile(join(root, 'design/probes/mls/server/worker-fixture.mjs'), 'utf8'),
+);

@@ -1,0 +1,141 @@
+/* Scoped to the embedded chat; Vault layout remains owned by product.css. */
+.messaging-host .mls-chat {
+  padding: clamp(1rem, 4vw, 2.5rem);
+  border: 1px solid #bacdc4;
+  border-radius: 1rem;
+  background: #fff;
+}
+.messaging-host h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: 0.03em;
+}
+.messaging-host h2 {
+  margin: 1.5rem 0 0.6rem;
+  font-size: 1.1rem;
+}
+.messaging-host p {
+  margin: 0.6rem 0;
+  overflow-wrap: anywhere;
+}
+.messaging-host label {
+  display: block;
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+}
+.messaging-host textarea,
+.messaging-host input[type='text'],
+.messaging-host select {
+  display: block;
+  width: 100%;
+  padding: 0.65rem;
+  margin-top: 0.35rem;
+  font: inherit;
+  color: #193b37;
+  border: 1px solid #718e82;
+  border-radius: 0.4rem;
+  background: #fff;
+}
+.messaging-host textarea {
+  resize: vertical;
+}
+.messaging-host textarea[readonly] {
+  font:
+    0.8rem/1.6 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.messaging-host textarea:disabled {
+  color: #52665e;
+  background: #edf1ee;
+}
+.messaging-host button {
+  min-height: 44px;
+  padding: 0.55rem 1rem;
+  margin: 0.35rem 0.5rem 0.35rem 0;
+  border: 1px solid #245d50;
+  border-radius: 0.4rem;
+  background: #245d50;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.messaging-host button:disabled {
+  color: #56625d;
+  border-color: #ccd6d0;
+  background: #e2e9e4;
+  cursor: default;
+}
+.messaging-host button:focus-visible,
+.messaging-host textarea:focus-visible,
+.messaging-host select:focus-visible,
+.messaging-host summary:focus-visible,
+.messaging-host input:focus-visible {
+  outline: 3px solid #a25416;
+  outline-offset: 3px;
+}
+.messaging-host input[type='checkbox'] {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0.3rem 0.5rem 0.3rem 0;
+  vertical-align: middle;
+  accent-color: #245d50;
+}
+.messaging-host [role='alert']:not(:empty) {
+  padding: 0.8rem;
+  border-left: 4px solid #a83d27;
+  background: #fff2eb;
+  color: #762a18;
+}
+.messaging-host [role='status']:not(:empty) {
+  padding: 0.8rem;
+  border-left: 4px solid #245d50;
+  background: #edf6ef;
+}
+.messaging-host details {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #f2f6f3;
+  border-radius: 0.4rem;
+}
+.messaging-host summary {
+  cursor: pointer;
+}
+.messaging-host dl {
+  font-size: 0.9rem;
+}
+.messaging-host dt {
+  font-weight: 700;
+  margin-top: 0.65rem;
+}
+.messaging-host dd {
+  margin: 0.15rem 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}
+.messaging-host ol {
+  display: grid;
+  gap: 0.8rem;
+  list-style: none;
+  padding: 0;
+  max-height: 26rem;
+  overflow: auto;
+}
+.messaging-host li {
+  padding: 0.7rem 1rem;
+  background: #f1f5f2;
+  border-radius: 0.6rem;
+}
+.messaging-host li p:first-child {
+  font-size: 0.8rem;
+  color: #456055;
+}
+.messaging-host li p:last-child {
+  white-space: pre-wrap;
+}
+@media (max-width: 540px) {
+  .messaging-host .mls-chat {
+    border-radius: 0.6rem;
+  }
+}

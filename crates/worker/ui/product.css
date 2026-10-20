@@ -1629,3 +1629,159 @@ a {
 .source-page .work-consent {
   padding-block: 0.25rem;
 }
+
+/* The product has two primary destinations; tools appear only for their task. */
+.product-mvp .product-main {
+  max-width: 900px;
+}
+.mvp-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  border-bottom: 1px solid var(--product-line);
+}
+.mvp-tabs button {
+  padding: 0.9rem 1.25rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #53677e;
+}
+.mvp-tabs [aria-current='page'] {
+  color: #174f91;
+  border-bottom: 3px solid #174f91;
+  font-weight: 700;
+}
+.mvp-empty {
+  padding: 2rem;
+}
+.mvp-primary {
+  display: inline-block;
+  padding: 0.8rem 1rem;
+  margin-block: 1rem;
+  color: #fff;
+  background: #1759ad;
+  border-radius: 0.6rem;
+  text-decoration: none;
+}
+.chat-wallet-request {
+  padding: 1rem;
+  border: 1px solid var(--product-line);
+  border-radius: 0.6rem;
+}
+.chat-wallet-request a {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+.vault-shell.product-mvp .mls-chat {
+  padding: 0;
+  border: 0;
+}
+
+/* Quiet, task-focused Wallet/Chat surface. */
+.vault-shell.product-mvp {
+  background: #f8f9fb;
+  background-image: none;
+  color: #16243a;
+}
+.vault-shell.product-mvp::before,
+.vault-shell.product-mvp::after {
+  display: none;
+}
+.product-mvp .product-header {
+  background: #fff;
+  color: #16243a;
+  box-shadow: none;
+  border-bottom: 1px solid #dce2e8;
+}
+.product-mvp .product-brand,
+.product-mvp .product-brand-tag,
+.product-mvp .product-origin,
+.product-mvp .product-language,
+.product-mvp .product-signout,
+.product-mvp .product-toolbar select {
+  color: #24415f;
+}
+.product-mvp .product-toolbar select {
+  background: #fff;
+  border-color: #ccd6e1;
+}
+.product-mvp .product-header-inner {
+  background: none;
+  box-shadow: none;
+  border: none;
+}
+.product-mvp .product-main {
+  padding-top: 1.5rem;
+}
+.product-mvp .product-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.product-mvp .product-heading h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+.vault-shell.product-mvp .product-card {
+  background: #fff;
+  border: 1px solid #dce2e8;
+  box-shadow: none;
+}
+.vault-shell.product-mvp .mls-chat {
+  background: #fff;
+}
+.product-mvp .mls-chat h1 {
+  font-size: 1.35rem;
+}
+.product-mvp .mls-chat [role='status']:empty,
+.product-mvp .mls-chat [role='alert']:empty {
+  display: none;
+}
+.product-mvp .mls-chat form {
+  position: static;
+}
+.product-mvp .mls-chat [aria-label='メッセージ履歴'],
+.product-mvp .mls-chat [aria-label='メッセージ履歴'] ol {
+  max-height: none;
+  overflow: visible;
+}
+.product-mvp .product-card button {
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #24415f;
+  cursor: pointer;
+}
+.product-mvp .product-card button.product-primary {
+  background: #1759ad;
+  color: #fff;
+  border-color: #1759ad;
+}
+.product-mvp .product-card button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.product-mvp .product-origin strong {
+  color: #24415f;
+}
+.product-mvp .product-origin span {
+  color: #52677f;
+}
+.product-mvp .product-origin {
+  background: none;
+  border-color: #dce2e8;
+}
+
+.product-mvp .product-heading button {
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #24415f;
+  font: inherit;
+  cursor: pointer;
+}

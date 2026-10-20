@@ -1,0 +1,129 @@
+name: MLS device qualification
+on:
+  pull_request:
+    paths:
+      - 'design/probes/mls/**'
+      - 'crates/worker/ui/OwnerVaultSession.svelte'
+      - 'crates/worker/ui/product.css'
+      - 'local/conformance/messaging-beta-browser.test.ts'
+      - 'local/conformance/wallet-chat-product.test.ts'
+      - 'scripts/build-messaging-beta.ts'
+      - 'apps/mikaki-client/ui/**'
+      - 'apps/mikaki-client/src-tauri/src/identity_issuance.rs'
+      - 'crates/worker/ui/messaging-module.ts'
+      - 'crates/worker/ui/ProductChat.svelte'
+      - 'crates/worker/ui/ProductWorkspace.svelte'
+      - 'crates/worker/src/messaging*.rs'
+      - 'crates/worker/src/messaging-sql/**'
+      - 'crates/worker/messaging-migrations/**'
+      - 'crates/worker/ui/messaging/**'
+      - 'crates/worker/ui/OwnerMessaging.svelte'
+      - 'crates/worker/ui/OwnerWorkspace.svelte'
+      - 'crates/worker/build.rs'
+      - 'crates/worker/src/lib.rs'
+      - 'crates/worker/src/vault_http.rs'
+      - 'crates/worker/src/vault_*.rs'
+      - 'crates/worker/ui/vault-*.ts'
+      - 'crates/worker/Cargo.toml'
+      - 'crates/worker/examples/messaging_qualification.rs'
+      - 'crates/worker/migrations/**'
+      - 'scripts/build-messaging-qualification.ts'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/mls-probe.yml'
+      - '.github/actions/setup-cargo-tools/**'
+      - 'scripts/install-ci-tools.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'rust-toolchain.toml'
+  push:
+    branches: [main]
+    paths:
+      - 'design/probes/mls/**'
+      - 'crates/worker/ui/OwnerVaultSession.svelte'
+      - 'crates/worker/ui/product.css'
+      - 'local/conformance/messaging-beta-browser.test.ts'
+      - 'local/conformance/wallet-chat-product.test.ts'
+      - 'scripts/build-messaging-beta.ts'
+      - 'apps/mikaki-client/ui/**'
+      - 'apps/mikaki-client/src-tauri/src/identity_issuance.rs'
+      - 'crates/worker/ui/messaging-module.ts'
+      - 'crates/worker/ui/ProductChat.svelte'
+      - 'crates/worker/ui/ProductWorkspace.svelte'
+      - 'crates/worker/src/messaging*.rs'
+      - 'crates/worker/src/messaging-sql/**'
+      - 'crates/worker/messaging-migrations/**'
+      - 'crates/worker/ui/messaging/**'
+      - 'crates/worker/ui/OwnerMessaging.svelte'
+      - 'crates/worker/ui/OwnerWorkspace.svelte'
+      - 'crates/worker/build.rs'
+      - 'crates/worker/src/lib.rs'
+      - 'crates/worker/src/vault_http.rs'
+      - 'crates/worker/src/vault_*.rs'
+      - 'crates/worker/ui/vault-*.ts'
+      - 'crates/worker/Cargo.toml'
+      - 'crates/worker/examples/messaging_qualification.rs'
+      - 'crates/worker/migrations/**'
+      - 'scripts/build-messaging-qualification.ts'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/mls-probe.yml'
+      - '.github/actions/setup-cargo-tools/**'
+      - 'scripts/install-ci-tools.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'rust-toolchain.toml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mls-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install Rust targets and checks
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: worker
+      - uses: ./.github/actions/setup-cargo-tools
+        with:
+          profile: audit
+      - run: npm ci
+      - run: npm ci --prefix tools/svelte-check
+      - name: Check isolated Rust source and lifecycle
+        run: |
+          cargo fmt --manifest-path design/probes/mls/Cargo.toml -- --check
+          cargo clippy --locked --manifest-path design/probes/mls/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path design/probes/mls/Cargo.toml
+          cargo audit --file design/probes/mls/Cargo.lock
+      - name: Build the actual browser module
+        run: |
+          wasm-pack build design/probes/mls --target web --release --out-dir pkg-web -- --locked
+          cargo clippy --locked --manifest-path design/probes/mls/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
+          npx prettier --check design/probes/mls/*.ts design/probes/mls/*.css crates/worker/ui/messaging/*.ts crates/worker/ui/messaging/*.css
+          npm run check:messaging
+          node_modules/.bin/tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck --erasableSyntaxOnly --allowImportingTsExtensions --types node design/probes/mls/*.ts scripts/build-messaging-qualification.ts
+      - name: Build the feature-gated SSO/D1 adapter qualification
+        run: |
+          npm run build:policy
+          node scripts/build-messaging-qualification.ts
+          cargo clippy --locked -p mikaki-worker --target wasm32-unknown-unknown --features messaging-qualification --lib -- -D warnings
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Exchange wire messages between isolated browser devices
+        env:
+          MIKAKI_MLS_BROWSERS: chromium,firefox,webkit
+        run: node --test --test-concurrency=1 design/probes/mls/browser.test.ts design/probes/mls/bindings.browser.test.ts design/probes/mls/persistence.browser.test.ts design/probes/mls/server.test.ts design/probes/mls/delivery.server.test.ts design/probes/mls/invitation.server.test.ts design/probes/mls/recovery.server.test.ts design/probes/mls/server.browser.test.ts design/probes/mls/vault-device.browser.test.ts design/probes/mls/chat.browser.test.ts design/probes/mls/peer-review.browser.test.ts design/probes/mls/replacement.server.test.ts design/probes/mls/replacement.browser.test.ts design/probes/mls/replacement-cancellation.server.test.ts design/probes/mls/replacement-cancellation.browser.test.ts design/probes/mls/admission-recovery.server.test.ts design/probes/mls/admission-recovery.browser.test.ts design/probes/mls/rejoin-recovery.server.test.ts design/probes/mls/rejoin-recovery.browser.test.ts design/probes/mls/rejoin-cancellation.server.test.ts design/probes/mls/rejoin-cancellation.browser.test.ts design/probes/mls/generation-negotiation.server.test.ts design/probes/mls/generation-negotiation.browser.test.ts design/probes/mls/replacement-stop.server.test.ts design/probes/mls/replacement-stop.browser.test.ts design/probes/mls/replacement-stop-recovery.browser.test.ts design/probes/mls/replacement-stop-chain.test.ts design/probes/mls/replacement-stop-chain.browser.test.ts design/probes/mls/replacement-stop-advanced.browser.test.ts
+
+      - name: Wallet and Chat product integration
+        run: npm run test:messaging-beta && npm run test:wallet-chat-product

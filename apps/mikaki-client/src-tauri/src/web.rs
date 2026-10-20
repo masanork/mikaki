@@ -52,6 +52,7 @@ impl NavigationState {
 pub enum Destination {
     Signin,
     Vault,
+    Chat,
 }
 impl Destination {
     fn url(self) -> Url {
@@ -61,12 +62,14 @@ impl Destination {
                 .join(match self {
                     Self::Signin => "/signin",
                     Self::Vault => "/vault",
+                    Self::Chat => "/vault#chat",
                 })
                 .expect("fixed developer path");
         }
         Url::parse(match self {
             Self::Signin => "https://auth.mikaki.org/signin",
             Self::Vault => "https://auth.mikaki.org/vault",
+            Self::Chat => "https://auth.mikaki.org/vault#chat",
         })
         .expect("fixed Web URL")
     }
@@ -77,6 +80,7 @@ enum Navigation {
     Web,
     Local,
     Wallet,
+    Presentation,
     Blocked,
 }
 fn classify(url: &Url) -> Navigation {
@@ -90,6 +94,14 @@ fn classify(url: &Url) -> Navigation {
 
     if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
         return Navigation::Blocked;
+    }
+    if matches!(url.scheme(), "openid4vp" | "mdoc-openid4vp")
+        && url.as_str().len() <= 4096
+        && url.host_str().is_none()
+        && url.path().is_empty()
+        && url.fragment().is_none()
+    {
+        return Navigation::Presentation;
     }
     if local_origin(url) && matches!(url.path(), "/" | "/index.html") {
         return Navigation::Local;
@@ -186,6 +198,16 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
                 let app = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     let _ = show_wallet(&app);
+                });
+                false
+            }
+            Navigation::Presentation => {
+                // Navigation conveys a request only. The native parser pins the
+                // verifier/retrieval URI and presentation still requires consent.
+                let app = handle.clone();
+                let uri = url.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::identity_issuance::invocation::receive(&app, &uri);
                 });
                 false
             }
@@ -297,6 +319,21 @@ mod tests {
                 Navigation::Blocked,
                 "{value}"
             );
+        }
+        for scheme in ["openid4vp", "mdoc-openid4vp"] {
+            let value = format!(
+                "{scheme}:?client_id=verifier&request_uri=https%3A%2F%2Fverifier.example%2Frequest"
+            );
+            assert_eq!(
+                classify(&Url::parse(&value).unwrap()),
+                Navigation::Presentation
+            );
+        }
+        for value in [
+            "openid4vp://evil.example/",
+            "openid4vp:?client_id=v#payload",
+        ] {
+            assert_eq!(classify(&Url::parse(value).unwrap()), Navigation::Blocked);
         }
         assert_eq!(classify(&local_url("wallet")), Navigation::Local);
         assert_eq!(classify(&local_url("connection")), Navigation::Local);

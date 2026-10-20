@@ -1,3 +1,5 @@
+let walletInventoryGeneration = 0;
+let walletInventoryLoaded = false;
 let proximityGeneration = 0;
 let proximitySession = null;
 let proximityReview = null;
@@ -38,7 +40,9 @@ function diagnostic(error) {
 }
 function route() {
   const requested = location.hash.slice(1);
-  return ['home', 'wallet', 'settings', 'diagnostics', 'connection'].includes(requested) ? requested : 'home';
+  return ['wallet', 'chat', 'settings', 'diagnostics', 'connection'].includes(requested)
+    ? requested
+    : 'wallet';
 }
 function navigate(view, replace = false) {
   const depth = replace ? 0 : (history.state?.mikakiDepth ?? 0) + 1;
@@ -50,12 +54,26 @@ function render(focus = false) {
   const view = route();
   renderIdentityReader(view);
   renderWalletIssuance(view);
+  if (view !== 'wallet') {
+    walletInventoryGeneration++;
+    walletInventoryLoaded = false;
+    $('#wallet-inventory').replaceChildren();
+    $('#wallet-card-values').replaceChildren();
+    $('#wallet-card-detail').hidden = true;
+  } else if (!walletInventoryLoaded) {
+    walletInventoryLoaded = true;
+    void refreshWalletInventory();
+  }
   for (const screen of screens) screen.hidden = screen.id !== view;
   navigation.hidden = false;
   for (const button of document.querySelectorAll('[data-web-destination]'))
     button.disabled = !invoke || webOpening || cardBusy || issuanceBusy;
   $('#diagnostic-platform').textContent =
-    platform === 'mobile' ? 'スマートフォン' : platform === 'desktop' ? 'デスクトップ' : '確認できません';
+    platform === 'mobile'
+      ? 'スマートフォン'
+      : platform === 'desktop'
+        ? 'デスクトップ'
+        : '確認できません';
   for (const tab of navigation.querySelectorAll('a')) {
     if (tab.dataset.nav === (view === 'diagnostics' ? 'settings' : view))
       tab.setAttribute('aria-current', 'page');
@@ -81,6 +99,7 @@ async function bootstrap() {
     render();
     void consumeIdentityInvocation();
     void refreshWalletIssuance();
+    void refreshWalletInventory();
   } catch (error) {
     diagnostic(error);
     notice('端末の状態を確認できませんでした。アプリを開き直してください。');
@@ -116,7 +135,7 @@ document.querySelectorAll('[data-back]').forEach((button) => {
   button.addEventListener('click', () => {
     notice();
     if ((history.state?.mikakiDepth ?? 0) > 0) history.back();
-    else navigate(route() === 'diagnostics' ? 'settings' : 'home', true);
+    else navigate(route() === 'diagnostics' ? 'settings' : 'wallet', true);
   });
 });
 window.addEventListener('popstate', () => {
@@ -177,6 +196,7 @@ function cancelIdentityRead() {
 }
 function renderIdentityReader(view) {
   $('#identity-reader').hidden = !cardSupported;
+  $('#wallet-documents').hidden = !cardSupported;
   if (view !== 'wallet') {
     clearProximity();
     clearPresentationReview();
@@ -348,6 +368,8 @@ function renderWalletIssuance(view) {
   if (walletActive && !document.hidden)
     walletTimer = setTimeout(() => void refreshWalletIssuance(), 5000);
   $('#identity-wallet-issuance').hidden = !walletAvailable;
+  $('#wallet-receive').hidden = !walletAvailable;
+  if (walletActive) $('#wallet-receive').open = true;
   $('#identity-wallet-start').disabled = walletActive || issuanceBusy || cardBusy;
   $('#identity-wallet-format').disabled = walletActive || issuanceBusy;
   $('#identity-wallet-count').disabled = walletActive || issuanceBusy;
@@ -537,6 +559,69 @@ $('#identity-credential-clear').addEventListener('click', () => {
   $('#identity-issuance-status').textContent = '';
 });
 
+async function refreshWalletInventory() {
+  if (!invoke || route() !== 'wallet' || document.hidden) return;
+  const generation = ++walletInventoryGeneration;
+  $('#wallet-status').textContent = '証明書を確認しています。';
+  try {
+    const cards = await invoke('identity_wallet_inventory');
+    if (generation !== walletInventoryGeneration || route() !== 'wallet' || document.hidden) return;
+    if (!Array.isArray(cards)) throw new Error('invalid_wallet_inventory');
+    $('#wallet-inventory').replaceChildren();
+    $('#wallet-card-detail').hidden = true;
+    $('#wallet-card-values').replaceChildren();
+    for (const card of cards) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'menu-row wallet-card';
+      const label = document.createElement('span'),
+        title = document.createElement('strong'),
+        description = document.createElement('small');
+      title.textContent = card.title;
+      description.textContent =
+        card.issuer + ' · 有効期限 ' + new Date(card.expires_at * 1000).toLocaleString();
+      label.append(title, description);
+      row.append(label);
+      row.addEventListener('click', () => {
+        $('#wallet-card-title').textContent = card.title;
+        $('#wallet-card-issuer').textContent = card.issuer;
+        $('#wallet-card-values').replaceChildren();
+        for (const [key, value] of Object.entries(card.fields)) {
+          const names = {
+            name: '氏名',
+            address: '住所',
+            birthdate: '生年月日',
+            gender: '性別',
+            age_over_18: '18歳以上である',
+            age_over_20: '20歳以上である',
+            document_expiry_date: '書類の有効期限',
+          };
+          const term = document.createElement('dt'),
+            detail = document.createElement('dd');
+          term.textContent = names[key] ?? key;
+          detail.textContent =
+            typeof value === 'boolean'
+              ? value
+                ? 'はい'
+                : 'いいえ'
+              : typeof value === 'object'
+                ? (value?.formatted ?? '')
+                : String(value);
+          $('#wallet-card-values').append(term, detail);
+        }
+        $('#wallet-card-detail').hidden = false;
+      });
+      $('#wallet-inventory').append(row);
+    }
+    $('#wallet-status').textContent = cards.length
+      ? `証明書 ${cards.length}件`
+      : '証明書はまだありません。本人確認書類を読み取って、最初の証明書を受け取れます。';
+  } catch (error) {
+    if (generation === walletInventoryGeneration)
+      $('#wallet-status').textContent = presentationError(error);
+  }
+}
+$('#identity-wallet-restore').addEventListener('click', () => void refreshWalletInventory());
 $('#identity-manage').addEventListener('click', () => {
   if (invoke)
     void invoke('open_identity_management').catch((error) => {
@@ -727,14 +812,7 @@ $('#identity-vp-form').addEventListener('submit', (event) => {
   });
 });
 async function consumeIdentityInvocation() {
-  if (
-    !invoke ||
-    !available ||
-    invocationChecking ||
-    issuanceBusy ||
-    cardBusy ||
-    proximityActive
-  )
+  if (!invoke || !available || invocationChecking || issuanceBusy || cardBusy || proximityActive)
     return;
   invocationChecking = true;
   let reviewed = false;
@@ -742,6 +820,7 @@ async function consumeIdentityInvocation() {
     const id = await invoke('pending_identity_invocation');
     if (!id || issuanceBusy || cardBusy || proximityActive) return;
     navigate('wallet');
+    $('#wallet-documents').open = true;
     reviewed = true;
     await reviewPresentation('review_identity_invocation', { invocationId: id });
   } catch (_) {
@@ -986,6 +1065,8 @@ if (invoke && window.__TAURI__?.core?.Channel) {
         $('#identity-proximity-status').textContent =
           '接続が終了しました。新しい接続からやり直してください。';
       }
+    } else if (event === 'product-wallet-ready') {
+      navigate('wallet');
     } else if (event === 'identity-presentation-ready') {
       void consumeIdentityInvocation();
     } else if (event === 'identity-issuance-updated') {
@@ -997,3 +1078,12 @@ if (invoke && window.__TAURI__?.core?.Channel) {
     .catch(() => {});
 }
 window.addEventListener('focus', () => void consumeIdentityInvocation());
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  walletInventoryGeneration++;
+  walletInventoryLoaded = false;
+  $('#wallet-inventory').replaceChildren();
+  $('#wallet-card-values').replaceChildren();
+  $('#wallet-card-detail').hidden = true;
+});

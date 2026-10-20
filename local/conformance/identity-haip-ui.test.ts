@@ -25,6 +25,9 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-receive').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           await page
             .locator('#identity-wallet-format')
             .selectOption(format === 'mso_mdoc' ? 'linked_document_mdoc' : 'linked_document');
@@ -76,6 +79,9 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
           try {
             await page.locator('#open-settings').click();
             await page.getByRole('link', { name: 'Walletを開く' }).click();
+            await page.locator('#wallet-receive').evaluate((node) => {
+              (node as HTMLDetailsElement).open = true;
+            });
             assert.equal(await page.locator('#identity-wallet-count').inputValue(), '1');
             await page.locator('#identity-wallet-count').selectOption('8');
             await page
@@ -117,6 +123,9 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-receive').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-wallet-count').selectOption('2');
         await page.evaluate(() => {
           window.__nativeUiTest.failures.start_identity_wallet_issuance = 'age_pool_unavailable';
@@ -139,6 +148,9 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-receive').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           if (command === 'start_identity_wallet_issuance')
             await page.evaluate(() => window.__nativeUiTest.hold('start_identity_wallet_issuance'));
           await page.locator('#identity-wallet-start').click();

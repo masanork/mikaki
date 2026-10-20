@@ -14,6 +14,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
         await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -22,7 +25,7 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
         assert.match((await page.locator('#identity-preview').textContent()) ?? '', /紐付けはまだ/);
         assert.equal(await page.evaluate(() => localStorage.length), 0);
         assert.equal(await page.evaluate(() => sessionStorage.length), 0);
-        await page.locator('#wallet [data-back]').click();
+        await page.locator('#open-settings').click();
         await page.locator('#settings').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#identity-name').textContent(), '');
         assert.deepEqual(errors, []);
@@ -38,6 +41,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.evaluate(() => window.__nativeUiTest.hold('read_identity_card'));
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -67,6 +73,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-documents').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           await page.locator('#identity-pin').fill('1234');
           await page.locator('#identity-read').click();
           await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -107,6 +116,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
         await page.waitForFunction(() =>
@@ -135,6 +147,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-documents').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           await page.locator('#identity-type').selectOption('driving_license');
           assert.equal(await page.locator('#identity-pin2-field').isVisible(), true);
           await page.locator('#identity-pin').fill('1234');
@@ -180,6 +195,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
         await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -211,6 +229,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
           try {
             await page.locator('#open-settings').click();
             await page.getByRole('link', { name: 'Walletを開く' }).click();
+            await page.locator('#wallet-documents').evaluate((node) => {
+              (node as HTMLDetailsElement).open = true;
+            });
             await page.locator('#identity-pin').fill('1234');
             await page.locator('#identity-read').click();
             await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -265,6 +286,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
         await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -289,6 +313,9 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
+        await page.locator('#wallet-documents').evaluate((node) => {
+          (node as HTMLDetailsElement).open = true;
+        });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
         await page.locator('#identity-preview').waitFor({ state: 'visible' });
@@ -325,6 +352,9 @@ test('presentation review requires explicit consent and discards late or hidden 
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-documents').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           if (action === 'mdoc') {
             await page.locator('#identity-pin').fill('1234');
             await page.locator('#identity-read').click();
@@ -361,7 +391,7 @@ test('presentation review requires explicit consent and discards late or hidden 
           await page.locator('#identity-vp-request').fill('synthetic.signed.request');
           await page.locator('#identity-vp-review').click();
           if (action === 'late') {
-            await page.locator('#wallet [data-back]').click();
+            await page.locator('#open-settings').click();
             await page.evaluate(() =>
               window.__nativeUiTest.release('review_identity_presentation'),
             );
@@ -378,7 +408,7 @@ test('presentation review requires explicit consent and discards late or hidden 
               ),
               false,
             );
-            if (action === 'navigate') await page.locator('#wallet [data-back]').click();
+            if (action === 'navigate') await page.locator('#open-settings').click();
             else
               await page
                 .locator('#identity-vp-' + (action === 'mdoc' ? 'approve' : action))
@@ -424,6 +454,9 @@ test('presentation review requires explicit consent and discards late or hidden 
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-documents').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           const held =
             action === 'late-start'
               ? 'start_identity_proximity'
@@ -478,7 +511,7 @@ test('presentation review requires explicit consent and discards late or hidden 
               await page.evaluate(() =>
                 window.__nativeUiTest.emit('identity-proximity-ended', 'fixture-proximity'),
               );
-            } else if (action === 'navigate') await page.locator('#wallet [data-back]').click();
+            } else if (action === 'navigate') await page.locator('#open-settings').click();
             else
               await page
                 .locator(
@@ -574,6 +607,9 @@ test('native same-device invocations use consent and discard requests after leav
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
+          await page.locator('#wallet-documents').evaluate((node) => {
+            (node as HTMLDetailsElement).open = true;
+          });
           await page.locator('#identity-proximity-start').click();
           await page.locator('#identity-proximity-consent').waitFor({ state: 'visible' });
           const text = await page.locator('#identity-proximity-values').innerText();
@@ -741,7 +777,7 @@ test('native same-device invocations use consent and discard requests after leav
             window.__nativeUiTest.calls.includes('review_identity_invocation'),
           );
           if (mode === 'late') {
-            await page.locator('#wallet [data-back]').click();
+            await page.locator('#open-settings').click();
             await page.evaluate(() => window.__nativeUiTest.release('review_identity_invocation'));
             await page.waitForFunction(() =>
               window.__nativeUiTest.calls.includes('confirm_identity_presentation'),
@@ -816,7 +852,7 @@ test('verifier browser completion reports sent credentials without triggering an
             window.__nativeUiTest.calls.includes('confirm_identity_presentation'),
           );
           if (completion === 'late') {
-            await page.locator('#wallet [data-back]').click();
+            await page.locator('#open-settings').click();
             await page.evaluate(() =>
               window.__nativeUiTest.release('confirm_identity_presentation'),
             );

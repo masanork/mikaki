@@ -1,3 +1,5 @@
+// Retired editors are exercised as components; they are absent from the product entry.
+import { withRetiredOwnerUi } from './support/retired-owner-ui.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -58,7 +60,7 @@ test('Rust product journey: invite, real virtual Passkey/PRF, Vault, RP code exc
       ],
     });
     await harness.listen();
-    const worker = harness.getWorker('mikaki-op-worker');
+    const worker = await withRetiredOwnerUi(harness.getWorker('mikaki-op-worker'));
     await worker.applyD1Migrations('DB');
     const { DB } = await worker.getEnv();
     const policy = JSON.parse(

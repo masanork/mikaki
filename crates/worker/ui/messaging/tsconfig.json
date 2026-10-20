@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": false,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["*.ts"],
+  "exclude": []
+}

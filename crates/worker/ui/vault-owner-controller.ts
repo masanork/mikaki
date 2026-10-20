@@ -65,6 +65,7 @@ export class OwnerVaultController {
   private suspended = false;
   private disposed = false;
   private opening = false;
+  private readonly invalidations = new Set<() => void>();
   private opened: { session: OwnerKeySession; stored: StoredOwnerKey } | null = null;
   readonly scope: VaultScope;
   readonly origin: string;
@@ -99,6 +100,23 @@ export class OwnerVaultController {
     this.assertAvailable();
     if (!this.opened?.session.opened) throw new Error('owner_key_locked');
     return this.opened;
+  }
+  /** Retained child handles must close on every local lease invalidation. */
+  onLeaseInvalidated(listener: () => void): () => void {
+    this.lease();
+    this.invalidations.add(listener);
+    return () => this.invalidations.delete(listener);
+  }
+  private invalidateChildren(): void {
+    const listeners = [...this.invalidations];
+    this.invalidations.clear();
+    for (const listener of listeners) {
+      try {
+        listener();
+      } catch {
+        /* A child must never prevent owner locking. */
+      }
+    }
   }
   async open(preferLogin = false): Promise<void> {
     this.assertAvailable();
@@ -209,6 +227,7 @@ export class OwnerVaultController {
     this.epoch++;
     this.suspended = true;
     this.opened?.session.suspend();
+    this.invalidateChildren();
   }
   async resume(): Promise<void> {
     if (this.disposed || !this.visible()) throw new DOMException('Unavailable', 'AbortError');
@@ -243,6 +262,7 @@ export class OwnerVaultController {
     this.epoch++;
     this.opened?.session.dispose();
     this.opened = null;
+    this.invalidateChildren();
     this.scope.signal.removeEventListener('abort', this.dispose);
   };
 }
