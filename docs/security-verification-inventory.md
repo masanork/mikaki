@@ -72,6 +72,8 @@ Inspect assertion bodies and harness profiles for each scenario. For example, th
 
 [PR #277](https://github.com/masanork/mikaki/pull/277) was open at inspection, with candidate commit `c2eb64c41a7310b3b4af280dffe9110bf3f80854`. It is a separate assessment target from the main baseline. Refresh its revision and merge state before execution.
 
+The subsequent security CI implementation was rebased onto main merge `2c139b07`, which includes PR #277. That revision has 18 tracked lockfiles including the MLS graph. The links below preserve the initial candidate snapshot; execute lifecycle tests against the selected current revision and retain the enabled-profile distinction.
+
 Candidate anchors are pinned to that commit because they are absent from the main baseline:
 
 - [Release readiness](https://github.com/masanork/mikaki/blob/c2eb64c41a7310b3b4af280dffe9110bf3f80854/docs/wallet-chat-release-readiness.md) and [product scope](https://github.com/masanork/mikaki/blob/c2eb64c41a7310b3b4af280dffe9110bf3f80854/docs/wallet-chat-mvp.md).

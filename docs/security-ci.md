@@ -7,7 +7,7 @@ The [security workflow](../.github/workflows/security-checks.yml) runs Gitleaks 
 | Check | Scope and enforcement |
 | --- | --- |
 | Gitleaks 8.30.1 | All commit history reachable from the checked-out `HEAD`, with checkout depth zero. This includes intermediate commits, not just the final tree. Other branches and unreachable commits are outside this run. |
-| Historical exceptions | [.gitleaksignore](../.gitleaksignore) contains 202 exact historical fingerprints across 12 paths. There are no path-wide or rule-wide exclusions. New commits at those paths remain scanned. |
+| Historical exceptions | [.gitleaksignore](../.gitleaksignore) contains 204 exact historical fingerprints across 14 paths. There are no path-wide or rule-wide exclusions. New commits at those paths remain scanned. |
 | Redaction and failure | Redact complete credential values, ignore inline `gitleaks:allow` annotations, and fail for unreviewed findings or tool failure. CI does not upload secret reports. |
 | zizmor 1.31.1 | Strict collection of workflows, composite actions and Dependabot configuration under `.github`. Gate Medium/High findings using the regular persona in offline mode. Low/informational, pedantic-only and online-only audits remain outside the required gate. |
 | Tool integrity | [Installer](../scripts/install-security-tools.sh) pins release versions and SHA-256 archive digests for Linux x86_64 and macOS arm64. A digest mismatch aborts installation. No scanner cache or deployment credential is needed. |
@@ -29,6 +29,8 @@ The initial Gitleaks run against the history through planning commit `842e80dc86
 | `crates/webauthn/testdata/attestations.json`, `mds-operations.json` | Synthetic offline attestation/MDS JWT vectors. |
 | `design/probes/pqc/hpke-pq-draft05-vector.json` | Published HPKE test-vector key and shared secret. |
 | `local/conformance/manifest-2026-09-22.json`, `results-2026-09-22.md` | Public source/module SHA-256 measurements. |
+
+Rebasing onto Wallet/Chat merge `2c139b07` added two generic-rule matches: adjacent `libcrux` dependency names in `design/probes/mls/Cargo.lock`, and ordinary product-scope prose in `docs/wallet-chat-release-readiness.md`. Both received exact historical fingerprints, bringing the total to 204 across 14 paths.
 
 These findings do not establish that every historical credential or secret format is detectable. For a new alert, inspect its provenance privately, revoke/rotate a real credential before treating history cleanup as remediation, and retain the disposition. Add an exact fingerprint only after review with a reason in the ignore file; do not exclude whole test or documentation directories. Review changes to the scanner, installer, workflow and ignore file as security-sensitive changes.
 

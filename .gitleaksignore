@@ -240,3 +240,11 @@ d0931c39f197325453cf445756af65b54d7fbd7a:local/conformance/results-2026-09-22.md
 # Synthetic resource identifiers in offline reset-plan assertions.
 140baec376116cffa6118dff6cde73af4064309d:scripts/plan-owner-vault-reset.test.ts:generic-api-key:68
 95ab1c16483ee57f6fc89b2d9dbbf120a6f9a2a5:scripts/plan-owner-vault-reset.test.ts:generic-api-key:60
+
+# design/probes/mls/Cargo.lock
+# Cargo package names libcrux-secrets and libcrux-sha3 in the dependency list.
+2c139b075032881f7d117a497fa6cf4a7c9af061:design/probes/mls/Cargo.lock:generic-api-key:1004
+
+# docs/wallet-chat-release-readiness.md
+# Ordinary product-scope prose; the generic rule matched adjacent words across a sentence.
+2c139b075032881f7d117a497fa6cf4a7c9af061:docs/wallet-chat-release-readiness.md:generic-api-key:103
