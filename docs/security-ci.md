@@ -103,10 +103,12 @@ Build and run locally:
 ```sh
 npm ci
 npm run build:policy
-worker-build --release crates/worker --locked
+GITHUB_SHA="$(git rev-parse HEAD)" worker-build --release crates/worker --locked
 npm run build:op-authority
 npm run test:security-authorization
 ```
+
+Passing `GITHUB_SHA` locally makes Cargo rerun its source-metadata build script after a new commit; CI already supplies it. Rebuilding the Rust source alone can retain older cached build-script metadata.
 
 ## Hosted repository settings
 
