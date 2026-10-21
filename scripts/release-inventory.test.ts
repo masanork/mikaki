@@ -23,6 +23,11 @@ import {
 } from './release-profile.ts';
 import { collectRelease, verifyRelease, releaseSource } from './release-inventory.ts';
 import { prepareReleaseUpload, verifyPreparedUpload } from './prepare-release-upload.ts';
+import {
+  MESSAGING_MIGRATIONS,
+  MESSAGING_MIGRATION_CONFIG,
+  MESSAGING_MIGRATION_DIRECTORY,
+} from './production-messaging-schema.ts';
 
 const source = { commit: 'a'.repeat(40), clean: true };
 const entries = ['index.js', 'index_bg.wasm', 'package.json', 'worker/shim.mjs'];
@@ -200,8 +205,19 @@ async function betaFixture() {
   await writeFile(join(f.root, 'assets/chat/crypto.wasm'), 'chat crypto');
   await writeFile(
     join(f.root, 'crates/worker/wrangler.production.jsonc'),
-    JSON.stringify({ name: 'op', assets: { directory: '../../assets' } }),
+    JSON.stringify({
+      ...JSON.parse(await readFile('crates/worker/wrangler.production.jsonc', 'utf8')),
+      name: 'op',
+      assets: { directory: '../../assets' },
+    }),
   );
+  await mkdir(join(f.root, MESSAGING_MIGRATION_DIRECTORY), { recursive: true });
+  for (const { name } of MESSAGING_MIGRATIONS)
+    await copyFile(
+      join(MESSAGING_MIGRATION_DIRECTORY, name),
+      join(f.root, MESSAGING_MIGRATION_DIRECTORY, name),
+    );
+  await copyFile(MESSAGING_MIGRATION_CONFIG, join(f.root, MESSAGING_MIGRATION_CONFIG));
   await writeFile(join(f.root, 'build/index_bg.wasm'), profileWasm('messaging-beta'));
   f.archive();
   const files = await Promise.all(
@@ -383,6 +399,45 @@ test('prepared beta candidates require explicit verification and cannot enter or
       verifyPreparedUpload(f.root, destination, result, source, false, 'messaging-beta'),
       /Prepared static assets differ/,
     );
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('beta release evidence binds all Chat SQL bytes, the separate ledger and migration target', async () => {
+  const f = await betaFixture();
+  try {
+    const inventory = await collectRelease(f.root, source, 'messaging-beta');
+    assert.equal(inventory.messaging_schema?.ledger, 'messaging_schema_migrations');
+    assert.deepEqual(
+      inventory.messaging_schema?.migrations.map(({ name, digest }) => ({
+        name,
+        sha256: digest.sha256,
+      })),
+      MESSAGING_MIGRATIONS,
+    );
+    assert.equal(inventory.messaging_schema?.config.name, MESSAGING_MIGRATION_CONFIG);
+    const missing = structuredClone(inventory);
+    delete missing.messaging_schema;
+    await assert.rejects(verifyRelease(f.root, missing, source, false, 'messaging-beta'));
+    const relabeled = structuredClone(inventory);
+    relabeled.messaging_schema!.ledger = 'd1_migrations';
+    await assert.rejects(verifyRelease(f.root, relabeled, source, false, 'messaging-beta'));
+    for (const { name } of MESSAGING_MIGRATIONS) {
+      const path = join(f.root, MESSAGING_MIGRATION_DIRECTORY, name);
+      const original = await readFile(path);
+      await writeFile(path, Buffer.concat([original, Buffer.from('\n')]));
+      await assert.rejects(
+        collectRelease(f.root, source, 'messaging-beta'),
+        /Chat migration bytes differ/,
+      );
+      await writeFile(path, original);
+    }
+    const configPath = join(f.root, MESSAGING_MIGRATION_CONFIG);
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    config.d1_databases[0].database_id = '00000000-0000-4000-8000-000000000000';
+    await writeFile(configPath, JSON.stringify(config));
+    await assert.rejects(collectRelease(f.root, source, 'messaging-beta'), /Chat migration target/);
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

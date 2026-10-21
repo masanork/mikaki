@@ -1,0 +1,14 @@
+{
+  "name": "mikaki-chat-schema",
+  "account_id": "4b749427a0c80c547e726a42aff4b6fc",
+  "compatibility_date": "2026-10-21",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikaki-auth-owner",
+      "database_id": "d0258938-0d27-4110-8aa9-c82e20f3885b",
+      "migrations_dir": "messaging-migrations",
+      "migrations_table": "messaging_schema_migrations"
+    }
+  ]
+}
