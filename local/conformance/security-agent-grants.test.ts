@@ -504,10 +504,10 @@ test('SEC-06/09 Agent grant disclosure and commit matrix', async (t) => {
       b = await f.owner('owner-b');
     const token = await f.oauth(a);
     const before = await f.vault();
-    assert.equal(
-      (await f.rpc(token, 'read', { id: 'name' })).data.result.structuredContent.text,
-      a.plaintext,
-    );
+    const shown = (await f.rpc(token, 'read', { id: 'name' })).data.result.structuredContent;
+    assert.equal(shown.text, a.plaintext);
+    assert.deepEqual(shown.source_info.source, a.source);
+    assert.deepEqual(shown.source_info.authority, a.authority);
     assert.equal(
       (await f.rpc(b.token, 'read', { id: 'name' })).data.result.structuredContent.text,
       b.plaintext,
@@ -531,6 +531,12 @@ test('SEC-06/09 Agent grant disclosure and commit matrix', async (t) => {
       prior,
     );
     const status = await json(await b.request('record-status'));
+    for (const privateValue of [a.account, a.grantId, a.plaintext, a.source.ciphertext_sha256])
+      assert.equal(
+        JSON.stringify(status).includes(privateValue),
+        false,
+        'B status cannot expose A grant metadata',
+      );
     assert.deepEqual(
       status.grants.map((row: { grant_id: string }) => row.grant_id),
       [b.grantId],
