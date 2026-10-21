@@ -580,7 +580,7 @@ jobs:
       - name: Verify dependency policy failure handling
         run: node --test scripts/check-dependency-advisories.test.ts
       - name: Audit every tracked Cargo, npm and Gradle lockfile
-        run: node scripts/check-dependency-advisories.ts
+        run: MIKAKI_OSV_BIN="$RUNNER_TEMP/mikaki-security-tools/osv-scanner" node scripts/check-dependency-advisories.ts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

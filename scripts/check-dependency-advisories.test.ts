@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import test from 'node:test';
 import { evaluateReport, scan } from './check-dependency-advisories.ts';
 
@@ -130,4 +130,43 @@ test('tool errors cannot pass using stale or partially produced reports', (t) =>
   assert.ok(!existsSync(join(output, 'summary.json')));
   writeFileSync(binary, '#!/bin/sh\nexit 0\n');
   assert.throws(() => scan(directory, binary, output), /ENOENT/);
+});
+
+test('scanner children and Git cannot be shadowed through an inherited writable PATH', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'mikaki-dependency-path-'));
+  const previousPath = process.env.PATH;
+  const previousMarker = process.env.MIKAKI_TEST_HIJACK_MARKER;
+  t.after(() => {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousMarker === undefined) delete process.env.MIKAKI_TEST_HIJACK_MARKER;
+    else process.env.MIKAKI_TEST_HIJACK_MARKER = previousMarker;
+    rmSync(directory, { recursive: true, force: true });
+  });
+  writeFileSync(join(directory, 'Cargo.lock'), 'version = 4\n');
+  for (const args of [
+    ['init', '--quiet'],
+    ['add', 'Cargo.lock'],
+  ])
+    assert.equal(spawnSync('/usr/bin/git', args, { cwd: directory }).status, 0);
+  const malicious = join(directory, 'bin');
+  mkdirSync(malicious);
+  for (const name of ['git', 'mikaki_dependency_path_fixture_280']) {
+    const command = join(malicious, name);
+    writeFileSync(command, '#!/bin/sh\n: > "$MIKAKI_TEST_HIJACK_MARKER"\nexit 2\n');
+    chmodSync(command, 0o755);
+  }
+  const marker = join(directory, 'hijacked');
+  process.env.PATH = `${malicious}${delimiter}${previousPath ?? ''}`;
+  process.env.MIKAKI_TEST_HIJACK_MARKER = marker;
+  const probe = join(directory, 'probe');
+  writeFileSync(probe, '#!/bin/sh\nexec mikaki_dependency_path_fixture_280\n');
+  chmodSync(probe, 0o755);
+  // The scanner's child command also receives only the fixed OS search path.
+  assert.throws(() => scan(directory, probe, join(directory, 'output')), /OSV scan failed/);
+  assert.ok(!existsSync(marker), 'neither shadow executable may run');
+  assert.throws(
+    () => scan(directory, 'osv-scanner', join(directory, 'output')),
+    /absolute executable/,
+  );
 });
