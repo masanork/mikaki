@@ -83,6 +83,29 @@ MIKAKI_OSV_BIN="$PWD/local/generated/security-tools/osv-scanner" node scripts/ch
 
 The [policy tests](../scripts/check-dependency-advisories.test.ts) exercise missing/duplicate/outside/empty inputs, malformed data, wrong ecosystems, expired or broadened exceptions, maintenance versus unsound records, and scanner failures with stale reports. A writable-PATH fixture attempts to shadow Git and a scanner child command; both must remain unexecuted. The live scan separately exercises the real three-ecosystem parser and OSV service. See the [inventory](security-verification-inventory.md) for scope that lockfile scanning does not cover.
 
+## Owner authorization attack matrix
+
+`npm run test:security-authorization` runs ten attack/control cases against the emitted default service package (`build/worker/service.mjs`), its Rust Wasm handler, and disposable local D1/R2 in workerd. It supplements the broader [record-store suite](../local/conformance/vault-owner-record-store.test.ts). The `worker-contracts` CI job builds the service package, runs the [matrix](../local/conformance/security-owner-authorization.test.ts), and retains its output, checked-out source commit, and service/shim/Wasm SHA-256 hashes in `authentication-worker-contracts-*` for 14 days. A failed matrix fails the job and therefore `verify`.
+
+| Scenario subset | Executed oracle |
+| --- | --- |
+| SEC-01: guessed record IDs, owner headers/query/body, foreign operation receipts | Owner B receives neither A's record nor A's receipt; rejected requests leave heads, mutation receipts, pending-GC uploads, R2 object inventory and ciphertext hashes unchanged. |
+| SEC-01: identical vault/collection/record/operation IDs in A and B | Valid B create/update/delete and historical retry operate in B's namespace. A's heads, receipts and referenced ciphertext stay unchanged. A stale update acknowledgment cannot resurrect B's deleted record. |
+| SEC-06: absent/revoked session | Read, list, update and delete return only an authentication error and have no record-storage effects. |
+| SEC-06: invalidation after initial authorization | Session revocation, account-epoch change and credential deactivation occur immediately before the real DELETE commit or immediately after the real list query. The commit cannot publish a tombstone/receipt, and the list cannot release selected metadata. Each fault must actually execute once. |
+
+The fixture directly seeds synthetic, valid SSO state and bootstraps wrapped owner keys through HTTP with the product crypto. It does not qualify Passkey login, a browser unlock, exports, Work authorization, lease/logout delivery, enabled Chat, a deployed environment, or physical devices. The narrow binding wrapper only schedules authority changes; it does not substitute SQL or authorization decisions. These are partial SEC-01/06 regressions, not a complete scenario disposition or ASVS compliance assessment.
+
+Build and run locally:
+
+```sh
+npm ci
+npm run build:policy
+worker-build --release crates/worker --locked
+npm run build:op-authority
+npm run test:security-authorization
+```
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.
