@@ -50,7 +50,9 @@ for (const name of (process.env.MIKAKI_MLS_BROWSERS ?? 'chromium').split(',')) {
   if (!engine) throw new Error(`Unknown browser ${name}`);
   test(
     `${name}: recovery after bilateral admission`,
-    { timeout: qualificationTimeout(180_000) },
+    // Four complete recovery scenarios share this parent budget. CI Firefox
+    // completed the first three before the old 180s limit cancelled the fourth.
+    { timeout: qualificationTimeout(300_000) },
     async (t) => {
       const f = await fixture(),
         browser = await engine.launch();

@@ -18,7 +18,10 @@ jobs:
       matrix:
         browser: [chromium, firefox, webkit]
     # Keep all engines required without serializing their recovery scenarios.
-    timeout-minutes: 60
+    # Firefox's sequential lifecycle suite already took 50m before its failed
+    # recovery cases could finish. Leave room for the full, unskipped scenarios;
+    # per-operation and per-test deadlines still bound stalled work.
+    timeout-minutes: ${{ matrix.browser == 'firefox' && 75 || 60 }}
     env:
       MIKAKI_MESSAGING_COVERAGE: ${{ matrix.browser == 'chromium' && '1' || '0' }}
       MIKAKI_MLS_BROWSERS: ${{ matrix.browser }}

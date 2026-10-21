@@ -1,4 +1,6 @@
 [advisories]
-# Public-key verification only: no RSA private key is held or used by mikaki.
+# The Rust rsa crate is used for public-key verification in product paths.
+# Product RS256 private-key signing uses runtime WebCrypto; synthetic test keys
+# use rsa offline. Re-review before introducing private-key operations via rsa.
 # See docs/adr/0008-webauthn-conformance.md; review before any RSA private-key use.
 ignore = ["RUSTSEC-2023-0071"]

@@ -5,9 +5,14 @@ import type { fixture } from './server-support.ts';
 import { contactCode } from './peer-review.ts';
 import { parseReplacementCode, replacementCode } from './replacement-types.ts';
 export async function idle(c: Client) {
+  // A recovery click can span several witnessed writes and MLS transitions.
+  // Playwright's 5s default is shorter than a valid operation on CI Firefox.
+  // Keep waiting for actual completion; do not retry the action or change any
+  // protocol/lease deadline. A stuck operation still fails this bounded wait.
   await expect(c.page.getByRole('region', { name: '暗号化チャット', exact: true })).toHaveAttribute(
     'aria-busy',
     'false',
+    { timeout: 30_000 },
   );
 }
 export async function click(c: Client, name: string) {

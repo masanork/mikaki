@@ -569,6 +569,7 @@ jobs:
       - name: Install pinned audit tools
         run: |
           rustup toolchain install 1.98.1 --profile minimal
+          bash scripts/install-security-tools.sh "$RUNNER_TEMP/mikaki-security-tools"
       - uses: ./.github/actions/setup-cargo-tools
         with:
           profile: audit
@@ -576,7 +577,19 @@ jobs:
           npm ci
           npm ci --prefix design/probes
           npm ci --prefix design/probes/vault-search
-      - name: Dependency advisories
+      - name: Verify dependency policy failure handling
+        run: node --test scripts/check-dependency-advisories.test.ts
+      - name: Audit every tracked Cargo, npm and Gradle lockfile
+        run: MIKAKI_OSV_BIN="$RUNNER_TEMP/mikaki-security-tools/osv-scanner" node scripts/check-dependency-advisories.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: dependency-advisories-${{ github.run_attempt }}
+          path: artifacts/dependencies/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Existing RustSec and npm advisories
+        if: ${{ !cancelled() }}
         run: |
           cargo audit --file Cargo.lock
           cargo audit --file design/probes/pqc/Cargo.lock
@@ -652,11 +665,11 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: read
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: true
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -667,8 +680,18 @@ jobs:
           path: artifacts/
       - name: Record project metrics and refresh charts
         run: node scripts/metrics.ts --record --snapshot-file artifacts/metrics/current.json --output-dir artifacts/metrics
-      - name: Commit updated history and charts
-        run: bash scripts/publish-metrics.sh
+      - name: Retain measured history and charts for reviewed publication
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: project-metrics-${{ github.run_attempt }}
+          path: |
+            artifacts/metrics/
+            metrics/history.json
+            metrics/code-size.svg
+            metrics/coverage.svg
+            metrics/dependency-inventory.md
+          if-no-files-found: error
+          retention-days: 30
 
   release-candidate:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.build_release_candidate)

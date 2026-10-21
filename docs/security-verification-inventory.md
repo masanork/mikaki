@@ -1,13 +1,13 @@
 # Mikaki security verification inventory
 
-This inventory records configuration and source anchors for the [security assurance plan](security-assurance-plan.md). Its main baseline is `8cd807ab2f8da837d3e0c98cd6146eacf19c94fc`, inspected on 2026-10-20. Runtime settings, scan findings and deployed versions require their own dated evidence.
+This inventory records configuration and source anchors for the [security assurance plan](security-assurance-plan.md). The dependency coverage update is based on main `22003c1615ea010fac2a6df5b53d2e3d8261c28c`, inspected on 2026-10-21. Runtime settings, scan findings and deployed versions require their own dated evidence.
 
 ## Existing controls and next checks
 
 | Control | Source anchor | Scope to verify next |
 | --- | --- | --- |
 | SonarQube source analysis | [CI](../.github/workflows/ci.yml), [setup](sonarqube-cloud.md), [historical triage](sonarqube-triage.md) | Recheck current analysis revision, enabled rules, pending hotspots/findings and scan availability. Historical counts are not a current baseline. |
-| Cargo/npm advisory job | `dependency-advisories` in [CI](../.github/workflows/ci.yml) | Six lockfile locations are explicitly targeted; decide coverage for the remaining effective graphs below. |
+| Cargo/npm/Gradle advisory job | `dependency-advisories` in [CI](../.github/workflows/ci.yml) | OSV covers all 18 tracked lockfiles; retain existing RustSec/npm checks and review exact expiring exceptions. Classify non-lockfile inputs separately. |
 | Dependency update proposals | [Dependabot](../.github/dependabot.yml) | Weekly Cargo/npm/Gradle/Actions updates are configured. Verify enabled alerts and each effective graph separately from update scheduling. |
 | WebAuthn fuzzing | [Workflow](../.github/workflows/webauthn-fuzz.yml), [targets](../fuzz/Cargo.toml), [fuzz contract](webauthn-fuzzing.md) | Four targets, weekly/manual, 90 seconds each; crash artifacts are retained 14 days. Add longer runs, reusable corpus, stateful/property oracles and native/Wasm regression replay. |
 | Actual Worker and browser suites | [Package scripts](../package.json), [product test contract](test-quality.md) | Map individual assertions to SEC-01 through SEC-20. Confirm the actual Worker and required feature profile were built. |
@@ -17,27 +17,28 @@ This inventory records configuration and source anchors for the [security assura
 
 ## Dependency scan scope
 
-There are 17 tracked lockfiles at this main baseline: 11 Cargo, 5 npm and 1 Gradle. The table records explicit commands in the `dependency-advisories` job, not every possible provider-side alert or transitive graph. A tracked standalone/vendor lockfile may not control the product build; classify its effective use before selecting a per-PR policy.
+There are 18 tracked lockfiles at this baseline: 12 Cargo, 5 npm and 1 Gradle. The `dependency-advisories` job discovers these paths from `git ls-files` and explicitly scans every graph with OSV-Scanner. It validates nonempty results for every requested path and fails on missing/duplicate/out-of-scope results or tool errors. Existing RustSec and npm commands remain as additional checks. A tracked standalone/vendor lockfile may not control the product build; scanning it does not imply it ships in the product.
 
 | Lockfile | Explicit advisory-job target | Effective scope to classify |
 | --- | --- | --- |
-| [Root Cargo](../Cargo.lock) | `cargo audit --file Cargo.lock` | Shared workspace and its target-specific/runtime/build dependencies. |
-| [Native application](../apps/mikaki-client/src-tauri/Cargo.lock) | Not explicit | Native Tauri client and plugins selected by its build. |
-| [Proximity plugin](../apps/mikaki-client/plugins/identity-proximity/Cargo.lock) | Not explicit | Standalone plugin build/test graph; compare with the application's selected graph. |
-| [Vendored card package](../apps/mikaki-client/vendor/civ-card/Cargo.lock) | Not explicit | Determine standalone development use versus the consuming application's lockfile. |
-| [ES256 probe](../design/probes/es256/Cargo.lock) | Not explicit | Isolated cryptographic interoperability probe. |
-| [JOSE probe](../design/probes/jose/Cargo.lock) | Not explicit | Isolated JOSE provider graph. |
-| [Custom JOSE probe](../design/probes/jose-custom/Cargo.lock) | Not explicit | Isolated alternate JOSE provider graph. |
-| [Native Identity HTTP probe](../design/probes/native-identity-http/Cargo.lock) | Not explicit | Native protocol/transport and release-test tooling. |
-| [PQC probe](../design/probes/pqc/Cargo.lock) | `cargo audit --file design/probes/pqc/Cargo.lock` | Isolated future-algorithm graph; retain its non-product status. |
-| [Workers Rust probe](../design/probes/workers-rs/Cargo.lock) | Not explicit | Isolated adapter/toolchain probe. |
-| [Fuzz package](../fuzz/Cargo.lock) | Not explicit | Parser fuzzing dependencies and sanitizer/toolchain profile. |
-| [Root npm](../package-lock.json) | `npm audit --audit-level=low` | Root runtime, UI, build and test dependencies. |
-| [Native application npm](../apps/mikaki-client/package-lock.json) | Not explicit | Tauri application tooling. |
-| [Probe npm](../design/probes/package-lock.json) | `npm audit --prefix design/probes --audit-level=low` | Shared probe tools. |
-| [Vault search probe npm](../design/probes/vault-search/package-lock.json) | `npm audit --prefix design/probes/vault-search --audit-level=low` | Search probe tools. |
-| [Svelte checker npm](../tools/svelte-check/package-lock.json) | `npm audit --prefix tools/svelte-check --audit-level=low` | Isolated Svelte checking tools. |
-| [Android attestation JVM](../services/android-attestation-verifier/gradle.lockfile) | Not explicit | Attestation service distribution and test graph; select a JVM advisory scanner. |
+| [Root Cargo](../Cargo.lock) | OSV + `cargo audit --file Cargo.lock` | Shared workspace and its target-specific/runtime/build dependencies. |
+| [Native application](../apps/mikaki-client/src-tauri/Cargo.lock) | OSV | Native Tauri client and plugins selected by its build. |
+| [Proximity plugin](../apps/mikaki-client/plugins/identity-proximity/Cargo.lock) | OSV | Standalone plugin build/test graph; compare with the application's selected graph. |
+| [Vendored card package](../apps/mikaki-client/vendor/civ-card/Cargo.lock) | OSV | Determine standalone development use versus the consuming application's lockfile. |
+| [ES256 probe](../design/probes/es256/Cargo.lock) | OSV | Isolated cryptographic interoperability probe. |
+| [JOSE probe](../design/probes/jose/Cargo.lock) | OSV | Isolated JOSE provider graph. |
+| [Custom JOSE probe](../design/probes/jose-custom/Cargo.lock) | OSV | Isolated alternate JOSE provider graph. |
+| [MLS probe](../design/probes/mls/Cargo.lock) | OSV | Isolated messaging protocol graph. |
+| [Native Identity HTTP probe](../design/probes/native-identity-http/Cargo.lock) | OSV | Native protocol/transport and release-test tooling. |
+| [PQC probe](../design/probes/pqc/Cargo.lock) | OSV + `cargo audit --file design/probes/pqc/Cargo.lock` | Isolated future-algorithm graph; retain its non-product status. |
+| [Workers Rust probe](../design/probes/workers-rs/Cargo.lock) | OSV | Isolated adapter/toolchain probe. |
+| [Fuzz package](../fuzz/Cargo.lock) | OSV | Parser fuzzing dependencies and sanitizer/toolchain profile. |
+| [Root npm](../package-lock.json) | OSV + `npm audit --audit-level=low` | Root runtime, UI, build and test dependencies. |
+| [Native application npm](../apps/mikaki-client/package-lock.json) | OSV | Tauri application tooling. |
+| [Probe npm](../design/probes/package-lock.json) | OSV + `npm audit --prefix design/probes --audit-level=low` | Shared probe tools. |
+| [Vault search probe npm](../design/probes/vault-search/package-lock.json) | OSV + `npm audit --prefix design/probes/vault-search --audit-level=low` | Search probe tools. |
+| [Svelte checker npm](../tools/svelte-check/package-lock.json) | OSV + `npm audit --prefix tools/svelte-check --audit-level=low` | Isolated Svelte checking tools. |
+| [Android attestation JVM](../services/android-attestation-verifier/gradle.lockfile) | OSV | Locked Maven distribution and test graph; OSV Gradle parser. |
 
 Also inventory Android application/plugin resolved dependencies, pinned upstream verifier source, downloaded CI binaries, Action revisions and any deployed container image digests. Their absence from this lockfile list does not exclude them from the assessment. Preserve dependency exceptions with the affected graph/version, reason, owner, expiry and compensating control.
 
@@ -48,7 +49,7 @@ git rev-parse HEAD
 git ls-files '*Cargo.lock' '*package-lock.json' '*gradle.lockfile'
 ```
 
-After each manifest/workspace change, identify which lockfiles the build actually consumes and update this table. Review new lockfile paths in PRs so an isolated package cannot silently fall outside the chosen policy.
+After each manifest/workspace change, identify which lockfiles the build actually consumes and update this table. New supported tracked lockfiles enter the gate automatically. Review unsupported package managers or nonstandard lockfile names explicitly. See [security CI operations](security-ci.md#dependency-advisory-policy) for the exact exception policy and unresolved findings.
 
 ## Product verification entry points
 
