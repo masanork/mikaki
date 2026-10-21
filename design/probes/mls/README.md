@@ -147,8 +147,17 @@ cargo audit --file design/probes/mls/Cargo.lock
 
 On a busy local host, `MIKAKI_MLS_TEST_TIMEOUT_MULTIPLIER=4` can extend outer
 browser-test deadlines. Values 1 through 4 are accepted; the default is 1 and CI
-keeps its original per-test budgets. This does not alter protocol/lease expiry,
+keeps the checked-in per-test budgets. This does not alter protocol/lease expiry,
 assertions or the device clock, and is not a performance qualification.
+
+Recovery UI clicks wait up to 30 seconds for the actual `aria-busy=false` state.
+One click can perform multiple witnessed writes and MLS transitions; the previous
+five-second Playwright default expired during valid Firefox work on CI. The
+four-scenario admission recovery suite has a shared five-minute parent budget,
+and the sequential Firefox job has a 75-minute ceiling (other engines: 60).
+These are correctness-test scheduling budgets, not a product latency guarantee.
+No scenario, cryptographic/state assertion, lock fence or protocol expiry is
+skipped or retried to satisfy them.
 
 Without `MIKAKI_MLS_BROWSERS`, the browser test runs Chromium. Each device uses a
 separate browser context/Wasm module; the harness relays serialized wire bytes.
