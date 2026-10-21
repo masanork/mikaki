@@ -363,13 +363,15 @@ test('SEC-01/06 packaged owner authorization and durable effects', async (t) => 
       const before = await f.snapshot();
       for (const cookie of ['', owner.headers.Cookie]) {
         const actor = { ...owner, headers: { ...owner.headers, Cookie: cookie } };
-        for (const response of [
-          await f.worker.fetch(recordUrl(), { headers: actor.headers }),
-          await f.worker.fetch(records, { headers: actor.headers }),
-          await write(f, actor, await candidate(owner, 2), 1),
-          await write(f, actor, deletion(), 1, opaque(), 'DELETE'),
+        for (const request of [
+          () => f.worker.fetch(recordUrl(), { headers: actor.headers }),
+          () => f.worker.fetch(records, { headers: actor.headers }),
+          async () => write(f, actor, await candidate(owner, 2), 1),
+          () => write(f, actor, deletion(), 1, opaque(), 'DELETE'),
         ]) {
-          assert.deepEqual(await expectJson(response, 401), { error: 'authentication_required' });
+          assert.deepEqual(await expectJson(await request(), 401), {
+            error: 'authentication_required',
+          });
         }
         assert.deepEqual(await f.snapshot(), before);
       }
