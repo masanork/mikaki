@@ -96,6 +96,8 @@ The [policy tests](../scripts/check-dependency-advisories.test.ts) exercise miss
 
 The fixture directly seeds synthetic, valid SSO state and bootstraps wrapped owner keys through HTTP with the product crypto. It does not qualify Passkey login, a browser unlock, exports, Work authorization, lease/logout delivery, enabled Chat, a deployed environment, or physical devices. The narrow binding wrapper only schedules authority changes; it does not substitute SQL or authorization decisions. These are partial SEC-01/06 regressions, not a complete scenario disposition or ASVS compliance assessment.
 
+The selected [ASVS 5.0.0 authorization requirements](https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md) are `v5.0.0-8.2.2` (L1, access to specific data), `v5.0.0-8.3.1` (L1, enforcement in the trusted service) and `v5.0.0-8.3.2` (L3, immediate authorization changes). The matrix supplies evidence for these requirements only within the record-API scope above. The test checks the running bundle's `/version` commit against the checkout and logs its build cleanliness; an old bundle fails even if its behavior would otherwise pass.
+
 Build and run locally:
 
 ```sh

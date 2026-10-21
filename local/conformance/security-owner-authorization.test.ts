@@ -1,6 +1,7 @@
 /** SEC-01/06: synthetic sessions, real packaged OP, real local D1/R2 effects. */
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,6 +72,7 @@ async function fixture() {
           compatibility_date: '2026-09-23',
           compatibility_flags: ['global_fetch_strictly_public'],
           vars: { MIKAKI_ISSUER: origin },
+          version_metadata: { binding: 'CF_VERSION_METADATA' },
           d1_databases: [
             {
               binding: 'DB',
@@ -97,6 +99,12 @@ async function fixture() {
     await DB.exec(
       "CREATE TABLE security_test_fault(id INTEGER PRIMARY KEY,stage TEXT,statement TEXT,hits INTEGER); INSERT INTO security_test_fault VALUES(1,'','',0)",
     );
+    const version = await expectJson(await worker.fetch(`${origin}/version`), 200);
+    const sourceCommit = execFileSync('/usr/bin/git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    assert.equal(version.source_commit, sourceCommit, 'rebuild the packaged OP for this revision');
     const arm = (stage = '', statement = '') =>
       DB.prepare('UPDATE security_test_fault SET stage=?,statement=?,hits=0 WHERE id=1')
         .bind(stage, statement)
@@ -186,7 +194,7 @@ async function fixture() {
           : undefined;
       return { heads, mutations, objects, candidates };
     };
-    return { worker, DB, bootstrap, snapshot, arm, close };
+    return { worker, DB, bootstrap, snapshot, arm, close, version };
   } catch (error) {
     await close();
     throw error;
@@ -255,6 +263,15 @@ function write(
 test('SEC-01/06 packaged owner authorization and durable effects', async (t) => {
   const f = await fixture();
   t.after(f.close);
+  t.diagnostic(
+    JSON.stringify({
+      sourceCommit: f.version.source_commit,
+      buildSourceClean: f.version.source_clean,
+      profile: 'default',
+      authentication: 'synthetic seeded SSO; HTTP owner-key bootstrap',
+      storage: 'disposable local D1/R2',
+    }),
+  );
 
   await t.test(
     'SEC-01 guessed identifiers and forged owner hints disclose no other owner data',
