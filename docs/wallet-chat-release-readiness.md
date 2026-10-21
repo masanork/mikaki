@@ -28,6 +28,8 @@ presentation consent remain in place.
   `chat/` static assets. Beta candidates require exactly the qualified browser
   client and crypto module and stage those bytes with the complete service.
 - `chat-release-candidate` builds and tests the beta release in PR/main CI.
+  The required `verify` lane includes this candidate and rejects its failure,
+  cancellation or skipped result before the existing branch check can pass.
   Its artifact is `release-candidate-messaging-beta-<commit>`. After the main
   qualification gates, `chat-supply-chain` rechecks and attests it as
   `attested-worker-messaging-beta-<commit>`, including the browser Rust SBOM
@@ -42,8 +44,9 @@ presentation consent remain in place.
   runs with these defaults and the ordinary authentication limits. Exhaustion,
   capacity, concurrent isolates, storage failure and bounded-expiry checks are
   included in `npm run test:messaging-beta`.
-- The main run for `2c139b07` completed the three-browser CI graph, Sonar analysis
-  and production smoke. A later promotion still requires its own passing run.
+- The main run for `276ef361` completed the three-browser CI graph, Sonar analysis,
+  signing, deployment and production smoke. A later promotion still requires its
+  own passing run.
 - Native Rust and UI checks cover existing batch/age/one-use receipt and consent
   behavior. Ordinary test screenshots go under ignored `local/generated/`.
 - CI and physical-device results are distinct from these local checks.
@@ -64,16 +67,18 @@ Do not enable the task by bypassing that native trust check.
 
 ## Production checkpoint: 2026-10-21
 
-Read-only inspection of account `4b749427a0c80c547e726a42aff4b6fc`, Worker
-`mikaki-auth` on `auth.mikaki.org`, found:
+The qualified deployment record for Worker `mikaki-auth` on `auth.mikaki.org`
+and its [main CI run](https://github.com/masanork/mikaki/actions/runs/39537412997)
+establish:
 
-- Public Worker version: `331acab4-ee46-4d57-a373-b6ac7a090ca1`, clean source
-  `2c139b075032881f7d117a497fa6cf4a7c9af061`.
-- PR #278 merged as `22003c16`. Its main run passed product checks and Sonar,
-  but dependency audit found RUSTSEC-2026-0382 and production promotion was
-  skipped. Qualify the patched dependency graph before the next promotion.
-- The advisory fixes and independent Chat admission subsequently merged in
-  #281/#282; main `276ef361` still needs its own CI/promotion qualification.
+- Activated Worker version: `1b55c367-4b2c-4326-9c3d-1577f2101f38`, clean source
+  `276ef3618ec24d00979c361d28b6650c66b40f62`.
+- All 27 active jobs passed, including signing, deployment and the public
+  endpoint/login-asset smoke. SonarCloud's main Quality Gate passed.
+- The #281 certificate-trust advisory fixes and #282 independent Chat admission
+  are qualified by that run. It supersedes the `2c139b07` deployment, after the
+  earlier #278 promotion had been blocked by RUSTSEC-2026-0382. Every later main
+  revision still requires its own qualification.
 - The 2026-10-20 secret-name inspection did not include `MESSAGING_ISSUER_KEY`.
   No secret values were read.
 - This ingress change has not applied Chat migrations, uploaded keys or
