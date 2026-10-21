@@ -261,6 +261,20 @@ export async function verifyPreparedUpload(
     result.workers.map((worker) => worker.worker),
     workers.map((worker) => worker.directory),
   );
+  const measurements = await Promise.all(
+    workers.map(async (worker, index) => {
+      const bytes = await boundedFile(
+        join(destination, worker.directory, 'upload.multipart'),
+        2 * limit,
+      );
+      assert.deepEqual(
+        digest(bytes),
+        result.workers[index]!.upload_digest,
+        'Worker upload changed',
+      );
+      return measureWorkerUpload(new Uint8Array(bytes));
+    }),
+  );
   for (const [index, worker] of workers.entries()) {
     const record = result.workers[index]!;
     const archive = result.release_inventory.archives.find((item) => item.name === worker.archive);
@@ -308,12 +322,7 @@ export async function verifyPreparedUpload(
       assert.match(file.name, /^[a-zA-Z0-9_.-]+$/);
       assert.deepEqual(digest(await boundedFile(join(output, file.name))), file.digest);
     }
-    const uploadBytes = await boundedFile(
-      join(destination, worker.directory, 'upload.multipart'),
-      2 * limit,
-    );
-    assert.deepEqual(digest(uploadBytes), record.upload_digest, 'Worker upload changed');
-    const measured = await measureWorkerUpload(new Uint8Array(uploadBytes));
+    const measured = measurements[index]!;
     verifyUploadWasm(archive, measured);
     const { raw } = measured;
     assert.equal(record.bundle_raw_bytes, raw, 'Worker bundle size changed');

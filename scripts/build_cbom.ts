@@ -224,10 +224,11 @@ export async function buildCbom(
       properties: [{ name: 'mikaki:source', value: source }],
     });
   }
+  const serial = uuid5Url(`mikaki-${component}-${profile}-cbom:${revision}`);
   return {
     bomFormat: 'CycloneDX',
     specVersion: '1.7',
-    serialNumber: `urn:uuid:${uuid5Url(`mikaki-${component}-${profile}-cbom:${revision}`)}`,
+    serialNumber: `urn:uuid:${serial}`,
     version: 1,
     metadata: {
       timestamp,

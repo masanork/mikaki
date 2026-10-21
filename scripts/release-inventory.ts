@@ -64,6 +64,49 @@ function tar(bytes: Buffer, args: string[]): Buffer {
     timeout: 30_000,
   });
 }
+async function collectArchive(root: string, name: string) {
+  const requiredMembers =
+    name === 'mikaki-worker.tar.gz'
+      ? [...members, 'worker/service.mjs']
+      : name === 'mikaki-work-checkpoint.tar.gz'
+        ? ['worker/checkpoint.mjs']
+        : members;
+  const path = join(root, 'artifacts', name);
+  const bytes = await regularFile(path);
+  const names = tar(bytes, ['-tz']).toString('utf8').trimEnd().split('\n');
+  assert.deepEqual(
+    [...names].sort((a, b) => a.localeCompare(b)),
+    [...requiredMembers].sort((a, b) => a.localeCompare(b)),
+    `Unexpected/duplicate archive entries: ${name}`,
+  );
+  const types = tar(bytes, ['-tvz']).toString('utf8').trimEnd().split('\n');
+  assert.equal(types.length, requiredMembers.length);
+  assert.ok(
+    types.every((line) => line.startsWith('-')),
+    'Archive members must be regular files',
+  );
+  const archiveMembers = requiredMembers.map((entry) => ({
+    name: entry,
+    bytes: tar(bytes, ['-xOz', entry]),
+  }));
+  const wasm = archiveMembers.find((entry) => entry.name === 'index_bg.wasm')?.bytes;
+  if (name === 'mikaki-userinfo-claim-worker.tar.gz') {
+    assert.ok(wasm);
+    assert.ok(
+      !wasm.includes(Buffer.from('CONFORMANCE_GATE')) &&
+        !wasm.includes(Buffer.from('https://conformance.internal/after-decrypt')),
+      'Conformance pause gate must not enter a release archive',
+    );
+  }
+  return {
+    inventory: {
+      name,
+      digest: digest(bytes),
+      members: archiveMembers.map((entry) => ({ name: entry.name, digest: digest(entry.bytes) })),
+    },
+    wasm,
+  };
+}
 export async function collectRelease(
   root: string,
   source: ReleaseSource,
@@ -72,50 +115,9 @@ export async function collectRelease(
   releaseProfile(profile);
   assert.match(source.commit, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/);
   assert.equal(typeof source.clean, 'boolean');
-  const releases: ReleaseInventory['archives'] = [];
-  let opWasm: Buffer | undefined;
-  for (const name of archives) {
-    const requiredMembers =
-      name === 'mikaki-worker.tar.gz'
-        ? [...members, 'worker/service.mjs']
-        : name === 'mikaki-work-checkpoint.tar.gz'
-          ? ['worker/checkpoint.mjs']
-          : members;
-    const path = join(root, 'artifacts', name);
-    const bytes = await regularFile(path);
-    const names = tar(bytes, ['-tz']).toString('utf8').trimEnd().split('\n');
-    assert.deepEqual(
-      [...names].sort(),
-      [...requiredMembers].sort(),
-      `Unexpected/duplicate archive entries: ${name}`,
-    );
-    const types = tar(bytes, ['-tvz']).toString('utf8').trimEnd().split('\n');
-    assert.equal(types.length, requiredMembers.length);
-    assert.ok(
-      types.every((line) => line.startsWith('-')),
-      'Archive members must be regular files',
-    );
-    const archiveMembers = requiredMembers.map((entry) => ({
-      name: entry,
-      bytes: tar(bytes, ['-xOz', entry]),
-    }));
-    if (name === 'mikaki-worker.tar.gz') {
-      opWasm = archiveMembers.find((entry) => entry.name === 'index_bg.wasm')!.bytes;
-    }
-    if (name === 'mikaki-userinfo-claim-worker.tar.gz') {
-      const wasm = archiveMembers.find((entry) => entry.name === 'index_bg.wasm')!.bytes;
-      assert.ok(
-        !wasm.includes(Buffer.from('CONFORMANCE_GATE')) &&
-          !wasm.includes(Buffer.from('https://conformance.internal/after-decrypt')),
-        'Conformance pause gate must not enter a release archive',
-      );
-    }
-    releases.push({
-      name,
-      digest: digest(bytes),
-      members: archiveMembers.map((entry) => ({ name: entry.name, digest: digest(entry.bytes) })),
-    });
-  }
+  const collected = await Promise.all(archives.map((name) => collectArchive(root, name)));
+  const releases = collected.map(({ inventory }) => inventory);
+  const opWasm = collected.find(({ inventory }) => inventory.name === 'mikaki-worker.tar.gz')!.wasm;
   assert.ok(opWasm);
   assertCompiledProfile(opWasm, profile);
   const directory = join(root, 'crates/worker/migrations');
@@ -179,7 +181,7 @@ async function messagingQualification(
     assets
       .filter((file) => file.name.startsWith('chat/'))
       .map((file) => file.name)
-      .sort(),
+      .sort((a, b) => a.localeCompare(b)),
     ['chat/client.js', 'chat/crypto.wasm'],
   );
   const op = releases.find((file) => file.name === 'mikaki-worker.tar.gz')!;
