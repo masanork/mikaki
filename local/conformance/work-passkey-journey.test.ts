@@ -271,7 +271,7 @@ for (const lang of ['ja', 'en'] as const) {
       const sso = (await context.cookies(issuer)).find((cookie) => cookie.name === '__Host-op-sso');
       assert.ok(sso, 'SSO must come from the product login response');
       const sessionHash = createHash('sha256').update(sso.value).digest('base64url');
-      const beforeUnlock = assertions;
+      const beforeWorkNavigation = assertions;
       const sourceLink = page.locator(`a[href="/work/source-review?lang=${lang}"]`);
       // The current product entry intentionally exposes only Wallet and Chat.
       // This fixture separately enables Work and follows its explicit deep link;
@@ -295,7 +295,11 @@ for (const lang of ['ja', 'en'] as const) {
       const sourceResponse = await sourceNavigation;
       assert.equal(sourceResponse.status(), 200);
       assert.equal((await sourceResponse.request().allHeaders())['sec-fetch-site'], 'same-origin');
-      assert.equal(assertions, beforeUnlock, 'Code preparation must not unlock private Vault data');
+      assert.equal(
+        assertions,
+        beforeWorkNavigation,
+        'Work navigation must not request another WebAuthn assertion after login',
+      );
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
       const prepare = page.getByRole('button', { name: words.prepare, exact: true });
       await expect(prepare).toBeDisabled();
