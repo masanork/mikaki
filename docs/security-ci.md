@@ -112,6 +112,30 @@ Passing `GITHUB_SHA` locally makes Cargo rerun its source-metadata build script 
 
 Work qualification also sets `pipefail` before piping its test process through `tee`. Without it, the log writer's success can hide a failed test command: main run `39537412997` displayed a successful product job despite two failed, obsolete navigation assertions. The updated journey verifies the Wallet/Chat entry, then explicitly navigates to the separately enabled Work deep link with the real login cookie; it does not restore Work links to normal navigation. Dependent WebMCP cases propagate a failed prerequisite, bound held-request waits, and retain synthetic browser failure evidence instead of stalling until the CI job limit.
 
+## Service capability attack matrix
+
+`npm run test:security-boundaries` runs nine attack/control cases against the emitted default `service.mjs`, its actual named `AgentStore`, and disposable local D1/R2 in workerd. The calling Worker has named service bindings but no D1/R2 bindings. `/version` must match the checkout's commit; the diagnostic records build cleanliness and the profile. The `worker-contracts` job retains source, service/shim/Wasm hashes and output under `security-boundaries/` in `authentication-worker-contracts-*` for 14 days, with `pipefail` propagating a failed test to `verify`.
+
+| Scenario subset | Executed oracle |
+| --- | --- |
+| SEC-02: public HTTP or a different named role submits a valid Agent mutation | The public endpoint, default binding and six other named roles return 404; neither forged owner/admin headers nor the valid catalog ID grants AgentStore access. Wrong HTTP methods also deny. |
+| SEC-02: uncatalogued OP SQL, caller SQL/owner fields, or SQL-looking values | Unknown IDs and extra fields deny; SQL-looking bound strings stay literal. A valid mutation followed by an unknown capability has no partial effects. |
+| SEC-02: a later statement fails inside the real D1 batch | A disposable trigger aborts the second catalogued DELETE. Both rows survive, and all application state stays unchanged. Removing the trigger allows the identical two-statement batch to commit both deletes. This exercises the [D1 batch transaction contract](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch) locally. |
+| SEC-18: invalid decoding or input bounds | 64 statements and a 65,536-byte body can perform the positive-control mutation. A 65th statement, one extra body byte, an empty batch, malformed values/JSON, or invalid UTF-8 deny. Every denial has the exact generic error without echoing input. |
+
+Rejected requests compare every application table and table/trigger definition plus the complete R2 object inventory and byte hashes. Internal SQLite/Cloudflare bookkeeping is excluded. Successful controls prove that the tested capability can read and actually commit; they restore their synthetic fixture. The trigger changes only the disposable database, without replacing product SQL, authorization code or D1 adapters.
+
+AgentStore is a privileged binding carrying the complete Agent catalog. It does not derive an owner session or constrain each caller to one owner's parameters; those checks belong to the Agent/OP request paths and SQL predicates. This matrix therefore does not qualify per-owner Agent grants, OAuth, selected release, Work admission, enabled Chat, remote D1, deployment, or devices. It supplements the existing service and package boundary suites and supplies partial SEC-02/18 evidence, not a complete scenario disposition or ASVS assessment.
+
+Local sensitivity checks separately weakened strict-field validation, replaced the transaction with individual statement runs, enabled lossy UTF-8 decoding, and raised the body limit by one byte. Each mutation failed its intended case. The original source was restored byte-for-byte, the service package rebuilt, and all nine cases passed again. These are detection checks, not confirmed vulnerabilities in the original implementation.
+
+Build with the same prerequisites as the owner matrix above, then run:
+
+```sh
+npm run test:security-boundaries
+```
+
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.
