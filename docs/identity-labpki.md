@@ -81,6 +81,50 @@ Mikaki does not fetch OCSP or CRL URLs at runtime. Attester chain validation
 currently does not apply a CRL policy; preparing an Attester CRL does not add
 runtime revocation enforcement for those JWTs.
 
+### Renew the selected snapshots without rotating trust
+
+Use the existing HAIP CA directory and its complete `registry.db`. First compare
+each `haip-sd-jwt/root.pem` and `haip-mdoc/root.pem` with the corresponding pinned
+`trust_anchors` in `crates/worker/config/identity-haip-labpki.public.json`. Preserve
+the previous public CRLs for comparison and confirm that the registry still
+contains the revoked SD-JWT probe. An absent registry or mismatched root is an
+error; do not initialize a replacement CA to repair an expired CRL.
+
+```sh
+labpki crl -out /path/to/existing/haip-ca -algo haip-sd-jwt
+labpki crl -out /path/to/existing/haip-ca -algo haip-mdoc
+```
+
+Verify each new `ca.crl` against its pinned root, its current validity and newer
+CRL number, and retention of every previous revoked serial/date/reason. Import
+its base64 DER into the matching `credential_certificates` and
+`wallet_configuration.credential_trust` CRL arrays in the public bundle. Also
+update `revoked_sd_jwt.revocation.crls` with the same SD-JWT snapshot. These five
+arrays are the only bundle values that change: keep all certificates, keys,
+anchors and `max_age_seconds: 604800` intact. Then synchronize only
+`IDENTITY_CREDENTIAL_CERTIFICATES` and `IDENTITY_HAIP_POLICY_SHA256` in
+`crates/worker/wrangler.production.jsonc` from `identityHaipSelection().vars`.
+Re-export the updated bundle's `wallet_configuration` as the build-time
+`MIKAKI_HAIP_WALLET` JSON. Installed Wallets need the normal rebuild and release
+process to receive the new snapshots.
+
+```sh
+cargo run -p mikaki-identity --locked --example check_haip_pki -- \
+  crates/worker/config/identity-haip-labpki.public.json
+node --test scripts/identity-haip-profile.test.ts
+```
+
+Run these checks with the real current time. The validator must still reject the
+revoked probe and expired CRLs. Submit the public changes through the normal
+review, CI and promotion path; CA-side renewal alone does not update a running
+Issuer or installed Wallet.
+
+On 2026-10-22 JST, the selected snapshots were renewed with the same roots and
+complete revocation registry. Both are valid from `2026-10-21T21:43:47Z` until
+`2026-10-28T21:43:47Z`. Renewal preserved the revoked probe, all certificate/key
+bindings and the seven-day freshness policy. This is public snapshot maintenance;
+it does not establish deployment or physical-device issuance.
+
 ## Next activation work
 
 1. Select the public CA/CRL distribution URL and protect offline CA custody.

@@ -136,6 +136,32 @@ npm run test:security-boundaries
 ```
 
 
+## Agent grant disclosure and commit matrix
+
+`npm run test:security-grants` runs sixteen attack/control cases against the emitted default OP package, the actual checked-in Agent Worker, real service bindings, and disposable local D1/R2. It supplements the [Node/SQLite grant model](../local/conformance/agent-record-grants.test.ts) and the [paired Worker integration](../local/conformance/agent-worker.test.ts). The Agent has neither a D1 nor an R2 binding. Synthetic SSO state is seeded directly; wrapped owner keys, encrypted personal records, grants, consent and token exchange use actual HTTP routes and product crypto. OAuth redirects are inspected without following them to external hosts.
+
+| Scenario subset | Executed oracle |
+| --- | --- |
+| Selected ownership and scope | Owners A/B use the same vault/record names but receive their own selected snapshots. A read-only OAuth token cannot list or propose; B's revoke of A's known grant ID is a no-op. Status is owner-scoped. Mismatched owner, digest or key authority cannot become approved consent or issue a token; a matching control succeeds. |
+| Token lifecycle | Concurrent redemption of one Agent OAuth code creates one token and one invalid-grant response. The issued token remains usable. Expired grants reject both direct and OAuth tokens at the HTTP authentication gate. The expiry fixture moves its synthetic stored deadline into the past; it does not simulate a browser clock. |
+| Final disclosure authority | Token/client revocation, source revision, recipient disable, credential disable and account-epoch changes commit after the authorized-access audit but before its service response returns. The final Agent gate suppresses all decrypted content and metadata. A retry receives the authentication challenge. Token/client revocation leaves the separate direct grant usable; source/key/account invalidation stops and clears that grant. |
+| Exact private-draft admission | A changed approval hash or another owner's grant cannot create a draft. Token, grant or client revocation committed immediately before the real execute batch prevents a draft and an executed audit outcome, even when initial authentication already succeeded. |
+| Unknown outcome and audit failure | A deliberately lost execute acknowledgment leaves one committed, exact owner-approved private draft. Concurrent retries recover the same draft ID without adding a draft. An unavailable access audit suppresses plaintext; restoring the audit permits the valid read. |
+
+The narrow named-entrypoint wrapper schedules real D1 mutations or loses one actual service acknowledgment. It preserves input bytes, catalogued SQL, results and authorization decisions. Each armed fault must complete exactly once. A disposable trigger supplies the audit-write failure. Record heads, mutation receipts and the complete R2 inventory/byte hashes are compared; the declared source-revision fault is the only expected head change. Proposal/draft identities, owner, payload, state and audit counts establish durable effects. An `authorized` audit row records an authorization decision, not successful plaintext delivery; the post-audit cases also require a denied outcome and a response with no structured content.
+
+The `worker-contracts` job saves source commit, OP service/shim/Wasm hashes, checked-in Agent source hashes and results under `security-grants/` in `authentication-worker-contracts-*` for 14 days. `pipefail` propagates test failures. `/version` must match the checkout; the diagnostic reports build cleanliness and fixture profile. The Agent source is bundled by the test harness, not qualified as a promoted release artifact.
+
+The local sensitivity pilot separately removed the final grant refresh, the execute batch's token condition, and its approved-hash comparison. SQL mutations retained bind arity and regenerated the capability catalog. The intended cases detected returned plaintext or a durable unauthorized draft despite an error response. Original source and catalog bytes were restored, the OP service rebuilt, and all sixteen cases passed. These controlled regressions validate the response and storage oracles.
+
+This supplies scoped evidence for [ASVS 5.0.0 authorization requirements](https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md) `8.2.1`/`8.2.2` (L1, function/data permissions), `8.3.1` (L1, trusted service enforcement) and `8.3.2` (L3, immediate authorization changes). It is partial SEC-06/09 evidence, not complete ASVS compliance. It does not qualify browser/physical Passkeys, an external OAuth/MCP consumer, native/OP OIDC code-reuse policies, selected recipient UserInfo, remote D1, enabled Chat or Work external effects. A private-draft retry is not evidence that a remote side effect can safely be repeated.
+
+Build with the owner matrix prerequisites above, then run:
+
+```sh
+npm run test:security-grants
+```
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.
