@@ -7,6 +7,7 @@ import { chromium, expect, type BrowserContext, type Page } from '@playwright/te
 import { createSourceFixture } from './support/work-source-fixture.ts';
 import { copyJobFixture } from './support/work-copy-job-fixture.ts';
 import { auditAccessibility } from './support/accessibility-audit.ts';
+import { startBrowserEvidence } from './support/browser-evidence.ts';
 
 async function browserTools(context: BrowserContext) {
   await context.addInitScript(() => {
@@ -127,8 +128,46 @@ test('source and consent screens share WebMCP actions while retaining exact sele
     f.DB.prepare('SELECT count(*) AS n FROM ' + table).first('n');
   const shots = new URL('../../artifacts/work-webmcp/', import.meta.url).pathname;
   await mkdir(shots, { recursive: true });
+  const evidence = await startBrowserEvidence(context, 'work-webmcp');
+  let failure: unknown;
+  // Node's t.test records a failed child without rejecting this await. These
+  // cases share a preparation, so propagate failure before a dependent case
+  // waits for a request that the failed prerequisite can no longer issue.
+  async function step(name: string, run: () => Promise<void>) {
+    let stepFailure: unknown;
+    await t.test(name, async () => {
+      try {
+        await run();
+      } catch (error) {
+        stepFailure = error;
+        throw error;
+      }
+    });
+    if (stepFailure !== undefined) throw stepFailure;
+  }
+  async function heldReply(waiting: Promise<void>, pending: Promise<unknown>) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        waiting,
+        pending.then((result) => {
+          throw new Error(
+            `Expected a held request, but the tool completed: ${JSON.stringify(result)}`,
+          );
+        }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('The expected held request never started')),
+            30_000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   try {
-    await t.test(
+    await step(
       'real tool discovery is opt-in and file contents need separate exact-selection permission',
       async () => {
         await page.goto('https://work.test/work/source-review?lang=en');
@@ -192,7 +231,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
       },
     );
     let preparation = '';
-    await t.test(
+    await step(
       'preparation uses the same Native operation; review tools create no copy consent or effects',
       async () => {
         const result = await api.call('mikaki_prepare_work_copy');
@@ -230,10 +269,9 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         assert.equal(await count('work_copy_consent'), 0);
         assert.equal(await count('work_credential_attempt'), 0);
         await page.screenshot({ path: shots + '/disclosure-record-en.png', fullPage: true });
-        assert.deepEqual(
-          (await api.call('mikaki_review_work_action', { action: 'approve_copy' })).result,
-          { status: 'review_required', action: 'approve_copy' },
-        );
+        const review = await api.call('mikaki_review_work_action', { action: 'approve_copy' });
+        assert.equal(review.ok, true, JSON.stringify(review));
+        assert.deepEqual(review.result, { status: 'review_required', action: 'approve_copy' });
         assert.equal(await count('work_copy_consent'), 0);
         await expect(page.locator('[data-work-action="approve_copy"]')).toHaveCount(0);
         await expect(page.locator('[data-work-action="inspect_copy"]')).toBeFocused();
@@ -253,7 +291,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         );
       },
     );
-    await t.test(
+    await step(
       'hiding the review refuses a late disclosure record without another consent or effect',
       async () => {
         const waiting = new Promise<void>((resolve) => {
@@ -261,7 +299,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         });
         heldDisclosure = true;
         const pending = api.call('mikaki_read_work_disclosure');
-        await waiting;
+        await heldReply(waiting, pending);
         await page.evaluate(() => (window as unknown as { hideWorkTools(): void }).hideWorkTools());
         releaseRead();
         const result = await pending;
@@ -272,7 +310,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         assert.equal(await count('work_credential_attempt'), 0);
       },
     );
-    await t.test(
+    await step(
       'selection changes clear content permission and a hidden screen rejects a late file reply',
       async () => {
         await page.setViewportSize({ width: 375, height: 900 });
@@ -309,7 +347,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         });
         held = true;
         const denied = api.call('mikaki_read_work_file', { file_index: 0 });
-        await waiting;
+        await heldReply(waiting, denied);
         await page.locator('#work-assistant-content').uncheck();
         releaseRead();
         const deniedResult = await denied;
@@ -321,7 +359,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         });
         held = true;
         const pending = api.call('mikaki_read_work_file', { file_index: 0 });
-        await hiddenWaiting;
+        await heldReply(hiddenWaiting, pending);
         await page.evaluate(() => (window as unknown as { hideWorkTools(): void }).hideWorkTools());
         releaseRead();
         assert.equal((await pending).ok, false);
@@ -332,7 +370,7 @@ test('source and consent screens share WebMCP actions while retaining exact sele
         assert.equal(await count('work_credential_attempt'), 0);
       },
     );
-    await t.test(
+    await step(
       'fresh Native source revocation refuses plaintext and clears the sharing choice',
       async () => {
         await page.goto('https://work.test/work/source-review?lang=en');
@@ -358,8 +396,12 @@ test('source and consent screens share WebMCP actions while retaining exact sele
     );
     assert.deepEqual(errors, []);
     assert.equal(writes.filter((path) => path === '/work/preparations').length, 1);
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
     releaseRead();
+    await evidence.finish(failure);
     await browser.close();
     await f.close();
   }

@@ -280,6 +280,14 @@ jobs:
         run: |
           npm run check:worker-budgets
           cat artifacts/worker-budgets.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Owner authorization attack matrix (SEC-01 and SEC-06)
+        run: |
+          set -o pipefail
+          npm run build:op-authority
+          mkdir -p artifacts/security-authorization
+          git rev-parse HEAD > artifacts/security-authorization/source-commit.txt
+          sha256sum crates/worker/build/worker/service.mjs crates/worker/build/worker/shim.mjs crates/worker/build/index.js crates/worker/build/index_bg.wasm > artifacts/security-authorization/bundle-sha256.txt
+          npm run test:security-authorization | tee artifacts/security-authorization/results.txt
       - name: Product Worker contracts
         run: |
           cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport
@@ -313,7 +321,17 @@ jobs:
       suite: product
 
   verify:
-    needs: [core, worker-contracts, worker-browser, work-authority, work-effects, work-product, messaging, security-checks]
+    needs:
+      [
+        core,
+        worker-contracts,
+        worker-browser,
+        work-authority,
+        work-effects,
+        work-product,
+        messaging,
+        security-checks,
+      ]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

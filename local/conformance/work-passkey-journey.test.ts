@@ -24,7 +24,7 @@ import { journeyServer } from './support/journey-server.ts';
 import { applyWorkMigrations } from './support/work-migrations.ts';
 
 for (const lang of ['ja', 'en'] as const) {
-  test(`Work HTTPS journey (${lang}): virtual Passkey enrollment/login, preparation, explicit consent and logout refusal`, async () => {
+  test(`Work HTTPS deep-link journey (${lang}): virtual Passkey enrollment/login, preparation, explicit consent and logout refusal`, async () => {
     let dispatch: Parameters<typeof journeyServer>[0] = async () => {
       throw new Error('Work journey not ready');
     };
@@ -151,9 +151,22 @@ for (const lang of ['ja', 'en'] as const) {
         'Work E2E code snapshot',
       );
       const verified = await verifyWorkCodeSource(packet.directory, git.dir);
+      let preparationReply: { status: number; body: string } | undefined;
       dispatch = async (url, init) => {
         assert.equal(new URL(url).origin, issuer);
-        return worker.fetch(url, { ...init, redirect: 'manual' });
+        const response = await worker.fetch(url, { ...init, redirect: 'manual' });
+        if (init.method !== 'POST' || new URL(url).pathname !== '/work/preparations')
+          return response;
+        // Capture the actual bytes forwarded by the HTTPS bridge. Chromium may
+        // discard its DevTools response body once the page changes; that must
+        // not make us replay an already committed preparation to inspect it.
+        const body = await response.arrayBuffer();
+        preparationReply = { status: response.status, body: Buffer.from(body).toString('utf8') };
+        return {
+          status: response.status,
+          headers: response.headers,
+          arrayBuffer: async () => body,
+        };
       };
 
       browser = await chromium.launch({
@@ -271,10 +284,14 @@ for (const lang of ['ja', 'en'] as const) {
       const sso = (await context.cookies(issuer)).find((cookie) => cookie.name === '__Host-op-sso');
       assert.ok(sso, 'SSO must come from the product login response');
       const sessionHash = createHash('sha256').update(sso.value).digest('base64url');
-      const beforeUnlock = assertions;
+      const beforeWorkNavigation = assertions;
       const sourceLink = page.locator(`a[href="/work/source-review?lang=${lang}"]`);
-      await expect(sourceLink).toBeVisible();
-      await expect(page.locator('#unlock')).toBeVisible();
+      // The current product entry intentionally exposes only Wallet and Chat.
+      // This fixture separately enables Work and follows its explicit deep link;
+      // it does not qualify discoverability from the normal product navigation.
+      await expect(page.getByRole('button', { name: 'Wallet', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Chat', exact: true })).toBeVisible();
+      await expect(sourceLink).toHaveCount(0);
       assert.equal(
         (
           await worker.fetch(`${issuer}/work/source-review?lang=${lang}`, {
@@ -287,11 +304,15 @@ for (const lang of ['ja', 'en'] as const) {
       const sourceNavigation = page.waitForResponse(
         (response) => new URL(response.url()).pathname === '/work/source-review',
       );
-      await sourceLink.click();
+      await page.evaluate((url) => location.assign(url), `/work/source-review?lang=${lang}`);
       const sourceResponse = await sourceNavigation;
       assert.equal(sourceResponse.status(), 200);
       assert.equal((await sourceResponse.request().allHeaders())['sec-fetch-site'], 'same-origin');
-      assert.equal(assertions, beforeUnlock, 'Code preparation must not unlock private Vault data');
+      assert.equal(
+        assertions,
+        beforeWorkNavigation,
+        'Work navigation must not request another WebAuthn assertion after login',
+      );
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
       const prepare = page.getByRole('button', { name: words.prepare, exact: true });
       await expect(prepare).toBeDisabled();
@@ -305,7 +326,9 @@ for (const lang of ['ja', 'en'] as const) {
       await prepare.click();
       const created = await createdResponse;
       assert.equal(created.status(), 200);
-      const preparation = (await created.json()).record;
+      assert.ok(preparationReply, 'the browser POST must reach the real Worker through HTTPS');
+      assert.equal(preparationReply.status, created.status());
+      const preparation = JSON.parse(preparationReply.body).record;
       assert.equal(await count('work_preparation'), 1);
       assert.equal(await count('work_copy_consent'), 0, 'Preparation is not copy consent');
       await noEffects();

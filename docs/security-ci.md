@@ -83,15 +83,44 @@ MIKAKI_OSV_BIN="$PWD/local/generated/security-tools/osv-scanner" node scripts/ch
 
 The [policy tests](../scripts/check-dependency-advisories.test.ts) exercise missing/duplicate/outside/empty inputs, malformed data, wrong ecosystems, expired or broadened exceptions, maintenance versus unsound records, and scanner failures with stale reports. A writable-PATH fixture attempts to shadow Git and a scanner child command; both must remain unexecuted. The live scan separately exercises the real three-ecosystem parser and OSV service. See the [inventory](security-verification-inventory.md) for scope that lockfile scanning does not cover.
 
+## Owner authorization attack matrix
+
+`npm run test:security-authorization` runs ten attack/control cases against the emitted default service package (`build/worker/service.mjs`), its Rust Wasm handler, and disposable local D1/R2 in workerd. It supplements the broader [record-store suite](../local/conformance/vault-owner-record-store.test.ts). The `worker-contracts` CI job builds the service package, runs the [matrix](../local/conformance/security-owner-authorization.test.ts), and retains its output, checked-out source commit, and service/shim/Wasm SHA-256 hashes in `authentication-worker-contracts-*` for 14 days. A failed matrix fails the job and therefore `verify`.
+
+| Scenario subset | Executed oracle |
+| --- | --- |
+| SEC-01: guessed record IDs, owner headers/query/body, foreign operation receipts | Owner B receives neither A's record nor A's receipt; rejected requests leave heads, mutation receipts, pending-GC uploads, R2 object inventory and ciphertext hashes unchanged. |
+| SEC-01: identical vault/collection/record/operation IDs in A and B | Valid B create/update/delete and historical retry operate in B's namespace. A's heads, receipts and referenced ciphertext stay unchanged. A stale update acknowledgment cannot resurrect B's deleted record. |
+| SEC-06: absent/revoked session | Read, list, update and delete return only an authentication error and have no record-storage effects. |
+| SEC-06: invalidation after initial authorization | Session revocation, account-epoch change and credential deactivation occur immediately before the real DELETE commit or immediately after the real list query. The commit cannot publish a tombstone/receipt, and the list cannot release selected metadata. Each fault must actually execute once. |
+
+The fixture directly seeds synthetic, valid SSO state and bootstraps wrapped owner keys through HTTP with the product crypto. It does not qualify Passkey login, a browser unlock, exports, Work authorization, lease/logout delivery, enabled Chat, a deployed environment, or physical devices. The narrow binding wrapper only schedules authority changes; it does not substitute SQL or authorization decisions. These are partial SEC-01/06 regressions, not a complete scenario disposition or ASVS compliance assessment.
+
+The selected [ASVS 5.0.0 authorization requirements](https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md) are `v5.0.0-8.2.2` (L1, access to specific data), `v5.0.0-8.3.1` (L1, enforcement in the trusted service) and `v5.0.0-8.3.2` (L3, immediate authorization changes). The matrix supplies evidence for these requirements only within the record-API scope above. The test checks the running bundle's `/version` commit against the checkout and logs its build cleanliness; an old bundle fails even if its behavior would otherwise pass.
+
+Build and run locally:
+
+```sh
+npm ci
+npm run build:policy
+GITHUB_SHA="$(git rev-parse HEAD)" worker-build --release crates/worker --locked
+npm run build:op-authority
+npm run test:security-authorization
+```
+
+Passing `GITHUB_SHA` locally makes Cargo rerun its source-metadata build script after a new commit; CI already supplies it. Rebuilding the Rust source alone can retain older cached build-script metadata.
+
+Work qualification also sets `pipefail` before piping its test process through `tee`. Without it, the log writer's success can hide a failed test command: main run `39537412997` displayed a successful product job despite two failed, obsolete navigation assertions. The updated journey verifies the Wallet/Chat entry, then explicitly navigates to the separately enabled Work deep link with the real login cookie; it does not restore Work links to normal navigation. Dependent WebMCP cases propagate a failed prerequisite, bound held-request waits, and retain synthetic browser failure evidence instead of stalling until the CI job limit.
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.
 
 On 2026-10-21, the dependency graph was confirmed available through its SBOM endpoint (1,667 packages at inspection); Dependabot alerts and automated security updates were enabled and read back through the API. That provider-side graph is independent of the 18 explicit lockfile scans and does not establish identical coverage.
 
-The [main integrity ruleset](../.github/main-integrity-ruleset.json), ID `25512697`, is active: no deletion or non-fast-forward update of `main`, with no bypass actors. The separate [main verification ruleset](../.github/main-verification-ruleset.json), ID `25512913`, is staged **disabled**. It requires a PR, resolved review threads, and seven checks from the GitHub Actions app (15368): `verify`, `dependency-advisories`, `native-client`, `jose-probes`, `android-client`, `android-verifier`, `website`, against an up-to-date main. Zero mandatory approvals supports this single-maintainer repository; this is not an independent-review requirement.
+The [main integrity ruleset](../.github/main-integrity-ruleset.json), ID `25512697`, is active: no deletion or non-fast-forward update of `main`, with no bypass actors. The separate [main verification configuration](../.github/main-verification-ruleset.json), ID `25512913`, now declares the **active** target. It requires a PR, resolved review threads, and seven checks from the GitHub Actions app (15368): `verify`, `dependency-advisories`, `native-client`, `jose-probes`, `android-client`, `android-verifier`, `website`, against an up-to-date main. Zero mandatory approvals supports this single-maintainer repository; this is not an independent-review requirement. The checked-in target alone does not prove enforcement; confirm hosted state through the API below.
 
-Before activating verification, merge this change and confirm the seven named checks on the resulting main commit. The metrics job previously pushed directly to `main`; this change removes its write permission and saves `project-metrics-*` artifacts for reviewed publication instead. Do not grant the Actions app a broad bypass. Checked-in charts/history now need a publication PR; see [metrics operations](../metrics/README.md). The old `publish-metrics.sh` is no longer invoked by CI and cannot bypass the new rules with its token.
+The metrics prerequisite merged in PR #280: CI has read-only contents permission and saves `project-metrics-*` artifacts for reviewed publication instead of pushing directly to `main`. Before applying the active target, confirm that the seven named checks have succeeded on the current main commit. Recheck main's SHA before applying; a cancelled or superseded run does not satisfy this gate. Do not grant the Actions app a broad bypass. Checked-in charts/history now need a publication PR; see [metrics operations](../metrics/README.md). The old `publish-metrics.sh` is no longer invoked by CI and cannot bypass the new rules with its token.
 
 After the prerequisite is merged and verified, activate the reviewed configuration and read it back:
 

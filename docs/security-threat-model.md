@@ -73,7 +73,7 @@ flowchart TD
 
 ## Priority attack scenarios
 
-All twenty scenarios initially have execution status `planned`. Priority P0 is the first assessment batch; P1 follows it before the scoped assessment closes. Test references identify related starting points, whose assertions and environment must be reviewed before recording scenario coverage.
+All twenty scenarios initially have execution status `planned`. Priority P0 is the first assessment batch; P1 follows it before the scoped assessment closes. Test references identify related starting points, whose assertions and environment must be reviewed before recording scenario coverage. The [owner authorization matrix](security-ci.md#owner-authorization-attack-matrix) adds executable partial SEC-01/06 coverage; its stated local record-API scope does not complete either whole scenario.
 
 | ID | Priority | Attacker action | Required outcome and evidence | Starting point |
 | --- | --- | --- | --- | --- |
