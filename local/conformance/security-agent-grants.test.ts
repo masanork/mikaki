@@ -546,7 +546,7 @@ test('SEC-06/09 Agent grant disclosure and commit matrix', async (t) => {
         b = await f.owner('owner-b');
       const before = await f.vault();
       for (const change of [
-        { source: b.source },
+        { source: { ...a.source, owner_id: b.account } },
         { source: { ...a.source, ciphertext_sha256: opaque() } },
         { authority: { key_generation: 1, owner_key_revision: 2 } },
       ]) {
