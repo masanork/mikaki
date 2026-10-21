@@ -104,8 +104,9 @@ arrays are the only bundle values that change: keep all certificates, keys,
 anchors and `max_age_seconds: 604800` intact. Then synchronize only
 `IDENTITY_CREDENTIAL_CERTIFICATES` and `IDENTITY_HAIP_POLICY_SHA256` in
 `crates/worker/wrangler.production.jsonc` from `identityHaipSelection().vars`.
-Native Wallet builds consume the public bundle; installed builds need the normal
-rebuild and release process to receive the new snapshots.
+Re-export the updated bundle's `wallet_configuration` as the build-time
+`MIKAKI_HAIP_WALLET` JSON. Installed Wallets need the normal rebuild and release
+process to receive the new snapshots.
 
 ```sh
 cargo run -p mikaki-identity --locked --example check_haip_pki -- \
