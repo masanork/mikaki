@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { test } from 'node:test';
-import { fixture, keys } from './server-support.ts';
+import { fixture, keys, proof } from './server-support.ts';
 import { pair } from './replacement-server-support.ts';
 import type { InvitationOffer } from './delivery-types.ts';
 type Server = Awaited<ReturnType<typeof fixture>>;
 async function setup(f: Server) {
   const p = await pair(f),
-    latest = await f.start(keys(), p.b.c.device.device_id, 2, f.b);
-  await f.complete(latest);
+    latest = await f.start(keys(), p.b.c.device.device_id, 2, f.b),
+    latestProof = proof(latest.c, latest.k);
+  await f.complete(latest, latestProof);
   const endpoints = [p.next.channel.a, p.next.channel.b]
     .map((e) =>
       e.scope === f.scope(p.rotated.c)
@@ -29,6 +30,7 @@ async function setup(f: Server) {
   return {
     ...p,
     latest,
+    latestProof,
     intent: { previous: p.previous, next, scope: f.scope(latest.c), operation_id: randomUUID() },
   };
 }
@@ -77,7 +79,8 @@ test('a third generation obtains the original historical leaf as a revoked signe
         .first(),
       null,
     );
-    assert.equal((await f.binding((await f.complete(p.latest)).binding)).status, 'active');
+    // Completion retries must reuse the exact proof, including its original iat/exp.
+    assert.equal(f.binding((await f.complete(p.latest, p.latestProof)).binding).status, 'active');
   } finally {
     await f.close();
   }
