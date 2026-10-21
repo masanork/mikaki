@@ -110,6 +110,8 @@ npm run test:security-authorization
 
 Passing `GITHUB_SHA` locally makes Cargo rerun its source-metadata build script after a new commit; CI already supplies it. Rebuilding the Rust source alone can retain older cached build-script metadata.
 
+Work qualification also sets `pipefail` before piping its test process through `tee`. Without it, the log writer's success can hide a failed test command: main run `39537412997` displayed a successful product job despite two failed, obsolete navigation assertions. The updated journey verifies the Wallet/Chat entry, then explicitly navigates to the separately enabled Work deep link with the real login cookie; it does not restore Work links to normal navigation. Dependent WebMCP cases propagate a failed prerequisite, bound held-request waits, and retain synthetic browser failure evidence instead of stalling until the CI job limit.
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.

@@ -24,7 +24,7 @@ import { journeyServer } from './support/journey-server.ts';
 import { applyWorkMigrations } from './support/work-migrations.ts';
 
 for (const lang of ['ja', 'en'] as const) {
-  test(`Work HTTPS journey (${lang}): virtual Passkey enrollment/login, preparation, explicit consent and logout refusal`, async () => {
+  test(`Work HTTPS deep-link journey (${lang}): virtual Passkey enrollment/login, preparation, explicit consent and logout refusal`, async () => {
     let dispatch: Parameters<typeof journeyServer>[0] = async () => {
       throw new Error('Work journey not ready');
     };
@@ -273,8 +273,12 @@ for (const lang of ['ja', 'en'] as const) {
       const sessionHash = createHash('sha256').update(sso.value).digest('base64url');
       const beforeUnlock = assertions;
       const sourceLink = page.locator(`a[href="/work/source-review?lang=${lang}"]`);
-      await expect(sourceLink).toBeVisible();
-      await expect(page.locator('#unlock')).toBeVisible();
+      // The current product entry intentionally exposes only Wallet and Chat.
+      // This fixture separately enables Work and follows its explicit deep link;
+      // it does not qualify discoverability from the normal product navigation.
+      await expect(page.getByRole('button', { name: 'Wallet', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Chat', exact: true })).toBeVisible();
+      await expect(sourceLink).toHaveCount(0);
       assert.equal(
         (
           await worker.fetch(`${issuer}/work/source-review?lang=${lang}`, {
@@ -287,7 +291,7 @@ for (const lang of ['ja', 'en'] as const) {
       const sourceNavigation = page.waitForResponse(
         (response) => new URL(response.url()).pathname === '/work/source-review',
       );
-      await sourceLink.click();
+      await page.evaluate((url) => location.assign(url), `/work/source-review?lang=${lang}`);
       const sourceResponse = await sourceNavigation;
       assert.equal(sourceResponse.status(), 200);
       assert.equal((await sourceResponse.request().allHeaders())['sec-fetch-site'], 'same-origin');
