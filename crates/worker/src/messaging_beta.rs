@@ -2,6 +2,10 @@
 use crate::vault_http::{error, owner, same_origin};
 use worker::{Env, Method, Request, Response, RouteContext};
 
+#[cfg(feature = "messaging-beta")]
+#[path = "messaging_resources.rs"]
+mod resources;
+
 pub fn enabled(env: &Env) -> bool {
     cfg!(feature = "messaging-beta")
         && env
@@ -71,6 +75,7 @@ async fn configuration(request: &Request, env: &Env) -> worker::Result<Response>
         {
             return error(503, "messaging_unavailable");
         }
+        resources::ready(env).await?;
         let profile = primary.prepare("SELECT h.device_id FROM messaging_device_head h JOIN messaging_account a ON a.account_id=h.account_id WHERE a.owner_id=?1")
             .bind(&[JsValue::from_str(&current.account_id)])?.first::<Device>(None).await?;
         let signer = crate::messaging_crypto::Signer::load(env).await?;
@@ -149,8 +154,21 @@ pub async fn fetch(request: Request, env: &Env) -> worker::Result<Response> {
 
 #[cfg(feature = "messaging-beta")]
 async fn api(request: Request, env: &Env) -> worker::Result<Response> {
-    if !crate::auth_resources::admit_work(&request, env).await? {
-        return crate::auth_resources::limited();
+    match resources::admit(&request, env).await {
+        Ok(true) => crate::messaging::fetch(request, env).await,
+        Ok(false) => resources::limited(),
+        Err(_) => {
+            worker::console_error!("{{\"event\":\"messaging_ingress_failure\"}}");
+            error(503, "messaging_unavailable")
+        }
     }
-    crate::messaging::fetch(request, env).await
+}
+
+pub async fn collect(env: &Env) -> worker::Result<()> {
+    #[cfg(feature = "messaging-beta")]
+    if enabled(env) {
+        resources::collect(env).await?;
+    }
+    let _ = env;
+    Ok(())
 }

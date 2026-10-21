@@ -73,7 +73,10 @@ jobs:
         if: matrix.browser == 'chromium'
         env:
           MIKAKI_UI_COVERAGE: '1'
-        run: npm run test:messaging-beta && npm run test:wallet-chat-product
+        run: |
+          npm run test:messaging-beta
+          cargo clippy --locked -p mikaki-worker --target wasm32-unknown-unknown --features messaging-beta --lib -- -D warnings
+          npm run test:wallet-chat-product
       - name: Merge actual Chromium coverage
         if: matrix.browser == 'chromium'
         run: node scripts/messaging-coverage.mjs
