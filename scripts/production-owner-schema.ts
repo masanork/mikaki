@@ -5,6 +5,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { BASELINE_SCHEMA_QUERY, canonicalSchema, type SchemaRow } from './production-baseline.ts';
 import { workAdoptionFences } from './production-work-fence.ts';
 import {
+  assertMessagingMigrationFiles,
+  assertMessagingLedger,
+  MESSAGING_LEDGER_SQL,
+  type MessagingSchema,
+} from './production-messaging-schema.ts';
+import {
   assertWorkMigrationFiles,
   assertWorkLedger,
   WORK_LEDGER_SQL,
@@ -44,6 +50,7 @@ export function assertProductionOwnerSchema(
   ledger: { name: string }[],
   schema: SchemaRow[],
   work?: { migrations: SqlMigration[]; ledger: WorkLedgerRow[]; adoptionFence?: boolean },
+  messaging?: MessagingSchema,
 ) {
   const names = OWNER_MIGRATIONS.map(({ name }) => name);
   assert.deepEqual(
@@ -77,6 +84,14 @@ export function assertProductionOwnerSchema(
           db.prepare(BASELINE_SCHEMA_QUERY).all() as SchemaRow[],
         ))
           db.exec(fence.create);
+    }
+    if (messaging) {
+      assert.ok(!work?.adoptionFence, 'Finish Work adoption before Chat schema changes');
+      assertMessagingMigrationFiles(messaging.migrations);
+      assertMessagingLedger(messaging.ledger, messaging.allowPartial);
+      db.exec(MESSAGING_LEDGER_SQL);
+      for (const migration of messaging.migrations.slice(0, messaging.ledger.length))
+        db.exec(migration.sql);
     }
     assert.deepEqual(
       db.prepare('PRAGMA foreign_key_check').all(),

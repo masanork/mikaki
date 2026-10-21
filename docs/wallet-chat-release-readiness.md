@@ -98,13 +98,15 @@ Keep Chat disabled until the following work is qualified together:
    below before it can accept the candidate for activation. Ordinary promotion
    deliberately accepts only the default profile.
 2. Apply the reviewed messaging migration chain, including
-   `0003_ingress_budget.sql`, through a separate configuration
-   and migration ledger. Preserve the owner migration directory/ledger. Inspect
-   existing device rows before the unique one-device-per-owner index is applied.
-   Extend the exact production schema audit to validate the separately reviewed
-   Chat schema and its ledger. The current owner/Work schema comparison does not
-   allow these extra tables. Applying them ahead of that release-path change
-   would block later normal promotions.
+   `0003_ingress_budget.sql`, using the separate migration-only configuration and
+   `messaging_schema_migrations` ledger. The exact production schema audit now
+   accepts the complete, byte-pinned Chat chain alongside Owner and optional
+   Work. Incomplete/unknown chains remain rejected by ordinary promotion.
+   `npm run check:chat-schema -- --remote` is read-only and accepts exact prefixes
+   for preflight; it refuses existing multiple device heads before the unique
+   index. Deploy the compatible normal Worker before an approved remote apply,
+   following the [schema rollout procedure](chat-schema-rollout.md). The remote
+   apply and production parity verification remain pending.
 3. Provision the independent Ed25519 signing key through the existing protected
    secret/version workflow. Check the public key and same-origin configuration
    without exposing its private component. The compile feature and
@@ -143,9 +145,11 @@ requires a default-profile Wasm module. A dirty checkout requires the existing
 explicit local option and cannot produce a production-ready upload.
 
 The release inventory binds all owner migration bytes and the complete static
-asset tree selected for the profile. It does not apply SQL. The separate Chat
-migration ledger/schema review remains an activation prerequisite. Reusing a
-beta candidate in ordinary deployment fails before Cloudflare operations.
+asset tree selected for the profile. A beta inventory additionally binds all
+three reviewed Chat SQL hashes, the separate ledger name and migration-only
+configuration bytes. It does not apply SQL. Remote Chat schema/ledger parity
+remains an activation prerequisite. Reusing a beta candidate in ordinary
+deployment fails before Cloudflare operations.
 
 ## Chat ingress behavior
 
