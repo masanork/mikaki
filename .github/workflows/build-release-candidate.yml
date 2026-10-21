@@ -1,12 +1,18 @@
 name: release-candidate-build
 on:
   workflow_call:
+    inputs:
+      profile:
+        type: string
+        default: default
 permissions:
   contents: read
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: ${{ inputs.profile == 'messaging-beta' && 40 || 25 }}
+    env:
+      RELEASE_PROFILE: ${{ inputs.profile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,6 +28,8 @@ jobs:
             .
             design/probes/native-identity-http
       - run: npm ci
+      - name: Validate release profile
+        run: node --input-type=module -e 'import { releaseProfile } from "./scripts/release-profile.ts"; releaseProfile(process.env.RELEASE_PROFILE)'
       - name: Build bilingual Docs RP
         run: npm run build:docs
       - name: Prepare source-bound Docs RP bundle
@@ -58,11 +66,17 @@ jobs:
       - name: Verify product journeys and Worker screens in Chromium
         run: |
           npm run test:worker-browser
+      - name: Build and qualify the Chat release profile
+        if: inputs.profile == 'messaging-beta'
+        run: |
+          npm ci --prefix tools/svelte-check
+          npm run test:messaging-beta
+          npm run qualify:messaging-package
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-candidate-browser-failures-${{ github.sha }}
+          name: release-candidate-browser-failures${{ inputs.profile == 'messaging-beta' && '-messaging-beta' || '' }}-${{ github.sha }}
           path: artifacts/browser-failures/
           if-no-files-found: ignore
           retention-days: 14
@@ -70,28 +84,37 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-candidate-font-rendering-${{ github.sha }}
+          name: release-candidate-font-rendering${{ inputs.profile == 'messaging-beta' && '-messaging-beta' || '' }}-${{ github.sha }}
           path: artifacts/font-rendering/
           if-no-files-found: ignore
           retention-days: 14
       - name: Generate and validate BOMs
         run: |
           mkdir -p artifacts/supply-chain
-          cargo cyclonedx --manifest-path crates/worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename worker-rust.cdx
+          worker_features=()
+          if [[ "$RELEASE_PROFILE" == messaging-beta ]]; then worker_features=(--features messaging-beta); fi
+          cargo cyclonedx --manifest-path crates/worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename worker-rust.cdx "${worker_features[@]}"
           cp crates/worker/worker-rust.cdx.json artifacts/supply-chain/worker-rust.cdx.json
           cargo cyclonedx --manifest-path crates/userinfo-claim-worker/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename userinfo-claim-rust.cdx
           cp crates/userinfo-claim-worker/userinfo-claim-rust.cdx.json artifacts/supply-chain/userinfo-claim-rust.cdx.json
           npm sbom --sbom-format=cyclonedx --sbom-type=application > artifacts/supply-chain/npm-build.cdx.json
-          node scripts/build_cbom.ts > artifacts/supply-chain/worker-crypto.cdx.json
+          node scripts/build_cbom.ts --profile "$RELEASE_PROFILE" > artifacts/supply-chain/worker-crypto.cdx.json
           node scripts/build_cbom.ts --component userinfo-claim-worker > artifacts/supply-chain/userinfo-claim-crypto.cdx.json
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-rust.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-rust.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/npm-build.cdx.json --input-version v1_5 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/worker-crypto.cdx.json --input-version v1_7 --fail-on-errors
           /tmp/cyclonedx validate --input-file artifacts/supply-chain/userinfo-claim-crypto.cdx.json --input-version v1_7 --fail-on-errors
+          if [[ "$RELEASE_PROFILE" == messaging-beta ]]; then
+            cargo cyclonedx --manifest-path design/probes/mls/Cargo.toml --format json --spec-version 1.5 --target wasm32-unknown-unknown --override-filename messaging-browser-rust.cdx
+            cp design/probes/mls/messaging-browser-rust.cdx.json artifacts/supply-chain/messaging-browser-rust.cdx.json
+            /tmp/cyclonedx validate --input-file artifacts/supply-chain/messaging-browser-rust.cdx.json --input-version v1_5 --fail-on-errors
+          fi
       - name: Archive the built Worker
         run: |
-          tar -C crates/worker/build -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
+          worker_build=crates/worker/build
+          if [[ "$RELEASE_PROFILE" == messaging-beta ]]; then worker_build=crates/worker/build-messaging-beta; fi
+          tar -C "$worker_build" -czf artifacts/mikaki-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs worker/service.mjs
           tar -C crates/userinfo-claim-worker/build -czf artifacts/mikaki-userinfo-claim-worker.tar.gz index.js index_bg.wasm package.json worker/shim.mjs
           tar -C artifacts/checkpoint -czf artifacts/mikaki-work-checkpoint.tar.gz worker/checkpoint.mjs
           tar -C . -czf artifacts/mikaki-docs-rp.tar.gz artifacts/docs-promotion apps/mikaki-docs/dist
@@ -99,20 +122,20 @@ jobs:
         run: npm run prepare:work-copy-release -- artifacts/work-copy-runtime
       - name: Bind release bytes and migrations to the clean source revision
         run: |
-          npm run release:inventory
-          npm run release:verify
-          node scripts/export-login-assets.ts
+          npm run release:inventory -- --profile "$RELEASE_PROFILE"
+          npm run release:verify -- --profile "$RELEASE_PROFILE"
+          node scripts/export-login-assets.ts --profile "$RELEASE_PROFILE"
       - name: Prepare reviewed upload bundles
         id: promotion
-        run: npm run release:prepare-upload
+        run: npm run release:prepare-upload -- --profile "$RELEASE_PROFILE"
       - name: Recheck upload inputs
         env:
           PROMOTION_DIR: ${{ steps.promotion.outputs.promotion_dir }}
-        run: npm run release:verify-upload -- "$PROMOTION_DIR"
+        run: npm run release:verify-upload -- "$PROMOTION_DIR" --profile "$RELEASE_PROFILE"
       - name: Upload Worker and inventories
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-candidate-${{ github.sha }}
+          name: release-candidate${{ inputs.profile == 'messaging-beta' && '-messaging-beta' || '' }}-${{ github.sha }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30

@@ -323,8 +323,14 @@ async function main() {
     return;
   }
   const manifest = JSON.parse(readFileSync(join(destination, 'upload-manifest.json'), 'utf8'));
+  assert.equal(
+    manifest.promotion_ready,
+    true,
+    'Candidate has not qualified for production promotion',
+  );
   await verifyPreparedUpload(root, destination, manifest, source);
   const assets = JSON.parse(readFileSync(join(root, 'artifacts/login-assets.json'), 'utf8'));
+  assert.equal(assets.profile, 'default', 'Ordinary production requires default login assets');
   assert.deepEqual(assets.source, source);
   for (const extension of ['js', 'css']) assert.match(assets.login[extension], /^[a-f0-9]{64}$/);
   const wrangler = (args: string[]) =>

@@ -80,6 +80,8 @@ mod messaging_beta;
 #[cfg(target_arch = "wasm32")]
 mod owner_passkeys;
 #[cfg(target_arch = "wasm32")]
+mod release_profile;
+#[cfg(target_arch = "wasm32")]
 mod vault_approved;
 #[cfg(target_arch = "wasm32")]
 #[cfg(target_arch = "wasm32")]
@@ -2395,6 +2397,13 @@ pub async fn main(
                     "version_id": version.id(),
                     "source_commit": if commit.is_empty() { None } else { Some(commit) },
                     "source_clean": env!("MIKAKI_SOURCE_CLEAN") == "true",
+                    "build_profile": if cfg!(feature = "messaging-qualification") {
+                        "messaging-qualification"
+                    } else if cfg!(feature = "messaging-beta") {
+                        "messaging-beta"
+                    } else {
+                        "default"
+                    },
                 }))
         })
         .get_async("/.well-known/openid-configuration", discovery_route)

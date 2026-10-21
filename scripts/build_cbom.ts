@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { releaseArguments, releaseProfile, type ReleaseProfile } from './release-profile.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 type Asset = [
@@ -120,6 +121,62 @@ const CLAIM_ASSETS: Asset[] = [
   ],
 ];
 
+const MESSAGING_ASSETS: Asset[] = [
+  [
+    'X25519 Chat key agreement',
+    'algorithm',
+    {
+      primitive: 'key-agree',
+      algorithmFamily: 'ECDH',
+      cryptoFunctions: ['keyderive'],
+    },
+    'design/probes/mls/src/lib.rs',
+    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+  ],
+  [
+    'HKDF-SHA256 Chat key schedule',
+    'algorithm',
+    { primitive: 'kdf', algorithmFamily: 'HKDF', cryptoFunctions: ['keyderive'] },
+    'design/probes/mls/src/lib.rs',
+    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+  ],
+  [
+    'AES-128-GCM Chat messages',
+    'algorithm',
+    { primitive: 'ae', algorithmFamily: 'AES', cryptoFunctions: ['encrypt', 'decrypt'] },
+    'design/probes/mls/src/lib.rs',
+    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+  ],
+  [
+    'SHA-256 Chat transcript',
+    'algorithm',
+    { primitive: 'hash', algorithmFamily: 'SHA-2', cryptoFunctions: ['digest'] },
+    'design/probes/mls/src/lib.rs',
+    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+  ],
+  [
+    'Ed25519 Chat message authentication',
+    'algorithm',
+    { primitive: 'signature', algorithmFamily: 'EdDSA', cryptoFunctions: ['sign', 'verify'] },
+    'design/probes/mls/src/lib.rs',
+    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+  ],
+  [
+    'Ed25519 Chat issuer binding',
+    'algorithm',
+    { primitive: 'signature', algorithmFamily: 'EdDSA', cryptoFunctions: ['sign', 'verify'] },
+    'crates/worker/src/messaging_crypto.rs',
+    '"Ed25519"',
+  ],
+  [
+    'Chat issuer signing private key binding',
+    'related-crypto-material',
+    { type: 'private-key', id: 'MESSAGING_ISSUER_KEY', securedBy: { mechanism: 'Software' } },
+    'crates/worker/src/messaging_crypto.rs',
+    'env.secret("MESSAGING_ISSUER_KEY")',
+  ],
+];
+
 function uuid5Url(value: string): string {
   const namespace = Buffer.from('6ba7b8119dad11d180b400c04fd430c8', 'hex');
   const bytes = createHash('sha1').update(namespace).update(value).digest();
@@ -129,8 +186,17 @@ function uuid5Url(value: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export async function buildCbom(component: 'worker' | 'userinfo-claim-worker' = 'worker') {
-  const assets = component === 'worker' ? ASSETS : CLAIM_ASSETS;
+export async function buildCbom(
+  component: 'worker' | 'userinfo-claim-worker' = 'worker',
+  profile: ReleaseProfile = 'default',
+) {
+  releaseProfile(profile);
+  if (component !== 'worker' && profile !== 'default')
+    throw new Error('Claim Worker requires default profile');
+  const assets =
+    component === 'worker'
+      ? [...ASSETS, ...(profile === 'messaging-beta' ? MESSAGING_ASSETS : [])]
+      : CLAIM_ASSETS;
   const revision =
     process.env.GITHUB_SHA ||
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -159,11 +225,12 @@ export async function buildCbom(component: 'worker' | 'userinfo-claim-worker' = 
   return {
     bomFormat: 'CycloneDX',
     specVersion: '1.7',
-    serialNumber: `urn:uuid:${uuid5Url(`mikaki-${component}-cbom:${revision}`)}`,
+    serialNumber: `urn:uuid:${uuid5Url(`mikaki-${component}-${profile}-cbom:${revision}`)}`,
     version: 1,
     metadata: {
       timestamp,
       component: { type: 'application', name: `mikaki-${component}`, version: revision },
+      properties: [{ name: 'mikaki:release-profile', value: profile }],
     },
     components,
   };
@@ -171,13 +238,10 @@ export async function buildCbom(component: 'worker' | 'userinfo-claim-worker' = 
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (
-    (args.length !== 0 && args.length !== 2) ||
-    (args.length === 2 &&
-      (args[0] !== '--component' || !['worker', 'userinfo-claim-worker'].includes(args[1])))
-  ) {
-    throw new Error('usage: node scripts/build_cbom.ts [--component worker|userinfo-claim-worker]');
-  }
-  const component = (args[1] ?? 'worker') as 'worker' | 'userinfo-claim-worker';
-  console.log(JSON.stringify(await buildCbom(component), null, 2));
+  const component = args[0] === '--component' ? args.splice(0, 2)[1] : 'worker';
+  if (component !== 'worker' && component !== 'userinfo-claim-worker')
+    throw new Error('Unknown CBOM component');
+  const { profile, allowDirty, operands } = releaseArguments(args);
+  if (allowDirty || operands.length) throw new Error('Unknown CBOM option');
+  console.log(JSON.stringify(await buildCbom(component, profile), null, 2));
 }

@@ -699,6 +699,24 @@ jobs:
       contents: read
     uses: ./.github/workflows/build-release-candidate.yml
 
+  chat-release-candidate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-release-candidate.yml
+    with:
+      profile: messaging-beta
+
+  chat-supply-chain:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, chat-release-candidate, dependency-advisories, native-client, jose-probes, android-client, android-verifier]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/supply-chain-build.yml
+    with:
+      profile: messaging-beta
+
   supply-chain:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:

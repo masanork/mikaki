@@ -18,9 +18,25 @@ presentation consent remain in place.
   denials, raw authority RPC denials and allowed catalogued Agent/Claim access.
 - After the product tests, `npm run qualify:messaging-package` requires a clean
   checkout, performs a local Wrangler dry run, checks the complete module size
-  and exact named exports, and records module/Chat asset hashes with the source
-  commit. CI retains `messaging-package-<attempt>/summary.json`. This evidence
-  does not replace the production promotion inventory or attestation.
+  and exact named exports, and checks the running service's compile profile and
+  source revision. CI retains `messaging-package-<attempt>/summary.json` with
+  archive-member and Chat asset hashes. The beta release inventory incorporates
+  this evidence and rejects a different archive, runtime profile or asset set.
+- Release inventory version 2 explicitly selects `default` or `messaging-beta`.
+  Verification reads retained profile exports from the optimized Wasm module
+  without executing archive JavaScript. Ordinary releases exclude generated
+  `chat/` static assets. Beta candidates require exactly the qualified browser
+  client and crypto module and stage those bytes with the complete service.
+- `chat-release-candidate` builds and tests the beta release in PR/main CI.
+  Its artifact is `release-candidate-messaging-beta-<commit>`. After the main
+  qualification gates, `chat-supply-chain` rechecks and attests it as
+  `attested-worker-messaging-beta-<commit>`, including the browser Rust SBOM
+  and profile-specific cryptography inventory. PRs receive no signing authority.
+  Actual attestation still needs the merged main run to finish successfully.
+- Both release profiles use the same archive preparation and byte verification.
+  A beta upload has `promotion_ready=false`; ordinary production rejects it and
+  requires default-profile login assets. Creating or attesting a beta candidate
+  neither applies Chat migrations nor enables the runtime flag.
 - Chat ingress uses its own policy and counters, with default limits of 600
   admissions per source and 2400 per deployment per minute. The product journey
   runs with these defaults and the ordinary authentication limits. Exhaustion,
@@ -56,6 +72,8 @@ Read-only inspection of account `4b749427a0c80c547e726a42aff4b6fc`, Worker
 - PR #278 merged as `22003c16`. Its main run passed product checks and Sonar,
   but dependency audit found RUSTSEC-2026-0382 and production promotion was
   skipped. Qualify the patched dependency graph before the next promotion.
+- The advisory fixes and independent Chat admission subsequently merged in
+  #281/#282; main `276ef361` still needs its own CI/promotion qualification.
 - The 2026-10-20 secret-name inspection did not include `MESSAGING_ISSUER_KEY`.
   No secret values were read.
 - This ingress change has not applied Chat migrations, uploaded keys or
@@ -68,11 +86,12 @@ or shape of any Chat tables, browser/device compatibility, or current load limit
 
 Keep Chat disabled until the following work is qualified together:
 
-1. A source-bound release path must still build the `messaging-beta` feature and
-   include the generated `assets/chat/client.js` and `crypto.wasm` in its
-   attested static asset inventory. The ordinary release builds without this
-   feature, even if a runtime flag is set. Include the package qualification's
-   commit-bound hashes and complete service upload measurements in that evidence.
+1. Qualify the merged main run's explicit beta release candidate and its trusted
+   attestations. The candidate path now binds the compile profile, complete
+   service upload and generated Chat assets. A protected beta promotion path
+   must still combine this evidence with the schema, key and rollback gates
+   below before it can accept the candidate for activation. Ordinary promotion
+   deliberately accepts only the default profile.
 2. Apply the reviewed messaging migration chain, including
    `0003_ingress_budget.sql`, through a separate configuration
    and migration ledger. Preserve the owner migration directory/ledger. Inspect
@@ -108,6 +127,20 @@ messaging requests; do not reset owner credentials or native Wallet storage.
 The first credential remains Mikaki's existing linked-document attribute
 credential. Passport reading, municipal/employer issuance and additional issuers
 are subsequent integrations, as described in [the MVP scope](wallet-chat-mvp.md).
+
+## Offline release candidate checks
+
+The beta candidate builder archives `build-messaging-beta`, after the actual
+product/ingress checks and `npm run qualify:messaging-package`. It supplies
+`--profile messaging-beta` explicitly to `release:inventory`, `release:verify`,
+`release:prepare-upload` and `release:verify-upload`. Omitting that selection
+requires a default-profile Wasm module. A dirty checkout requires the existing
+explicit local option and cannot produce a production-ready upload.
+
+The release inventory binds all owner migration bytes and the complete static
+asset tree selected for the profile. It does not apply SQL. The separate Chat
+migration ledger/schema review remains an activation prerequisite. Reusing a
+beta candidate in ordinary deployment fails before Cloudflare operations.
 
 ## Chat ingress behavior
 
