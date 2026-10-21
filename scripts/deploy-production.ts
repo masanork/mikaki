@@ -9,6 +9,7 @@ import { promotionDirectory, verifyPreparedUpload } from './prepare-release-uplo
 import { readdirSync } from 'node:fs';
 import { BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
 import { assertProductionOwnerSchema } from './production-owner-schema.ts';
+import { inspectProductionMessaging } from './production-messaging-audit.ts';
 import type { WorkLedgerRow } from './production-work-schema.ts';
 import { assertProductionWorkRolloutSchema } from './production-work-migration.ts';
 import { productionWorkPacketDigest } from './production-work-packet.ts';
@@ -410,7 +411,30 @@ async function main() {
   const ownerFiles = readdirSync(migrationDirectory)
     .sort()
     .map((name) => ({ name, sql: readFileSync(join(migrationDirectory, name), 'utf8') }));
+  const messagingSchema = await inspectProductionMessaging(
+    root,
+    schemaProbe[1].results,
+    async (sql) => {
+      const probe = JSON.parse(
+        await wrangler([
+          'd1',
+          'execute',
+          'DB',
+          '--remote',
+          '--config',
+          opConfig,
+          '--command',
+          sql,
+          '--json',
+        ]),
+      );
+      assert.equal(probe.length, 1, 'Expected one Chat schema probe');
+      assert.equal(probe[0].success, true);
+      return probe[0].results;
+    },
+  );
   if (adopting) {
+    assert.ok(!messagingSchema, 'Finish Work adoption before Chat schema changes');
     assertProductionWorkRolloutSchema(
       ownerFiles,
       workSchema?.migrations ?? [],
@@ -444,6 +468,7 @@ async function main() {
       schemaProbe[0].results,
       schemaProbe[1].results,
       workSchema,
+      messagingSchema,
     );
   const secretFile = join(process.env.RUNNER_TEMP!, 'mikaki-production-secrets.json');
   const runtimeSecrets = productionRuntimeSecrets(reviewedOp, process.env);

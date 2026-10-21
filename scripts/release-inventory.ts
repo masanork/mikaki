@@ -16,6 +16,13 @@ import {
   type MessagingQualification,
 } from './release-profile.ts';
 import { checkWorkerBundle, workerBundleBytes } from './worker-bundle-size.ts';
+import {
+  assertMessagingMigrationConfig,
+  assertMessagingMigrationFiles,
+  MESSAGING_MIGRATION_CONFIG,
+  MESSAGING_MIGRATION_DIRECTORY,
+  MESSAGING_LEDGER,
+} from './production-messaging-schema.ts';
 
 const members = ['index.js', 'index_bg.wasm', 'package.json', 'worker/shim.mjs'];
 const archives = [
@@ -34,6 +41,11 @@ export type ReleaseInventory = {
   migrations: { name: string; digest: Digest }[];
   assets?: { name: string; digest: Digest }[];
   messaging?: MessagingQualification;
+  messaging_schema?: {
+    ledger: string;
+    config: { name: string; digest: Digest };
+    migrations: { name: string; digest: Digest }[];
+  };
 };
 function digest(bytes: Uint8Array): Digest {
   assert.ok(bytes.length <= limit, 'Release input exceeds size limit');
@@ -146,6 +158,8 @@ export async function collectRelease(
     profile === 'messaging-beta'
       ? await messagingQualification(root, source, releases, assets ?? [])
       : undefined;
+  const messagingSchema =
+    profile === 'messaging-beta' ? await collectMessagingSchema(root) : undefined;
   return {
     schema_version: 2,
     profile,
@@ -154,6 +168,30 @@ export async function collectRelease(
     migrations,
     ...(assets ? { assets } : {}),
     ...(messaging ? { messaging } : {}),
+    ...(messagingSchema ? { messaging_schema: messagingSchema } : {}),
+  };
+}
+
+async function collectMessagingSchema(root: string) {
+  const directory = join(root, MESSAGING_MIGRATION_DIRECTORY);
+  const names = (await readdir(directory)).sort((a, b) => a.localeCompare(b));
+  const files = await Promise.all(
+    names.map(async (name) => ({ name, bytes: await regularFile(join(directory, name)) })),
+  );
+  assertMessagingMigrationFiles(
+    files.map(({ name, bytes }) => ({ name, sql: bytes.toString('utf8') })),
+  );
+  const config = await regularFile(join(root, MESSAGING_MIGRATION_CONFIG));
+  assertMessagingMigrationConfig(
+    JSON.parse(config.toString('utf8')),
+    JSON.parse(
+      (await regularFile(join(root, 'crates/worker/wrangler.production.jsonc'))).toString('utf8'),
+    ),
+  );
+  return {
+    ledger: MESSAGING_LEDGER,
+    config: { name: MESSAGING_MIGRATION_CONFIG, digest: digest(config) },
+    migrations: files.map(({ name, bytes }) => ({ name, digest: digest(bytes) })),
   };
 }
 
