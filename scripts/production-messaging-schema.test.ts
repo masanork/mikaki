@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { BASELINE_SCHEMA_QUERY, type SchemaRow } from './production-baseline.ts';
@@ -117,6 +119,39 @@ test('each Chat SQL byte and the complete ordered ledger are pinned', () => {
     ledger(3).map((row, i) => (i === 1 ? { ...row, name: '0002_unreviewed.sql' } : row)),
   ])
     assert.throws(() => assertMessagingLedger(bad, true));
+});
+
+test('absent Chat schema still pins every SQL byte without querying Chat tables', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mikaki-chat-absent-'));
+  try {
+    cpSync(
+      'crates/worker/messaging-migrations',
+      join(directory, 'crates/worker/messaging-migrations'),
+      { recursive: true },
+    );
+    for (const path of [MESSAGING_MIGRATION_CONFIG, 'crates/worker/wrangler.production.jsonc'])
+      cpSync(path, join(directory, path));
+    const query = async () => {
+      assert.fail('Absent Chat must not need a Chat database query');
+    };
+    assert.equal(await inspectProductionMessaging(directory, [], query), undefined);
+    for (const { name, sql } of messaging) {
+      const path = join(directory, 'crates/worker/messaging-migrations', name);
+      writeFileSync(path, sql + '\n');
+      await assert.rejects(
+        inspectProductionMessaging(directory, [], query),
+        /Chat migration bytes differ/,
+      );
+      rmSync(path);
+      await assert.rejects(
+        inspectProductionMessaging(directory, [], query),
+        /Unexpected Chat migration files/,
+      );
+      writeFileSync(path, sql);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('read-only preflight accepts exact prefixes; ordinary promotion requires all three migrations', async () => {

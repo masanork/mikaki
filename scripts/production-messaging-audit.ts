@@ -27,6 +27,11 @@ export async function inspectProductionMessaging(
     readFileSync(join(root, 'crates/worker/wrangler.production.jsonc'), 'utf8'),
   );
   assertMessagingMigrationConfig(config, owner);
+  const directory = join(root, MESSAGING_MIGRATION_DIRECTORY);
+  const migrations = readdirSync(directory)
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ name, sql: readFileSync(join(directory, name), 'utf8') }));
+  assertMessagingMigrationFiles(migrations);
   if (!schema.some(({ name }) => name === MESSAGING_LEDGER)) {
     assert.ok(
       !schema.some(({ name }) => name.startsWith('messaging_')),
@@ -34,11 +39,6 @@ export async function inspectProductionMessaging(
     );
     return undefined;
   }
-  const directory = join(root, MESSAGING_MIGRATION_DIRECTORY);
-  const migrations = readdirSync(directory)
-    .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({ name, sql: readFileSync(join(directory, name), 'utf8') }));
-  assertMessagingMigrationFiles(migrations);
   const ledger = (await query(
     'SELECT id,name FROM messaging_schema_migrations ORDER BY id',
   )) as MessagingLedgerRow[];

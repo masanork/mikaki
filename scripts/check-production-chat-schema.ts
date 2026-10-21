@@ -1,9 +1,10 @@
 /** Explicitly local or remote, always read-only. This command never applies migrations. */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { BASELINE_SCHEMA_QUERY, canonicalSchema, type SchemaRow } from './production-baseline.ts';
 import { assertProductionOwnerSchema } from './production-owner-schema.ts';
 import { inspectProductionMessaging, type SchemaQuery } from './production-messaging-audit.ts';
@@ -13,6 +14,8 @@ import {
   MESSAGING_MIGRATIONS,
 } from './production-messaging-schema.ts';
 import type { WorkLedgerRow } from './production-work-schema.ts';
+
+const execute = promisify(execFile);
 
 export async function checkProductionChatSchema(root: string, query: SchemaQuery, local = false) {
   const rows = (await query(BASELINE_SCHEMA_QUERY)) as SchemaRow[];
@@ -83,37 +86,38 @@ async function main() {
     JSON.parse(readFileSync(join(root, 'crates/worker/wrangler.production.jsonc'), 'utf8')),
   );
   const query: SchemaQuery = async (sql) => {
-    const results = JSON.parse(
-      execFileSync(
-        join(root, 'node_modules/.bin/wrangler'),
-        [
-          'd1',
-          'execute',
-          'mikaki-auth-owner',
-          mode,
-          '--config',
-          MESSAGING_MIGRATION_CONFIG,
-          '--command',
-          sql,
-          '--json',
-        ],
-        {
-          cwd: root,
-          encoding: 'utf8',
-          timeout: 120_000,
-          maxBuffer: 4 * 1024 * 1024,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      ),
+    const { stdout } = await execute(
+      join(root, 'node_modules/.bin/wrangler'),
+      [
+        'd1',
+        'execute',
+        'mikaki-auth-owner',
+        mode,
+        '--config',
+        MESSAGING_MIGRATION_CONFIG,
+        '--command',
+        sql,
+        '--json',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 120_000,
+        maxBuffer: 4 * 1024 * 1024,
+      },
     );
+    const results = JSON.parse(stdout);
     assert.equal(results.length, 1, 'Expected one read-only query result');
     assert.equal(results[0].success, true);
     return results[0].results;
   };
   console.log(JSON.stringify(await checkProductionChatSchema(root, query, mode === '--local')));
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-  main().catch((error: unknown) => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : 'Chat schema check failed');
     process.exitCode = 1;
-  });
+  }
+}
