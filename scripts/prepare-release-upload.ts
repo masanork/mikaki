@@ -27,6 +27,7 @@ import {
 } from './release-inventory.ts';
 
 const limit = 64 * 1024 * 1024;
+const INVALID_PROMOTION_DIRECTORY = 'Invalid promotion directory';
 const workers = [
   {
     archive: 'mikaki-worker.tar.gz',
@@ -95,24 +96,32 @@ function verifyUploadWasm(
 export async function promotionDirectory(root: string, input: string): Promise<string> {
   const destination = resolve(input);
   const name = basename(destination);
-  assert.equal(
-    dirname(destination),
-    join(resolve(root), 'artifacts'),
-    'Invalid promotion directory',
-  );
+  const directory = join(resolve(root), 'artifacts');
+  assert.equal(dirname(destination), directory, INVALID_PROMOTION_DIRECTORY);
   assert.ok(
     name.length === 16 && /^promotion-[A-Za-z0-9]{6}$/.test(name),
-    'Invalid promotion directory',
+    INVALID_PROMOTION_DIRECTORY,
   );
   // Resolve both the checkout and candidate: /tmp aliases are fine; an artifacts
   // or promotion symlink escaping the checkout is not an authorized release input.
-  assert.equal(
-    await realpath(destination),
-    join(await realpath(root), 'artifacts', name),
-    'Promotion directory must not be redirected by symlinks',
-  );
-  assert.ok((await stat(destination)).isDirectory(), 'Expected a promotion directory');
-  return destination;
+  const actualRoot = await realpath(root);
+  const redirected = 'Promotion directory must not be redirected by symlinks';
+  assert.equal(await realpath(directory), join(actualRoot, 'artifacts'), redirected);
+  // CLI text selects an existing entry; only its filesystem-supplied name is
+  // used to construct the path that later reaches the release verifier.
+  const entries = await readdir(directory);
+  let selected: string | undefined;
+  for (const entry of entries) {
+    if (entry === name) {
+      selected = entry;
+      break;
+    }
+  }
+  assert.ok(selected, INVALID_PROMOTION_DIRECTORY);
+  const authorized = join(directory, selected);
+  assert.equal(await realpath(authorized), join(actualRoot, 'artifacts', selected), redirected);
+  assert.ok((await stat(authorized)).isDirectory(), 'Expected a promotion directory');
+  return authorized;
 }
 
 export async function prepareReleaseUpload(
