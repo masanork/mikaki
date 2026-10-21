@@ -1,6 +1,10 @@
 name: attested-worker-build
 on:
   workflow_call:
+    inputs:
+      profile:
+        type: string
+        default: default
 permissions:
   contents: read
   id-token: write
@@ -9,6 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      RELEASE_PROFILE: ${{ inputs.profile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -18,9 +24,11 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - name: Validate release profile
+        run: node --input-type=module -e 'import { releaseProfile } from "./scripts/release-profile.ts"; releaseProfile(process.env.RELEASE_PROFILE)'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-candidate-${{ github.sha }}
+          name: release-candidate${{ inputs.profile == 'messaging-beta' && '-messaging-beta' || '' }}-${{ github.sha }}
           path: artifacts/
       - name: Recheck clean source-bound release and upload inventories
         id: promotion
@@ -29,8 +37,15 @@ jobs:
           inventories=(artifacts/promotion-*/upload-manifest.json)
           [[ ${#inventories[@]} == 1 && -f "${inventories[0]}" ]]
           promotion_dir=$(dirname "${inventories[0]}")
-          npm run release:verify
-          npm run release:verify-upload -- "$promotion_dir"
+          # Generated Chat files are ignored source inputs. Restore only the two
+          # staged candidates; the following inventory checks verify every byte.
+          if [[ "$RELEASE_PROFILE" == messaging-beta ]]; then
+            mkdir -p assets/chat
+            cp "$promotion_dir/op/assets/chat/client.js" assets/chat/client.js
+            cp "$promotion_dir/op/assets/chat/crypto.wasm" assets/chat/crypto.wasm
+          fi
+          npm run release:verify -- --profile "$RELEASE_PROFILE"
+          npm run release:verify-upload -- "$promotion_dir" --profile "$RELEASE_PROFILE"
           copy_release_sha=$(sha256sum artifacts/work-copy-runtime/release.json | cut -d ' ' -f 1)
           npm run verify:work-copy-release -- artifacts/work-copy-runtime "$copy_release_sha" "$GITHUB_SHA"
           echo "promotion_dir=$promotion_dir" >> "$GITHUB_OUTPUT"
@@ -46,6 +61,12 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ steps.promotion.outputs.promotion_dir }}/upload-manifest.json
+      - name: Attest Chat browser SBOM against its asset inventory
+        if: inputs.profile == 'messaging-beta'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.promotion.outputs.promotion_dir }}/upload-manifest.json
+          sbom-path: artifacts/supply-chain/messaging-browser-rust.cdx.json
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -77,9 +98,16 @@ jobs:
           subject-path: artifacts/mikaki-userinfo-claim-worker.tar.gz
           sbom-path: artifacts/supply-chain/userinfo-claim-rust.cdx.json
       - name: Attest CBOM
+        if: inputs.profile == 'default'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifacts/mikaki-worker.tar.gz
+          sbom-path: artifacts/supply-chain/worker-crypto.cdx.json
+      - name: Attest Chat cryptography against the complete asset inventory
+        if: inputs.profile == 'messaging-beta'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.promotion.outputs.promotion_dir }}/upload-manifest.json
           sbom-path: artifacts/supply-chain/worker-crypto.cdx.json
       - name: Attest UserInfo claim Worker CBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -93,7 +121,7 @@ jobs:
       - name: Upload Worker and inventories
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: attested-worker-${{ github.sha }}
+          name: attested-worker${{ inputs.profile == 'messaging-beta' && '-messaging-beta' || '' }}-${{ github.sha }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30

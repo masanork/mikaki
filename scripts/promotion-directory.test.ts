@@ -11,6 +11,14 @@ test('promotion inputs reject sibling prefixes, nested paths and symlink escapes
     const valid = join(root, 'artifacts/promotion-Ab12cd');
     await mkdir(valid, { recursive: true });
     assert.equal(await promotionDirectory(root, valid), valid);
+    const alternative = join(root, 'artifacts/promotion-Kl78mn');
+    await mkdir(alternative);
+    assert.equal(await promotionDirectory(root, alternative), alternative);
+    assert.equal(await promotionDirectory(root, valid), valid);
+    await assert.rejects(
+      promotionDirectory(root, join(root, 'artifacts/promotion-Zz99zz')),
+      /Invalid promotion directory/,
+    );
     for (const path of [
       join(root, 'artifacts/promotion-Ab12cd/checkpoint'),
       join(root, 'artifacts/promotion-Ab12cd-extra'),

@@ -338,6 +338,7 @@ jobs:
         work-product,
         messaging,
         security-checks,
+        chat-release-candidate,
       ]
     if: always()
     runs-on: ubuntu-24.04
@@ -402,7 +403,7 @@ jobs:
           node --input-type=module - <<'JS'
           import assert from 'node:assert/strict';
           const results = JSON.parse(process.env.RESULTS);
-          assert.deepEqual(Object.keys(results).sort(), ['core', 'messaging', 'security-checks', 'work-authority', 'work-effects', 'work-product', 'worker-browser', 'worker-contracts']);
+          assert.deepEqual(Object.keys(results).sort(), ['chat-release-candidate', 'core', 'messaging', 'security-checks', 'work-authority', 'work-effects', 'work-product', 'worker-browser', 'worker-contracts']);
           for (const [name, job] of Object.entries(results)) {
             assert.equal(job.result, 'success', `${name}: ${job.result}`);
           }
@@ -723,6 +724,33 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/build-release-candidate.yml
+
+  chat-release-candidate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-release-candidate.yml
+    with:
+      profile: messaging-beta
+
+  chat-supply-chain:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      [
+        verify,
+        chat-release-candidate,
+        dependency-advisories,
+        native-client,
+        jose-probes,
+        android-client,
+        android-verifier,
+      ]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/supply-chain-build.yml
+    with:
+      profile: messaging-beta
 
   supply-chain:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

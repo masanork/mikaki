@@ -17,6 +17,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkWorkerBundle, measureWorkerUpload } from './worker-bundle-size.ts';
+import { releaseArguments, type ReleaseProfile } from './release-profile.ts';
 import {
   releaseSource,
   collectFontAssets,
@@ -26,6 +27,7 @@ import {
 } from './release-inventory.ts';
 
 const limit = 64 * 1024 * 1024;
+const INVALID_PROMOTION_DIRECTORY = 'Invalid promotion directory';
 const workers = [
   {
     archive: 'mikaki-worker.tar.gz',
@@ -76,28 +78,50 @@ function extractMember(archive: Buffer, name: string): Buffer {
   });
 }
 
+function verifyUploadWasm(
+  archive: ReleaseInventory['archives'][number],
+  measured: Awaited<ReturnType<typeof measureWorkerUpload>>,
+) {
+  const original = archive.members.find((member) => member.name === 'index_bg.wasm');
+  assert.deepEqual(
+    measured.modules
+      .filter((file) => file.type === 'application/wasm')
+      .map((file) => ({ bytes: file.bytes, sha256: file.sha256 })),
+    original ? [original.digest] : [],
+    'Upload Wasm differs from release archive',
+  );
+}
+
 /** Accept only a direct mkdtemp promotion directory in this checkout's artifacts. */
 export async function promotionDirectory(root: string, input: string): Promise<string> {
   const destination = resolve(input);
   const name = basename(destination);
-  assert.equal(
-    dirname(destination),
-    join(resolve(root), 'artifacts'),
-    'Invalid promotion directory',
-  );
+  const directory = join(resolve(root), 'artifacts');
+  assert.equal(dirname(destination), directory, INVALID_PROMOTION_DIRECTORY);
   assert.ok(
     name.length === 16 && /^promotion-[A-Za-z0-9]{6}$/.test(name),
-    'Invalid promotion directory',
+    INVALID_PROMOTION_DIRECTORY,
   );
   // Resolve both the checkout and candidate: /tmp aliases are fine; an artifacts
   // or promotion symlink escaping the checkout is not an authorized release input.
-  assert.equal(
-    await realpath(destination),
-    join(await realpath(root), 'artifacts', name),
-    'Promotion directory must not be redirected by symlinks',
-  );
-  assert.ok((await stat(destination)).isDirectory(), 'Expected a promotion directory');
-  return destination;
+  const actualRoot = await realpath(root);
+  const redirected = 'Promotion directory must not be redirected by symlinks';
+  assert.equal(await realpath(directory), join(actualRoot, 'artifacts'), redirected);
+  // CLI text selects an existing entry; only its filesystem-supplied name is
+  // used to construct the path that later reaches the release verifier.
+  const entries = await readdir(directory);
+  let selected: string | undefined;
+  for (const entry of entries) {
+    if (entry === name) {
+      selected = entry;
+      break;
+    }
+  }
+  assert.ok(selected, INVALID_PROMOTION_DIRECTORY);
+  const authorized = join(directory, selected);
+  assert.equal(await realpath(authorized), join(actualRoot, 'artifacts', selected), redirected);
+  assert.ok((await stat(authorized)).isDirectory(), 'Expected a promotion directory');
+  return authorized;
 }
 
 export async function prepareReleaseUpload(
@@ -106,8 +130,9 @@ export async function prepareReleaseUpload(
   source: ReleaseSource,
   allowDirty = false,
   bundle?: (entry: string, config: string, output: string, upload: string) => void | Promise<void>,
+  profile: ReleaseProfile = 'default',
 ) {
-  await verifyRelease(root, inventory, source, allowDirty);
+  await verifyRelease(root, inventory, source, allowDirty, profile);
   const destination = await mkdtemp(join(root, 'artifacts/promotion-'));
   try {
     const wrangler = join(root, 'node_modules/.bin/wrangler');
@@ -188,6 +213,7 @@ export async function prepareReleaseUpload(
       // Multipart framing, metadata and debug maps are not part of the 64 MiB code limit.
       const uploadBytes = await boundedFile(upload, 2 * limit);
       const measured = await measureWorkerUpload(new Uint8Array(uploadBytes));
+      verifyUploadWasm(original, measured);
       const failures = checkWorkerBundle(worker.directory, measured.raw);
       assert.equal(failures.length, 0, failures.join('\n'));
       prepared.push({
@@ -202,9 +228,11 @@ export async function prepareReleaseUpload(
       });
     }
     const result = {
-      schema_version: 1,
+      schema_version: 2,
+      profile,
       source,
-      promotion_ready: source.clean,
+      // Beta artifacts remain candidates until schema, key and rollback gates qualify.
+      promotion_ready: source.clean && profile === 'default',
       wrangler_version: wranglerVersion,
       release_inventory: inventory,
       workers: prepared,
@@ -217,7 +245,7 @@ export async function prepareReleaseUpload(
         mode: 0o600,
       },
     );
-    await verifyPreparedUpload(root, destination, result, source, allowDirty);
+    await verifyPreparedUpload(root, destination, result, source, allowDirty, profile);
     return { destination, result };
   } catch (error) {
     await rm(destination, { recursive: true, force: true });
@@ -231,14 +259,30 @@ export async function verifyPreparedUpload(
   result: Awaited<ReturnType<typeof prepareReleaseUpload>>['result'],
   source: ReleaseSource,
   allowDirty = false,
+  profile: ReleaseProfile = 'default',
 ) {
-  assert.equal(result.schema_version, 1);
+  assert.equal(result.schema_version, 2);
+  assert.equal(result.profile, profile, 'Unexpected upload release profile');
   assert.deepEqual(result.source, source);
-  assert.equal(result.promotion_ready, source.clean);
-  await verifyRelease(root, result.release_inventory, source, allowDirty);
+  assert.equal(result.promotion_ready, source.clean && profile === 'default');
+  await verifyRelease(root, result.release_inventory, source, allowDirty, profile);
   assert.deepEqual(
     result.workers.map((worker) => worker.worker),
     workers.map((worker) => worker.directory),
+  );
+  const measurements = await Promise.all(
+    workers.map(async (worker, index) => {
+      const bytes = await boundedFile(
+        join(destination, worker.directory, 'upload.multipart'),
+        2 * limit,
+      );
+      assert.deepEqual(
+        digest(bytes),
+        result.workers[index]!.upload_digest,
+        'Worker upload changed',
+      );
+      return measureWorkerUpload(new Uint8Array(bytes));
+    }),
   );
   for (const [index, worker] of workers.entries()) {
     const record = result.workers[index]!;
@@ -287,12 +331,9 @@ export async function verifyPreparedUpload(
       assert.match(file.name, /^[a-zA-Z0-9_.-]+$/);
       assert.deepEqual(digest(await boundedFile(join(output, file.name))), file.digest);
     }
-    const uploadBytes = await boundedFile(
-      join(destination, worker.directory, 'upload.multipart'),
-      2 * limit,
-    );
-    assert.deepEqual(digest(uploadBytes), record.upload_digest, 'Worker upload changed');
-    const { raw } = await measureWorkerUpload(new Uint8Array(uploadBytes));
+    const measured = measurements[index]!;
+    verifyUploadWasm(archive, measured);
+    const { raw } = measured;
     assert.equal(record.bundle_raw_bytes, raw, 'Worker bundle size changed');
     const failures = checkWorkerBundle(worker.directory, raw);
     assert.equal(failures.length, 0, failures.join('\n'));
@@ -305,8 +346,7 @@ async function main() {
     action === 'create' || action === 'verify',
     'Usage: prepare-release-upload.ts create [--allow-dirty] | verify <directory> [--allow-dirty]',
   );
-  const allowDirty = args.at(-1) === '--allow-dirty';
-  const operands = allowDirty ? args.slice(0, -1) : args;
+  const { profile, allowDirty, operands } = releaseArguments(args);
   assert.equal(operands.length, action === 'create' ? 0 : 1);
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = releaseSource(root);
@@ -315,21 +355,28 @@ async function main() {
     const result = JSON.parse(
       (await boundedFile(join(destination, 'upload-manifest.json'))).toString('utf8'),
     ) as Awaited<ReturnType<typeof prepareReleaseUpload>>['result'];
-    await verifyPreparedUpload(root, destination, result, source, allowDirty);
+    await verifyPreparedUpload(root, destination, result, source, allowDirty, profile);
     console.log(
-      `Verified ${result.promotion_ready ? 'clean' : 'LOCAL DIRTY'} upload: ${destination}`,
+      `Verified ${source.clean ? 'clean' : 'LOCAL DIRTY'} ${profile} upload: ${destination}`,
     );
     return;
   }
   const inventory = JSON.parse(
     (await boundedFile(join(root, 'artifacts/release-manifest.json'))).toString('utf8'),
   ) as ReleaseInventory;
-  const { destination, result } = await prepareReleaseUpload(root, inventory, source, allowDirty);
+  const { destination } = await prepareReleaseUpload(
+    root,
+    inventory,
+    source,
+    allowDirty,
+    undefined,
+    profile,
+  );
   if (process.env.GITHUB_OUTPUT) {
     await appendFile(process.env.GITHUB_OUTPUT, `promotion_dir=${relative(root, destination)}\n`);
   }
   console.log(
-    `Prepared ${result.promotion_ready ? 'clean' : 'LOCAL DIRTY'} upload: ${destination}`,
+    `Prepared ${source.clean ? 'clean' : 'LOCAL DIRTY'} ${profile} upload: ${destination}`,
   );
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
