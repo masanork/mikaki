@@ -54,10 +54,67 @@ test('route teardown waits for callbacks before closing their page', async () =>
   }
 });
 
+test(
+  'route teardown keeps a second callback routable after the first finishes',
+  { timeout: 15_000 },
+  async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const barrier = () => {
+      let release = () => {};
+      const promise = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { promise, release };
+    };
+    const started = barrier(),
+      first = barrier(),
+      second = barrier(),
+      firstDone = barrier();
+    let requests = 0;
+    let handled = 0;
+    let draining: Promise<void> | undefined;
+    try {
+      await page.setContent('<h1>Concurrent route teardown fixture</h1>');
+      await page.route('https://fixture.test/held/*', async (route) => {
+        if (++requests === 2) started.release();
+        const fast = route.request().url().endsWith('/first');
+        await (fast ? first.promise : second.promise);
+        await route.fulfill({ status: 200, body: 'done' });
+        handled++;
+        if (fast) firstDone.release();
+      });
+      await page.evaluate(() => {
+        for (const name of ['first', 'second']) {
+          const image = new Image();
+          image.src = `https://fixture.test/held/${name}`;
+          document.body.append(image);
+        }
+      });
+      await started.promise;
+      draining = drainBrowserRoutes(page);
+      first.release();
+      await firstDone.promise;
+      await page.evaluate(() => document.title);
+      await page.evaluate(() => document.title);
+      second.release();
+      await draining;
+      assert.equal(handled, 2);
+      assert.equal(page.isClosed(), false);
+    } finally {
+      first.release();
+      second.release();
+      await (draining ?? drainBrowserRoutes(page));
+      await browser.close();
+    }
+  },
+);
+
 test('route teardown preserves errors instead of ignoring them', async () => {
   const failure = new Error('Synthetic route teardown failure');
   await assert.rejects(
     drainBrowserRoutes({
+      async waitForLoadState() {},
       async unrouteAll(options) {
         assert.deepEqual(options, { behavior: 'wait' });
         throw failure;
