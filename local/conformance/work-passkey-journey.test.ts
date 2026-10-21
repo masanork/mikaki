@@ -151,9 +151,22 @@ for (const lang of ['ja', 'en'] as const) {
         'Work E2E code snapshot',
       );
       const verified = await verifyWorkCodeSource(packet.directory, git.dir);
+      let preparationReply: { status: number; body: string } | undefined;
       dispatch = async (url, init) => {
         assert.equal(new URL(url).origin, issuer);
-        return worker.fetch(url, { ...init, redirect: 'manual' });
+        const response = await worker.fetch(url, { ...init, redirect: 'manual' });
+        if (init.method !== 'POST' || new URL(url).pathname !== '/work/preparations')
+          return response;
+        // Capture the actual bytes forwarded by the HTTPS bridge. Chromium may
+        // discard its DevTools response body once the page changes; that must
+        // not make us replay an already committed preparation to inspect it.
+        const body = await response.arrayBuffer();
+        preparationReply = { status: response.status, body: Buffer.from(body).toString('utf8') };
+        return {
+          status: response.status,
+          headers: response.headers,
+          arrayBuffer: async () => body,
+        };
       };
 
       browser = await chromium.launch({
@@ -313,7 +326,9 @@ for (const lang of ['ja', 'en'] as const) {
       await prepare.click();
       const created = await createdResponse;
       assert.equal(created.status(), 200);
-      const preparation = (await created.json()).record;
+      assert.ok(preparationReply, 'the browser POST must reach the real Worker through HTTPS');
+      assert.equal(preparationReply.status, created.status());
+      const preparation = JSON.parse(preparationReply.body).record;
       assert.equal(await count('work_preparation'), 1);
       assert.equal(await count('work_copy_consent'), 0, 'Preparation is not copy consent');
       await noEffects();
