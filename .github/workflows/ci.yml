@@ -295,6 +295,14 @@ jobs:
           git rev-parse HEAD > artifacts/security-boundaries/source-commit.txt
           sha256sum crates/worker/build/worker/service.mjs crates/worker/build/worker/shim.mjs crates/worker/build/index.js crates/worker/build/index_bg.wasm > artifacts/security-boundaries/bundle-sha256.txt
           npm run test:security-boundaries | tee artifacts/security-boundaries/results.txt
+      - name: Agent grant disclosure and commit matrix (SEC-06 and SEC-09)
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/security-grants
+          git rev-parse HEAD > artifacts/security-grants/source-commit.txt
+          sha256sum crates/worker/build/worker/service.mjs crates/worker/build/worker/shim.mjs crates/worker/build/index.js crates/worker/build/index_bg.wasm > artifacts/security-grants/bundle-sha256.txt
+          sha256sum crates/agent-worker/*.ts > artifacts/security-grants/agent-source-sha256.txt
+          npm run test:security-grants | tee artifacts/security-grants/results.txt
       - name: Product Worker contracts
         run: |
           cargo build --locked --manifest-path design/probes/native-identity-http/Cargo.toml --bin oid4vp_transport

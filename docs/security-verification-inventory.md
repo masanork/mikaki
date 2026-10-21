@@ -60,6 +60,7 @@ These commands are existing starting points. Build the actual bundles and fixtur
 | `npm run test:worker-contracts` | Owner/session/client separation, DPoP, invitation/administration, service boundaries and resource lifecycle. |
 | `npm run test:security-authorization` | Partial SEC-01/06: packaged owner-record isolation, receipt scope, revoked sessions, DELETE commit and list-response invalidation; real D1/R2 effect comparison. See [scope and reproduction](security-ci.md#owner-authorization-attack-matrix). |
 | `npm run test:security-boundaries` | Partial SEC-02/18: emitted AgentStore capability restrictions, public/other-role denial, bounded decoding and failed-batch atomicity; all application tables and R2 compared. See [scope and reproduction](security-ci.md#service-capability-attack-matrix). |
+| `npm run test:security-grants` | Partial SEC-06/09: real OP/Agent selected grants, scoped OAuth, single-use exchange, post-audit invalidation, pre-commit revocation and lost-ack private drafts; actual D1/R2 effects. See [scope and reproduction](security-ci.md#agent-grant-disclosure-and-commit-matrix). |
 | `npm run test:worker-browser` | Actual served UI, browser authentication, consent, owner-key lifecycle and rendering. |
 | `npm run test:vault-transfer` | Key context binding, credential wrapping, record storage and selected release. |
 | `npm run test:agent-integration` | Agent storage capabilities, explicit selected-record grants and OAuth scope. |
