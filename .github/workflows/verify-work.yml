@@ -54,6 +54,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Qualify current Work contracts on the local runtime
         run: |
+          set -o pipefail
           npm run build:policy
           mkdir -p artifacts
           npm run "test:work-$WORK_SUITE" | tee "artifacts/work-$WORK_SUITE.tap"
