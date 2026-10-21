@@ -121,6 +121,8 @@ const CLAIM_ASSETS: Asset[] = [
   ],
 ];
 
+const MESSAGING_SOURCE = 'design/probes/mls/src/lib.rs';
+const MESSAGING_SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519';
 const MESSAGING_ASSETS: Asset[] = [
   [
     'X25519 Chat key agreement',
@@ -130,36 +132,36 @@ const MESSAGING_ASSETS: Asset[] = [
       algorithmFamily: 'ECDH',
       cryptoFunctions: ['keyderive'],
     },
-    'design/probes/mls/src/lib.rs',
-    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+    MESSAGING_SOURCE,
+    MESSAGING_SUITE,
   ],
   [
     'HKDF-SHA256 Chat key schedule',
     'algorithm',
     { primitive: 'kdf', algorithmFamily: 'HKDF', cryptoFunctions: ['keyderive'] },
-    'design/probes/mls/src/lib.rs',
-    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+    MESSAGING_SOURCE,
+    MESSAGING_SUITE,
   ],
   [
     'AES-128-GCM Chat messages',
     'algorithm',
     { primitive: 'ae', algorithmFamily: 'AES', cryptoFunctions: ['encrypt', 'decrypt'] },
-    'design/probes/mls/src/lib.rs',
-    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+    MESSAGING_SOURCE,
+    MESSAGING_SUITE,
   ],
   [
     'SHA-256 Chat transcript',
     'algorithm',
     { primitive: 'hash', algorithmFamily: 'SHA-2', cryptoFunctions: ['digest'] },
-    'design/probes/mls/src/lib.rs',
-    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+    MESSAGING_SOURCE,
+    MESSAGING_SUITE,
   ],
   [
     'Ed25519 Chat message authentication',
     'algorithm',
     { primitive: 'signature', algorithmFamily: 'EdDSA', cryptoFunctions: ['sign', 'verify'] },
-    'design/probes/mls/src/lib.rs',
-    'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519',
+    MESSAGING_SOURCE,
+    MESSAGING_SUITE,
   ],
   [
     'Ed25519 Chat issuer binding',

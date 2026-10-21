@@ -1,11 +1,10 @@
 /** Capture the tested Worker's UI bytes for version-matched production smoke. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createTestHarness } from 'wrangler';
 import { releaseSource } from './release-inventory.ts';
 import { releaseArguments } from './release-profile.ts';
-import { readFile } from 'node:fs/promises';
 import { parse } from 'jsonc-parser';
 
 const root = process.cwd();
