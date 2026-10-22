@@ -107,6 +107,8 @@ Keep Chat disabled until the following work is qualified together:
    must still combine this evidence with the schema, key and rollback gates
    below before it can accept the candidate for activation. Ordinary promotion
    deliberately accepts only the default profile.
+   The manual `chat-beta-preflight` workflow supplies the read-only first stage
+   described below; it does not upload a version or authorize activation.
 2. Apply the reviewed messaging migration chain, including
    `0003_ingress_budget.sql`, using the separate migration-only configuration and
    `messaging_schema_migrations` ledger. The exact production schema audit now
@@ -145,6 +147,43 @@ messaging requests; do not reset owner credentials or native Wallet storage.
 The first credential remains Mikaki's existing linked-document attribute
 credential. Passport reading, municipal/employer issuance and additional issuers
 are subsequent integrations, as described in [the MVP scope](wallet-chat-mvp.md).
+
+## Protected Chat candidate preflight
+
+After merging this workflow, wait for a successful push-to-main CI run at the
+current main commit, then dispatch `chat-beta-preflight` on `main` with that
+run's `main_ci_run_id`. The job uses the existing `production` environment and
+its Cloudflare credential. It receives no runtime signing keys or secret-writing
+step. It has its own concurrency group, so reading production does not displace
+an ordinary pending deployment.
+
+The preflight rejects PR/fork/manual CI candidates, incomplete or unsuccessful
+runs, expired or ambiguous artifacts, dirty source, and a main application that
+advances during inspection. It downloads only the selected run's
+`attested-worker-messaging-beta-<commit>` artifact, verifies the release, login,
+three Worker archives and upload manifest against the trusted signing workflow,
+exact source digest and main ref, then rechecks all prepared bytes with the
+explicit beta profile. It separately requires the latest main Sonar analysis to
+match that exact source and its quality gate to be `OK`; the advisory scanner
+job's completion alone is insufficient. It does not build or execute
+artifact-supplied JavaScript.
+
+Production must still serve the same source at a single 100% OP version, with
+bindings matching the normal reviewed configuration and no Chat flag or issuer
+key. Read-only SQL validates Owner, optional Work, and the complete three-file
+Chat schema and foreign keys. No migration-list or apply command runs. Deployment,
+candidate/run identity, and source are checked again after the audit; a concurrent
+change causes failure. This is a point-in-time observation and must be refreshed
+before a later staging or activation operation.
+
+Only `artifacts/chat-beta-preflight/report.json` is retained as
+`chat-beta-preflight-<commit>-<attempt>` for 14 days. Failures retain a stage name,
+without assertion diffs, API bodies, subprocess output, binding values or DB rows.
+A passing `mikaki-chat-beta-preflight-v1` report always has
+`promotion_ready=false` and `mutations=false`. Protected key staging/public-key
+verification, remote populated rollback, physical Passkey/PRF and two-owner
+qualification, and the protected activation path remain explicit pending work.
+No report is accepted as authorization by ordinary promotion.
 
 ## Offline release candidate checks
 
