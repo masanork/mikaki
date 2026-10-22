@@ -112,6 +112,15 @@ export function productionIdentityTestProfile(config: Config) {
   const operatorCard = enabled && config.vars.IDENTITY_OPERATOR_CARD_KEY_SHA256 !== undefined;
   const haip = config.vars.IDENTITY_ACTIVATION_PROFILE === 'operator-card-haip-age';
   const haipSelection = haip ? identityHaipSelection() : undefined;
+  const passport = config.vars.IDENTITY_PASSPORT_ENABLED !== undefined;
+  if (passport) {
+    assert.ok(haip, 'Passport activation requires the reviewed HAIP profile');
+    assert.equal(
+      config.vars.IDENTITY_PASSPORT_ENABLED,
+      'true',
+      'Passport activation must be explicit',
+    );
+  }
   if (haip) {
     assert.ok(
       enabled && operatorCard && !discovery,
@@ -136,6 +145,7 @@ export function productionIdentityTestProfile(config: Config) {
             'IDENTITY_TRUST_POLICY_SHA256',
           ],
           ...Object.keys(haipSelection!.vars).filter((name) => name.startsWith('IDENTITY_')),
+          ...(passport ? ['IDENTITY_PASSPORT_ENABLED'] : []),
         ].sort()
       : discovery
         ? ['IDENTITY_ENABLED', 'IDENTITY_ISSUANCE_CLAIMS', 'IDENTITY_ISSUANCE_ENABLED']

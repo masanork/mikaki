@@ -6,6 +6,13 @@ use std::sync::{
 };
 use tauri::{AppHandle, Manager, State};
 use zeroize::Zeroizing;
+#[derive(serde::Serialize)]
+pub struct ReadPreview {
+    #[serde(flatten)]
+    preview: CardPreview,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    passport_authentication: Option<crate::identity_passport::AuthenticationReport>,
+}
 
 struct Session {
     #[cfg(target_os = "android")]
@@ -35,6 +42,7 @@ pub fn cancel_active_read(app: &AppHandle) -> Result<(), String> {
             });
         }
     }
+    crate::identity_documents::clear_pending(app)?;
     Ok(())
 }
 
@@ -50,7 +58,7 @@ pub async fn read_identity_card(
     pin: String,
     document_type: Option<mikaki_identity::card::DocumentType>,
     pin2: Option<String>,
-) -> Result<CardPreview, CardFailure> {
+) -> Result<ReadPreview, CardFailure> {
     let pin = Zeroizing::new(pin);
     let pin2 = pin2.map(Zeroizing::new);
     if let Some(pin2) = &pin2 {
@@ -58,13 +66,47 @@ pub async fn read_identity_card(
     }
     let kind = document_type.unwrap_or_default();
     crate::identity_card::validate_pin(&pin)?;
+    if kind == mikaki_identity::card::DocumentType::Passport {
+        return Err(FailureCode::UnsupportedCard.into());
+    }
+    read_native(app, state, ReadRequest::Card { kind, pin, pin2 }).await
+}
+
+#[tauri::command]
+pub async fn read_identity_passport(
+    app: AppHandle,
+    state: State<'_, ReadState>,
+    document_number: String,
+    birth_date: String,
+    expiry_date: String,
+) -> Result<ReadPreview, CardFailure> {
+    let access = crate::identity_passport::Access::new(document_number, birth_date, expiry_date)?;
+    read_native(app, state, ReadRequest::Passport(access)).await
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+enum ReadRequest {
+    Card {
+        kind: mikaki_identity::card::DocumentType,
+        pin: Zeroizing<String>,
+        pin2: Option<Zeroizing<String>>,
+    },
+    Passport(crate::identity_passport::Access),
+}
+async fn read_native(
+    app: AppHandle,
+    state: State<'_, ReadState>,
+    request: ReadRequest,
+) -> Result<ReadPreview, CardFailure> {
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (app, state, pin, pin2, kind);
+        let _ = (app, state, request);
         Err(FailureCode::UnsupportedPlatform.into())
     }
     #[cfg(target_os = "android")]
     {
+        let document_owner = crate::identity_documents::owner(&app)
+            .map_err(|_| CardFailure::from(FailureCode::AccessDenied))?;
         use getrandom::SysRng;
         use rand_core::TryRng;
         use tauri::Manager;
@@ -111,6 +153,12 @@ pub async fn read_identity_card(
             if cleanup.session.cancelled.load(Ordering::SeqCst) {
                 return Err(FailureCode::Cancelled.into());
             }
+            // A failed/new passport read must never leave an older card's link evidence.
+            crate::identity_issuance::clear_identity_evidence(
+                cleanup.app.clone(),
+                cleanup.app.state(),
+            )
+            .map_err(|_| CardFailure::from(FailureCode::TransportError))?;
             cleanup
                 .app
                 .identity_reader()
@@ -120,29 +168,53 @@ pub async fn read_identity_card(
                 app: &cleanup.app,
                 session: &cleanup.session,
             };
-            let (preview, evidence) = crate::identity_card::read_document(
-                &mut transport,
-                kind,
-                &pin,
-                pin2.as_deref().map(|p| p.as_str()),
-            )?;
+            let (preview, evidence, passport) = match request {
+                ReadRequest::Card { kind, pin, pin2 } => {
+                    let (preview, evidence) = crate::identity_card::read_document(
+                        &mut transport,
+                        kind,
+                        &pin,
+                        pin2.as_deref().map(|p| p.as_str()),
+                    )?;
+                    (preview, Some(evidence), None)
+                }
+                ReadRequest::Passport(access) => {
+                    let read = crate::identity_passport::read(&mut transport, &access)?;
+                    (read.preview, None, Some(read.passport))
+                }
+            };
             if cleanup.session.cancelled.load(Ordering::SeqCst) {
                 return Err(FailureCode::Cancelled.into());
             }
-            crate::identity_issuance::retain_evidence(
-                &cleanup.app,
-                evidence,
-                &cleanup.session.cancelled,
-            )?;
+            if let Some(evidence) = evidence {
+                crate::identity_issuance::retain_evidence(
+                    &cleanup.app,
+                    evidence,
+                    &cleanup.session.cancelled,
+                )?;
+            }
             if cleanup.session.cancelled.load(Ordering::SeqCst) {
                 let _ = crate::identity_issuance::clear_identity_evidence(
+                    cleanup.app.clone(),
                     cleanup
                         .app
                         .state::<crate::identity_issuance::IdentityState>(),
                 );
                 return Err(FailureCode::Cancelled.into());
             }
-            Ok(preview)
+            let passport_authentication = passport.as_ref().map(|p| p.authentication());
+            crate::identity_documents::retain(
+                &cleanup.app,
+                &document_owner,
+                preview.clone(),
+                passport,
+                &cleanup.session.cancelled,
+            )
+            .map_err(|_| CardFailure::from(FailureCode::Cancelled))?;
+            Ok(ReadPreview {
+                preview,
+                passport_authentication,
+            })
         })
         .await
         .map_err(|_| CardFailure::from(FailureCode::TransportError))?
@@ -163,6 +235,7 @@ pub async fn cancel_identity_card(
         session.cancelled.store(true, Ordering::SeqCst);
     }
     crate::identity_issuance::clear_identity_evidence(
+        app.clone(),
         app.state::<crate::identity_issuance::IdentityState>(),
     )
     .map_err(|_| CardFailure::from(FailureCode::TransportError))?;

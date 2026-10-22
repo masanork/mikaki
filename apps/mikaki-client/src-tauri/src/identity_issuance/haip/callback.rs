@@ -96,6 +96,7 @@ mod tests {
                 browser_until: at + 90,
                 as_nonce: None,
                 requested_count: 1,
+                passport: None,
             },
             state,
         )

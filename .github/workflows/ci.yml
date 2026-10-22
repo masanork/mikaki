@@ -58,6 +58,7 @@ jobs:
           npm run test:markup
           npm run test:sql
           npm run test:release
+          node --test scripts/wallet-multipaz-checkout.test.ts
           npm run test:identity-trust-freshness
           node --test scripts/static-sql.test.ts
           npm run test:work-authority-packet
@@ -683,8 +684,8 @@ jobs:
           npm run test:vault-disclosure
           npm run test:vault-notes
           npm run test:attribute-commit
+          # Includes local/test/docs-rp.test.ts; do not start the same RP suite twice.
           npm run test:e2e
-          npm run test:docs-rp
       - id: measurements
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

@@ -25,7 +25,7 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-receive').evaluate((node) => {
+          await page.locator('#identity-wallet-issuance').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
           });
           await page
@@ -79,7 +79,7 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
           try {
             await page.locator('#open-settings').click();
             await page.getByRole('link', { name: 'Walletを開く' }).click();
-            await page.locator('#wallet-receive').evaluate((node) => {
+            await page.locator('#identity-wallet-issuance').evaluate((node) => {
               (node as HTMLDetailsElement).open = true;
             });
             assert.equal(await page.locator('#identity-wallet-count').inputValue(), '1');
@@ -123,7 +123,7 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-receive').evaluate((node) => {
+        await page.locator('#identity-wallet-issuance').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-wallet-count').selectOption('2');
@@ -148,7 +148,7 @@ test('native wallet issuance keeps authorization in Rust and rejects late UI res
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-receive').evaluate((node) => {
+          await page.locator('#identity-wallet-issuance').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
           });
           if (command === 'start_identity_wallet_issuance')

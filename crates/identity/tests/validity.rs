@@ -13,6 +13,42 @@ use mikaki_identity::{
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use serde_json::Value;
 const NOW: u64 = 1790899200;
+#[test]
+fn passport_cannot_be_issued_even_with_validity_from_another_document() {
+    let (key, _, holder) = keys();
+    let mut doc = document(Some("2030-01-01"));
+    let validity = Validity::new(&doc, NOW, NOW + 300).unwrap();
+    doc.attributes.document_type = DocumentType::Passport;
+    assert_eq!(
+        Validity::new(&doc, NOW, NOW + 300).err(),
+        Some("unsupported_document_type")
+    );
+    assert_eq!(
+        issuance::issue_with_validity(
+            &key,
+            "issuer",
+            "https://issuer.example",
+            &holder,
+            &doc,
+            validity,
+            &[[1; 16]; 5]
+        )
+        .unwrap_err(),
+        "unsupported_document_type"
+    );
+    assert_eq!(
+        mdoc::issue_with_validity(
+            &key,
+            include_bytes!("fixtures/mdoc-ds.der"),
+            &holder,
+            &doc,
+            validity,
+            &[[1; 16]; 5]
+        )
+        .unwrap_err(),
+        "unsupported_document_type"
+    );
+}
 fn document(expiry: Option<&str>) -> VerifiedDocument {
     VerifiedDocument {
         attributes: CardPreview {

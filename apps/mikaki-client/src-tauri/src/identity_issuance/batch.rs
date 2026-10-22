@@ -92,7 +92,7 @@ pub(super) fn verify_response(
         return Err("invalid_response".into());
     }
     let format = match configuration {
-        issuance::CONFIGURATION => "dc+sd-jwt",
+        issuance::CONFIGURATION | "passport_dg1" => "dc+sd-jwt",
         mdoc::CONFIGURATION => "mso_mdoc",
         _ => return Err("invalid_configuration".into()),
     };
@@ -116,6 +116,14 @@ pub(super) fn verify_response(
             credential_trust: None,
         };
         let (expiry, values) = receipt.verified_values(ISSUER, at)?;
+        let expected = if configuration == "passport_dg1" {
+            mikaki_identity::passport::credential::vct(ISSUER)
+        } else {
+            format!("{ISSUER}/types/linked-document")
+        };
+        if format == "dc+sd-jwt" && values["vct"] != expected {
+            return Err("invalid_credential".into());
+        }
         if let Some(claims) = claims_json {
             validate_age_values(&values, expiry, claims, at)?;
         }
@@ -140,7 +148,7 @@ pub(super) fn install(
         return Err("wallet_inventory_full".into());
     }
     for receipt in &incoming {
-        if receipt.validate(ISSUER, at)? != receipt.expires_at {
+        if receipt.validate_persistent(ISSUER, at)? != receipt.expires_at {
             return Err("invalid_credential".into());
         }
     }

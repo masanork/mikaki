@@ -51,12 +51,37 @@ struct HolderRequest<'a> {
     payload: &'a str,
 }
 #[cfg(target_os = "android")]
+#[derive(Serialize)]
+struct DocumentRequest<'a> {
+    owner: &'a str,
+    payload: &'a str,
+}
+#[cfg(target_os = "android")]
 #[derive(Deserialize)]
 struct WalletPayload {
     payload: Option<String>,
 }
 #[cfg(target_os = "android")]
 impl<R: Runtime> NativeDpop<R> {
+    pub fn store_documents(&self, owner: &str, payload: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin("storeDocuments", DocumentRequest { owner, payload })
+            .map_err(|_| "document_storage_unavailable".into())
+    }
+    pub fn load_documents(&self, owner: &str) -> Result<Option<String>, String> {
+        self.0
+            .run_mobile_plugin::<WalletPayload>(
+                "loadDocuments",
+                DocumentRequest { owner, payload: "" },
+            )
+            .map(|p| p.payload)
+            .map_err(|_| "document_storage_unavailable".into())
+    }
+    pub fn delete_documents(&self, owner: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin("deleteDocuments", DocumentRequest { owner, payload: "" })
+            .map_err(|_| "document_storage_unavailable".into())
+    }
     pub fn create_attested_holder(
         &self,
         id: &str,

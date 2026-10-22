@@ -64,6 +64,20 @@ pub(super) fn single_selection<'a>(
         {
             continue;
         }
+        if receipt.format == "dc+sd-jwt" {
+            let claims = issuance::verify_receipt(
+                &receipt.credential,
+                &receipt.issuer_key,
+                &receipt.issuer_kid,
+                &receipt.key.public()?,
+                ISSUER,
+                at,
+            )
+            .map_err(str::to_string)?;
+            if !request.accepts_sd_jwt_vct(claims["vct"].as_str().unwrap_or("")) {
+                continue;
+            }
+        }
         let values = if receipt.format == "mso_mdoc" {
             mdoc::verify_receipt(
                 &receipt.credential,
@@ -97,11 +111,11 @@ pub(super) fn prepare(
     if s.generation != guard.generation {
         return Err("identity_cancelled".into());
     }
-    s.restore_receipts(app)?;
+    let receipts = s.current_receipts(app, now()?)?;
     // Public/legacy single-receipt flows retain their existing profile and trust rules.
-    if request.response_encryption().is_none()
-        || !s.receipts.iter().any(|r| r.credential_trust.is_some())
-    {
+    // An unrelated certificate-backed receipt must not hide a matching public receipt.
+    let (_, trusted) = verified(&receipts, now()?);
+    if request.response_encryption().is_none() || request.select(&trusted, now()?).is_err() {
         drop(s);
         return prepare_checked_presentation(
             app,
@@ -111,7 +125,7 @@ pub(super) fn prepare(
             request.into_single().map_err(str::to_string)?,
         );
     }
-    let (review, pending) = review(request, &s.receipts, now()?)?;
+    let (review, pending) = review(request, &receipts, now()?)?;
     let nonce_hash = credential_hash(&format!(
         "{}:{}",
         pending.request.client_id(),

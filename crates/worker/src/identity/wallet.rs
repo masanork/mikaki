@@ -346,26 +346,29 @@ pub(super) fn fresh_pool_holder(
     }
     Ok(true)
 }
+pub(super) fn client_policy_hash(ctx: &RouteContext<()>) -> worker::Result<String> {
+    Ok(clients(ctx)?.1)
+}
 #[derive(Deserialize, serde::Serialize)]
-struct Authorization {
-    response_type: String,
-    response_mode: Option<String>,
-    client_id: String,
-    redirect_uri: String,
-    scope: String,
-    code_challenge: String,
-    code_challenge_method: String,
-    state: Option<String>,
-    dpop_jkt: Option<String>,
-    resource: Option<String>,
-    authorization_details: Option<String>,
-    request: Option<String>,
-    request_uri: Option<String>,
-    issuer_state: Option<String>,
-    client_secret: Option<String>,
-    client_assertion: Option<String>,
-    client_assertion_type: Option<String>,
-    mikaki_age_pool: Option<String>,
+pub(super) struct Authorization {
+    pub(super) response_type: String,
+    pub(super) response_mode: Option<String>,
+    pub(super) client_id: String,
+    pub(super) redirect_uri: String,
+    pub(super) scope: String,
+    pub(super) code_challenge: String,
+    pub(super) code_challenge_method: String,
+    pub(super) state: Option<String>,
+    pub(super) dpop_jkt: Option<String>,
+    pub(super) resource: Option<String>,
+    pub(super) authorization_details: Option<String>,
+    pub(super) request: Option<String>,
+    pub(super) request_uri: Option<String>,
+    pub(super) issuer_state: Option<String>,
+    pub(super) client_secret: Option<String>,
+    pub(super) client_assertion: Option<String>,
+    pub(super) client_assertion_type: Option<String>,
+    pub(super) mikaki_age_pool: Option<String>,
 }
 fn invalid_request(request: &Authorization, iss: &str) -> bool {
     request.response_type != "code"
@@ -385,7 +388,13 @@ fn invalid_request(request: &Authorization, iss: &str) -> bool {
         || request.authorization_details.is_some()
         || request.request.is_some()
         || request.request_uri.is_some()
-        || request.issuer_state.is_some()
+        || (if configuration(&request.scope) == Some("passport_dg1") {
+            !request.issuer_state.as_deref().is_some_and(valid_id)
+        } else {
+            request.issuer_state.is_some()
+        })
+        || (configuration(&request.scope) == Some("passport_dg1")
+            && request.mikaki_age_pool.is_some())
         || request.client_secret.is_some()
         || request.client_assertion.is_some()
         || request.client_assertion_type.is_some()
@@ -394,6 +403,7 @@ fn configuration(scope: &str) -> Option<&'static str> {
     let mut recognized = scope.split_ascii_whitespace().filter_map(|s| match s {
         "linked_document" => Some(issuance::CONFIGURATION),
         "linked_document_mdoc" => Some(mdoc::CONFIGURATION),
+        "passport_dg1" => Some(mikaki_identity::passport::credential::CONFIGURATION),
         _ => None,
     });
     let first = recognized.next()?;
@@ -526,8 +536,22 @@ pub async fn authorize_get(req: Request, ctx: RouteContext<()>) -> worker::Resul
     let Some(configuration) = configuration(&request.scope) else {
         return error(400, "invalid_scope");
     };
+    if configuration == "passport_dg1" && (!haip(&ctx) || !passport::enabled(&ctx)) {
+        return error(400, "invalid_scope");
+    }
     if configuration == mdoc::CONFIGURATION && mdoc_certificate(&ctx)?.is_none() {
         return error(400, "invalid_scope");
+    }
+    if configuration == "passport_dg1" {
+        return passport::haip::authorize_get(
+            &req,
+            &ctx,
+            &request,
+            par_hash.as_deref(),
+            &client_policy,
+            &client.name,
+        )
+        .await;
     }
     let (trust, policy_hash) = policy(&ctx)?;
     let time = now()?;
@@ -651,6 +675,19 @@ pub async fn authorize_post(mut req: Request, ctx: RouteContext<()>) -> worker::
         return error(400, "invalid_request");
     }
     let (_, client_policy) = clients(&ctx)?;
+    if let Some(response) = passport::haip::authorize_post(
+        &req,
+        &ctx,
+        &body.grant,
+        &body.csrf,
+        &body.decision,
+        body.document.as_deref(),
+        &client_policy,
+    )
+    .await?
+    {
+        return Ok(response);
+    }
     let (_, policy_hash) = policy(&ctx)?;
     let db = ctx.env.d1("DB")?;
     let Some(owner) = owner(&req, &db).await? else {
@@ -799,6 +836,23 @@ pub(super) async fn token(
         return error(400, "invalid_client");
     }
     let access = random()?;
+    if let Some(response) = passport::haip::token(
+        ctx,
+        passport::haip::TokenBinding {
+            code: &body.code,
+            client_id: &client_id,
+            redirect_uri: &body.redirect_uri,
+            pkce_hash: &hash(&body.code_verifier),
+            client_policy: &client_policy,
+            client_binding: self::binding(&binding)?,
+            dpop_jkt: dpop_proof.as_ref().map(|p| p.thumbprint()),
+            access: &access,
+        },
+    )
+    .await?
+    {
+        return Ok(response);
+    }
     let result = ctx.env.d1("DB")?.prepare("UPDATE identity_wallet_grant SET state='token',access_hash=?1,redeemed_code_hash=code_hash,code_hash=NULL,token_expires_at=unixepoch()+120,dpop_jkt=?8 WHERE code_hash=?2 AND state='offered' AND expires_at>unixepoch() AND client_id=?3 AND redirect_uri=?4 AND code_challenge=?5 AND client_policy_hash=?6 AND policy_hash=?7 AND client_binding IS ?9 AND (authorization_dpop_jkt IS NULL OR authorization_dpop_jkt=?8) AND EXISTS(SELECT 1 FROM identity_document d JOIN account_security a ON a.account_id=d.account_id WHERE d.document_id=identity_wallet_grant.document_id AND d.account_id=identity_wallet_grant.account_id AND d.revoked=0 AND d.valid_until>unixepoch() AND d.policy_hash=?7 AND a.active=1 AND a.epoch=d.epoch AND a.epoch=identity_wallet_grant.epoch) RETURNING configuration")
         .bind(&[js(&hash(&access)),js(&hash(&body.code)),js(&client_id),js(&body.redirect_uri),js(&hash(&body.code_verifier)),js(&client_policy),js(&policy_hash),dpop_proof.as_ref().map(|proof|js(proof.thumbprint())).unwrap_or(JsValue::NULL),self::binding(&binding)?])?.first::<Value>(None).await?;
     let Some(row) = result else {
@@ -894,8 +948,14 @@ pub async fn par(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
     let Some(configuration) = configuration(&request.scope) else {
         return error(400, "invalid_scope");
     };
+    if configuration == "passport_dg1" && (!haip(&ctx) || !passport::enabled(&ctx)) {
+        return error(400, "invalid_scope");
+    }
     if configuration == mdoc::CONFIGURATION && mdoc_certificate(&ctx)?.is_none() {
         return error(400, "invalid_scope");
+    }
+    if configuration == "passport_dg1" && req.headers().get("dpop")?.is_none() {
+        return error(400, "invalid_dpop_proof");
     }
     let binding = match authenticate(&req, &ctx, &request.client_id).await? {
         Ok(binding) => binding,
@@ -970,7 +1030,16 @@ pub(super) async fn authorize_credential(
     access: &str,
     is_dpop: bool,
 ) -> worker::Result<Option<Response>> {
-    let Some(jkt) = row.dpop_jkt.as_deref() else {
+    authorize_sender(req, ctx, row.dpop_jkt.as_deref(), access, is_dpop).await
+}
+pub(super) async fn authorize_sender(
+    req: &Request,
+    ctx: &RouteContext<()>,
+    jkt: Option<&str>,
+    access: &str,
+    is_dpop: bool,
+) -> worker::Result<Option<Response>> {
+    let Some(jkt) = jkt else {
         return if is_dpop {
             Ok(Some(error(401, "invalid_token")?))
         } else {

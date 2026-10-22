@@ -214,6 +214,14 @@ impl Receipt {
     pub fn validate(&self, issuer: &str, now: u64) -> Result<u64, String> {
         self.verified_values(issuer, now).map(|(expiry, _)| expiry)
     }
+    pub fn validate_persistent(&self, issuer: &str, now: u64) -> Result<u64, String> {
+        let (expiry, values) = self.verified_values(issuer, now)?;
+        if self.format == "dc+sd-jwt" && values["vct"] != format!("{issuer}/types/linked-document")
+        {
+            return Err("wallet_storage_profile_unsupported".into());
+        }
+        Ok(expiry)
+    }
     pub(crate) fn verified_values(&self, issuer: &str, now: u64) -> Result<(u64, Value), String> {
         let holder = self.key.public()?;
         let (expiry, values) = match self.format.as_str() {
@@ -287,6 +295,17 @@ pub(crate) fn save_retired_inventory(
     write_inventory(app, receipts, anchor)
 }
 fn write_inventory(app: &AppHandle, receipts: &[Receipt], anchor: &Receipt) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "wallet_storage_unavailable")?
+        .as_secs();
+    for receipt in receipts {
+        if receipt.validate_persistent(mikaki_identity::wallet_profile::ISSUER, now)?
+            != receipt.expires_at
+        {
+            return Err("invalid_credential".into());
+        }
+    }
     #[cfg(target_os = "android")]
     {
         let records: Result<Vec<_>, String> = receipts
@@ -376,7 +395,7 @@ pub fn restore_inventory(app: &AppHandle, issuer: &str, now: u64) -> Result<Vec<
                     None
                 },
             };
-            if receipt.validate(issuer, now)? != receipt.expires_at {
+            if receipt.validate_persistent(issuer, now)? != receipt.expires_at {
                 return Err("wallet_invalid".into());
             }
             receipts.push(receipt);

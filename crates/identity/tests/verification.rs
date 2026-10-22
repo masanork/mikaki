@@ -9,6 +9,15 @@ use rsa::{Pkcs1v15Sign, RsaPrivateKey, traits::PublicKeyParts};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 const NOW: u64 = 1_790_812_800;
+#[test]
+fn passport_read_data_is_not_accepted_as_existing_card_evidence() {
+    let mut evidence = Evidence::new(DocumentType::Passport);
+    evidence.attributes = b"passport DG1 is not signed input-support data".to_vec();
+    assert!(matches!(
+        verify(&evidence, &[], NOW),
+        Err(VerificationError::InvalidEvidence)
+    ));
+}
 fn key() -> &'static RsaPrivateKey {
     static KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
     KEY.get_or_init(|| {
