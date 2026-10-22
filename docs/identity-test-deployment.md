@@ -34,6 +34,39 @@ and presentation remain separate evidence. See [LabPKI deployment details](ident
 The sections below retain the earlier preparation and first-party activation
 history.
 
+### Proposed single-card trust renewal — 2026-10-22
+
+Main CI [39695682430](https://github.com/masanork/mikaki/actions/runs/39695682430)
+passed its build, verification and signing jobs, then stopped promotion before
+Worker upload because the selected card-trust policy expired at
+`2026-10-21T13:14:39Z` (22:14 JST). CRL renewal in PR #287 does not renew this
+separate operator approval. Keep the expiry and exact-policy checks in place.
+
+This configuration proposes extending only `not_after` of the existing single
+operator-confirmed card policy to `2026-10-28T21:43:47Z` (2026-10-29 06:43:47 JST),
+the earlier of the selected credential CRLs' expiry times. The compact policy
+SHA-256 changes from
+`0bf9e8cd3d2916034333f669cfafbd3a2b0c55e3ba954020de2d4bea81dde207` to
+`51bae1540d65288588ab4f307d6f5376470a113e2586349f91d9b0315139b116`.
+The modulus, key ID, document kind, original `not_before`, null licence identifier,
+one-card limit and `mikaki_test` / `age_over_18` scope are unchanged. Government
+issuer root-chain verification and live card possession are still unqualified.
+
+The previous approval record ends at the original deadline. Obtain explicit
+operator approval of this extension through review of this change before
+provisioning the proposed compact policy to the GitHub **production environment**
+`IDENTITY_TRUSTED_KEYS` secret. Retain the original policy and approval record;
+record the new approval separately. This PR alone does not provision that secret,
+deploy a Worker, apply Chat migrations or enable Chat.
+
+After approval, validate the exact proposed bytes with the existing trust
+preflight and confirm that the digest equals the reviewed configuration. Update
+only the selected trust secret; use the normal source-bound main promotion and
+login/Identity readiness smoke. The schema-compatible normal Worker must deploy
+and pass smoke before following the [Chat schema rollout](chat-schema-rollout.md).
+If the approved window expires again, repeat the explicit renewal review rather
+than extending the deadline automatically or disabling validation.
+
 Issue [#116](https://github.com/masanork/mikaki/issues/116) prepares the deployed
 test service for [#117's physical-card/device journey](https://github.com/masanork/mikaki/issues/117).
 The next completion boundary is one approved card read → one age-only credential
