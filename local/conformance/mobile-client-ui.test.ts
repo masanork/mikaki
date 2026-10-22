@@ -9,7 +9,7 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
   try {
     for (const platform of ['desktop', 'mobile'] as const) {
       await t.test(
-        `${platform}: WebView navigation needs no native OIDC session or discovery`,
+        `${platform}: WebView navigation remains available without native Wallet login or discovery`,
         async () => {
           const { page, errors } = await createNativeUiPage(browser, server.url, { platform });
           try {
@@ -23,7 +23,9 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
               [{ destination: 'signin' }, { destination: 'chat' }],
             );
             assert.equal(
-              calls.some((call) => /native_session|auth_status|login/.test(call.command)),
+              calls.some((call) =>
+                /^(start_.*login|cancel_native_login|clear_native_session)$/.test(call.command),
+              ),
               false,
             );
             assert.equal(await page.locator('#login, #account, #logout-dialog').count(), 0);

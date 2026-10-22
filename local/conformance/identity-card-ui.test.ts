@@ -10,12 +10,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('shows unverified four attributes and clears them on navigation', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -37,12 +39,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('late read after cancellation cannot restore attributes', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.evaluate(() => window.__nativeUiTest.hold('read_identity_card'));
         await page.locator('#identity-pin').fill('1234');
@@ -69,12 +73,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
         });
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-documents').evaluate((node) => {
+          await page.locator('#identity-reader').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
+            (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
           });
           await page.locator('#identity-pin').fill('1234');
           await page.locator('#identity-read').click();
@@ -111,13 +117,15 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('wrong PIN reports remaining attempts without retry', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
         identityFailure: { code: 'pin_failed', remaining_retries: 2 },
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -143,12 +151,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
       async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
         });
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-documents').evaluate((node) => {
+          await page.locator('#identity-reader').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
+            (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
           });
           await page.locator('#identity-type').selectOption('driving_license');
           assert.equal(await page.locator('#identity-pin2-field').isVisible(), true);
@@ -191,12 +201,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('late credential receipt cannot restore UI after erasure', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -224,13 +236,15 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
         async () => {
           const { page, errors } = await createNativeUiPage(browser, server.url, {
             identityReader: true,
+            signedIn: true,
             identityFormat: format,
           });
           try {
             await page.locator('#open-settings').click();
             await page.getByRole('link', { name: 'Walletを開く' }).click();
-            await page.locator('#wallet-documents').evaluate((node) => {
+            await page.locator('#identity-reader').evaluate((node) => {
               (node as HTMLDetailsElement).open = true;
+              (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
             });
             await page.locator('#identity-pin').fill('1234');
             await page.locator('#identity-read').click();
@@ -282,12 +296,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('unavailable age batch explains how to choose a single receipt', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -309,12 +325,14 @@ test('identity card preview keeps PIN and attributes temporary', async (t) => {
     await t.test('cancelled link cannot restore an approval or receipt UI', async () => {
       const { page, errors } = await createNativeUiPage(browser, server.url, {
         identityReader: true,
+        signedIn: true,
       });
       try {
         await page.locator('#open-settings').click();
         await page.getByRole('link', { name: 'Walletを開く' }).click();
-        await page.locator('#wallet-documents').evaluate((node) => {
+        await page.locator('#identity-reader').evaluate((node) => {
           (node as HTMLDetailsElement).open = true;
+          (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
         });
         await page.locator('#identity-pin').fill('1234');
         await page.locator('#identity-read').click();
@@ -347,13 +365,15 @@ test('presentation review requires explicit consent and discards late or hidden 
       await t.test(action, async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityFormat: action === 'mdoc' ? 'mso_mdoc' : undefined,
         });
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-documents').evaluate((node) => {
+          await page.locator('#identity-reader').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
+            (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
           });
           if (action === 'mdoc') {
             await page.locator('#identity-pin').fill('1234');
@@ -449,13 +469,15 @@ test('presentation review requires explicit consent and discards late or hidden 
       await t.test('proximity consent and cancellation: ' + action, async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityFormat: 'mso_mdoc',
         });
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-documents').evaluate((node) => {
+          await page.locator('#identity-reader').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
+            (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
           });
           const held =
             action === 'late-start'
@@ -573,6 +595,7 @@ test('native same-device invocations use consent and discard requests after leav
         async () => {
           const { page, errors } = await createNativeUiPage(browser, server.url, {
             identityReader: true,
+            signedIn: true,
             identityInvocation: true,
             identityAge: true,
             identityNoClaims: true,
@@ -600,6 +623,7 @@ test('native same-device invocations use consent and discard requests after leav
       async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityAge: true,
           identityFormat: 'mso_mdoc',
           identityAgeDocument: 'driving_license',
@@ -607,8 +631,9 @@ test('native same-device invocations use consent and discard requests after leav
         try {
           await page.locator('#open-settings').click();
           await page.getByRole('link', { name: 'Walletを開く' }).click();
-          await page.locator('#wallet-documents').evaluate((node) => {
+          await page.locator('#identity-reader').evaluate((node) => {
             (node as HTMLDetailsElement).open = true;
+            (document.querySelector('#wallet-present') as HTMLDetailsElement).open = true;
           });
           await page.locator('#identity-proximity-start').click();
           await page.locator('#identity-proximity-consent').waitFor({ state: 'visible' });
@@ -630,6 +655,7 @@ test('native same-device invocations use consent and discard requests after leav
           async () => {
             const { page, errors } = await createNativeUiPage(browser, server.url, {
               identityReader: true,
+              signedIn: true,
               identityInvocation: true,
               identityAge: true,
               identityAgeValue: value,
@@ -671,6 +697,7 @@ test('native same-device invocations use consent and discard requests after leav
         async () => {
           const { page, errors } = await createNativeUiPage(browser, server.url, {
             identityReader: true,
+            signedIn: true,
             identityInvocation: true,
             identityBatch: true,
           });
@@ -722,6 +749,7 @@ test('native same-device invocations use consent and discard requests after leav
       async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityInvocation: true,
           identityNoClaims: true,
         });
@@ -762,6 +790,7 @@ test('native same-device invocations use consent and discard requests after leav
       await t.test(mode, async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityInvocation: mode === 'cold-start',
           identityFormat: 'mso_mdoc',
         });
@@ -840,6 +869,7 @@ test('verifier browser completion reports sent credentials without triggering an
       await t.test(completion, async () => {
         const { page, errors } = await createNativeUiPage(browser, server.url, {
           identityReader: true,
+          signedIn: true,
           identityInvocation: true,
           identityCompletion: completion === 'late' ? 'cancelled' : completion,
         });

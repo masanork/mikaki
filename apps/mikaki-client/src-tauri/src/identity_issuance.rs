@@ -6,6 +6,7 @@ mod credential_transport;
 pub mod haip;
 mod inventory;
 pub mod invocation;
+pub mod passport;
 mod presentation_transport;
 pub mod proximity;
 use crate::identity_wallet::{self, HolderKey, Receipt};
@@ -36,6 +37,7 @@ struct Flow {
     batch_claims: Option<String>,
     created: Instant,
     configuration: String,
+    passport: Option<passport::PassportFlow>,
 }
 struct PendingPresentation {
     id: String,
@@ -48,6 +50,9 @@ struct PendingPresentation {
 #[derive(Default)]
 struct Inner {
     evidence: Option<(Evidence, Instant)>,
+    passport_review: Option<passport::Pending>,
+    passport_generation: u64,
+    passport_receipts: Vec<(String, Receipt)>,
     flow: Option<Flow>,
     haip: Option<haip::Pending>,
     haip_state: &'static str,
@@ -66,6 +71,23 @@ struct Inner {
     presented_nonces: std::collections::HashSet<String>,
 }
 impl Inner {
+    fn current_receipts(&mut self, app: &AppHandle, at: u64) -> Result<Vec<Receipt>, String> {
+        self.restore_receipts(app)?;
+        let owner = crate::identity_documents::owner(app).ok();
+        passport::retain_receipts(&mut self.passport_receipts, owner.as_deref(), at);
+        if self.flow.as_ref().is_some_and(|f| {
+            f.created.elapsed() >= Duration::from_secs(600)
+                || f.passport
+                    .as_ref()
+                    .is_some_and(|p| Some(p.owner.as_str()) != owner.as_deref())
+        }) {
+            self.flow = None;
+        }
+        let mut receipts = self.receipts.clone();
+        receipts.extend(self.passport_receipts.iter().map(|(_, r)| r.clone()));
+        Ok(receipts)
+    }
+
     fn restore_receipts(&mut self, app: &AppHandle) -> Result<(), String> {
         if self.receipts.is_empty() {
             self.receipts = identity_wallet::restore_inventory(app, ISSUER, now()?)?;
@@ -154,6 +176,14 @@ impl Inner {
             return Err("request_consumed".into());
         }
         Ok(pending)
+    }
+}
+/// Logout drops owner-bound passport secrets immediately, including in-flight authority.
+pub(crate) fn clear_passport_session(app: &AppHandle) {
+    if let Some(state) = app.try_state::<IdentityState>() {
+        if let Ok(mut inner) = state.0.lock() {
+            passport::clear_owner_session(&mut inner);
+        }
     }
 }
 #[derive(Default)]
@@ -257,8 +287,15 @@ pub fn retain_evidence(
     Ok(())
 }
 #[tauri::command]
-pub fn clear_identity_evidence(state: State<'_, IdentityState>) -> Result<(), String> {
-    state.0.lock().map_err(|_| "identity_unavailable")?.evidence = None;
+pub fn clear_identity_evidence(
+    app: AppHandle,
+    state: State<'_, IdentityState>,
+) -> Result<(), String> {
+    crate::identity_documents::clear_pending(&app)?;
+    let mut inner = state.0.lock().map_err(|_| "identity_unavailable")?;
+    inner.evidence = None;
+    inner.passport_review = None;
+    inner.passport_generation = inner.passport_generation.wrapping_add(1);
     Ok(())
 }
 #[derive(Serialize)]
@@ -267,6 +304,7 @@ pub struct LinkStarted {
     holder_thumbprints: Vec<String>,
     credential_count: usize,
     expires_in: u64,
+    haip: bool,
 }
 #[tauri::command]
 pub async fn start_identity_link(
@@ -396,6 +434,7 @@ pub async fn start_identity_link(
             batch_claims,
             created: Instant::now(),
             configuration,
+            passport: None,
         });
     }
     app.opener()
@@ -406,6 +445,7 @@ pub async fn start_identity_link(
         holder_thumbprints: thumbprints,
         credential_count: count,
         expires_in: 600,
+        haip: false,
     })
 }
 fn valid_id(s: &str) -> bool {
@@ -436,11 +476,17 @@ pub async fn receive_identity_credential(
     if flow.created.elapsed() > Duration::from_secs(600) {
         return Err("transaction_unavailable".into());
     }
+    passport::check_flow_owner(&app, &flow)?;
     let http = client()?;
+    let poll_path = if flow.passport.is_some() {
+        "identity/passport/poll"
+    } else {
+        "identity/poll"
+    };
     let response = body(
         json_request(
             &http,
-            format!("{ROOT}/identity/poll"),
+            format!("{ROOT}/{poll_path}"),
             json!({"transaction_id":flow.tx,"poll_secret":&*flow.secret}),
         )?
         .send()
@@ -468,11 +514,13 @@ pub async fn receive_identity_credential(
             .as_array()
             .is_none_or(|ids| {
                 ids.is_empty()
-                    || ids.len() > 2
+                    || ids.len() > 3
                     || !ids.contains(&json!(flow.configuration))
-                    || ids
-                        .iter()
-                        .any(|id| id != issuance::CONFIGURATION && id != mdoc::CONFIGURATION)
+                    || ids.iter().any(|id| {
+                        id != issuance::CONFIGURATION
+                            && id != mdoc::CONFIGURATION
+                            && id != mikaki_identity::passport::credential::CONFIGURATION
+                    })
             })
     {
         return Err("invalid_response".into());
@@ -529,6 +577,16 @@ pub async fn receive_identity_credential(
         if &batch::metadata_claims(&metadata, &flow.configuration)? != claims {
             return Err("invalid_metadata".into());
         }
+    }
+    if flow.passport.is_some()
+        && (metadata["credential_configurations_supported"]
+            [mikaki_identity::passport::credential::CONFIGURATION]["format"]
+            != "dc+sd-jwt"
+            || metadata["credential_configurations_supported"]
+                [mikaki_identity::passport::credential::CONFIGURATION]["vct"]
+                != mikaki_identity::passport::credential::vct(ISSUER))
+    {
+        return Err("invalid_metadata".into());
     }
     let jwks = body(
         http.get(format!("{ISSUER}/jwks"))
@@ -607,8 +665,14 @@ pub async fn receive_identity_credential(
             .to_string(),
     );
     if token["token_type"] != "Bearer"
-        || token["expires_in"] != 120
-        || token["scope"] != "linked_document"
+        || (if flow.passport.is_some() {
+            token["expires_in"]
+                .as_u64()
+                .is_none_or(|n| n == 0 || n > 120)
+                || token["scope"] != mikaki_identity::passport::credential::CONFIGURATION
+        } else {
+            token["expires_in"] != 120 || token["scope"] != "linked_document"
+        })
     {
         return Err("invalid_response".into());
     }
@@ -629,8 +693,13 @@ pub async fn receive_identity_credential(
             .map(|key| key.proof(ISSUER, nonce, now()?, &random()))
             .collect::<Result<Vec<_>, _>>()?,
     );
-    let payload =
+    passport::check_flow_owner(&app, &flow)?;
+    let mut payload =
         json!({"credential_configuration_id":flow.configuration,"proofs":{"jwt":&*proofs}});
+    if let Some(source) = &flow.passport {
+        payload["passport_evidence"] =
+            serde_json::to_value(&source.evidence).map_err(|_| "issuance_failed")?;
+    }
     let request = if let Some(encryption) = &encryption {
         let mut entropy = Zeroizing::new([0u8; 32]);
         let mut iv = [0u8; 12];
@@ -681,6 +750,7 @@ pub async fn receive_identity_credential(
         }
         credential_transport::decode_success(&content_type, &wire, encryption.as_ref())?
     };
+    passport::check_flow_owner(&app, &flow)?;
     let receipts = batch::verify_response(
         issued,
         flow.keys,
@@ -701,7 +771,17 @@ pub async fn receive_identity_credential(
         return Err("cancelled".into());
     }
     let credential_count = receipts.len();
-    s.install_receipts(&app, receipts)?;
+    if let Some(source) = flow.passport {
+        if receipts.len() != 1 || s.current_receipts(&app, now()?)?.len() >= 8 {
+            return Err("wallet_inventory_full".into());
+        }
+        s.passport_receipts.push((
+            source.owner,
+            receipts.into_iter().next().ok_or("invalid_response")?,
+        ));
+    } else {
+        s.install_receipts(&app, receipts)?;
+    }
     Ok(ReceiveResult {
         state: "received",
         credential_count: Some(credential_count),
@@ -723,6 +803,8 @@ pub fn clear_identity_credential(
     s.haip_state = "cancelled";
     s.receipt = None;
     s.receipts.clear();
+    s.passport_receipts.clear();
+    s.passport_review = None;
     #[cfg(target_os = "android")]
     {
         s.proximity = None;
@@ -748,16 +830,15 @@ pub fn identity_credential_status(
     state: State<'_, IdentityState>,
 ) -> Result<CredentialStatus, String> {
     let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
-    s.restore_receipts(&app)?;
-    if let Some(receipt) = &s.receipt {
+    let receipts = s.current_receipts(&app, now()?)?;
+    if let Some(receipt) = receipts.last() {
         let holder = receipt.key.public()?;
         if receipt.credential.is_empty() || holder.verifying_key().is_err() {
             return Err("invalid_credential".into());
         }
         Ok(CredentialStatus {
             state: "received",
-            credential_count: s
-                .receipts
+            credential_count: receipts
                 .iter()
                 .filter(|r| r.expires_at > now().unwrap_or(u64::MAX))
                 .count(),
@@ -790,10 +871,10 @@ pub fn identity_wallet_inventory(
     state: State<'_, IdentityState>,
 ) -> Result<Vec<WalletCard>, String> {
     let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
-    s.restore_receipts(&app)?;
     let at = now()?;
+    let receipts = s.current_receipts(&app, at)?;
     let mut cards = Vec::new();
-    for receipt in &s.receipts {
+    for receipt in &receipts {
         if receipt.expires_at <= at {
             continue;
         }
@@ -807,14 +888,21 @@ pub fn identity_wallet_inventory(
             "document_expiry_date",
             "age_over_18",
             "age_over_20",
-        ] {
+        ]
+        .into_iter()
+        .chain(mikaki_identity::passport::credential::FIELDS)
+        {
             if let Some(value) = claims.get(field) {
                 fields.insert(field.into(), value.clone());
             }
         }
         cards.push(WalletCard {
             id: credential_hash(&receipt.credential),
-            title: "Mikaki本人確認属性証明",
+            title: if claims["document_type"] == "passport" {
+                "旅券MRZ属性証明"
+            } else {
+                "Mikaki本人確認属性証明"
+            },
             issuer: ISSUER,
             format: receipt.format.clone(),
             expires_at,
@@ -1010,8 +1098,8 @@ fn prepare_checked_presentation(
     if s.generation != guard.generation {
         return Err("identity_cancelled".into());
     }
-    s.restore_receipts(app)?;
-    let (receipt, values) = inventory::single_selection(&s.receipts, &checked, now()?)?;
+    let receipts = s.current_receipts(app, now()?)?;
+    let (receipt, values) = inventory::single_selection(&receipts, &checked, now()?)?;
     let nonce_hash = credential_hash(&format!("{}:{}", checked.client_id(), checked.nonce()));
     if s.presented_nonces.contains(&nonce_hash) || s.presented_nonces.len() >= 256 {
         return Err("request_consumed".into());
@@ -1070,19 +1158,22 @@ pub async fn confirm_identity_presentation(
         pending
     };
     let (token, encrypted) = if pending.inventory.is_some() {
-        let s = state.0.lock().map_err(|_| "identity_unavailable")?;
+        let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
         if s.generation != guard.generation {
             return Err("cancelled".into());
         }
-        (inventory::response(&pending, &s.receipts, now()?)?, true)
+        (
+            inventory::response(&pending, &s.current_receipts(&app, now()?)?, now()?)?,
+            true,
+        )
     } else {
         let (credential, key, issuer_key) = {
-            let s = state.0.lock().map_err(|_| "identity_unavailable")?;
+            let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
             if s.generation != guard.generation {
                 return Err("cancelled".into());
             }
-            let receipt = s
-                .receipts
+            let current = s.current_receipts(&app, now()?)?;
+            let receipt = current
                 .iter()
                 .find(|r| credential_hash(&r.credential) == pending.credential_hash)
                 .ok_or("credential_changed")?;
@@ -1176,7 +1267,7 @@ pub async fn confirm_identity_presentation(
             return Err("cancelled".into());
         }
         if pending.inventory.is_some() {
-            inventory::validate(&pending, &s.receipts, now()?)?;
+            inventory::validate(&pending, &s.current_receipts(&app, now()?)?, now()?)?;
         }
         if pending.expires_at <= now()? {
             return Err("request_expired".into());

@@ -34,6 +34,7 @@ pub struct Authorization {
     client: String,
     callback: Url,
     configuration: String,
+    issuer_state: Option<Zeroizing<String>>,
     state: Zeroizing<String>,
     verifier: Zeroizing<String>,
     instance: PublicJwk,
@@ -145,7 +146,10 @@ impl Authorization {
             || issuer.path().ends_with('/')
             || client.is_empty()
             || client.len() > 256
-            || !matches!(configuration, "linked_document" | "linked_document_mdoc")
+            || !matches!(
+                configuration,
+                "linked_document" | "linked_document_mdoc" | "passport_dg1"
+            )
             || *state_entropy == *verifier_entropy
             || instance == dpop
             || holder
@@ -182,6 +186,7 @@ impl Authorization {
             client: client.into(),
             callback,
             configuration: configuration.into(),
+            issuer_state: None,
             state: Zeroizing::new(B64.encode(*state_entropy)),
             verifier: Zeroizing::new(B64.encode(*verifier_entropy)),
             instance,
@@ -201,7 +206,11 @@ impl Authorization {
         now: u64,
     ) -> Result<(), String> {
         self.live(now)?;
-        if !matches!(self.phase, Phase::Par) || self.holder.is_some() || self.age_pool.is_some() {
+        if self.configuration == "passport_dg1"
+            || !matches!(self.phase, Phase::Par)
+            || self.holder.is_some()
+            || self.age_pool.is_some()
+        {
             return Err("wallet_transaction_unavailable".into());
         }
         budget.validate().map_err(str::to_string)?;
@@ -262,6 +271,19 @@ impl Authorization {
             Ok(())
         }
     }
+    /// Bind one issuer-created evidence transaction before PAR. No raw evidence enters OAuth.
+    pub fn bind_issuer_state(&mut self, issuer_state: &str, now: u64) -> Result<(), String> {
+        self.live(now)?;
+        if self.configuration != "passport_dg1"
+            || !opaque(issuer_state)
+            || self.issuer_state.is_some()
+            || !matches!(self.phase, Phase::Par)
+        {
+            return Err("wallet_transaction_unavailable".into());
+        }
+        self.issuer_state = Some(Zeroizing::new(issuer_state.into()));
+        Ok(())
+    }
     pub fn par_parameters(&self, now: u64) -> Result<Value, String> {
         self.live(now)?;
         if !matches!(self.phase, Phase::Par) {
@@ -273,6 +295,12 @@ impl Authorization {
         if let Some(budget) = &self.age_pool {
             parameters["mikaki_age_pool"] =
                 json!(serde_json::to_string(budget).map_err(|_| "invalid_age_pool")?);
+        }
+        if let Some(issuer_state) = &self.issuer_state {
+            parameters["issuer_state"] = json!(&**issuer_state);
+        }
+        if self.configuration == "passport_dg1" && self.issuer_state.is_none() {
+            return Err("passport_review_required".into());
         }
         Ok(parameters)
     }
@@ -575,5 +603,6 @@ impl Authorization {
         self.state.zeroize();
         self.verifier.zeroize();
         self.staged.clear();
+        self.issuer_state = None;
     }
 }

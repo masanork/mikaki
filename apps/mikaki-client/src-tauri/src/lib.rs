@@ -1,7 +1,10 @@
 #[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
 mod identity_card;
+mod identity_documents;
 mod identity_events;
 mod identity_issuance;
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+mod identity_passport;
 mod identity_reader;
 mod identity_wallet;
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -18,6 +21,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(web::NavigationState::default())
         .manage(identity_reader::ReadState::default())
+        .manage(identity_documents::DocumentState::default())
         .manage(identity_events::IdentityEvents::default())
         .manage(identity_issuance::IdentityState::default())
         .plugin(tauri_plugin_opener::init())
@@ -34,6 +38,7 @@ pub fn run() {
             identity_issuance::haip::flow::cancel_identity_wallet_issuance,
             identity_reader::identity_reader_supported,
             identity_reader::read_identity_card,
+            identity_reader::read_identity_passport,
             identity_reader::cancel_identity_card,
             identity_issuance::clear_identity_evidence,
             identity_issuance::start_identity_link,
@@ -41,6 +46,14 @@ pub fn run() {
             identity_issuance::clear_identity_credential,
             identity_issuance::identity_credential_status,
             identity_issuance::identity_wallet_inventory,
+            identity_documents::identity_document_inventory,
+            identity_documents::identity_passport_details,
+            identity_issuance::passport::passport_issuance_available,
+            identity_issuance::passport::review_passport_issuance,
+            identity_issuance::passport::confirm_passport_issuance,
+            identity_issuance::passport::cancel_passport_issuance_review,
+            identity_documents::save_identity_document,
+            identity_documents::remove_identity_document,
             identity_issuance::open_identity_management,
             identity_issuance::proximity::start_identity_proximity,
             identity_issuance::proximity::review_identity_proximity,
@@ -71,6 +84,7 @@ pub fn run() {
             identity_issuance::haip::flow::cancel_identity_wallet_issuance,
             identity_reader::identity_reader_supported,
             identity_reader::read_identity_card,
+            identity_reader::read_identity_passport,
             identity_reader::cancel_identity_card,
             identity_issuance::clear_identity_evidence,
             identity_issuance::start_identity_link,
@@ -78,6 +92,14 @@ pub fn run() {
             identity_issuance::clear_identity_credential,
             identity_issuance::identity_credential_status,
             identity_issuance::identity_wallet_inventory,
+            identity_documents::identity_document_inventory,
+            identity_documents::identity_passport_details,
+            identity_issuance::passport::passport_issuance_available,
+            identity_issuance::passport::review_passport_issuance,
+            identity_issuance::passport::confirm_passport_issuance,
+            identity_issuance::passport::cancel_passport_issuance_review,
+            identity_documents::save_identity_document,
+            identity_documents::remove_identity_document,
             identity_issuance::open_identity_management,
             identity_issuance::proximity::start_identity_proximity,
             identity_issuance::proximity::review_identity_proximity,

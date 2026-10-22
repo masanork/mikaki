@@ -1960,6 +1960,7 @@ async fn ready_route(
                 "Worker migrations are incomplete".into(),
             ));
         }
+        identity::passport_ready(&context.env).await?;
         let signing_key = db
             .prepare("SELECT public_jwk FROM signing_key WHERE active=1 AND kid=?1 AND algorithm=?2 LIMIT 1")
             .bind(&[
@@ -2448,6 +2449,17 @@ pub async fn main(
         .get_async("/identity", identity::manage_get)
         .get_async("/identity/ready", identity::ready)
         .post_async("/identity/erase", identity::manage_post)
+        .post_async("/identity/passport/intake", identity::passport_intake)
+        .get_async("/identity/passport/approve", identity::passport_approve_get)
+        .post_async(
+            "/identity/passport/approve",
+            identity::passport_approve_post,
+        )
+        .post_async("/identity/passport/poll", identity::passport_poll)
+        .get_async(
+            "/identity/issuer/types/passport-dg1",
+            identity::passport_type_metadata,
+        )
         .post_async("/identity/intake", identity::intake)
         .get_async("/identity/approve", identity::approve_get)
         .post_async("/identity/approve", identity::approve_post)

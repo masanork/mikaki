@@ -332,6 +332,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
 dependencies = [
  "hybrid-array",
+ "zeroize",
 ]
 
 [[package]]
@@ -591,6 +592,7 @@ dependencies = [
  "block-buffer 0.12.1",
  "crypto-common 0.2.2",
  "inout",
+ "zeroize",
 ]
 
 [[package]]
@@ -889,7 +891,7 @@ dependencies = [
  "cpufeatures 0.2.17",
  "curve25519-dalek-derive",
  "digest 0.10.7",
- "fiat-crypto",
+ "fiat-crypto 0.2.9",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -1048,6 +1050,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "des"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "916a94e407b54f9034d71dd748234cd1e516ced6284009906ae246f177eafe5a"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1069,6 +1080,7 @@ dependencies = [
  "const-oid 0.10.2",
  "crypto-common 0.2.2",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -1448,6 +1460,12 @@ name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+
+[[package]]
+name = "fiat-crypto"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "field-offset"
@@ -2677,6 +2695,8 @@ name = "mikaki-client"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "cipher",
+ "des",
  "getrandom 0.4.3",
  "mikaki-identity",
  "openidconnect",
@@ -2685,7 +2705,9 @@ dependencies = [
  "rand_core 0.10.1",
  "serde",
  "serde_json",
+ "sha1",
  "sha2 0.11.1",
+ "subtle",
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
@@ -2711,6 +2733,7 @@ dependencies = [
  "hkdf 0.13.0",
  "miniz_oxide 0.9.1",
  "p256 0.14.0",
+ "p384 0.14.0",
  "rsa 0.10.0-rc.19",
  "rustls-pki-types",
  "rustls-webpki",
@@ -2718,6 +2741,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.11.1",
+ "subtle",
  "url",
  "x509-cert",
  "zeroize",
@@ -3145,7 +3169,7 @@ dependencies = [
  "log",
  "oauth2",
  "p256 0.13.2",
- "p384",
+ "p384 0.13.1",
  "rand 0.8.8",
  "rsa 0.9.10",
  "serde",
@@ -3230,6 +3254,20 @@ dependencies = [
  "elliptic-curve 0.13.8",
  "primeorder 0.13.6",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "p384"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d17b851e6b3e378ab4ecb07fa2ed23f4d15f075735f8fec9fa1e7bdce5f8301f"
+dependencies = [
+ "ecdsa 0.17.0",
+ "elliptic-curve 0.14.1",
+ "fiat-crypto 0.3.0",
+ "primefield",
+ "primeorder 0.14.0",
+ "sha2 0.11.1",
 ]
 
 [[package]]

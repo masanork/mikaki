@@ -27,6 +27,7 @@ pub(super) struct Pending {
     pub browser_until: u64,
     pub as_nonce: Option<String>,
     pub requested_count: usize,
+    pub passport: Option<super::passport::PassportFlow>,
 }
 impl Signer for HolderKey {
     fn public(&self) -> Result<PublicJwk, String> {
@@ -227,6 +228,7 @@ pub(super) struct Enrollment {
     instance: HolderKey,
     client: String,
     until: u64,
+    sender: Option<HolderKey>,
 }
 impl Enrollment {
     pub async fn enroll(
@@ -237,7 +239,7 @@ impl Enrollment {
         configuration: &str,
         trust: &[AttesterTrust],
     ) -> Result<(Session, Zeroizing<String>), String> {
-        attester::enroll(app, guard, client, callback, configuration, trust).await
+        attester::enroll(app, guard, client, callback, configuration, trust, None).await
     }
     pub fn start(
         app: &AppHandle,
@@ -253,6 +255,7 @@ impl Enrollment {
                 instance,
                 client: client.into(),
                 until: now()?.saturating_add(60),
+                sender: None,
             },
             evidence,
         ))
@@ -285,7 +288,10 @@ impl Enrollment {
             return Err("wallet_transaction_unavailable".into());
         }
         attester_headers(&self.instance, &self.client, attestation, trust, at)?;
-        let dpop = HolderKey::create(app)?;
+        let dpop = match self.sender {
+            Some(key) => key,
+            None => HolderKey::create(app)?,
+        };
         let mut entropy = Zeroizing::new([0; 32]);
         UnwrapErr(SysRng).fill_bytes(&mut *entropy);
         let mut verifier = Zeroizing::new([0; 32]);

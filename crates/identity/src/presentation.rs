@@ -182,6 +182,16 @@ pub struct ApprovedRequest {
     legacy: Option<legacy::Binding>,
 }
 impl ApprovedRequest {
+    pub fn accepts_sd_jwt_vct(&self, vct: &str) -> bool {
+        self.request.dcql_query.credentials.iter().all(|q| {
+            q.format != "dc+sd-jwt"
+                || q.meta
+                    .vct_values
+                    .as_ref()
+                    .is_none_or(|types| types.iter().any(|t| t == vct))
+        })
+    }
+
     pub fn response_encryption(&self) -> Option<&encryption::ResponseEncryption> {
         self.encryption.as_ref()
     }

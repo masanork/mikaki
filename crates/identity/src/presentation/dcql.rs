@@ -51,7 +51,21 @@ pub(super) fn select_available(
     vct: &str,
     available: Option<&[bool]>,
 ) -> Result<Vec<usize>, &'static str> {
-    let matches = matching_credentials(dcql, vct, available)?;
+    select_available_types(dcql, &[vct.to_owned()], available)
+}
+pub(super) fn catalog(vct: &str) -> Vec<String> {
+    let mut types = vec![vct.to_owned()];
+    if let Some(issuer) = vct.strip_suffix("/types/linked-document") {
+        types.push(crate::passport::credential::vct(issuer));
+    }
+    types
+}
+pub(super) fn select_available_types(
+    dcql: &Dcql,
+    vcts: &[String],
+    available: Option<&[bool]>,
+) -> Result<Vec<usize>, &'static str> {
+    let matches = matching_credentials(dcql, vcts, available)?;
     let Some(sets) = &dcql.credential_sets else {
         if matches.iter().any(|m| !m) {
             return Err(UNSATISFIED_QUERY);
@@ -62,7 +76,7 @@ pub(super) fn select_available(
     select_sets(dcql, sets, &matches)
 }
 
-fn credential_type_matches(query: &Query, vct: &str) -> Result<bool, &'static str> {
+fn credential_type_matches(query: &Query, vcts: &[String]) -> Result<bool, &'static str> {
     match query.format.as_str() {
         "dc+sd-jwt" => {
             if query.meta.doctype_value.is_some() {
@@ -77,7 +91,7 @@ fn credential_type_matches(query: &Query, vct: &str) -> Result<bool, &'static st
                     {
                         return Err(UNSUPPORTED_QUERY);
                     }
-                    Ok(types.iter().any(|t| t == vct))
+                    Ok(types.iter().any(|t| vcts.contains(t)))
                 }
             }
         }
@@ -112,7 +126,7 @@ fn validate_claim_paths(query: &Query) -> Result<(), &'static str> {
 
 fn matching_credentials(
     dcql: &Dcql,
-    vct: &str,
+    vcts: &[String],
     available: Option<&[bool]>,
 ) -> Result<Vec<bool>, &'static str> {
     if available.is_some_and(|a| a.len() != dcql.credentials.len()) {
@@ -127,7 +141,7 @@ fn matching_credentials(
         if !id(&query.id) || !ids.insert(query.id.as_str()) || query.claims.len() > 7 {
             return Err(UNSUPPORTED_QUERY);
         }
-        let type_matches = credential_type_matches(query, vct)?;
+        let type_matches = credential_type_matches(query, vcts)?;
         if let Some(authorities) = &query.trusted_authorities {
             authorities::validate(authorities)?;
         }
@@ -233,7 +247,11 @@ pub(super) fn fields(query: &Query) -> Result<(Vec<String>, Vec<String>), &'stat
             ("mso_mdoc", [ns, name]) if ns == crate::mdoc::NAMESPACE => name,
             _ => return Err(UNSUPPORTED_QUERY),
         };
-        if !crate::claim_profile::supported(name) || !names.insert(name) {
+        if !(crate::claim_profile::supported(name)
+            || (query.format == "dc+sd-jwt"
+                && crate::passport::credential::FIELDS.contains(&name.as_str())))
+            || !names.insert(name)
+        {
             return Err(UNSUPPORTED_QUERY);
         }
         fields.push(name.clone());

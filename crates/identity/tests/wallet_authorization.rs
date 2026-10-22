@@ -40,6 +40,51 @@ fn session() -> Authorization {
     )
     .unwrap()
 }
+#[test]
+fn passport_authorization_binds_issuer_evidence_once_before_par() {
+    let mut a = Authorization::new_pending_holder(
+        ISSUER,
+        "wallet",
+        CALLBACK,
+        "passport_dg1",
+        [1; 32],
+        [2; 32],
+        key(6).public().unwrap(),
+        key(7).public().unwrap(),
+        NOW,
+    )
+    .unwrap();
+    assert!(a.par_parameters(NOW).is_err());
+    assert!(a.bind_issuer_state("unbounded-evidence", NOW).is_err());
+    assert!(
+        a.request_age_pool(
+            mikaki_identity::age_pool::Budget {
+                mode: mikaki_identity::age_pool::Mode::Sequential,
+                size: 2,
+                claims_json: mikaki_identity::claim_profile::ClaimProfile::age_only().to_json(),
+            },
+            NOW
+        )
+        .is_err()
+    );
+    a.bind_issuer_state(&B64.encode([4; 32]), NOW).unwrap();
+    let parameters = a.par_parameters(NOW).unwrap();
+    assert_eq!(parameters["scope"], "passport_dg1");
+    assert_eq!(parameters["issuer_state"], B64.encode([4; 32]));
+    assert_eq!(
+        parameters["dpop_jkt"],
+        key(7).public().unwrap().thumbprint().unwrap()
+    );
+    assert!(parameters.get("passport_evidence").is_none());
+    assert!(a.bind_issuer_state(&B64.encode([5; 32]), NOW).is_err());
+    pushed(&mut a);
+    assert!(a.bind_issuer_state(&B64.encode([5; 32]), NOW).is_err());
+    assert!(
+        session()
+            .bind_issuer_state(&B64.encode([4; 32]), NOW)
+            .is_err()
+    );
+}
 fn pushed(a: &mut Authorization) {
     a.accept_par(&json!({"request_uri":format!("urn:ietf:params:oauth:request_uri:{}",B64.encode([3;32])),"expires_in":90}),NOW).unwrap();
 }

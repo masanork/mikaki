@@ -285,6 +285,9 @@ pub struct Validity {
 }
 impl Validity {
     pub fn new(document: &VerifiedDocument, now: u64, deadline: u64) -> Result<Self, &'static str> {
+        if document.attributes.document_type == crate::card::DocumentType::Passport {
+            return Err("unsupported_document_type");
+        }
         let mut expires_at = now
             .checked_add(300)
             .ok_or("invalid_validity")?
@@ -565,7 +568,8 @@ pub fn verify_receipt(
         .map_err(|_| "invalid_credential")?;
     let mut claims: Value = serde_json::from_slice(&payload).map_err(|_| "invalid_credential")?;
     if claims["iss"] != issuer
-        || claims["vct"] != format!("{issuer}/types/linked-document")
+        || (claims["vct"] != format!("{issuer}/types/linked-document")
+            && claims["vct"] != crate::passport::credential::vct(issuer))
         || claims["cnf"]["jwk"] != serde_json::to_value(holder).map_err(|_| "invalid_key")?
         || claims["_sd_alg"] != "sha-256"
         || claims["exp"].as_u64().is_none_or(|exp| {
@@ -580,6 +584,10 @@ pub fn verify_receipt(
             .as_u64()
             .is_none_or(|iat| iat > now.saturating_add(30) || now.saturating_sub(iat) > 330)
     {
+        return Err("invalid_credential");
+    }
+    let passport = claims["vct"] == crate::passport::credential::vct(issuer);
+    if !passport && claims["document_type"] == "passport" {
         return Err("invalid_credential");
     }
     let hashes = claims["_sd"]
@@ -600,7 +608,12 @@ pub fn verify_receipt(
             .filter(|a| a.len() == 3)
             .ok_or("invalid_credential")?;
         let name = array[1].as_str().ok_or("invalid_credential")?;
-        if !crate::claim_profile::supported(name)
+        let supported = if passport {
+            crate::passport::credential::FIELDS.contains(&name)
+        } else {
+            crate::claim_profile::supported(name)
+        };
+        if !supported
             || claims.get(name).is_some()
             || (crate::claim_profile::is_age_claim(name) && !array[2].is_boolean())
         {
@@ -624,7 +637,11 @@ pub fn verify_receipt(
     {
         return Err("invalid_credential");
     }
-    check_document_expiry(&claims, claims["exp"].as_u64().ok_or("invalid_credential")?)?;
+    if passport {
+        crate::passport::credential::validate_claims(&claims)?;
+    } else {
+        check_document_expiry(&claims, claims["exp"].as_u64().ok_or("invalid_credential")?)?;
+    }
     Ok(claims)
 }
 

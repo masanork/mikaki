@@ -14,6 +14,7 @@ pub enum DocumentType {
     #[default]
     MyNumberCard,
     DrivingLicense,
+    Passport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -21,6 +22,9 @@ pub enum DocumentType {
 pub enum FailureCode {
     UnsupportedPlatform,
     InvalidPin,
+    InvalidPassportAccess,
+    PassportAuthenticationFailed,
+    PassportIntegrityFailed,
     ReaderBusy,
     NfcUnavailable,
     NfcDisabled,
@@ -615,12 +619,17 @@ pub fn read_document(
     pin: &str,
     pin2: Option<&str>,
 ) -> Result<(CardPreview, crate::evidence::Evidence), CardFailure> {
+    // Passports use a separate native BAC reader and cannot supply this evidence.
+    if kind == DocumentType::Passport {
+        return Err(FailureCode::UnsupportedCard.into());
+    }
     validate_pin(pin)?;
     if let Some(pin) = pin2 {
         validate_pin(pin)?;
     }
     let mut evidence = crate::evidence::Evidence::new(kind);
     match kind {
+        DocumentType::Passport => Err(FailureCode::UnsupportedCard.into()),
         DocumentType::MyNumberCard => {
             select_input_support(t)?;
             select_ef(t, &file_ids::EF_INPUT_SUPPORT_PIN)?;

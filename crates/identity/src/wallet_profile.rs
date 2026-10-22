@@ -167,10 +167,15 @@ pub fn validate_metadata(
         return Err("invalid_metadata".into());
     }
     let valid = match configuration {
-        "linked_document" => {
+        "linked_document" | "passport_dg1" => {
             contains(&c["cryptographic_binding_methods_supported"], json!("jwk"))
                 && c["format"] == "dc+sd-jwt"
-                && c["vct"] == format!("{ISSUER}/types/linked-document")
+                && c["vct"]
+                    == if configuration == "passport_dg1" {
+                        crate::passport::credential::vct(ISSUER)
+                    } else {
+                        format!("{ISSUER}/types/linked-document")
+                    }
                 && contains(
                     &c["credential_signing_alg_values_supported"],
                     json!("ES256"),
