@@ -4,7 +4,13 @@
   "version": "0.1.0",
   "identifier": "app.tossa.mikaki",
   "build": {
-    "frontendDist": ["../ui/index.html", "../ui/app.js", "../ui/style.css", "../ui/brand-icon.svg"]
+    "frontendDist": [
+      "../ui/index.html",
+      "../ui/app.js",
+      "../ui/wallet-model.js",
+      "../ui/style.css",
+      "../ui/brand-icon.svg"
+    ]
   },
   "app": {
     "windows": [
