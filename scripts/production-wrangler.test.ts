@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productionWrangler, retryableWrangler } from './production-wrangler.ts';
+import {
+  productionWrangler,
+  retryableWrangler,
+  uploadedVersionView,
+} from './production-wrangler.ts';
 
 const unavailable = { stderr: 'POST /versions -> 504 Gateway Timeout\nPRIVATE_BODY' };
 const malformed = {
@@ -90,4 +94,109 @@ test('bounded retry keeps the original command, validates successful output norm
     );
     assert.equal(calls, 1);
   }
+});
+
+const uploadedId = '11111111-1111-4111-8111-111111111111';
+const notVisible = {
+  stderr: `A request to the Cloudflare API (/accounts/ACCOUNT/workers/scripts/WORKER/versions/${uploadedId}) failed.
+The requested Worker version could not be found, please check the ID being passed and try again. [code: 100146]
+PRIVATE_BODY`,
+};
+
+test('freshly uploaded metadata may become visible without repeating upload or activation', async (t) => {
+  const logs: string[] = [];
+  t.mock.method(console, 'log', (message: string) => logs.push(message));
+  const waits: number[] = [];
+  let calls = 0;
+  const output = JSON.stringify({ id: uploadedId, resources: { bindings: [] } });
+  const observed = await uploadedVersionView(
+    uploadedId,
+    'PRIVATE_CONFIG',
+    (args) => {
+      assert.deepEqual(args, [
+        'versions',
+        'view',
+        uploadedId,
+        '--config',
+        'PRIVATE_CONFIG',
+        '--json',
+      ]);
+      if (++calls < 3) throw { stderr: `\x1b[31m${notVisible.stderr}\x1b[0m` };
+      return output;
+    },
+    async (ms) => {
+      waits.push(ms);
+    },
+  );
+  assert.equal(
+    observed,
+    output,
+    'Caller still receives the full response for its usual binding checks',
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.equal(logs.length, 2);
+  assert.ok(logs.every((message) => !/PRIVATE_BODY|PRIVATE_CONFIG|ACCOUNT|WORKER/.test(message)));
+  assert.equal(
+    retryableWrangler(['versions', 'view', uploadedId], notVisible),
+    false,
+    'Ordinary historic version reads do not acquire this fresh-upload exception',
+  );
+});
+
+test('a permanently unavailable uploaded version fails after five reads and fifteen seconds of backoff', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  let calls = 0;
+  const waits: number[] = [];
+  await assert.rejects(
+    uploadedVersionView(
+      uploadedId,
+      'config.jsonc',
+      () => {
+        calls++;
+        throw notVisible;
+      },
+      async (ms) => {
+        waits.push(ms);
+      },
+    ),
+    (error) => error === notVisible,
+  );
+  assert.equal(calls, 5);
+  assert.deepEqual(waits, [1000, 2000, 4000, 8000]);
+});
+
+test('other IDs, permission errors and malformed CLI failures never enter the visibility wait', async () => {
+  for (const error of [
+    { stderr: notVisible.stderr.replaceAll(uploadedId, '22222222-2222-4222-8222-222222222222') },
+    { stderr: notVisible.stderr.replace('100146', '10000') },
+    { stderr: ' -> 403 Forbidden' },
+    { stderr: ' -> 429 Too Many Requests' },
+    { stderr: '[code: 100146]' },
+    { stderr: Buffer.from(notVisible.stderr) },
+    { stderr: notVisible.stderr + 'x'.repeat(65536) },
+    new Error('timeout'),
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      uploadedVersionView(
+        uploadedId,
+        'config.jsonc',
+        () => {
+          calls++;
+          throw error;
+        },
+        async () => {
+          assert.fail('Unexpected visibility retry');
+        },
+      ),
+      (thrown) => thrown === error,
+    );
+    assert.equal(calls, 1);
+  }
+  await assert.rejects(
+    uploadedVersionView('--upload', 'config.jsonc', () => {
+      assert.fail('Invalid version ID must fail before executing Wrangler');
+    }),
+  );
 });
