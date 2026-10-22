@@ -128,6 +128,15 @@ Pending D1 migrations stop promotion before upload. Reconcile the schema using t
 
 The final reusable `production-smoke` job checks the exact OP version, clean source commit, signed login asset hashes, readiness, Discovery/JWKS and native association. A failed smoke marks CI red after activation and requires investigation; it does not qualify an owner Passkey ceremony or a completed relying-party login. Deployment and smoke artifacts are retained for 30 days.
 
+Release smoke requires both OP and Docs to report actual activation from the same
+source commit. Docs starts with `deployed=false` and publishes its version/source
+only after activation and trigger synchronization succeed. If main advances
+between OP and Docs promotion, Docs leaves activation to the newer run and this
+older run skips release smoke. Inspect its activation records for the partial
+rollout; a successful superseded CI run does not qualify a complete production
+release. Require the newer run's matching deployments and smoke before closing
+the release checkpoint.
+
 ## Vault schema reconciliation recovery boundary
 
 The former bounded 0033–0035 reconciliation procedure is retired. The current
