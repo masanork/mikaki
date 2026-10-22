@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 
 export interface NativeUiScenario {
@@ -72,14 +73,16 @@ declare global {
 }
 
 export async function startNativeUiServer() {
-  const directory = new URL('../../../apps/mikaki-client/ui/', import.meta.url);
-  const config = JSON.parse(
-    readFileSync(new URL('../src-tauri/tauri.conf.json', directory), 'utf8'),
+  const configUrl = new URL(
+    '../../../apps/mikaki-client/src-tauri/tauri.conf.json',
+    import.meta.url,
   );
+  const config = JSON.parse(readFileSync(configUrl, 'utf8'));
+  // Serve the declared bundle so the fixture cannot conceal missing imports.
   const assets = new Map(
-    ['index.html', 'style.css', 'app.js', 'wallet-model.js', 'brand-icon.svg'].map((name) => [
-      name,
-      readFileSync(new URL(name, directory)),
+    config.build.frontendDist.map((path: string) => [
+      basename(path),
+      readFileSync(new URL(path, configUrl)),
     ]),
   );
   const server = createServer((request, response) => {

@@ -62,7 +62,10 @@ jobs:
           npm run build:policy
           node scripts/build-messaging-qualification.ts
           cargo clippy --locked -p mikaki-worker --target wasm32-unknown-unknown --features messaging-qualification --lib -- -D warnings
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Install the selected browser and system dependencies
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
+          npx playwright install --with-deps ${{ matrix.browser }}
       - name: Verify coverage maps preserve unexecuted paths
         if: matrix.browser == 'chromium'
         run: node --test local/conformance/messaging-coverage.test.ts scripts/lcov-for-sonar.test.mjs
