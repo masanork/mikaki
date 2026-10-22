@@ -40,14 +40,14 @@ function timestamp(value: unknown): asserts value is number {
 export function selectedCardTrustDeadline(policySha256: string, registry: unknown): number {
   assert.match(policySha256, /^[a-f0-9]{64}$/);
   const record = registry as { format: string; policies: Record<string, unknown>[] };
-  assert.deepEqual(Object.keys(record).sort(), ['format', 'policies']);
+  assert.deepEqual(new Set(Object.keys(record)), new Set(['format', 'policies']));
   assert.equal(record.format, 'mikaki-card-trust-deadlines-v1');
   assert.ok(
     Array.isArray(record.policies) && record.policies.length > 0 && record.policies.length <= 16,
   );
   const deadlines = new Map<string, number>();
   for (const policy of record.policies) {
-    assert.deepEqual(Object.keys(policy).sort(), ['policy_sha256', 'valid_until']);
+    assert.deepEqual(new Set(Object.keys(policy)), new Set(['policy_sha256', 'valid_until']));
     assert.ok(typeof policy.policy_sha256 === 'string');
     assert.match(policy.policy_sha256, /^[a-f0-9]{64}$/);
     assert.ok(!deadlines.has(policy.policy_sha256), 'Duplicate policy deadline');
@@ -78,7 +78,8 @@ export function identityTrustFreshness(options: {
   assert.ok(pki.checked_at <= now && now - pki.checked_at <= 600, 'Stale PKI validation');
   assert.equal(pki.wallet_configuration_valid, true);
   assert.ok(Array.isArray(pki.negative_checks));
-  assert.deepEqual([...pki.negative_checks].sort(), [...negativeChecks].sort());
+  assert.equal(pki.negative_checks.length, negativeChecks.length);
+  assert.deepEqual(new Set(pki.negative_checks), new Set(negativeChecks));
   const cardDigest = config.vars.IDENTITY_TRUST_POLICY_SHA256!;
   const cardDeadline = selectedCardTrustDeadline(cardDigest, registry);
   const values: [string, unknown][] = [
