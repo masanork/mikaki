@@ -83,5 +83,10 @@ application, populated Chat code rollback, beta key/config provisioning or real
 device use. Those remain in the
 [activation checklist](wallet-chat-release-readiness.md#chat-activation-dependencies).
 
+The [2026-10-22 production checkpoint](wallet-chat-release-readiness.md#production-checkpoint-2026-10-22)
+records the completed remote application of this three-file chain, preservation
+checks and the post-migration production smoke. Chat remained disabled throughout;
+refresh the live state before any later rollout or activation.
+
 See Cloudflare's [D1 migrations reference](https://developers.cloudflare.com/d1/reference/migrations/)
 and [migration apply behavior](https://developers.cloudflare.com/d1/wrangler-commands/#migrations-apply).
