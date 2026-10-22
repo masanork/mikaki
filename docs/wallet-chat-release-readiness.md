@@ -127,8 +127,18 @@ Keep Chat disabled until the following work is qualified together:
 4. Rehearse disable and code rollback after actual enrollment and delivery on a
    disposable environment. Verify that login still works, messaging routes close,
    existing rows/history remain, and re-enabling resumes the same device and
-   conversation. The current disabled tests start without a Chat schema/key;
-   they do not establish this populated-database rollback behavior.
+   conversation. The Chromium product journey now checks this on the same local
+   D1 store: it retains an undelivered encrypted message, disables the beta without
+   its key, loads the ordinary compiled Worker with beta settings/key still
+   present, and re-enables the original beta. No reset or repeated migration is
+   used. Schema, Owner credentials/key wrappers, device/channel rows, queued
+   ciphertext and encrypted browser records remain unchanged while closed;
+   re-enabling receives the queued message and replies without device enrollment.
+   Normal ingress counters are outside the data-preservation comparison.
+   `messaging-populated-rollback-<attempt>` retains the source-bound, sanitized
+   result. SSO and PRF remain fixtures; this local rehearsal does not qualify a
+   remote Workers version rollback, distributed D1 behavior or physical Passkey
+   use. Those operational/device checks remain required before activation.
 5. Qualify real Passkey/PRF, two-person messaging, restart, lock, missing local
    profile, Chat-to-native presentation and card receipt on supported devices.
 

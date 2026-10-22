@@ -1,5 +1,6 @@
 /** Local product packages, real owner policy and optional shared-D1 replica. */
 import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parse } from 'jsonc-parser';
 import { createTestHarness } from 'wrangler';
@@ -25,28 +26,29 @@ export async function messagingFixture(
       d: jwk.d,
     });
   }
-  const harness = createTestHarness({
+  const options = (current: typeof config) => ({
     root,
     workers: [
-      { config },
+      { config: current },
       ...(replica
         ? [
             {
               config: {
-                ...config,
+                ...current,
                 name: 'messaging-product-replica',
-                queues: { ...config.queues, consumers: [] },
+                queues: { ...current.queues, consumers: [] },
               },
             },
           ]
         : []),
     ],
   });
+  const harness = createTestHarness(options(config));
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     await worker.applyD1Migrations('DB');
-    const DB: D1Database = (await worker.getEnv()).DB;
+    let DB: D1Database = (await worker.getEnv()).DB;
     const policy = JSON.parse(await readFile(`${root}local/generated/worker-policy.json`, 'utf8'));
     await activateWorkerPolicy(DB, policy, { actor: 'test', reason: 'Messaging product host' });
     if (enabled) {
@@ -94,7 +96,27 @@ export async function messagingFixture(
     return {
       harness,
       worker,
-      DB,
+      get DB() {
+        return DB;
+      },
+      // update() reloads code/bindings on the same local store. Never reset the
+      // harness or reapply migrations when rehearsing a populated rollback.
+      reload: async (mode: { enabled: boolean; defaultBuild?: boolean }) => {
+        const vars = {
+          ...config.vars,
+          MESSAGING_BETA_ENABLED: String(mode.enabled || mode.defaultBuild || false),
+        };
+        if (!mode.enabled) delete vars.MESSAGING_ISSUER_KEY;
+        else assert.ok(vars.MESSAGING_ISSUER_KEY, 'Reuse the enrolled fixture issuer key');
+        await harness.update(
+          options({
+            ...config,
+            main: `${root}crates/worker/${mode.defaultBuild ? 'build' : 'build-messaging-beta'}/worker/service.mjs`,
+            vars,
+          }),
+        );
+        DB = (await worker.getEnv()).DB;
+      },
       seed,
       replica: replica ? harness.getWorker('messaging-product-replica') : worker,
     };
