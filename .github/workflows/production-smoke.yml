@@ -138,8 +138,10 @@ jobs:
           console.log('Docs runtime identity, health and bilingual login entries passed');
           JS
       - name: Audit public website findability
+        id: website-audit
         run: node website/audit-public.ts
       - name: Retain public website audit
+        if: ${{ !cancelled() && steps.website-audit.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: website-findability-${{ github.run_id }}
