@@ -31,7 +31,10 @@ type Config = Parameters<typeof productionIdentityTestProfile>[0];
 
 function timestamp(value: unknown): asserts value is number {
   assert.ok(
-    typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value < 253402300800,
+    typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value > 0 &&
+      value < 253_402_300_800,
     'Invalid trust timestamp',
   );
 }
@@ -120,7 +123,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     // Linux/macOS system Git and the explicitly selected Rust installation must
     // not be shadowed by npm's node_modules/.bin or another PATH entry.
     const git = '/usr/bin/git';
-    const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo');
+    const cargoHome = process.env.CARGO_HOME ?? join(homedir(), '.cargo');
     assert.ok(isAbsolute(cargoHome), 'CARGO_HOME must select an absolute trusted installation');
     const cargo = join(cargoHome, 'bin', 'cargo');
     const source = spawnSync(git, ['rev-parse', 'HEAD'], {

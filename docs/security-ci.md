@@ -201,7 +201,7 @@ boundaries, selected versus unselected policies, incomplete/stale/substituted PK
 reports, unknown policy records, sanitized validator failures and executable
 shadowing. On Linux/macOS the CLI uses `/usr/bin/git` and Cargo from the absolute
 trusted `CARGO_HOME` installation (default `~/.cargo`), bypassing npm/PATH executable
-shadowing. Relative `CARGO_HOME` values fail validation. The scheduled
+shadowing. Relative or empty `CARGO_HOME` values fail validation. The scheduled
 monitor is independent of the PR's required `verify` gate, so urgent repairs can
 still pass normal verification while a deadline alert is active.
 

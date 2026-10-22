@@ -171,13 +171,15 @@ test('CLI fails when the validator fails or returns an invalid report without ec
     assert.equal(JSON.parse(result.stdout).status, 'invalid');
     assert.ok(!`${result.stdout}${result.stderr}`.includes('never-log-this-private-input'));
   }
-  const relative = spawnSync(process.execPath, [command], {
-    env: { ...process.env, CARGO_HOME: './relative-installation' },
-    encoding: 'utf8',
-    timeout: 10_000,
-  });
-  assert.equal(relative.status, 1);
-  assert.equal(JSON.parse(relative.stdout).status, 'invalid');
+  for (const cargoHome of ['./relative-installation', '']) {
+    const invalidHome = spawnSync(process.execPath, [command], {
+      env: { ...process.env, CARGO_HOME: cargoHome },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(invalidHome.status, 1);
+    assert.equal(JSON.parse(invalidHome.stdout).status, 'invalid');
+  }
 });
 
 test('PATH shadowing cannot replace system Git or Cargo from the selected absolute installation', (t) => {
