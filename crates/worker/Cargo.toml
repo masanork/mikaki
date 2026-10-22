@@ -56,3 +56,7 @@ name = "messaging-qualification"
 path = "examples/messaging_qualification.rs"
 crate-type = ["cdylib"]
 required-features = ["messaging-qualification"]
+
+# Keep both the ordinary and Chat-enabled service inside the existing Wasm budget.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz"]

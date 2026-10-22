@@ -26,3 +26,8 @@ unsafe_code = "forbid"
 [profile.release]
 opt-level = "s"
 lto = true
+
+# Keep the ordinary and Chat-enabled Worker within the reviewed Wasm size cap.
+# Native clients and cryptographic dependency optimization remain unchanged.
+[profile.release.package.mikaki-worker]
+opt-level = "z"

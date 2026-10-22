@@ -31,7 +31,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const source = { commit: 'a'.repeat(40), clean: true as const };
 /** Synthetic bytes qualify inventory rejection, never a product deployment. */
 async function fixture(
-  baseline: 'current' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
+  baseline: 'current' | 'wrap' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-packet-'));
   const write = async (name: string, bytes: string | Buffer) => {
@@ -52,6 +52,7 @@ async function fixture(
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
   const ownerCount = {
     current: OWNER_MIGRATIONS.length,
+    wrap: 6,
     review: 5,
     age: 4,
     waitlist: 3,
@@ -100,7 +101,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 18);
+    assert.equal(manifest.migrations.length, 19);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -213,6 +214,20 @@ test('retained seventeen-file packets keep their plan and reject the additive lo
     await f.write(
       'migrations/0006_owner_login_wrap.sql',
       await readFile(join(root, 'crates/worker/migrations/0006_owner_login_wrap.sql')),
+    );
+    await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('retained eighteen-file packets keep their plan and reject the additive passport migration', async () => {
+  const f = await fixture('wrap');
+  try {
+    assert.equal((await verifyAuthorityPacket(f.directory)).migrations.length, 18);
+    await f.write(
+      'migrations/0007_passport_issuance.sql',
+      await readFile(join(root, 'crates/worker/migrations/0007_passport_issuance.sql')),
     );
     await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
   } finally {
