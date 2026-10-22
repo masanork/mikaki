@@ -44,9 +44,8 @@ presentation consent remain in place.
   runs with these defaults and the ordinary authentication limits. Exhaustion,
   capacity, concurrent isolates, storage failure and bounded-expiry checks are
   included in `npm run test:messaging-beta`.
-- The main run for `276ef361` completed the three-browser CI graph, Sonar analysis,
-  signing, deployment and production smoke. A later promotion still requires its
-  own passing run.
+- Production evidence below is bound to its exact source revision. A later
+  promotion still requires its own passing qualification, signing and deploy run.
 - Native Rust and UI checks cover existing batch/age/one-use receipt and consent
   behavior. Ordinary test screenshots go under ignored `local/generated/`.
 - CI and physical-device results are distinct from these local checks.
@@ -65,27 +64,38 @@ reviewed public issuer/attester trust configuration described in
 [native wallet issuance](identity-card-issuance.md#opt-in-native-wallet-issuance-commands-and-ui).
 Do not enable the task by bypassing that native trust check.
 
-## Production checkpoint: 2026-10-21
+## Production checkpoint: 2026-10-22
 
 The qualified deployment record for Worker `mikaki-auth` on `auth.mikaki.org`
-and its [main CI run](https://github.com/masanork/mikaki/actions/runs/39537412997)
+and its [main CI run](https://github.com/masanork/mikaki/actions/runs/39709189220)
 establish:
 
-- Activated Worker version: `1b55c367-4b2c-4326-9c3d-1577f2101f38`, clean source
-  `276ef3618ec24d00979c361d28b6650c66b40f62`.
-- All 27 active jobs passed, including signing, deployment and the public
-  endpoint/login-asset smoke. SonarCloud's main Quality Gate passed.
-- The #281 certificate-trust advisory fixes and #282 independent Chat admission
-  are qualified by that run. It supersedes the `2c139b07` deployment, after the
-  earlier #278 promotion had been blocked by RUSTSEC-2026-0382. Every later main
-  revision still requires its own qualification.
-- The 2026-10-20 secret-name inspection did not include `MESSAGING_ISSUER_KEY`.
-  No secret values were read.
-- This ingress change has not applied Chat migrations, uploaded keys or
-  activated Chat in production.
+- Activated default-profile Worker version:
+  `18e5bf6f-ebbc-4da9-bf72-ef225c6e5604`, serving 100% of traffic from clean source
+  `6a5142e9687fcece02e643b15b80ebb69b397cf8`.
+- All 29 jobs passed on attempt 2, including both release profiles' signing,
+  deployment and production smoke. SonarCloud's main Quality Gate passed for
+  that exact source. Both beta manifest attestations were independently verified
+  against the same source, signer workflow and main ref.
+- After the compatible normal Worker was deployed, the three pinned Chat
+  migrations were applied once through `wrangler.messaging-migrations.jsonc`.
+  The dedicated `messaging_schema_migrations` ledger contains the exact chain;
+  no Chat migration remains pending. The remote schema audit reports
+  `applied:3`, `complete:true`, and foreign-key validation passed.
+- A Time Travel bookmark was recorded privately before the first ledger
+  operation. Pre/post hashes match for the Owner schema and migration ledger,
+  credential ownership/status and stable Passkey material. Mutable authentication
+  counters were outside the stable-material comparison.
+- The [post-migration production smoke](https://github.com/masanork/mikaki/actions/runs/39720844487)
+  passed both jobs. It verified the same Worker/source and login JS/CSS hashes,
+  public endpoints, protected readiness and font rendering after the DB change.
+- Live version metadata still matches the reviewed normal configuration.
+  `MESSAGING_BETA_ENABLED` and `MESSAGING_ISSUER_KEY` bindings are absent;
+  Chat remains disabled. No Chat key values were read or provisioned.
 
-Refresh these observations before promotion. They do not establish the presence
-or shape of any Chat tables, browser/device compatibility, or current load limits.
+Refresh schema and deployment observations before promotion. This checkpoint
+qualifies the remote schema rollout; beta activation, populated rollback,
+two-person delivery and real-device issuance remain unqualified.
 
 ## Chat activation dependencies
 
@@ -105,8 +115,9 @@ Keep Chat disabled until the following work is qualified together:
    `npm run check:chat-schema -- --remote` is read-only and accepts exact prefixes
    for preflight; it refuses existing multiple device heads before the unique
    index. Deploy the compatible normal Worker before an approved remote apply,
-   following the [schema rollout procedure](chat-schema-rollout.md). The remote
-   apply and production parity verification remain pending.
+   following the [schema rollout procedure](chat-schema-rollout.md). The
+   2026-10-22 production checkpoint qualified remote application and parity for
+   the current three-file chain; recheck that state before beta promotion.
 3. Provision the independent Ed25519 signing key through the existing protected
    secret/version workflow. Check the public key and same-origin configuration
    without exposing its private component. The compile feature and
