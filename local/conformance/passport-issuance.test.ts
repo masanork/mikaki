@@ -13,6 +13,7 @@ import {
 import { fixtureKey } from './support/android-attestation-fixture.ts';
 import { createTestHarness } from 'wrangler';
 import { identityFixture } from './support/identity-fixture.ts';
+import { passportPolicyFingerprint } from '../../scripts/check-identity-haip-production.ts';
 const root = 'https://issuer.example',
   issuer = `${root}/identity/issuer`;
 const hash = (s: string | Uint8Array) => createHash('sha256').update(s).digest('base64url');
@@ -206,22 +207,8 @@ test('HAIP passport uses the existing authenticated PAR/code/DPoP/encrypted cred
         now,
       ),
     ]);
-    const fingerprint = createHash('sha256').update('mikaki-passport-dg1-policy-v1\0');
-    for (const name of [
-      'jpn-2013.der',
-      'jpn-2015.der',
-      'jpn-2019.der',
-      'jpn-2024.der',
-      'jpn-20260914.crl',
-    ]) {
-      const bytes = await readFile(
-        new URL(`../../crates/identity/src/passport/trust/${name}`, import.meta.url),
-      );
-      const length = Buffer.alloc(8);
-      length.writeBigUInt64BE(BigInt(bytes.length));
-      fingerprint.update(length).update(bytes);
-    }
-    const policy = fingerprint.digest('base64url'),
+    // Compare the independent Rust metadata with the production Node smoke policy.
+    const policy = passportPolicyFingerprint(),
       tx = secret();
     assert.equal(
       metadata.credential_configurations_supported.passport_dg1.passport_evidence_policy
@@ -658,22 +645,7 @@ test('passport issuer gates real trust, owner consent, one-use grants and atomic
         now,
       ),
     ]);
-    const digest = createHash('sha256').update('mikaki-passport-dg1-policy-v1\0');
-    for (const name of [
-      'jpn-2013.der',
-      'jpn-2015.der',
-      'jpn-2019.der',
-      'jpn-2024.der',
-      'jpn-20260914.crl',
-    ]) {
-      const bytes = await readFile(
-        new URL(`../../crates/identity/src/passport/trust/${name}`, import.meta.url),
-      );
-      const length = Buffer.alloc(8);
-      length.writeBigUInt64BE(BigInt(bytes.length));
-      digest.update(length).update(bytes);
-    }
-    const policy = digest.digest('base64url');
+    const policy = passportPolicyFingerprint();
     const projection = {
       name_mrz: 'ERIKSSON ANNA MARIA',
       issuing_state: 'UTO',
@@ -877,15 +849,21 @@ test('passport issuer gates real trust, owner consent, one-use grants and atomic
       404,
     );
 
-    const changed = await seed('wrong-policy');
-    assert.equal(
-      (
-        await worker.fetch(`${root}/identity/passport/approve?tx=${changed.tx}`, {
-          headers: { Cookie: '__Host-op-sso=passport-cookie' },
-        })
-      ).status,
-      404,
-    );
+    for (const policyHash of [
+      'wrong-policy',
+      // Previous SHA-1-compatible policy, with the same pinned anchors and CRL.
+      'JgN0G554r6Uwq3moFcjxmIrBntr5dqUOaJNX8dPlQL4',
+    ]) {
+      const changed = await seed(policyHash);
+      assert.equal(
+        (
+          await worker.fetch(`${root}/identity/passport/approve?tx=${changed.tx}`, {
+            headers: { Cookie: '__Host-op-sso=passport-cookie' },
+          })
+        ).status,
+        404,
+      );
+    }
 
     // Account revocation and expiry prevent access before any raw-evidence verification.
     const revoked = await seed(),
