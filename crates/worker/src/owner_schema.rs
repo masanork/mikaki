@@ -7,6 +7,8 @@ const AGE_REQUESTS: &str = "0004_identity_age_requests.sql";
 const LOGIN_REVIEW: &str = "0005_login_connection_review.sql";
 const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
+const PASSPORT: &str = "0007_passport_issuance.sql";
+
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
         BASELINE => ledger == BASELINE || ledger == format!("{BASELINE},{WRAPPERS}"),
@@ -31,9 +33,15 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
                     )
         }
         LOGIN_WRAP => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP}"
+            );
+            ledger == previous || ledger == format!("{previous},{PASSPORT}")
+        }
+        PASSPORT => {
             ledger
                 == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP}"
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT}"
                 )
         }
         _ => false,
@@ -146,6 +154,30 @@ mod tests {
         ] {
             assert!(!ready(&invalid, LOGIN_REVIEW));
             assert!(!ready(&invalid, LOGIN_WRAP));
+        }
+    }
+}
+
+#[cfg(test)]
+mod passport_tests {
+    use super::*;
+    #[test]
+    fn passport_upgrade_bridges_only_the_complete_previous_chain() {
+        let previous =
+            format!("{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP}");
+        let upgraded = format!("{previous},{PASSPORT}");
+        assert!(ready(&previous, LOGIN_WRAP));
+        assert!(ready(&upgraded, LOGIN_WRAP));
+        assert!(ready(&upgraded, PASSPORT));
+        assert!(!ready(&previous, PASSPORT));
+        assert!(!ready(&upgraded, LOGIN_REVIEW));
+        for invalid in [
+            format!("{upgraded},{PASSPORT}"),
+            format!("{BASELINE},{WRAPPERS},{PASSPORT}"),
+            format!("{previous},0007_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, LOGIN_WRAP));
+            assert!(!ready(&invalid, PASSPORT));
         }
     }
 }
