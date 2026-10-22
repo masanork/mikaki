@@ -1,0 +1,48 @@
+name: identity-trust-freshness
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/identity-trust-freshness.yml
+      - scripts/check-identity-trust-freshness.ts
+      - scripts/identity-haip-profile.ts
+      - scripts/identity-test-profile.ts
+      - crates/identity/**
+      - crates/worker/config/identity-card-trust-deadlines.public.json
+      - crates/worker/config/identity-haip-labpki.public.json
+      - crates/worker/wrangler.production.jsonc
+      - services/android-attestation-verifier/policy.production.json
+      - services/android-attestation-verifier/bridge/wrangler.production.jsonc
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: identity-trust-freshness-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install pinned validation toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal
+      - uses: ./.github/actions/setup-rust-cache
+      - name: Validate current public trust and warn 48 hours before expiry
+        run: |
+          set -o pipefail
+          node scripts/check-identity-trust-freshness.ts | tee "$RUNNER_TEMP/identity-trust-freshness.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: identity-trust-freshness-${{ github.sha }}
+          path: ${{ runner.temp }}/identity-trust-freshness.json
+          if-no-files-found: warn
+          retention-days: 14

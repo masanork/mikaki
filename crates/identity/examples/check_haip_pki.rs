@@ -9,6 +9,8 @@ use mikaki_identity::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize)]
@@ -39,6 +41,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .ok_or("expected a public PKI bundle path")?;
     let bytes = std::fs::read(path)?;
+    let mut public_bundle_sha256 = String::with_capacity(64);
+    for byte in Sha256::digest(&bytes) {
+        write!(public_bundle_sha256, "{byte:02x}")?;
+    }
     let b: Bundle = serde_json::from_value(mikaki_identity::wallet_profile::strict_json(&bytes)?)?;
     if b.format != "mikaki-haip-labpki-v1" || b.issuer_jwk == b.attester_jwk {
         return Err("invalid development PKI bundle".into());
@@ -60,6 +66,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("attester key mismatch".into());
     }
     let wallet = Configuration::parse(&b.wallet_configuration.to_string(), now)?;
+    // Wallets receive the Issuer chain in the credential, but apply their own
+    // separately compiled roots and revocation snapshots to it.
+    let wallet_sd = SigningTrust {
+        chain: c.sd_jwt.chain.clone(),
+        trust_anchors: wallet.credential_trust.sd_jwt.trust_anchors.clone(),
+        revocation: wallet.credential_trust.sd_jwt.revocation.clone(),
+    };
+    let wallet_mdoc = SigningTrust {
+        chain: c.mdoc.chain.clone(),
+        trust_anchors: wallet.credential_trust.mdoc.trust_anchors.clone(),
+        revocation: wallet.credential_trust.mdoc.revocation.clone(),
+    };
+    let wallet_sd_until = verify(&wallet_sd, &b.issuer_jwk, Purpose::SdJwt, now)?.1;
+    let wallet_mdoc_until = verify(&wallet_mdoc, &b.issuer_jwk, Purpose::Mdoc, now)?.1;
     if wallet.client_trust[0].trust_anchors != b.attester.trust_anchors
         || wallet.key_trust.trust_anchors != b.attester.trust_anchors
         || wallet.credential_trust.sd_jwt.trust_anchors != c.sd_jwt.trust_anchors
@@ -110,9 +130,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         json!({
             "format":"mikaki-haip-labpki-check-v1", "checked_at":now,
+            "public_bundle_sha256":public_bundle_sha256,
             "issuer_thumbprint":b.issuer_jwk.thumbprint()?, "attester_thumbprint":b.attester_jwk.thumbprint()?,
             "sd_jwt_valid_until":sd_until, "mdoc_valid_until":mdoc_until,
             "attester_valid_until":attester_until, "wallet_configuration_valid":true,
+            "wallet_sd_jwt_valid_until":wallet_sd_until, "wallet_mdoc_valid_until":wallet_mdoc_until,
             "negative_checks":checks.into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
             "qualification":"development-pki-validation-only"
         })
