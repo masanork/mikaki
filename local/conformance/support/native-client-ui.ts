@@ -8,6 +8,8 @@ export interface NativeUiScenario {
   phase?: string;
   identityReader?: boolean;
   identityWallet?: boolean;
+  passportIssuance?: boolean;
+  passportHaip?: boolean;
   identityWalletPhase?: string;
   identityInvocation?: boolean;
   identityCompletion?: string;
@@ -18,6 +20,22 @@ export interface NativeUiScenario {
   identityAgeValue?: boolean;
   identityAgeDocument?: string;
   identityAgeSingleUse?: boolean;
+  identityDocuments?: Array<{
+    id: string;
+    saved_at: number;
+    passport?: { document_number: string; mrz: string };
+    passport_authentication?: NativeUiScenario['identityPassportAuthentication'];
+    preview: {
+      name: string;
+      address: string;
+      birth_date: string;
+      gender: string;
+      verification: string;
+      document_type: string;
+      expiry_date?: string | null;
+      backend_verifiable: boolean;
+    };
+  }>;
   identityInventory?: Array<{
     id: string;
     title: string;
@@ -27,6 +45,14 @@ export interface NativeUiScenario {
     fields: Record<string, string>;
   }>;
   identityFailure?: { code: string; remaining_retries?: number };
+  identityPassportAuthentication?: {
+    state: string;
+    checked_data_groups: number[];
+    issuer_trust: string;
+    revocation?: string;
+    checked_at?: number;
+    valid_until?: number;
+  };
 }
 
 declare global {
@@ -51,7 +77,7 @@ export async function startNativeUiServer() {
     readFileSync(new URL('../src-tauri/tauri.conf.json', directory), 'utf8'),
   );
   const assets = new Map(
-    ['index.html', 'style.css', 'app.js', 'brand-icon.svg'].map((name) => [
+    ['index.html', 'style.css', 'app.js', 'wallet-model.js', 'brand-icon.svg'].map((name) => [
       name,
       readFileSync(new URL(name, directory)),
     ]),
@@ -100,13 +126,17 @@ export async function createNativeUiPage(
   const page = await context.newPage();
   page.setDefaultTimeout(10_000);
   const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('pageerror', (error) => errors.push(error.stack ?? error.message));
   await page.addInitScript((initial) => {
     const blocked = new Set<string>();
     const gates = new Map<string, Array<() => void>>();
     let generation = 0;
     let invocation: string | null = initial.identityInvocation ? 'fixture-invocation' : null;
     let walletPhase = initial.identityWalletPhase ?? 'idle';
+    let pendingRead: NonNullable<NativeUiScenario['identityDocuments']>[number]['preview'] | null =
+      null;
+    let pendingPassport: { document_number: string; mrz: string } | null = null;
+    let documents = initial.identityDocuments ?? [];
     let eventChannel: { onmessage?: (e: { event: string; id?: string }) => void } | undefined;
     const mock: Window['__nativeUiTest'] = {
       phase: initial.phase ?? (initial.signedIn ? 'complete' : 'idle'),
@@ -181,6 +211,7 @@ export async function createNativeUiPage(
           result = initial.identityReader ?? false;
           break;
         case 'read_identity_card':
+          pendingPassport = null;
           if (initial.identityFailure) throw initial.identityFailure;
           result = {
             name: '試験 太郎',
@@ -192,6 +223,84 @@ export async function createNativeUiPage(
             expiry_date: args?.documentType === 'driving_license' ? '2030-01-01' : null,
             backend_verifiable: args?.documentType !== 'driving_license' || !!args?.pin2,
           };
+          pendingRead = result as typeof pendingRead;
+          break;
+        case 'read_identity_passport':
+          if (initial.identityFailure) throw initial.identityFailure;
+          result = {
+            name: 'ERIKSSON ANNA MARIA',
+            address: '',
+            birth_date: args?.birthDate,
+            gender: '2',
+            verification: 'unverified',
+            document_type: 'passport',
+            expiry_date: args?.expiryDate,
+            backend_verifiable: false,
+            passport_authentication: initial.identityPassportAuthentication,
+          };
+          {
+            const { passport_authentication: _report, ...preview } = result as Record<
+              string,
+              unknown
+            >;
+            pendingRead = preview as typeof pendingRead;
+          }
+          {
+            const digit = (field: string) =>
+              String(
+                [...field].reduce(
+                  (sum, c, i) =>
+                    sum +
+                    (c === '<' ? 0 : c >= 'A' ? c.charCodeAt(0) - 55 : Number(c)) *
+                      [7, 3, 1][i % 3],
+                  0,
+                ) % 10,
+              );
+            const number = String(args?.documentNumber),
+              n = number.padEnd(9, '<');
+            const b = String(args?.birthDate).replaceAll('-', '').slice(2),
+              e = String(args?.expiryDate).replaceAll('-', '').slice(2);
+            const line =
+              n + digit(n) + 'UTO' + b + digit(b) + 'F' + e + digit(e) + '<'.repeat(14) + '0';
+            pendingPassport = {
+              document_number: number,
+              mrz:
+                'P<UTOERIKSSON<<ANNA<MARIA'.padEnd(44, '<') +
+                line +
+                digit(line.slice(0, 10) + line.slice(13, 20) + line.slice(21, 43)),
+            };
+          }
+          break;
+        case 'passport_issuance_available':
+          result = initial.passportIssuance ?? false;
+          break;
+        case 'review_passport_issuance':
+          result = {
+            review_id: 'fixture-passport-review',
+            issuer: 'https://auth.mikaki.org/identity/issuer',
+            holder_thumbprint: 'fixture-passport-holder',
+            claims: {
+              name_mrz: 'ERIKSSON ANNA MARIA',
+              issuing_state: 'UTO',
+              nationality: 'UTO',
+              birth_date_mrz: '690806',
+              expiry_date_mrz: '940623',
+              sex_mrz: 'F',
+            },
+            expires_at: Math.floor(Date.now() / 1000) + 300,
+          };
+          break;
+        case 'confirm_passport_issuance':
+          result = args?.approve
+            ? {
+                holder_thumbprint: 'fixture-passport-holder',
+                expires_in: 600,
+                haip: initial.passportHaip ?? false,
+              }
+            : null;
+          if (initial.passportHaip && args?.approve) walletPhase = 'pending';
+          break;
+        case 'cancel_passport_issuance_review':
           break;
         case 'start_identity_link':
           result = {
@@ -305,12 +414,57 @@ export async function createNativeUiPage(
             completion: initial.identityCompletion ?? 'not_requested',
           };
           break;
+        case 'identity_document_inventory':
+          result = {
+            documents: documents.map(({ passport, ...summary }) => ({
+              ...summary,
+              passport_saved: !!passport,
+              ...(summary.preview.document_type === 'passport' &&
+              initial.identityPassportAuthentication
+                ? { passport_authentication: initial.identityPassportAuthentication }
+                : {}),
+            })),
+            storage: 'device_encrypted',
+          };
+          break;
+        case 'identity_passport_details': {
+          const d = documents.find((d) => d.id === 'passport');
+          if (!mock.subject || !d?.passport) throw Error('passport_details_unavailable');
+          result = {
+            ...d.passport,
+            birth_date: d.preview.birth_date,
+            expiry_date: d.preview.expiry_date,
+          };
+          break;
+        }
+        case 'save_identity_document':
+          if (!pendingRead) throw Error('read_required');
+          documents = documents.filter((d) => d.id !== pendingRead?.document_type);
+          documents.push({
+            id: pendingRead.document_type,
+            saved_at: Math.floor(Date.now() / 1000),
+            preview: pendingRead,
+            ...(pendingPassport ? { passport: pendingPassport } : {}),
+          });
+          pendingRead = null;
+          pendingPassport = null;
+          break;
+        case 'remove_identity_document':
+          documents = documents.filter((d) => d.id !== args?.documentId);
+          break;
+        case 'identity_wallet_inventory':
+          result = initial.identityInventory ?? [];
+          break;
+        case 'open_product_chat':
+          break;
         case 'identity_credential_status':
           result = { state: 'empty' };
           break;
         case 'clear_identity_evidence':
         case 'clear_identity_credential':
         case 'cancel_identity_card':
+          pendingRead = null;
+          pendingPassport = null;
           break;
         case 'open_mikaki_web':
           break;
@@ -373,7 +527,13 @@ export async function createNativeUiPage(
     });
   }, scenario);
   await page.goto(url);
-  await page.locator('.screen:not([hidden])').first().waitFor({ state: 'visible' });
+  await page
+    .locator('.screen:not([hidden])')
+    .first()
+    .waitFor({ state: 'visible' })
+    .catch((error) => {
+      throw new Error('Native UI did not start: ' + errors.join('; '), { cause: error });
+    });
   await page.waitForFunction(() => window.__nativeUiTest.calls.includes('native_platform'));
   return { page, errors };
 }

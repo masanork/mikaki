@@ -49,7 +49,7 @@ struct StoredSession {
 
 #[derive(Serialize)]
 pub struct LoginResult {
-    subject: String,
+    pub(crate) subject: String,
 }
 
 #[derive(Serialize)]
@@ -135,7 +135,12 @@ pub fn cancel_native_login(state: State<'_, MobileAuthState>) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn clear_native_session(state: State<'_, MobileAuthState>) -> Result<(), String> {
+pub fn clear_native_session(
+    app: tauri::AppHandle,
+    state: State<'_, MobileAuthState>,
+) -> Result<(), String> {
+    crate::identity_reader::cancel_active_read(&app)?;
+    crate::identity_issuance::clear_passport_session(&app);
     let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
     inner.session = None;
     inner.pending = None;

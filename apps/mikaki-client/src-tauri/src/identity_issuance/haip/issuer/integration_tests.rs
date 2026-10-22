@@ -206,12 +206,13 @@ fn metadata_rejects_endpoint_substitution_missing_attestation_and_haip_downgrade
     let mut metadata = json!({"credential_issuer":ISSUER,"credential_endpoint":format!("{ISSUER}/credential"),"nonce_endpoint":format!("{ISSUER}/nonce"),"credential_configurations_supported":{}});
     for (id, format, binding, alg) in [
         ("linked_document", "dc+sd-jwt", "jwk", json!("ES256")),
+        ("passport_dg1", "dc+sd-jwt", "jwk", json!("ES256")),
         ("linked_document_mdoc", "mso_mdoc", "cose_key", json!(-7)),
     ] {
-        metadata["credential_configurations_supported"][id] = json!({"format":format,"scope":id,"vct":format!("{ISSUER}/types/linked-document"),"doctype":mdoc::DOCTYPE,"cryptographic_binding_methods_supported":[binding],"credential_signing_alg_values_supported":[alg],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"],"key_attestations_required":{}}}});
+        metadata["credential_configurations_supported"][id] = json!({"format":format,"scope":id,"vct":if id == "passport_dg1" {mikaki_identity::passport::credential::vct(ISSUER)} else {format!("{ISSUER}/types/linked-document")},"doctype":mdoc::DOCTYPE,"cryptographic_binding_methods_supported":[binding],"credential_signing_alg_values_supported":[alg],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"],"key_attestations_required":{}}}});
     }
     let oauth = json!({"issuer":ISSUER,"token_endpoint":format!("{ISSUER}/token"),"jwks_uri":format!("{ISSUER}/jwks"),"authorization_endpoint":format!("{ISSUER}/authorize"),"pushed_authorization_request_endpoint":format!("{ISSUER}/par"),"require_pushed_authorization_requests":true,"authorization_response_iss_parameter_supported":true,"pre-authorized_grant_anonymous_access_supported":false,"token_endpoint_auth_methods_supported":["attest_jwt_client_auth"],"grant_types_supported":["authorization_code"],"response_types_supported":["code"],"code_challenge_methods_supported":["S256"],"dpop_signing_alg_values_supported":["ES256"],"client_attestation_signing_alg_values_supported":["ES256"],"client_attestation_pop_signing_alg_values_supported":["ES256"]});
-    for configuration in ["linked_document", "linked_document_mdoc"] {
+    for configuration in ["linked_document", "linked_document_mdoc", "passport_dg1"] {
         assert!(validate_metadata(&metadata, &oauth, configuration).is_ok());
         let mut bad = metadata.clone();
         bad["credential_configurations_supported"][configuration]["proof_types_supported"]["jwt"]
@@ -738,4 +739,29 @@ fn eight_fresh_attested_holders_are_verified_before_one_trusted_inventory_instal
             assert!(inventory.receipts.is_empty() && inventory.receipt.is_none());
         }
     }
+}
+
+#[test]
+fn passport_par_preserves_review_binding_and_never_transfers_evidence_in_oauth() {
+    tauri::async_runtime::block_on(async {
+        let (mut session, attestation, trust) = fixture("passport_dg1");
+        session
+            .protocol
+            .bind_issuer_state(&"t".repeat(43), now().unwrap())
+            .unwrap();
+        let state = IdentityState::default();
+        let guard = gate(&state).unwrap();
+        let sender = session.dpop.public().unwrap();
+        let instance = session.instance.public().unwrap();
+        form(&mut session,&guard,&attestation,&trust,"par",None,|r| {
+            let r=r.build().unwrap();
+            jwt(r.headers()["dpop"].to_str().unwrap(),&sender);
+            jwt(r.headers()["OAuth-Client-Attestation-PoP"].to_str().unwrap(),&instance);
+            let fields:std::collections::BTreeMap<_,_>=url::form_urlencoded::parse(r.body().unwrap().as_bytes().unwrap()).into_owned().collect();
+            assert_eq!(fields["scope"],"passport_dg1");assert_eq!(fields["issuer_state"],"t".repeat(43));
+            assert_eq!(fields["dpop_jkt"],sender.thumbprint().unwrap());
+            assert!(!fields.contains_key("passport_evidence"));assert!(!fields.contains_key("dg1"));assert!(!fields.contains_key("sod"));
+            std::future::ready(Ok(response(201,json!({"request_uri":format!("urn:ietf:params:oauth:request_uri:{}","p".repeat(43)),"expires_in":90}),None)))
+        }).await.unwrap();
+    });
 }

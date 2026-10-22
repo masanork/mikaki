@@ -171,6 +171,7 @@ pub fn verify(
         return Err(bad());
     }
     let (mut attributes, hash, signature, ski, padding) = match evidence.document_type {
+        DocumentType::Passport => return Err(bad()),
         DocumentType::MyNumberCard => {
             if !evidence.domicile.is_empty() || !evidence.photo.is_empty() {
                 return Err(bad());
@@ -285,6 +286,7 @@ pub fn verify(
                 verified_at: now,
                 assurance: "issuer_signed_static_data".into(),
                 attributes_source: match evidence.document_type {
+                    DocumentType::Passport => return Err(bad()),
                     DocumentType::DrivingLicense => "issuance_base_ef",
                     DocumentType::MyNumberCard => "input_support_ef",
                 }

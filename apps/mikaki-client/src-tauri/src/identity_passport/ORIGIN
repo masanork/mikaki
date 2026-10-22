@@ -1,0 +1,20 @@
+Source: https://github.com/digital-go-jp/civ
+Commit: 54a843e656513930df60bbc20d752ff3289e7078
+License: MIT OR Apache-2.0 (included)
+Reference: src/crypto/bac.rs, src/icao9303/async_controller.rs
+
+crypto.rs adapts selected BAC KDF, 3DES-CBC, ISO9797 method-2 padding and
+retail-MAC primitives. The application owns the bounded reader and TD3 parser.
+Compared with the referenced controller: verify mutual-authentication MACs and
+both nonces before accepting keys, use constant-time comparisons, reject duplicate
+or unknown/out-of-order secure-response objects, enforce canonical lengths, reject
+SSC overflow, remove null/unprotected sessions, and zeroize transient buffers.
+Native Android BAC-enabled TD3 DG1 and bounded EF.SOD reads are connected.
+The locally implemented RFC 5652 verifier checks DG1/SOD signatures. A bounded
+offline Japanese CSCA/CRL verifier follows ICAO Part 12; inputs and pins are
+documented in crates/identity/src/passport/trust/README.md. Full Passive Authentication, PACE, photos and
+passport issuance remain unqualified.
+The Wallet may explicitly save matched document number and MRZ in its encrypted
+account collection. Keys, counters, nonces and transport bytes are never persisted.
+Protocol and known-answer tests: ICAO Doc 9303 Part 11, Appendix D (BAC).
+https://www.icao.int/sites/default/files/publications/DocSeries/9303_p11_cons_en.pdf

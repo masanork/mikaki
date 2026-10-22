@@ -14,6 +14,7 @@ pub struct VerifiedCredential {
     kid: String,
     trust: CredentialTrust,
     expires: u64,
+    vct: Option<String>,
 }
 impl VerifiedCredential {
     // Verify the receipt against independent holder, issuer and trust inputs before storage.
@@ -30,18 +31,30 @@ impl VerifiedCredential {
     ) -> Result<Self, String> {
         let credential = Zeroizing::new(credential);
         trust.validate(now)?;
-        let expires = match format {
+        let (expires, vct) = match format {
             "dc+sd-jwt" => {
-                crate::issuance::verify_receipt(&credential, &issuer_key, kid, &holder, issuer, now)
-                    .map_err(str::to_string)?["exp"]
-                    .as_u64()
+                let claims = crate::issuance::verify_receipt(
+                    &credential,
+                    &issuer_key,
+                    kid,
+                    &holder,
+                    issuer,
+                    now,
+                )
+                .map_err(str::to_string)?;
+                let expires = claims["exp"].as_u64().ok_or("invalid_credential")?;
+                let vct = claims["vct"]
+                    .as_str()
                     .ok_or("invalid_credential")?
+                    .to_owned();
+                (expires, Some(vct))
             }
-            "mso_mdoc" => {
+            "mso_mdoc" => (
                 crate::mdoc::verify_receipt(&credential, &issuer_key, &holder, now)
                     .map_err(str::to_string)?
-                    .expires_at
-            }
+                    .expires_at,
+                None,
+            ),
             _ => return Err("invalid_credential".into()),
         };
         trust.verify(&credential, format, &issuer_key, now, expires)?;
@@ -54,6 +67,7 @@ impl VerifiedCredential {
             kid: kid.into(),
             trust,
             expires,
+            vct,
         })
     }
     fn revalidate(&self, now: u64) -> Result<(), String> {
@@ -102,11 +116,20 @@ impl InventoryRequest {
         self.request.response_encryption()
     }
     pub(super) fn type_feasible(&self) -> bool {
-        dcql::select(&self.request.request.dcql_query, &self.vct).is_ok()
+        dcql::select_available_types(
+            &self.request.request.dcql_query,
+            &dcql::catalog(&self.vct),
+            None,
+        )
+        .is_ok()
     }
     /// Preserve authenticated binding while compiling the existing one-receipt adapter.
     pub fn into_single(mut self) -> Result<ApprovedRequest, &'static str> {
-        let indices = dcql::select(&self.request.request.dcql_query, &self.vct)?;
+        let indices = dcql::select_available_types(
+            &self.request.request.dcql_query,
+            &dcql::catalog(&self.vct),
+            None,
+        )?;
         let mut queries = Vec::new();
         for i in indices {
             let query = &self.request.request.dcql_query.credentials[i];
@@ -228,7 +251,11 @@ impl InventoryRequest {
                 credentials: vec![query.clone()],
                 credential_sets: None,
             };
-            match dcql::select(&request.request.dcql_query, &self.vct) {
+            match dcql::select_available_types(
+                &request.request.dcql_query,
+                &dcql::catalog(&self.vct),
+                None,
+            ) {
                 Err("credential_query_unsatisfied") => {
                     candidates.push(None);
                     continue;
@@ -242,7 +269,10 @@ impl InventoryRequest {
                 if !valid[*i]
                     || c.format != query.format
                     || (c.format == "dc+sd-jwt"
-                        && format!("{}/types/linked-document", c.issuer) != self.vct)
+                        && c.vct.as_ref().is_none_or(|vct| {
+                            !dcql::catalog(&self.vct).contains(vct)
+                                || dcql::select(&request.request.dcql_query, vct).is_err()
+                        }))
                 {
                     return false;
                 }
@@ -273,9 +303,9 @@ impl InventoryRequest {
             }));
         }
         let available: Vec<_> = candidates.iter().map(Option::is_some).collect();
-        let indices = dcql::select_available(
+        let indices = dcql::select_available_types(
             &self.request.request.dcql_query,
-            &self.vct,
+            &dcql::catalog(&self.vct),
             Some(&available),
         )
         .map_err(str::to_string)?;

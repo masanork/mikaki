@@ -203,6 +203,7 @@ pub fn consumer_evidence(document: &VerifiedDocument, at: u64) -> Result<Value, 
     let source_type = match document.attributes.document_type {
         crate::card::DocumentType::MyNumberCard => "jp_mnc_input_support_static",
         crate::card::DocumentType::DrivingLicense => "jp_driving_license_static",
+        crate::card::DocumentType::Passport => return Err(Error::ClaimUnavailable),
     };
     Ok(
         json!({"type":"electronic_record","record":{"type":source_type},

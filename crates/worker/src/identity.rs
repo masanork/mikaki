@@ -2,6 +2,12 @@
 pub(crate) mod age_request;
 mod attester;
 mod claims;
+mod passport;
+pub(crate) use passport::ready as passport_ready;
+pub(crate) use passport::{
+    approve_get as passport_approve_get, approve_post as passport_approve_post,
+    intake as passport_intake, poll as passport_poll, type_metadata as passport_type_metadata,
+};
 mod wallet;
 pub(crate) use attester::{challenge as attester_challenge, redeem as attester_redeem};
 pub(crate) use claims::{CLAIM, enabled as claims_enabled, release_post, userinfo};
@@ -639,6 +645,10 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     if (issuance_enabled(&ctx) && policy(&ctx).is_err()) || signing(&ctx).is_err() {
         return error(503, "issuer_unavailable");
     }
+    let passport_policy = match passport::ready(&ctx.env).await {
+        Ok(policy) => policy,
+        Err(_) => return error(503, "issuer_unavailable"),
+    };
     if credential_trust(
         &ctx,
         mikaki_identity::credential_certificate::Purpose::SdJwt,
@@ -661,6 +671,20 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     };
     metadata["credential_configurations_supported"][issuance::CONFIGURATION]["credential_metadata"] =
         json!({"claims":profile.metadata(None)});
+    if passport::enabled(&ctx) {
+        metadata["credential_configurations_supported"]
+            [mikaki_identity::passport::credential::CONFIGURATION] = json!({"format":"dc+sd-jwt","scope":"passport_dg1","vct":mikaki_identity::passport::credential::vct(&iss),"cryptographic_binding_methods_supported":["jwk"],"credential_signing_alg_values_supported":["ES256"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}});
+    }
+    if passport::enabled(&ctx) {
+        metadata["credential_configurations_supported"]
+            [mikaki_identity::passport::credential::CONFIGURATION]["passport_evidence_policy"] =
+            serde_json::to_value(passport_policy)?;
+        metadata["credential_configurations_supported"]
+            [mikaki_identity::passport::credential::CONFIGURATION]["credential_metadata"] = json!({
+            "claims": mikaki_identity::passport::credential::FIELDS.iter()
+                .map(|field| json!({"path":[field]})).collect::<Vec<_>>()
+        });
+    }
     if mdoc_certificate(&ctx)?.is_some() {
         metadata["credential_configurations_supported"][mdoc::CONFIGURATION] = json!({"format":"mso_mdoc","doctype":mdoc::DOCTYPE,"scope":mdoc::CONFIGURATION,"cryptographic_binding_methods_supported":["cose_key"],"credential_signing_alg_values_supported":[-7],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}});
         metadata["credential_configurations_supported"][mdoc::CONFIGURATION]["credential_metadata"] =
@@ -689,8 +713,8 @@ pub async fn metadata(_req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     }
     match encryption_key(&ctx) {
         Ok(Some(key)) => {
-            metadata["credential_request_encryption"] = json!({"jwks":{"keys":[key.public().metadata()]},"enc_values_supported":["A256GCM","A128GCM"],"encryption_required":false});
-            metadata["credential_response_encryption"] = json!({"alg_values_supported":["ECDH-ES"],"zip_values_supported":["DEF"],"enc_values_supported":["A256GCM","A128GCM"],"encryption_required":false});
+            metadata["credential_request_encryption"] = json!({"jwks":{"keys":[key.public().metadata()]},"enc_values_supported":["A256GCM","A128GCM"],"encryption_required":wallet::haip(&ctx)});
+            metadata["credential_response_encryption"] = json!({"alg_values_supported":["ECDH-ES"],"zip_values_supported":["DEF"],"enc_values_supported":["A256GCM","A128GCM"],"encryption_required":wallet::haip(&ctx)});
         }
         Ok(None) => {}
         Err(_) => return error(503, "issuer_unavailable"),
@@ -714,6 +738,12 @@ pub async fn oauth_metadata(_req: Request, ctx: RouteContext<()>) -> worker::Res
     }
     let iss = issuer(&ctx)?;
     let mut metadata = json!({"issuer":iss,"token_endpoint":format!("{iss}/token"),"jwks_uri":format!("{iss}/jwks"),"grant_types_supported":["urn:ietf:params:oauth:grant-type:pre-authorized_code"],"token_endpoint_auth_methods_supported":["none"],"pre-authorized_grant_anonymous_access_supported":true,"scopes_supported":["linked_document"]});
+    if passport::enabled(&ctx) {
+        metadata["scopes_supported"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(mikaki_identity::passport::credential::CONFIGURATION));
+    }
     if wallet::enabled(&ctx) {
         wallet::validate_haip(&ctx)?;
         if wallet::haip(&ctx) {
@@ -801,6 +831,9 @@ pub async fn token(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     let Ok((_, policy_hash)) = policy(&ctx) else {
         return error(503, "issuer_unavailable");
     };
+    if let Some(response) = passport::token_if_present(&ctx, &body.code).await? {
+        return Ok(response);
+    }
     let access = random()?;
     if wallet::haip(&ctx) {
         return error(400, "unsupported_grant_type");
@@ -859,6 +892,7 @@ enum CredentialProofs {
 }
 #[derive(Deserialize)]
 struct CredentialRequest {
+    passport_evidence: Option<mikaki_identity::passport::Evidence>,
     credential_configuration_id: Option<String>,
     credential_identifier: Option<String>,
     proofs: Option<CredentialProofs>,
@@ -957,6 +991,21 @@ pub async fn credential(mut req: Request, ctx: RouteContext<()>) -> worker::Resu
         }
         _ => return error(400, "invalid_credential_request"),
     };
+    if configuration == mikaki_identity::passport::credential::CONFIGURATION {
+        return passport::credential(
+            &req,
+            &ctx,
+            &body,
+            &access,
+            dpop,
+            encrypted_request,
+            response_encryption,
+        )
+        .await;
+    }
+    if body.passport_evidence.is_some() {
+        return error(400, "invalid_credential_request");
+    }
     if !matches!(configuration, issuance::CONFIGURATION | mdoc::CONFIGURATION) {
         return error(400, "unknown_credential_configuration");
     }
@@ -1437,6 +1486,9 @@ pub async fn purge(env: &worker::Env) -> worker::Result<()> {
     }
     if db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='identity_wallet_par'").first::<Value>(None).await?.is_some() {
         db.prepare("DELETE FROM identity_wallet_par WHERE request_hash IN (SELECT request_hash FROM identity_wallet_par WHERE expires_at<=unixepoch()-300 LIMIT 1000)").run().await?;
+    }
+    if db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='identity_passport_transaction'").first::<Value>(None).await?.is_some() {
+        db.prepare("DELETE FROM identity_passport_transaction WHERE tx_id IN (SELECT tx_id FROM identity_passport_transaction WHERE expires_at<=unixepoch() LIMIT 1000)").run().await?;
     }
     db.prepare("DELETE FROM identity_nonce WHERE nonce_hash IN (SELECT nonce_hash FROM identity_nonce WHERE expires_at<=unixepoch() LIMIT 1000)").run().await?;
     Ok(())

@@ -41,7 +41,7 @@ struct StoredSession {
 
 #[derive(Serialize)]
 pub struct LoginResult {
-    subject: String,
+    pub(crate) subject: String,
 }
 
 struct BusyGuard<'a>(&'a AtomicBool);
@@ -77,7 +77,12 @@ pub fn native_session(state: State<'_, NativeAuthState>) -> Result<Option<LoginR
 }
 
 #[tauri::command]
-pub fn clear_native_session(state: State<'_, NativeAuthState>) -> Result<(), String> {
+pub fn clear_native_session(
+    app: tauri::AppHandle,
+    state: State<'_, NativeAuthState>,
+) -> Result<(), String> {
+    crate::identity_reader::cancel_active_read(&app)?;
+    crate::identity_issuance::clear_passport_session(&app);
     invalidate(&state, true)
 }
 

@@ -154,10 +154,14 @@ pub(super) async fn enroll(
     callback: &str,
     configuration: &str,
     trust: &[AttesterTrust],
+    sender: Option<HolderKey>,
 ) -> Result<(Session, Zeroizing<String>), String> {
     // Provisioned trust only. Refuse unknown authority before allocating keys or contacting it.
     if callback != CALLBACK
-        || !matches!(configuration, "linked_document" | "linked_document_mdoc")
+        || !matches!(
+            configuration,
+            "linked_document" | "linked_document_mdoc" | "passport_dg1"
+        )
         || client.is_empty()
         || client.len() > 256
         || trust.len() != 1
@@ -178,7 +182,8 @@ pub(super) async fn enroll(
     .await?;
     let challenge = challenge.validate("client", started)?;
     live(guard)?;
-    let (enrollment, evidence) = Enrollment::start(app, client, &challenge.bytes)?;
+    let (mut enrollment, evidence) = Enrollment::start(app, client, &challenge.bytes)?;
+    enrollment.sender = sender;
     let proof = enrollment.proof(&challenge.encoded)?;
     if Instant::now() >= challenge.until {
         return Err(ERROR.into());

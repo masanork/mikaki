@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "startedAt": "2026-10-21T05:46:04.951Z",
+  "sdkCommit": "b741acd1f2a77ffbe2818b71822841781dd7ad9f",
+  "mode": "bidirectional",
+  "scope": "Synthetic host SDK format/signature and issuance checks; no physical device, production trust, full Wallet app or HAIP qualification.",
+  "native": {
+    "sdkTests": 1
+  },
+  "issuer": {
+    "sdkTests": 1
+  },
+  "finishedAt": "2026-10-21T05:48:25.331Z"
+}

@@ -64,6 +64,37 @@ and regression evidence recorded in Cloud. See `pullRequestReview` in the invent
 
 ## Reliability and maintainability follow-up
 
+### Passport Wallet PR #291 (2026-10-22)
+
+The external `SonarCloud Code Analysis` check failed even though the GitHub
+Actions workflow and scanner job succeeded. Its new-code reliability and security
+ratings must be checked separately from workflow completion.
+
+The two BAC-only SHA-1 findings in
+`apps/mikaki-client/src-tauri/src/identity_passport/crypto.rs`
+(`AaFiJpaMfMFEpN_1Yxng`, `AaFiJpaMfMFEpN_1Yxnh`) were reviewed as **Accepted**,
+with a separate rationale on each Cloud issue. ICAO Doc 9303 Part 11 sections
+4.3.2 and 9.7.1.1, plus Appendix D.1/D.2, require the MRZ SHA-1 key seed and the
+SHA-1/3DES BAC KDF. Changing their hash breaks that chip protocol. This exception
+preserves a legacy access mechanism; BAC does not establish issuer authenticity,
+live possession or HAIP credential-signing strength. Keys remain transient and
+zeroized, and native Appendix D known-answer tests cover the required operations.
+See the [ICAO specification](https://www.icao.int/sites/default/files/publications/DocSeries/9303_p11_cons_en.pdf)
+and the [Wallet evidence boundary](identity-wallet.md).
+
+The shared DG1/SOD verifier now rejects SHA-1 for both LDS hashes and signatures;
+negative tests exercise both roles, and the `policy-v2` fingerprint distinguishes
+the stronger policy from the earlier SHA-1-compatible digest profile. The
+Multipaz runner validates canonical checkout/parent ownership and write modes
+before executing SDK code; tests reject writable checkout, symlink-target and
+parent directories. Metadata key sets use order-independent set equality, and
+the remaining new-code reliability constructor/NaN findings are corrected in
+source. These changes require a fresh Cloud analysis before claiming the
+corresponding findings are closed. No rule, path exclusion or gate condition is
+changed.
+
+### Earlier reliability inventory
+
 All 89 high reliability findings are `S2871` suggestions to use `localeCompare`.
 The reported sites compare string field/name sets or generate deterministic
 protocol and evidence ordering, rather than human alphabetical presentation.

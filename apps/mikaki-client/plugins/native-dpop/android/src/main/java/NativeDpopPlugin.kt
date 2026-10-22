@@ -22,6 +22,9 @@ class HolderArgs { lateinit var id: String; var input: String = ""; var payload:
 @InvokeArg
 class AttestedHolderArgs { lateinit var id: String; lateinit var challenge: String }
 
+@InvokeArg
+class DocumentArgs { lateinit var owner: String; var payload: String = "" }
+
 @TauriPlugin
 class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -137,8 +140,7 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
         catch (_: Exception) { invoke.reject("wallet_key_unavailable") }
     }
     private fun walletFile() = android.util.AtomicFile(java.io.File(activity.noBackupFilesDir, "identity-wallet.v1.bin"))
-    private fun wrappingKey(create: Boolean): javax.crypto.SecretKey {
-        val alias = "mikaki.identity.storage.v1"
+    private fun wrappingKey(create: Boolean, alias: String = "mikaki.identity.storage.v1"): javax.crypto.SecretKey {
         val store = keyStore()
         if (!store.containsAlias(alias)) {
             require(create)
@@ -215,6 +217,67 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
             store.deleteEntry("mikaki.identity.storage.v1")
             invoke.resolve()
         } catch (_: Exception) { invoke.reject("wallet_storage_unavailable") }
+    }
+
+    // Native-only, account-scoped read summaries. They are never presentation credentials.
+    private fun documentAlias(owner: String): String {
+        require(owner.length == 64 && owner.all { it in '0'..'9' || it in 'a'..'f' })
+        return "mikaki.identity.documents.v1.$owner"
+    }
+    private fun documentFile(owner: String): android.util.AtomicFile {
+        documentAlias(owner)
+        return android.util.AtomicFile(java.io.File(activity.noBackupFilesDir, "identity-documents-$owner.v1.bin"))
+    }
+    @Command @Synchronized
+    fun storeDocuments(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(DocumentArgs::class.java)
+            val alias = documentAlias(args.owner)
+            require(args.payload.length <= 32768)
+            val decoded = Base64.decode(args.payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            plain = decoded; require(decoded.size <= 24576)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, wrappingKey(true, alias))
+            cipher.updateAAD(alias.toByteArray(Charsets.US_ASCII))
+            val encrypted = cipher.doFinal(decoded)
+            require(cipher.iv.size == 12)
+            val file = documentFile(args.owner); val stream = file.startWrite()
+            try { stream.write(byteArrayOf(1)); stream.write(cipher.iv); stream.write(encrypted); file.finishWrite(stream) }
+            catch (error: Exception) { file.failWrite(stream); throw error }
+            invoke.resolve()
+        } catch (_: Exception) { invoke.reject("document_storage_unavailable") }
+        finally { plain?.fill(0) }
+    }
+    @Command @Synchronized
+    fun loadDocuments(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(DocumentArgs::class.java)
+            val alias = documentAlias(args.owner); val file = documentFile(args.owner)
+            if (!file.baseFile.exists() && !java.io.File(file.baseFile.path + ".bak").exists()) {
+                invoke.resolve(JSObject().apply { put("payload", org.json.JSONObject.NULL) }); return
+            }
+            val bytes = file.openRead().use { stream ->
+                val buffer = ByteArray(24606); var total = 0
+                while (total < buffer.size) { val n = stream.read(buffer, total, buffer.size-total); if (n < 0) break; total += n }
+                require(total <= 24605); buffer.copyOf(total)
+            }
+            require(bytes.size in 30..24605 && bytes[0] == 1.toByte())
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, wrappingKey(false, alias), javax.crypto.spec.GCMParameterSpec(128, bytes.copyOfRange(1,13)))
+            cipher.updateAAD(alias.toByteArray(Charsets.US_ASCII))
+            val decoded = cipher.doFinal(bytes.copyOfRange(13,bytes.size)); plain = decoded
+            invoke.resolve(JSObject().apply { put("payload", b64(decoded)) })
+        } catch (_: Exception) { invoke.reject("document_storage_unavailable") }
+        finally { plain?.fill(0) }
+    }
+    @Command @Synchronized
+    fun deleteDocuments(invoke: Invoke) {
+        try {
+            val owner = invoke.parseArgs(DocumentArgs::class.java).owner
+            documentFile(owner).delete(); keyStore().deleteEntry(documentAlias(owner)); invoke.resolve()
+        } catch (_: Exception) { invoke.reject("document_storage_unavailable") }
     }
 
 }

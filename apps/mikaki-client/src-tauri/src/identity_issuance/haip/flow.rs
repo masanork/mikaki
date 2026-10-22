@@ -2,7 +2,7 @@
 use super::*;
 
 use mikaki_identity::wallet_profile::Configuration;
-fn load_configuration() -> Result<Configuration, String> {
+pub(in crate::identity_issuance) fn load_configuration() -> Result<Configuration, String> {
     if !cfg!(target_os = "android") {
         return Err("wallet_attestation_unavailable".into());
     }
@@ -162,6 +162,7 @@ pub async fn start_identity_wallet_issuance(
             browser_until,
             as_nonce,
             requested_count,
+            passport: None,
         });
         s.haip_state = "pending";
         app.opener()
@@ -201,6 +202,12 @@ pub async fn receive_identity_wallet_credential(
         p
     };
     let result = async {
+        check_passport_owner(&app, pending.passport.as_ref())?;
+        if pending.passport.is_some()
+            && (pending.requested_count != 1 || pending.session.protocol.is_batch())
+        {
+            return Err("invalid_configuration".into());
+        }
         let (token, _) = issuer::form(
             &mut pending.session,
             &guard,
@@ -288,10 +295,15 @@ pub async fn receive_identity_wallet_credential(
                 pending.session.distinct_encryption_key(
                     &context.encryption.request_key().map_err(str::to_string)?,
                 )?;
-                let payload =
+                let mut payload =
                     pending
                         .session
                         .credential_request(&nonce, &attestation, &cfg.key_trust)?;
+                check_passport_owner(&app, pending.passport.as_ref())?;
+                if let Some(source) = &pending.passport {
+                    payload["passport_evidence"] =
+                        serde_json::to_value(&source.evidence).map_err(|_| "issuance_failed")?;
+                }
                 let issued =
                     issuer::credential(&pending.session, &guard, &context, payload, issuer::send)
                         .await?;
@@ -321,13 +333,24 @@ pub async fn receive_identity_wallet_credential(
         if s.generation != guard.generation {
             return Err("cancelled".into());
         }
+        check_passport_owner(&app, pending.passport.as_ref())?;
         let result = ReceiveResult {
             state: "received",
             credential_count: Some(receipts.len()),
             expires_at: receipts.iter().map(|r| r.expires_at).min(),
             format: receipts.first().map(|r| r.format.clone()),
         };
-        s.install_receipts(&app, receipts)?;
+        if let Some(source) = pending.passport.take() {
+            if receipts.len() != 1 || s.current_receipts(&app, now()?)?.len() >= 8 {
+                return Err("wallet_inventory_full".into());
+            }
+            s.passport_receipts.push((
+                source.owner,
+                receipts.into_iter().next().ok_or("invalid_response")?,
+            ));
+        } else {
+            s.install_receipts(&app, receipts)?;
+        }
         s.haip_state = "received";
         pending.session.protocol.cancel();
         Ok(result)
@@ -335,6 +358,102 @@ pub async fn receive_identity_wallet_credential(
     .await;
     if result.is_err() {
         terminal(&guard, "failed");
+    }
+    result
+}
+
+fn check_passport_owner(
+    app: &AppHandle,
+    source: Option<&super::super::passport::PassportFlow>,
+) -> Result<(), String> {
+    if let Some(source) = source {
+        if crate::identity_documents::owner(app)? != source.owner {
+            return Err("document_login_required".into());
+        }
+    }
+    Ok(())
+}
+#[allow(clippy::too_many_arguments)]
+pub(in crate::identity_issuance) async fn start_passport(
+    app: &AppHandle,
+    state: &IdentityState,
+    guard: &Gate,
+    sender: HolderKey,
+    tx: &str,
+    source: super::super::passport::PassportFlow,
+    review_generation: u64,
+    expires_in: u64,
+) -> Result<LinkStarted, String> {
+    let cfg = load_configuration()?;
+    let configuration = "passport_dg1";
+    let thumbprint = sender.public()?.thumbprint().map_err(str::to_string)?;
+    let result = async {
+        check_passport_owner(app, Some(&source))?;
+        let context = issuer::metadata(guard, configuration).await?;
+        let (mut session, attestation) = attester::enroll(
+            app,
+            guard,
+            &cfg.client_id,
+            CALLBACK,
+            configuration,
+            &cfg.client_trust,
+            Some(sender),
+        )
+        .await?;
+        session
+            .distinct_encryption_key(&context.encryption.request_key().map_err(str::to_string)?)?;
+        session.protocol.bind_issuer_state(tx, now()?)?;
+        check_passport_owner(app, Some(&source))?;
+        let started = now()?;
+        let (par, as_nonce) = issuer::form(
+            &mut session,
+            guard,
+            &attestation,
+            &cfg.client_trust,
+            "par",
+            None,
+            issuer::send,
+        )
+        .await?;
+        let browser = session.protocol.accept_par(&par, now()?)?;
+        let browser_until =
+            started.saturating_add(par["expires_in"].as_u64().ok_or("invalid_response")?);
+        check_passport_owner(app, Some(&source))?;
+        {
+            let mut s = state.0.lock().map_err(|_| "identity_unavailable")?;
+            if s.generation != guard.generation || s.passport_generation != review_generation {
+                return Err("cancelled".into());
+            }
+            s.flow = None;
+            s.presentation = None;
+            s.haip = Some(Pending {
+                session,
+                attestation,
+                generation: guard.generation,
+                ready: false,
+                context: Some(context),
+                configuration: configuration.into(),
+                browser_until,
+                as_nonce,
+                passport: Some(source),
+                requested_count: 1,
+            });
+            s.haip_state = "pending";
+        }
+        app.opener()
+            .open_url(browser.as_str(), None::<&str>)
+            .map_err(|_| "browser_unavailable")?;
+        Ok(LinkStarted {
+            holder_thumbprint: thumbprint.clone(),
+            holder_thumbprints: vec![thumbprint],
+            credential_count: 1,
+            expires_in,
+            haip: true,
+        })
+    }
+    .await;
+    if result.is_err() {
+        terminal(guard, "failed");
     }
     result
 }
@@ -377,7 +496,7 @@ pub(super) fn verified_receipt(
     credential_trust: identity_wallet::CredentialTrust,
 ) -> Result<Receipt, String> {
     let format = match configuration {
-        "linked_document" => "dc+sd-jwt",
+        "linked_document" | "passport_dg1" => "dc+sd-jwt",
         "linked_document_mdoc" => "mso_mdoc",
         _ => return Err("invalid_configuration".into()),
     };
@@ -401,6 +520,25 @@ pub(super) fn verified_receipt(
         credential_trust: Some(credential_trust),
     };
     receipt.expires_at = receipt.validate(ISSUER, now()?)?;
+    if format == "dc+sd-jwt" {
+        let claims = issuance::verify_receipt(
+            &receipt.credential,
+            &receipt.issuer_key,
+            &receipt.issuer_kid,
+            &receipt.key.public()?,
+            ISSUER,
+            now()?,
+        )
+        .map_err(str::to_string)?;
+        let vct = if configuration == "passport_dg1" {
+            mikaki_identity::passport::credential::vct(ISSUER)
+        } else {
+            format!("{ISSUER}/types/linked-document")
+        };
+        if claims["vct"] != vct {
+            return Err("invalid_credential".into());
+        }
+    }
     Ok(receipt)
 }
 

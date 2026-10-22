@@ -13,6 +13,8 @@ zeroize = "1.9"
 sha1 = "=0.11.0"
 sha2 = { version = "=0.11.1", features = ["oid"] }
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["std", "encoding"] }
+p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
+subtle.workspace = true
 p256 = { version = "=0.14.0", features = ["ecdsa", "ecdh"] }
 base64 = "=0.23.1"
 aes-gcm = { version = "=0.11.1", features = ["zeroize"] }
