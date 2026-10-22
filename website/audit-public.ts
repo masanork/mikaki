@@ -3,9 +3,62 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { setTimeout as pause } from 'node:timers/promises';
 import { htmlElements } from '../scripts/html-markup.ts';
 
 const origin = 'https://mikaki.org';
+const attempts = 3;
+const retryableStatuses = new Set([408, 429, 502, 503, 504]);
+
+async function readPublicAttempt(target: URL, request: typeof fetch, signal: AbortSignal) {
+  const response = await request(target.href, { redirect: 'manual', credentials: 'omit', signal });
+  if (retryableStatuses.has(response.status)) {
+    await response.body?.cancel();
+    return { failure: `HTTP ${response.status}` };
+  }
+  // Redirects and permanent HTTP failures must never become accepted pages.
+  if (response.status !== 200) {
+    await response.body?.cancel().catch(() => {});
+    assert.fail(`${target.pathname}: expected 200, got ${response.status}`);
+  }
+  const body = await response.arrayBuffer();
+  return { response: new Response(body, { status: response.status, headers: response.headers }) };
+}
+
+/** Retry transport failures while retaining a deadline through the response body. */
+export async function fetchPublicResource(
+  url: string,
+  {
+    request = fetch,
+    wait = pause,
+    timeoutMs = 10_000,
+  }: {
+    request?: typeof fetch;
+    wait?: (milliseconds: number) => Promise<unknown>;
+    timeoutMs?: number;
+  } = {},
+) {
+  const target = new URL(url);
+  assert.equal(target.origin, origin, 'audit request must stay on the public site');
+  assert.equal(target.username + target.password + target.search + target.hash, '');
+  let failure = 'network error';
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const signal = AbortSignal.timeout(timeoutMs);
+    try {
+      const result = await readPublicAttempt(target, request, signal);
+      if (result.response) return result.response;
+      failure = result.failure;
+    } catch (error) {
+      if (error instanceof assert.AssertionError) throw error;
+      failure = signal.aborted ? 'timeout' : 'network error';
+    }
+    if (attempt === attempts) break;
+    console.warn(`${target.pathname}: retrying after ${failure} (attempt ${attempt}/${attempts})`);
+    await wait(250 * attempt);
+  }
+  throw new Error(`${target.pathname}: request failed after ${attempts} attempts (${failure})`);
+}
+
 const decode = (text: string) =>
   text.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'");
 /** Require an explicit hash grant that survives every enforced script policy. */
@@ -35,8 +88,7 @@ export function permitsScriptHash(csp: string | null, hash: string) {
 
 /** Audit real responses, including internal links; never follow links outside the public site. */
 export async function auditPublicWebsite(
-  request: (url: string) => Promise<Response> = (url) =>
-    fetch(url, { signal: AbortSignal.timeout(10_000) }),
+  request: (url: string) => Promise<Response> = fetchPublicResource,
   expectedPaths?: string[],
 ) {
   async function get(path: string, type: string) {
@@ -200,6 +252,7 @@ export async function auditPublicWebsite(
   }
   return {
     origin,
+    status: 'passed' as const,
     checked_at: new Date().toISOString(),
     pages: [...pages].map(([path, page]) => ({ path, title: page.title })),
     checks: [
@@ -219,8 +272,21 @@ export async function auditPublicWebsite(
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const report = await auditPublicWebsite();
   mkdirSync('artifacts', { recursive: true });
-  writeFileSync('artifacts/website-findability.json', `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`Public website findability passed for ${report.pages.length} pages`);
+  // Never let a failed invocation leave a previous passing report in place.
+  const reportPath = 'artifacts/website-findability.json';
+  writeFileSync(reportPath, '');
+  try {
+    const report = await auditPublicWebsite();
+    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`Public website findability passed for ${report.pages.length} pages`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Public website audit failed';
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify({ origin, checked_at: new Date().toISOString(), status: 'failed', error: message }, null, 2)}\n`,
+    );
+    console.error(`Public website findability failed: ${message}`);
+    process.exitCode = 1;
+  }
 }

@@ -25,6 +25,8 @@ Social previews use committed 1200×630 PNG captures of the public woven hero, w
 
 `audit-public.ts` checks all sitemap pages, reciprocal locale URLs, canonical URLs, JSON-LD CSP hashes, internal page/fragment links, reachability from the homepage, Markdown alternates, catalog, robots and social PNGs. The existing website test runs it against real local static-assets responses, plus negative cases. Production smoke runs the same audit against https://mikaki.org and retains its report. It checks crawlability and discovery signals, not search-engine indexing or rankings.
 
+Public requests have a ten-second deadline covering headers and the complete body. Transport failures and HTTP 408, 429, 502, 503 and 504 get at most three attempts, with 250/500 ms backoff. Retries identify the resource in the log; an exhausted request still fails the audit. Redirects and other HTTP errors fail immediately. Requests stay on the public origin without credentials, and metadata/CSP/content assertions are never retried. The CLI replaces any old report before checking and writes `status: passed` or `status: failed` evidence. Production smoke retains that report for 30 days even when the audit fails. This does not change the other production smoke checks or grant deployment authority.
+
 ## Onboarding screenshots
 
 The localized images in `screenshots/onboarding/` are maintained manually, separately from CI. Public enrollment/sign-in captures only make GET requests. Vault captures use a disposable local Worker, synthetic account/note and mocked PRF; they do not qualify production saving, recovery or physical devices.
