@@ -1,0 +1,13 @@
+{
+  "format": "mikaki-card-trust-deadlines-v1",
+  "policies": [
+    {
+      "policy_sha256": "0bf9e8cd3d2916034333f669cfafbd3a2b0c55e3ba954020de2d4bea81dde207",
+      "valid_until": 1792588479
+    },
+    {
+      "policy_sha256": "51bae1540d65288588ab4f307d6f5376470a113e2586349f91d9b0315139b116",
+      "valid_until": 1793223827
+    }
+  ]
+}

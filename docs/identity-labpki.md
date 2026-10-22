@@ -83,6 +83,13 @@ runtime revocation enforcement for those JWTs.
 
 ### Renew the selected snapshots without rotating trust
 
+The [read-only expiry monitor](security-ci.md#identity-trust-expiry-monitoring)
+checks the source-selected public snapshot every six hours and fails at or within
+48 hours of a certificate/CRL freshness or recorded card-approval deadline. Run
+`npm run check:identity-trust-freshness` locally before renewal and again after
+import. Treat an alert as a request for reviewed maintenance; it does not extend
+trust or establish that new bytes reached a running Issuer or installed Wallet.
+
 Use the existing HAIP CA directory and its complete `registry.db`. First compare
 each `haip-sd-jwt/root.pem` and `haip-mdoc/root.pem` with the corresponding pinned
 `trust_anchors` in `crates/worker/config/identity-haip-labpki.public.json`. Preserve
