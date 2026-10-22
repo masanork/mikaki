@@ -21,7 +21,28 @@ cargo +nightly-2026-09-21 fuzz run metadata -- -max_total_time=120 -max_len=1310
 cargo +nightly-2026-09-21 fuzz run android -- -max_total_time=120 -max_len=16416 -timeout=10
 ```
 
-The [workflow](../.github/workflows/webauthn-fuzz.yml) runs weekly or manually, not daily, with 90 seconds per target. Record duration, executions, peak RSS, target, and seed count. A clean run means only that no panic/timeout was found for that commit and exploration interval; it is not coverage, cryptographic correctness, or a security proof.
+The [workflow](../.github/workflows/webauthn-fuzz.yml) runs weekly with 30 minutes per target. Manual dispatch accepts a strict decimal duration of 1..1800 seconds; a shorter run is a smoke test. Four isolated jobs can run concurrently, each with a 55-minute job ceiling. Each process requests AddressSanitizer, a ten-second input timeout, the target's fixed maximum input length, and a 1024 MiB RSS limit. The driver gives the process group the requested exploration interval plus 120 seconds, then kills Cargo and its descendants if necessary. Builds and independent seed replay happen before this interval. Runs queue instead of automatically cancelling an active campaign.
+
+The [driver](../scripts/run-webauthn-fuzz.ts) records the exact source commit, source cleanliness, fuzz lockfile hash, pinned cargo-fuzz version/binary hash, compiler identity, requested limits, elapsed time, executed units, throughput, new units and peak RSS. CI requires clean source; commit, tree and lockfile changes during execution fail qualification. Fuzz execution is offline after the explicit build, with absolute Cargo/Git selection and a small child environment that omits inherited credentials and compiler wrappers.
+
+Every invocation has a separate execution ID, log, working corpus, input/output hash manifests, findings directory and JSON report under `artifacts/webauthn-fuzz/<target>/`. Only flat regular input files are accepted, with target-specific size limits, at most 20,000 entries and 64 MiB total. A run copies and hashes the same seed bytes before mutation; it never mutates the original seed directory. Successful and failed evidence is retained for 14 days. The report starts as incomplete and replaces any prior passing summary. A zero exit alone is insufficient: missing/duplicate/inconsistent statistics, incomplete elapsed budget, interruption, resource failure, sanitizer findings or a finding artifact cannot pass.
+
+The separate `harness_canary` target intentionally panics on one inert marker. A prerequisite job runs it through the actual driver and requires its nonzero fuzzer exit, expected marker and libFuzzer failure diagnostic. Its report remains failed with qualification `harness-canary-only`; the successful self-test means the detector observed the expected failure, not a product finding. Unit tests also exercise process-group termination, malformed reports, unsafe corpus entries, executable-home validation and stale passing evidence.
+
+To run the managed campaign locally after installing the pinned toolchain and cargo-fuzz into `target/fuzz-tools`:
+
+```sh
+cargo +nightly-2026-09-21 run --manifest-path fuzz/Cargo.toml --locked --bin seed
+export PATH="$PWD/target/fuzz-tools/bin:$PATH"
+cargo +nightly-2026-09-21 fuzz build registration --sanitizer address
+node scripts/run-webauthn-fuzz.ts registration 1800
+cargo +nightly-2026-09-21 fuzz build harness_canary --sanitizer address
+node scripts/run-webauthn-fuzz.ts self-test
+```
+
+Previous corpus artifacts are retained for reviewed manual reuse, not automatically restored from a cache or arbitrary archive. Check the producing revision, target, tool versions and manifest hashes, review the data, then copy selected regular files into `fuzz/corpus/<target>/` before a new managed run. The new report records every byte actually used. Do not import real credentials, private keys, card data or production records. This iteration does not add automatic corpus merging, stateful/property oracles or native/Wasm crash replay.
+
+A clean run means only that no panic/timeout or configured sanitizer failure was found for that revision and exploration interval. It is not measured source coverage, cryptographic correctness, physical-device qualification or a security proof. See the [Rust Fuzz Book](https://rust-fuzz.github.io/book/cargo-fuzz/guide.html) and [libFuzzer options](https://llvm.org/docs/LibFuzzer.html#options) for the underlying tool behavior.
 
 For a crash, retain and minimize the artifact using `cargo +nightly-2026-09-21 fuzz tmin <target> <input>`. Determine the intended acceptance/rejection, add the minimized input to shared native/Wasm regression tests, then close the artifact. A mutated signed fixture rejected because its signature broke is not itself a bug.
 
