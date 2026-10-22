@@ -120,12 +120,19 @@ salt and trailer. Unknown signature algorithms remain unsupported, never success
 
 Supported signature profiles are RSA PKCS#1 v1.5 and RSA-PSS with SHA-256/384/512,
 and P-256/SHA-256 or P-384/SHA-384 ECDSA. RSA keys are bounded to 2048–4096 bits.
-DG hash algorithms may be SHA-1 or SHA-256/384/512. Named curves and explicit
+DG hash algorithms must be SHA-256/384/512. Legacy SHA-1 DG hashes are unsupported,
+including when the SOD itself has a stronger signature. SHA-1 is confined to the
+native BAC key derivation required by ICAO Doc 9303 Part 11 sections 4.3 and 9.7.1;
+it cannot establish issuer-authenticated DG1 evidence. Named curves and explicit
 parameters matching every mathematical P-256/P-384 domain field are supported;
 point size alone never selects a curve. SHA-1 signatures and other curves remain
 unsupported. The verifier follows
 [RFC 5652](https://www.rfc-editor.org/rfc/rfc5652.html) and the DG/SOD relationship in
 [ICAO Doc 9303 Part 11, Appendix E](https://www.icao.int/sites/default/files/publications/DocSeries/9303_p11_cons_en.pdf).
+
+The policy fingerprint uses the `mikaki-passport-dg1-policy-v2` domain to bind this
+stronger digest policy as well as the pinned anchors and CRL. The earlier
+SHA-1-compatible policy fingerprint is rejected by production smoke.
 
 Only DG1 is read and verified; listed hashes for other groups are not proof that
 those groups were read or matched. A successful report therefore contains only
@@ -337,7 +344,11 @@ JAVA_HOME=/path/to/jdk21 ANDROID_HOME=/path/to/android-sdk \
   npm run test:identity-wallet-multipaz -- --checkout /private/tmp/mikaki-multipaz-checkout
 ```
 
-The disposable SDK checkout must be at the pinned commit, with unchanged tracked
+The disposable SDK checkout must belong to the current operator and be protected
+from group/other writes and parent-directory replacement; a root-owned sticky
+temporary parent is permitted. A temporary path alone does not establish this
+boundary. The runner checks canonical paths and POSIX ownership before executing
+SDK code. The checkout must be at the pinned commit, with unchanged tracked
 sources and complete Git history/tags (the upstream version calculation uses its
 release tag). The default command tests native mixed presentation, rebuilds the
 local Worker, then tests SDK issuance and presentation in the opposite direction.

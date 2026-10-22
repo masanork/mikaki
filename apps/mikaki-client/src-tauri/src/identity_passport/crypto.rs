@@ -1,4 +1,7 @@
 //! BAC primitives adapted from civ (see ORIGIN). Not used for credential crypto.
+//! ICAO Doc 9303 Part 11 sections 4.3 and 9.7.1 mandate SHA-1 for
+//! MRZ-derived BAC/TDES keys. Substituting SHA-256 breaks the chip protocol.
+//! The separate DG1/SOD verifier accepts only SHA-256/384/512.
 use super::{bad, integrity, Result};
 use cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use des::{Des, TdesEde3};

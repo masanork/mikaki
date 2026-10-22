@@ -389,7 +389,8 @@ mod tests;
 pub(in crate::passport) fn policy_fingerprint(crls: &[Vec<u8>]) -> String {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let mut digest = Sha256::new();
-    digest.update(b"mikaki-passport-dg1-policy-v1\0");
+    // Version 2 excludes SHA-1 LDS hashes as well as SHA-1 signatures.
+    digest.update(b"mikaki-passport-dg1-policy-v2\0");
     for a in ANCHORS {
         digest.update((a.der.len() as u64).to_be_bytes());
         digest.update(a.der);

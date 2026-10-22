@@ -1,11 +1,12 @@
 /** Explicit opt-in runner: missing SDK evidence must fail, never silently skip. */
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
-import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { multipazCommit } from '../local/conformance/support/multipaz-wallet.ts';
+import { ownedMultipazCheckout } from './wallet-multipaz-checkout.ts';
 
 const { values } = parseArgs({
   options: { checkout: { type: 'string' }, 'native-only': { type: 'boolean' } },
@@ -71,7 +72,7 @@ async function sdkResult(checkout: string, name: string, since: number) {
   const xml = await readFile(path, 'utf8');
   const suite = /<testsuite\b[^>]*>/.exec(xml)?.[0] ?? '';
   const count = (field: string) =>
-    Number(new RegExp(`\\b${field}="(\\d+)"`).exec(suite)?.[1] ?? NaN);
+    Number(new RegExp(`\\b${field}="(\\d+)"`).exec(suite)?.[1] ?? Number.NaN);
   assert.ok(count('tests') > 0, 'SDK must execute at least one test');
   for (const field of ['failures', 'errors', 'skipped'])
     assert.equal(count(field), 0, `SDK ${field}`);
@@ -80,12 +81,8 @@ async function sdkResult(checkout: string, name: string, since: number) {
 await record();
 try {
   const requested = values.checkout ?? process.env.MIKAKI_MULTIPAZ_CHECKOUT;
-  assert.ok(requested, 'Supply --checkout /private/tmp/<pinned-multipaz-checkout>');
-  const checkout = await realpath(resolve(requested));
-  assert.ok(
-    checkout.startsWith('/private/tmp/'),
-    'Use a disposable SDK checkout under /private/tmp',
-  );
+  assert.ok(requested, 'Supply --checkout <operator-owned-pinned-multipaz-checkout>');
+  const checkout = await ownedMultipazCheckout(requested);
   await checkCheckout(checkout);
   const env = {
     ...process.env,

@@ -14,7 +14,6 @@ use p256::{
 };
 use rsa::{Pkcs1v15Sign, Pss, RsaPublicKey, traits::PublicKeyParts};
 use serde::Serialize;
-use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use x509_cert::{
     AlgorithmIdentifier, Certificate,
@@ -152,7 +151,6 @@ fn no_parameters(alg: &AlgorithmIdentifier) -> bool {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Hash {
-    Sha1,
     Sha256,
     Sha384,
     Sha512,
@@ -161,7 +159,6 @@ impl Hash {
     fn parse(alg: &AlgorithmIdentifier) -> Result<Self> {
         ensure(no_parameters(alg))?;
         match alg.oid.to_string().as_str() {
-            "1.3.14.3.2.26" => Ok(Self::Sha1),
             "2.16.840.1.101.3.4.2.1" => Ok(Self::Sha256),
             "2.16.840.1.101.3.4.2.2" => Ok(Self::Sha384),
             "2.16.840.1.101.3.4.2.3" => Ok(Self::Sha512),
@@ -170,7 +167,6 @@ impl Hash {
     }
     fn digest(self, bytes: &[u8]) -> Vec<u8> {
         match self {
-            Self::Sha1 => Sha1::digest(bytes).to_vec(),
             Self::Sha256 => Sha256::digest(bytes).to_vec(),
             Self::Sha384 => Sha384::digest(bytes).to_vec(),
             Self::Sha512 => Sha512::digest(bytes).to_vec(),
@@ -178,7 +174,6 @@ impl Hash {
     }
     fn size(self) -> usize {
         match self {
-            Self::Sha1 => 20,
             Self::Sha256 => 32,
             Self::Sha384 => 48,
             Self::Sha512 => 64,
@@ -263,9 +258,6 @@ fn verify_inner(sod: &[u8], dg1: &[u8]) -> Result<Certificate> {
     ensure(matched)?;
     let signer = required(signed.signers.get(0))?;
     let digest = Hash::parse(&signer.digest)?;
-    if digest == Hash::Sha1 {
-        return Err(State::Unsupported);
-    }
     ensure(Hash::parse(required(signed.digest_algorithms.get(0))?)? == digest)?;
     ensure(signer.unsigned_attributes.is_none())?;
     let attrs = required(signer.attributes.as_ref())?;
@@ -413,7 +405,6 @@ fn verify_signature(
                 Hash::Sha256 => "1.2.840.113549.1.1.11",
                 Hash::Sha384 => "1.2.840.113549.1.1.12",
                 Hash::Sha512 => "1.2.840.113549.1.1.13",
-                _ => return Err(State::Unsupported),
             };
             if signature_oid != "1.2.840.113549.1.1.1" && signature_oid != expected {
                 return Err(State::Unsupported);
@@ -433,7 +424,6 @@ fn verify_signature(
             (Hash::Sha256, None) => key.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, signature),
             (Hash::Sha384, None) => key.verify(Pkcs1v15Sign::new::<Sha384>(), &hashed, signature),
             (Hash::Sha512, None) => key.verify(Pkcs1v15Sign::new::<Sha512>(), &hashed, signature),
-            _ => return Err(State::Unsupported),
         };
         valid.map_err(invalid)
     } else if oid(spki.algorithm.oid, "1.2.840.10045.2.1") {

@@ -842,7 +842,7 @@ $('#wallet-passport-issue').addEventListener('click', async () => {
       !Number.isSafeInteger(review.expires_at) ||
       review.expires_at * 1000 <= Date.now()
     )
-      throw Error('invalid_review');
+      throw new Error('invalid_review');
     const labels = {
       name_mrz: '氏名（MRZ表記）',
       issuing_state: '発行国コード',
@@ -853,7 +853,7 @@ $('#wallet-passport-issue').addEventListener('click', async () => {
     };
     for (const [field, label] of Object.entries(labels)) {
       const value = review.claims?.[field];
-      if (typeof value !== 'string' || value.length > 80) throw Error('invalid_review');
+      if (typeof value !== 'string' || value.length > 80) throw new Error('invalid_review');
       $('#passport-review-values').append(
         walletElement('dt', '', label),
         walletElement('dd', '', value),
@@ -906,7 +906,7 @@ $('#passport-review-confirm').addEventListener('click', async () => {
   try {
     const result = await invoke('confirm_passport_issuance', { reviewId: id, approve: true });
     if (generation !== issuanceGeneration || !signedIn) return;
-    if (!result) throw Error('cancelled');
+    if (!result) throw new Error('cancelled');
     $('#identity-holder').textContent = 'Wallet連携鍵: ' + result.holder_thumbprint;
     const message = 'ブラウザで6項目とWallet連携鍵を確認して発行を承認してください。';
     $('#identity-issuance-status').textContent = message;
@@ -1188,7 +1188,7 @@ $('#wallet-passport-reveal').addEventListener('click', async () => {
     )
       return;
     if (!/^[A-Z0-9]{1,9}$/.test(details.document_number) || !/^[A-Z0-9<]{88}$/.test(details.mrz))
-      throw Error('invalid_passport_details');
+      throw new Error('invalid_passport_details');
     const values = $('#wallet-passport-values');
     values.append(
       walletElement('dt', '', '旅券番号'),

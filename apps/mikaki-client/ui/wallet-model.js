@@ -111,7 +111,7 @@ function passportBadge(report, at) {
 export function walletDocument(record, at = Date.now()) {
   const p = record.preview;
   const type = documentTypes[p?.document_type];
-  if (!type || p.verification !== 'unverified') throw Error('invalid_document_summary');
+  if (!type || p.verification !== 'unverified') throw new Error('invalid_document_summary');
   const expiry = p.expiry_date;
   const expired =
     typeof expiry === 'string' &&
@@ -141,7 +141,7 @@ export function walletDocument(record, at = Date.now()) {
   };
 }
 export function walletCredential(record) {
-  if (!['dc+sd-jwt', 'mso_mdoc'].includes(record.format)) throw Error('invalid_wallet_inventory');
+  if (!['dc+sd-jwt', 'mso_mdoc'].includes(record.format)) throw new Error('invalid_wallet_inventory');
   return {
     ...record,
     source: 'issued_credential',

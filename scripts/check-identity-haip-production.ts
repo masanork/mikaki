@@ -15,7 +15,7 @@ export const passportFields = [
   'sex_mrz',
 ] as const;
 export function passportPolicyFingerprint() {
-  const digest = createHash('sha256').update('mikaki-passport-dg1-policy-v1\0');
+  const digest = createHash('sha256').update('mikaki-passport-dg1-policy-v2\0');
   for (const name of [
     'jpn-2013.der',
     'jpn-2015.der',
@@ -40,12 +40,12 @@ export function assertIdentityHaipMetadata(
   const issuer = 'https://auth.mikaki.org/identity/issuer';
   const configurations = metadata.credential_configurations_supported;
   assert.deepEqual(
-    Object.keys(configurations).sort(),
-    [
+    new Set(Object.keys(configurations)),
+    new Set([
       'linked_document',
       'linked_document_mdoc',
       ...(passportEnabled ? ['passport_dg1'] : []),
-    ].sort(),
+    ]),
   );
   assert.equal(configurations.linked_document.format, 'dc+sd-jwt');
   assert.equal(configurations.linked_document_mdoc.format, 'mso_mdoc');

@@ -58,6 +58,7 @@ jobs:
           npm run test:markup
           npm run test:sql
           npm run test:release
+          node --test scripts/wallet-multipaz-checkout.test.ts
           npm run test:identity-trust-freshness
           node --test scripts/static-sql.test.ts
           npm run test:work-authority-packet

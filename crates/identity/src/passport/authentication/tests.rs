@@ -2,6 +2,26 @@ use super::*;
 const DG1: &[u8] = include_bytes!("../fixtures/dg1.bin");
 const RSA: &[u8] = include_bytes!("../fixtures/rsa-sha256.sod");
 #[test]
+fn sha1_is_unsupported_for_both_lds_hashes_and_cms_digests() {
+    let weak_lds = mutate(RSA, |signed| {
+        let mut lds =
+            Lds::from_der(signed.encapsulated.content.as_ref().unwrap().as_bytes()).unwrap();
+        lds.algorithm.oid = ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
+        for group in &mut lds.hashes {
+            group.hash = OctetString::new(vec![0; 20]).unwrap();
+        }
+        signed.encapsulated.content = Some(OctetString::new(lds.to_der().unwrap()).unwrap());
+    });
+    let weak_cms = mutate(RSA, |signed| {
+        signer(signed, |signer| {
+            signer.digest.oid = ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
+        });
+    });
+    for sod in [weak_lds, weak_cms] {
+        assert_eq!(verify(&sod, DG1).state, State::Unsupported);
+    }
+}
+#[test]
 fn non_der_signed_attribute_order_is_not_silently_normalized() {
     let mut pos = 0;
     let cms = super::super::encoding::value(RSA, &mut pos, &[0x77]).unwrap();

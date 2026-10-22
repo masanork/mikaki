@@ -39,6 +39,11 @@ function fixture(passport = true) {
 }
 test('production smoke distinguishes exact age and passport profiles and preserves HAIP requirements', () => {
   assertIdentityHaipMetadata(fixture(), true, now);
+  const reordered = fixture();
+  reordered.credential_configurations_supported = Object.fromEntries(
+    Object.entries(reordered.credential_configurations_supported).reverse(),
+  ) as typeof reordered.credential_configurations_supported;
+  assertIdentityHaipMetadata(reordered, true, now);
   assertIdentityHaipMetadata(fixture(false), false, now);
   assert.throws(() => assertIdentityHaipMetadata(fixture(), false, now));
   assert.throws(() => assertIdentityHaipMetadata(fixture(false), true, now));
@@ -63,6 +68,11 @@ test('production smoke distinguishes exact age and passport profiles and preserv
     (m) => {
       m.credential_configurations_supported.passport_dg1.passport_evidence_policy.fingerprint =
         'x'.repeat(43);
+    },
+    (m) => {
+      // Previous SHA-1-compatible policy with the same anchors/CRL is not this policy.
+      m.credential_configurations_supported.passport_dg1.passport_evidence_policy.fingerprint =
+        'JgN0G554r6Uwq3moFcjxmIrBntr5dqUOaJNX8dPlQL4';
     },
     (m) => {
       delete m.credential_configurations_supported.passport_dg1.proof_types_supported.attestation;
