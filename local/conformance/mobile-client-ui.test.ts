@@ -1,7 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { createNativeUiPage, startNativeUiServer } from './support/native-client-ui.ts';
+
+test('packaged native frontend boots Wallet with only the declared assets', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url);
+    await page.getByRole('link', { name: 'Walletを開く', exact: true }).click();
+    await expect(page.locator('#wallet')).toBeVisible();
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
 
 test('native shell loads accounts in its WebView and keeps Wallet local', async (t) => {
   const server = await startNativeUiServer();
