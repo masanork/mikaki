@@ -1,13 +1,15 @@
 /** Product host qualification: real main Worker, usual SSO/Vault and native MLS.
  * Only WebAuthn PRF and the upstream authenticated session are test fixtures. */
 import assert from 'node:assert/strict';
-import { mkdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { chromium, expect, type Page } from '@playwright/test';
 import { auditAccessibility } from './support/accessibility-audit.ts';
 import { trackMessagingCoverage } from './support/messaging-coverage.ts';
 import { messagingFixture as fixture } from './support/messaging-product-fixture.ts';
+import { releaseSource } from '../../scripts/release-inventory.ts';
 
 const root = new URL('../../', import.meta.url).pathname;
 const origin = 'https://mikaki.test';
@@ -220,9 +222,10 @@ test(
 );
 
 test(
-  'two owners use the normal Vault product UI for native encrypted chat; reload preserves custody and lock clears text',
+  'two owners use the normal Vault product UI for native encrypted chat; populated rollback preserves custody and lock clears text',
   { timeout: 180_000 },
-  async () => {
+  async (t) => {
+    await rm(`${root}artifacts/messaging-rollback/summary.json`, { force: true });
     const f = await fixture(true),
       browser = await chromium.launch();
     try {
@@ -338,6 +341,223 @@ test(
           ).all()
         ).results,
         before.results,
+      );
+      await t.test(
+        'populated disable, default-code rollback and re-enable preserve the same devices',
+        async () => {
+          const pendingText = '切り戻しの間も届くのを待つメッセージ';
+          await a.page.getByRole('textbox', { name: 'メッセージ', exact: true }).fill(pendingText);
+          await click(a.page, '送信');
+          assert.equal(
+            await f.DB.prepare('SELECT count(*) AS n FROM messaging_mail WHERE consumed=0').first(
+              'n',
+            ),
+            1,
+            'The rollback must start with an actual undelivered encrypted message',
+          );
+          const peers = [
+            { client: a, actor: actorA },
+            { client: b, actor: actorB },
+          ];
+          const digest = (value: unknown) =>
+            createHash('sha256').update(JSON.stringify(value)).digest('hex');
+          const preserved = async () => {
+            const tables = await f.DB.prepare(
+              "SELECT name FROM sqlite_schema WHERE type='table' AND ((name GLOB 'messaging_*' AND name<>'messaging_request_window') OR name IN ('d1_migrations','credential','passkey_credential','vault_owner_key_head','vault_owner_key_wrap','vault_owner_login_wrap','vault_owner_record_head')) ORDER BY name",
+            ).all<{ name: string }>();
+            const data: Record<string, string> = {};
+            for (const { name } of tables.results) {
+              assert.match(name, /^[a-z0-9_]+$/);
+              const rows = await f.DB.prepare(`SELECT * FROM ${name}`).all();
+              data[name] = digest(rows.results.map((row) => JSON.stringify(row)).sort());
+            }
+            const schema = await f.DB.prepare(
+              "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' ORDER BY type,name",
+            ).all();
+            return { schema: digest(schema.results), tables: data };
+          };
+          const localState = async (c: typeof a) => {
+            return c.page.evaluate(async () => {
+              const names = [
+                'mikaki-chat-profile-v1',
+                'mikaki-mls-custody-v1',
+                'mikaki-mls-device-v1',
+              ];
+              const present = (await indexedDB.databases()).map((db) => db.name);
+              const databases = [];
+              for (const name of names) {
+                if (!present.includes(name)) throw new Error(`Missing enrolled database: ${name}`);
+                const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                  const request = indexedDB.open(name);
+                  request.onsuccess = () => resolve(request.result);
+                  request.onerror = () =>
+                    reject(new Error('Rollback snapshot could not open storage'));
+                });
+                try {
+                  const stores = [];
+                  for (const store of Array.from(db.objectStoreNames).sort()) {
+                    const records = await new Promise<{ keys: IDBValidKey[]; values: unknown[] }>(
+                      (resolve, reject) => {
+                        const tx = db.transaction(store, 'readonly');
+                        const keys = tx.objectStore(store).getAllKeys();
+                        const values = tx.objectStore(store).getAll();
+                        tx.oncomplete = () => resolve({ keys: keys.result, values: values.result });
+                        tx.onabort = () =>
+                          reject(new Error('Rollback snapshot could not read storage'));
+                      },
+                    );
+                    if (!records.values.length)
+                      throw new Error(`Empty enrolled store: ${name}/${store}`);
+                    stores.push({ store, records });
+                  }
+                  databases.push({ name, version: db.version, stores });
+                } finally {
+                  db.close();
+                }
+              }
+              // Return only the hash, never the encrypted custody/journal records.
+              const bytes = await crypto.subtle.digest(
+                'SHA-256',
+                new TextEncoder().encode(JSON.stringify(databases)),
+              );
+              return Array.from(new Uint8Array(bytes), (byte) =>
+                byte.toString(16).padStart(2, '0'),
+              ).join('');
+            });
+          };
+          const original = await preserved();
+          const local = await Promise.all(peers.map(({ client: c }) => localState(c)));
+          const enrollments = peers.map(
+            ({ client: c }) =>
+              c.requests.filter((r) => r.path === '/messaging/account' && r.method === 'POST')
+                .length,
+          );
+          assert.deepEqual(enrollments, [1, 1]);
+          for (const mode of [
+            { enabled: false, defaultBuild: false },
+            // The ordinary compiled profile must close Chat even if beta settings remain.
+            { enabled: true, defaultBuild: true },
+          ]) {
+            await f.reload(mode);
+            for (const { client: c, actor } of peers) {
+              const start = c.requests.length;
+              await c.openVault();
+              await c.openChat();
+              await expect(c.page.getByRole('status')).toContainText('まだ利用できません');
+              assert.equal(
+                c.requests.slice(start).filter((r) => r.path.startsWith('/messaging/')).length,
+                0,
+              );
+              const settings = await f.worker.fetch(`${origin}/vault/messaging-config`, {
+                headers: { cookie: `__Host-op-sso=${actor.secret}` },
+              });
+              assert.equal(settings.status, 200, 'Authenticated Vault access survives rollback');
+              assert.deepEqual(await settings.json(), { enabled: false });
+              // Retry the real enrollment, witness and delivery requests against the closed host.
+              const probes = new Map(
+                c.requests
+                  .filter((r) => r.path.startsWith('/messaging/'))
+                  .map((r) => [`${r.method} ${r.path}`, r]),
+              );
+              for (const r of probes.values()) {
+                const response = await f.worker.fetch(`${origin}${r.path}`, {
+                  method: r.method,
+                  headers: {
+                    cookie: `__Host-op-sso=${actor.secret}`,
+                    'content-type': 'application/json',
+                  },
+                  ...(r.body ? { body: r.body } : {}),
+                });
+                assert.equal(response.status, 404, `${r.method} ${r.path}`);
+              }
+              for (const path of [
+                '/messaging/client.js',
+                '/messaging/crypto.wasm',
+                '/messaging/chat.css',
+                '/chat/client.js',
+                '/chat/crypto.wasm',
+              ])
+                assert.equal((await f.worker.fetch(`${origin}${path}`)).status, 404, path);
+              const page = await f.worker.fetch(`${origin}/vault`, {
+                headers: { cookie: `__Host-op-sso=${actor.secret}` },
+              });
+              assert.doesNotMatch(page.headers.get('Content-Security-Policy')!, /wasm-unsafe-eval/);
+              await expect(c.page.getByRole('region', { name: 'メッセージ履歴' })).toHaveCount(0);
+            }
+            assert.deepEqual(
+              await preserved(),
+              original,
+              'Preserve schema, Owner keys, devices and queued ciphertext',
+            );
+            assert.deepEqual(await Promise.all(peers.map(({ client: c }) => localState(c))), local);
+          }
+          await f.reload({ enabled: true });
+          assert.deepEqual(await preserved(), original);
+          for (const { client: c } of peers) {
+            await c.openVault();
+            await c.openChat();
+            await idle(c.page);
+            await expect(c.page.getByRole('region', { name: 'メッセージ履歴' })).toContainText(
+              '同じ画面から返信します',
+            );
+          }
+          await expect(b.page.getByRole('region', { name: 'メッセージ履歴' })).toContainText(
+            pendingText,
+          );
+          assert.equal(
+            await f.DB.prepare('SELECT count(*) AS n FROM messaging_mail WHERE consumed=0').first(
+              'n',
+            ),
+            0,
+          );
+          const resumedText = '同じ会話で切り戻し後も返信します';
+          await b.page.getByRole('textbox', { name: 'メッセージ', exact: true }).fill(resumedText);
+          await click(b.page, '送信');
+          await click(a.page, '同期');
+          await expect(a.page.getByRole('region', { name: 'メッセージ履歴' })).toContainText(
+            resumedText,
+          );
+          assert.deepEqual(
+            (
+              await f.DB.prepare(
+                'SELECT account_id,device_id,generation,revision FROM messaging_device_head ORDER BY account_id',
+              ).all()
+            ).results,
+            before.results,
+          );
+          assert.deepEqual(
+            peers.map(
+              ({ client: c }) =>
+                c.requests.filter((r) => r.path === '/messaging/account' && r.method === 'POST')
+                  .length,
+            ),
+            enrollments,
+            'Resume the original devices without enrollment or replacement',
+          );
+          await mkdir(`${root}artifacts/messaging-rollback`, { recursive: true });
+          await writeFile(
+            `${root}artifacts/messaging-rollback/summary.json`,
+            JSON.stringify(
+              {
+                schema: 'mikaki-chat-populated-rollback-v1',
+                source: releaseSource(root),
+                checked_at: new Date().toISOString(),
+                environment: 'local-disposable',
+                sso_and_prf: 'fixtures',
+                runtime_disabled_without_key: 'passed',
+                default_code_with_beta_settings_and_key: 'passed',
+                schema_owner_keys_credentials_and_chat_preserved: true,
+                encrypted_local_state_preserved_while_disabled: true,
+                queued_delivery_and_reply_after_reenable: 'passed',
+                enrolled_devices_before_and_after: 2,
+                remote_rollback: 'not_run',
+                physical_passkey: 'not_run',
+              },
+              null,
+              2,
+            ) + '\n',
+          );
+        },
       );
       await auditAccessibility(a.page, 'messaging-beta-chat');
       assert.equal(
