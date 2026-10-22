@@ -162,6 +162,70 @@ Build with the owner matrix prerequisites above, then run:
 npm run test:security-grants
 ```
 
+## Identity trust expiry monitoring
+
+The read-only [trust freshness workflow](../.github/workflows/identity-trust-freshness.yml)
+runs every six hours at minute 17 UTC, after relevant changes reach main, and by
+manual dispatch. `npm run check:identity-trust-freshness` invokes the actual Rust
+`check_haip_pki` example with the current clock. It validates the public bundle,
+including both Issuer and Wallet credential chains and CRLs, and preserves the
+seven rejection checks. It reports the earliest certificate/CRL freshness deadline
+for each credential purpose and the Attester certificate chain. The report is
+bound to the public bundle's byte SHA-256 and checked-out source commit.
+
+For the operator card policy, the public
+[deadline records](../crates/worker/config/identity-card-trust-deadlines.public.json)
+contain only exact compact-policy hashes and reviewed expiry timestamps. The
+monitor selects the hash in `wrangler.production.jsonc`; an unknown hash or a
+duplicate/malformed record fails validation. The original policy ends at
+`2026-10-21T13:14:39Z`. The separately reviewed renewal in
+[PR #288](https://github.com/masanork/mikaki/pull/288) ends at
+`2026-10-28T21:43:47Z`. Retaining both records does not select or authorize the
+renewal: an expired selected policy still fails while its renewal is unselected.
+Record any future approved policy's exact hash and minimum `not_after` together
+with its source selection; preserve the previous record for review.
+
+Any selected deadline at or within **48 hours** fails the monitor and emits an
+Actions error annotation; an expired deadline is marked separately. The JSON
+report is retained for 14 days even when the check fails. The job has read-only
+repository permission, no production environment and no deployment or CA secrets.
+It does not renew CRLs, extend approval periods or change runtime configuration.
+The existing deployment preflight independently checks the actual secret policy's
+live validity and exact reviewed hash. Public deadline metadata cannot prove that
+the matching secret is provisioned or that the selected bytes reached production
+or an installed Wallet; deployment smoke and device qualification remain separate.
+
+An already expired certificate or CRL still fails the current-time Rust check.
+For a structurally readable bundle, the checker preserves public time bounds as
+**unverified diagnostics**, with a separate nonzero-exit report. The monitor keeps
+overall `status: invalid` and `pki_validation: rejected`, labels elapsed PKI bounds
+`expired`, and labels other unvalidated PKI bounds `unverified`. These diagnostics
+cannot produce a healthy result or establish signature/path validity. Successful
+validation still requires the actual Issuer/Wallet validators and all rejection
+controls. Malformed or otherwise invalid inputs retain the generic failure path.
+
+The [boundary and failure tests](../scripts/check-identity-trust-freshness.test.ts)
+run in main CI, covering all six deadline slots, the exact warning/expiry
+boundaries, selected versus unselected policies, incomplete/stale/substituted PKI
+reports, unknown policy records, sanitized validator failures and executable
+shadowing. A genuine expired, signed public CRL fixture also passes through the
+actual Rust checker and CLI; the check must retain its component/deadline while
+failing. The fixture's signature is checked independently, without changing the
+clock, and the test never accepts expired trust. On Linux/macOS the CLI uses
+`/usr/bin/git` and Cargo from the absolute
+trusted `CARGO_HOME` installation (default `~/.cargo`), bypassing npm/PATH executable
+shadowing. Relative or empty `CARGO_HOME` values fail validation. The scheduled
+monitor is independent of the PR's required `verify` gate, so urgent repairs can
+still pass normal verification while a deadline alert is active.
+
+Scheduled runs start after this workflow reaches the default branch. GitHub may
+delay scheduled execution; the six-hour cadence is not an availability guarantee.
+Keep the workflow enabled and check its Actions status. Email/web delivery depends
+on the maintainer's [Actions notification settings](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs);
+no external messages or notification integrations are configured here. See
+[GitHub's schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+and the [same-CA CRL renewal procedure](identity-labpki.md#renew-the-selected-snapshots-without-rotating-trust).
+
 ## Hosted repository settings
 
 GitHub Secret Protection and repository Push protection were enabled and observed in the repository settings on 2026-10-20. Private vulnerability reporting was already enabled. These settings are independent of the source-controlled Gitleaks gate and its fingerprints.
