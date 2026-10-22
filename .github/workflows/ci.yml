@@ -813,7 +813,10 @@ jobs:
 
   production-smoke:
     needs: [deploy, deploy-docs, deploy-website]
-    if: needs.deploy.outputs.deployed == 'true'
+    if: >-
+      needs.deploy.outputs.deployed == 'true' &&
+      needs.deploy-docs.outputs.deployed == 'true' &&
+      needs.deploy-docs.outputs.source_commit == needs.deploy.outputs.source_commit
     uses: ./.github/workflows/production-smoke.yml
     with:
       expected_version_id: ${{ needs.deploy.outputs.version_id }}
