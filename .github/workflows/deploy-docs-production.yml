@@ -6,6 +6,13 @@ on:
         required: false
       DOCS_RP_PRIVATE_JWK:
         required: false
+    outputs:
+      deployed:
+        value: ${{ jobs.promote.outputs.deployed }}
+      version_id:
+        value: ${{ jobs.promote.outputs.version_id }}
+      source_commit:
+        value: ${{ jobs.promote.outputs.source_commit }}
 permissions:
   contents: read
   actions: read
@@ -21,6 +28,10 @@ jobs:
       url: https://docs.mikaki.org
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      deployed: ${{ steps.activate.outputs.deployed }}
+      version_id: ${{ steps.activate.outputs.version_id }}
+      source_commit: ${{ steps.activate.outputs.source_commit }}
     env:
       WRANGLER_SEND_METRICS: false
       GITHUB_SHA: ${{ github.sha }}
@@ -56,6 +67,7 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: npm run verify:docs-release
       - name: Inspect and activate the prepared Docs version
+        id: activate
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           DOCS_RP_PRIVATE_JWK: ${{ secrets.DOCS_RP_PRIVATE_JWK }}
