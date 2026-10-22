@@ -87,12 +87,15 @@ export function identityTrustFreshness(options: {
   const deadlines = values.map(([name, value]) => {
     timestamp(value);
     const remaining = value - now;
+    let status = 'healthy';
+    if (remaining <= 0) status = 'expired';
+    else if (remaining <= warningSeconds) status = 'expiring';
     return {
       name,
       valid_until: value,
       valid_until_utc: new Date(value * 1000).toISOString(),
       remaining_seconds: remaining,
-      status: remaining <= 0 ? 'expired' : remaining <= warningSeconds ? 'expiring' : 'healthy',
+      status,
     };
   });
   return {
