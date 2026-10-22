@@ -195,11 +195,24 @@ live validity and exact reviewed hash. Public deadline metadata cannot prove tha
 the matching secret is provisioned or that the selected bytes reached production
 or an installed Wallet; deployment smoke and device qualification remain separate.
 
+An already expired certificate or CRL still fails the current-time Rust check.
+For a structurally readable bundle, the checker preserves public time bounds as
+**unverified diagnostics**, with a separate nonzero-exit report. The monitor keeps
+overall `status: invalid` and `pki_validation: rejected`, labels elapsed PKI bounds
+`expired`, and labels other unvalidated PKI bounds `unverified`. These diagnostics
+cannot produce a healthy result or establish signature/path validity. Successful
+validation still requires the actual Issuer/Wallet validators and all rejection
+controls. Malformed or otherwise invalid inputs retain the generic failure path.
+
 The [boundary and failure tests](../scripts/check-identity-trust-freshness.test.ts)
 run in main CI, covering all six deadline slots, the exact warning/expiry
 boundaries, selected versus unselected policies, incomplete/stale/substituted PKI
 reports, unknown policy records, sanitized validator failures and executable
-shadowing. On Linux/macOS the CLI uses `/usr/bin/git` and Cargo from the absolute
+shadowing. A genuine expired, signed public CRL fixture also passes through the
+actual Rust checker and CLI; the check must retain its component/deadline while
+failing. The fixture's signature is checked independently, without changing the
+clock, and the test never accepts expired trust. On Linux/macOS the CLI uses
+`/usr/bin/git` and Cargo from the absolute
 trusted `CARGO_HOME` installation (default `~/.cargo`), bypassing npm/PATH executable
 shadowing. Relative or empty `CARGO_HOME` values fail validation. The scheduled
 monitor is independent of the PR's required `verify` gate, so urgent repairs can

@@ -1,6 +1,7 @@
 //! Validate operator-provisioned development PKI with the actual Issuer/Wallet validators.
 //! Input is a public bundle only; private application and CA keys are never read.
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use der::Decode;
 use mikaki_identity::{
     certificate,
     credential_certificate::{Purpose, SigningTrust, verify},
@@ -12,6 +13,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
+use x509_cert::{Certificate, crl::CertificateList};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,6 +38,107 @@ struct Bundle {
     wallet_configuration: Value,
     revoked_sd_jwt: SigningTrust,
 }
+
+// Time-bound diagnostics are not certificate/path/signature validation. In
+// particular, an expired or forged input must never become a successful check.
+fn public_time_bound(
+    chain: &[String],
+    roots: &[String],
+    revocation: Option<&certificate::CrlPolicy>,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut deadline = u64::MAX;
+    for value in chain.iter().chain(roots) {
+        let bytes = certificate::decode_certificate(value)?;
+        let cert = Certificate::from_der(&bytes)?;
+        deadline = deadline.min(
+            cert.tbs_certificate()
+                .validity()
+                .not_after
+                .to_unix_duration()
+                .as_secs(),
+        );
+    }
+    if let Some(policy) = revocation {
+        policy.validate()?;
+        for value in &policy.crls {
+            let crl: CertificateList = CertificateList::from_der(&STANDARD.decode(value)?)?;
+            let list = &crl.tbs_cert_list;
+            let next = list.next_update.ok_or("missing CRL nextUpdate")?;
+            deadline = deadline.min(next.to_unix_duration().as_secs()).min(
+                list.this_update
+                    .to_unix_duration()
+                    .as_secs()
+                    .saturating_add(policy.max_age_seconds),
+            );
+        }
+    }
+    if deadline == u64::MAX {
+        return Err("missing public time bounds".into());
+    }
+    Ok(deadline)
+}
+
+fn expired_diagnostics(
+    b: &Bundle,
+    now: u64,
+    digest: &str,
+) -> Result<Option<Value>, Box<dyn std::error::Error>> {
+    // Deserialize the public shape without treating its dates or roots as
+    // authenticated. Configuration::parse and the actual validators below are
+    // still required for every successful check.
+    let wallet: Configuration = serde_json::from_value(b.wallet_configuration.clone())?;
+    let c = &b.credential_certificates;
+    let bounds = [
+        (
+            "sd_jwt_valid_until",
+            public_time_bound(
+                &c.sd_jwt.chain,
+                &c.sd_jwt.trust_anchors,
+                c.sd_jwt.revocation.as_ref(),
+            )?,
+        ),
+        (
+            "mdoc_valid_until",
+            public_time_bound(
+                &c.mdoc.chain,
+                &c.mdoc.trust_anchors,
+                c.mdoc.revocation.as_ref(),
+            )?,
+        ),
+        (
+            "attester_valid_until",
+            public_time_bound(&b.attester.chain, &b.attester.trust_anchors, None)?,
+        ),
+        (
+            "wallet_sd_jwt_valid_until",
+            public_time_bound(
+                &c.sd_jwt.chain,
+                &wallet.credential_trust.sd_jwt.trust_anchors,
+                wallet.credential_trust.sd_jwt.revocation.as_ref(),
+            )?,
+        ),
+        (
+            "wallet_mdoc_valid_until",
+            public_time_bound(
+                &c.mdoc.chain,
+                &wallet.credential_trust.mdoc.trust_anchors,
+                wallet.credential_trust.mdoc.revocation.as_ref(),
+            )?,
+        ),
+    ];
+    if !bounds.iter().any(|(_, deadline)| now >= *deadline) {
+        return Ok(None);
+    }
+    let mut report = json!({
+        "format":"mikaki-haip-labpki-expired-v1", "checked_at":now,
+        "public_bundle_sha256":digest, "qualification":"unverified-public-time-bounds-only"
+    });
+    for (name, deadline) in bounds {
+        report[name] = json!(deadline);
+    }
+    Ok(Some(report))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
@@ -50,6 +153,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid development PKI bundle".into());
     }
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    if let Some(report) = expired_diagnostics(&b, now, &public_bundle_sha256)? {
+        println!("{report}");
+        return Err("expired public PKI time bound; diagnostics do not establish signature or trust validity".into());
+    }
     let c = &b.credential_certificates;
     let sd_until = verify(&c.sd_jwt, &b.issuer_jwk, Purpose::SdJwt, now)?.1;
     let mdoc_until = verify(&c.mdoc, &b.issuer_jwk, Purpose::Mdoc, now)?.1;

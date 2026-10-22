@@ -74,15 +74,22 @@ export function identityTrustFreshness(options: {
   // Also bind the public PKI, verifier and derived production vars using the existing profile check.
   assert.equal(productionIdentityTestProfile(config), 'operator-card-haip-age');
   assert.match(bundleSha256, /^[a-f0-9]{64}$/);
-  assert.equal(pki.format, 'mikaki-haip-labpki-check-v1');
-  assert.equal(pki.qualification, 'development-pki-validation-only');
+  const rejected = pki.format === 'mikaki-haip-labpki-expired-v1';
+  assert.ok(rejected || pki.format === 'mikaki-haip-labpki-check-v1');
+  assert.equal(
+    pki.qualification,
+    rejected ? 'unverified-public-time-bounds-only' : 'development-pki-validation-only',
+  );
   assert.equal(pki.public_bundle_sha256, bundleSha256);
   timestamp(pki.checked_at);
   assert.ok(pki.checked_at <= now && now - pki.checked_at <= 600, 'Stale PKI validation');
-  assert.equal(pki.wallet_configuration_valid, true);
-  assert.ok(Array.isArray(pki.negative_checks));
-  assert.equal(pki.negative_checks.length, negativeChecks.length);
-  assert.deepEqual(new Set(pki.negative_checks), new Set(negativeChecks));
+  const checkedAt = pki.checked_at;
+  if (!rejected) {
+    assert.equal(pki.wallet_configuration_valid, true);
+    assert.ok(Array.isArray(pki.negative_checks));
+    assert.equal(pki.negative_checks.length, negativeChecks.length);
+    assert.deepEqual(new Set(pki.negative_checks), new Set(negativeChecks));
+  }
   const cardDigest = config.vars.IDENTITY_TRUST_POLICY_SHA256!;
   const cardDeadline = selectedCardTrustDeadline(cardDigest, registry);
   const values: [string, unknown][] = [
@@ -91,9 +98,12 @@ export function identityTrustFreshness(options: {
   ];
   const deadlines = values.map(([name, value]) => {
     timestamp(value);
+    if (!rejected && name !== 'operator_card_approval')
+      assert.ok(value > checkedAt, 'Expired bound in a successful PKI report');
     const remaining = value - now;
     let status = 'healthy';
     if (remaining <= 0) status = 'expired';
+    else if (rejected && name !== 'operator_card_approval') status = 'unverified';
     else if (remaining <= warningSeconds) status = 'expiring';
     return {
       name,
@@ -103,16 +113,26 @@ export function identityTrustFreshness(options: {
       status,
     };
   });
+  let status = 'attention_required';
+  if (rejected) {
+    assert.ok(
+      deadlines.some((item) => item.name !== 'operator_card_approval' && item.status === 'expired'),
+    );
+    status = 'invalid';
+  } else if (deadlines.every((item) => item.status === 'healthy')) status = 'healthy';
   return {
     format: 'mikaki-identity-trust-freshness-v1',
     checked_at: now,
     warning_seconds: warningSeconds,
     public_bundle_sha256: bundleSha256,
     card_policy_sha256: cardDigest,
-    status: deadlines.every((item) => item.status === 'healthy') ? 'healthy' : 'attention_required',
+    status,
+    pki_validation: rejected ? 'rejected' : 'valid',
     earliest_valid_until: Math.min(...deadlines.map((item) => item.valid_until)),
     deadlines,
-    qualification: 'source-selected-public-pki-and-recorded-approval-only',
+    qualification: rejected
+      ? 'source-selected-unverified-public-time-bounds-only'
+      : 'source-selected-public-pki-and-recorded-approval-only',
   };
 }
 
@@ -166,10 +186,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       { cwd: root, encoding: 'utf8', timeout: 300_000, maxBuffer: 1024 * 1024 },
     );
     assert.ok(
-      !result.error && !result.signal && result.status === 0,
+      !result.error && !result.signal && (result.status === 0 || result.status === 1),
       'Public PKI validation failed',
     );
     const pki = JSON.parse(result.stdout);
+    assert.equal(result.status === 1, pki.format === 'mikaki-haip-labpki-expired-v1');
     assert.ok(pki.checked_at >= startedAt, 'PKI validation predates this invocation');
     const report = identityTrustFreshness({
       config,
@@ -185,7 +206,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         2,
       ),
     );
-    for (const item of report.deadlines.filter((item) => item.status !== 'healthy')) {
+    if (report.pki_validation === 'rejected')
+      console.error(
+        '::error title=Identity trust validation::Expired public PKI time bounds were rejected; diagnostics do not establish signature or trust validity.',
+      );
+    for (const item of report.deadlines.filter(
+      (item) => item.status === 'expired' || item.status === 'expiring',
+    )) {
       console.error(
         `::error title=Identity trust deadline::${item.name} is ${item.status}; deadline ${item.valid_until_utc}. Review renewal and promotion before this deadline.`,
       );

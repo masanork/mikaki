@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { createHash, X509Certificate } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
   identityTrustFreshness,
@@ -92,12 +102,159 @@ test('each Issuer, Wallet and approval deadline fails at the 48-hour boundary an
           (p: { policy_sha256: string }) => p.policy_sha256 === renewal,
         ).valid_until = now + remaining;
       else options.pki[name] = now + remaining;
+      // A valid Rust report can cross expiry while the caller finishes: it was
+      // checked just before the deadline, rather than accepting expired trust.
+      if (remaining <= 0 && name !== 'operator_card_approval') options.pki.checked_at = now - 2;
       const report = identityTrustFreshness(options);
       assert.equal(report.deadlines.find((item) => item.name === name)!.status, status, name);
       assert.equal(report.status, status === 'healthy' ? 'healthy' : 'attention_required', name);
     }
   }
 });
+
+test('expired diagnostic metadata cannot claim successful PKI validation or healthy future components', () => {
+  const options = inputs();
+  Object.assign(options.pki, {
+    format: 'mikaki-haip-labpki-expired-v1',
+    qualification: 'unverified-public-time-bounds-only',
+    wallet_sd_jwt_valid_until: now - 1,
+  });
+  const report = identityTrustFreshness(options);
+  assert.equal(report.status, 'invalid');
+  assert.equal(report.pki_validation, 'rejected');
+  assert.equal(
+    report.deadlines.find((d) => d.name === 'wallet_sd_jwt_valid_until')!.status,
+    'expired',
+  );
+  assert.equal(report.deadlines.find((d) => d.name === 'sd_jwt_valid_until')!.status, 'unverified');
+  options.pki.wallet_sd_jwt_valid_until = renewedUntil;
+  assert.throws(
+    () => identityTrustFreshness(options),
+    'an expiry diagnostic must identify an elapsed PKI bound',
+  );
+});
+
+test(
+  'real expired signed Wallet CRL retains its deadline through the actual Rust checker and CLI',
+  { timeout: 360_000 },
+  async (t) => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'mikaki-trust-expired-')));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const project = join(directory, 'project');
+    const fixture = JSON.parse(
+      readFileSync('scripts/testdata/identity-expired-crl.public.json', 'utf8'),
+    );
+    const crlFile = join(directory, 'expired.crl');
+    const rootFile = join(directory, 'issuer.pem');
+    writeFileSync(crlFile, Buffer.from(fixture.crl, 'base64'));
+    writeFileSync(
+      rootFile,
+      new X509Certificate(Buffer.from(fixture.issuer_certificate, 'base64')).toString(),
+    );
+    // Signature verification is independent of time validity; this is a genuine
+    // signed expired snapshot, never an unsigned mutation or a historical clock.
+    const signature = spawnSync(
+      '/usr/bin/openssl',
+      ['crl', '-inform', 'DER', '-in', crlFile, '-noout', '-verify', '-CAfile', rootFile],
+      { encoding: 'utf8', timeout: 10_000 },
+    );
+    assert.equal(signature.status, 0, signature.stderr);
+    for (const file of [
+      'scripts/check-identity-trust-freshness.ts',
+      'scripts/identity-test-profile.ts',
+      'scripts/identity-haip-profile.ts',
+      'scripts/identity-issuer-key.ts',
+      'crates/worker/wrangler.production.jsonc',
+      'crates/worker/config/identity-haip-labpki.public.json',
+      'crates/worker/config/identity-card-trust-deadlines.public.json',
+      'services/android-attestation-verifier/policy.production.json',
+      'services/android-attestation-verifier/bridge/wrangler.production.jsonc',
+      'rust-toolchain.toml',
+    ]) {
+      const target = join(project, file);
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(file, target);
+    }
+    writeFileSync(join(project, 'package.json'), '{"type":"module"}\n');
+    const bundleFile = join(project, 'crates/worker/config/identity-haip-labpki.public.json');
+    const bundle = JSON.parse(readFileSync(bundleFile, 'utf8'));
+    bundle.wallet_configuration.credential_trust.sd_jwt.revocation.crls = [fixture.crl];
+    writeFileSync(bundleFile, JSON.stringify(bundle));
+    const selected = await import(
+      pathToFileURL(join(project, 'scripts/identity-haip-profile.ts')).href
+    );
+    const configFile = join(project, 'crates/worker/wrangler.production.jsonc');
+    const selectedConfig = JSON.parse(readFileSync(configFile, 'utf8'));
+    Object.assign(selectedConfig.vars, selected.identityHaipSelection().vars);
+    writeFileSync(configFile, JSON.stringify(selectedConfig));
+    for (const args of [
+      ['init', '--quiet', '--object-format=sha1'],
+      ['add', '.'],
+      [
+        '-c',
+        'user.name=Security fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        '-c',
+        'core.hooksPath=/dev/null',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--quiet',
+        '-m',
+        'Public expired snapshot fixture',
+      ],
+    ]) {
+      const git = spawnSync('/usr/bin/git', args, {
+        cwd: project,
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      assert.equal(git.status, 0, git.stderr);
+    }
+    const installation = join(directory, 'rust');
+    mkdirSync(join(installation, 'bin'), { recursive: true });
+    const cargoHome = process.env.CARGO_HOME ?? join(homedir(), '.cargo');
+    const cargo = join(cargoHome, 'bin', 'cargo');
+    // The adapter changes only Cargo's manifest location. It executes the actual
+    // current Rust example against the selected scratch bundle and forwards both
+    // streams and the exit status without manufacturing a report.
+    writeFileSync(
+      join(installation, 'bin', 'cargo'),
+      `#!${process.execPath}\nimport {spawnSync} from 'node:child_process';const args=process.argv.slice(2);args.splice(args.indexOf('--'),0,'--manifest-path',${JSON.stringify(resolve('Cargo.toml'))});const r=spawnSync(${JSON.stringify(cargo)},args,{stdio:'inherit',env:{...process.env,CARGO_HOME:${JSON.stringify(cargoHome)}}});process.exitCode=r.status??1;\n`,
+      { mode: 0o700 },
+    );
+    const result = spawnSync(
+      process.execPath,
+      [join(project, 'scripts/check-identity-trust-freshness.ts')],
+      {
+        env: {
+          ...process.env,
+          CARGO_HOME: installation,
+          CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? resolve('target'),
+        },
+        encoding: 'utf8',
+        timeout: 330_000,
+      },
+    );
+    assert.equal(result.status, 1, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.status, 'invalid');
+    assert.equal(report.pki_validation, 'rejected');
+    assert.equal(report.source_clean, true);
+    assert.equal(
+      report.public_bundle_sha256,
+      createHash('sha256').update(readFileSync(bundleFile)).digest('hex'),
+    );
+    const expired = report.deadlines.find(
+      (d: { name: string }) => d.name === 'wallet_sd_jwt_valid_until',
+    );
+    assert.equal(expired.status, 'expired');
+    assert.ok(expired.valid_until < Math.floor(Date.now() / 1000));
+    assert.match(result.stderr, /wallet_sd_jwt_valid_until is expired; deadline/);
+    assert.match(report.qualification, /unverified/);
+  },
+);
 
 test('unknown policies, duplicate or incomplete records and malformed deadlines fail closed', () => {
   for (const value of [
@@ -132,7 +289,9 @@ test('a stale, incomplete or substituted PKI report and mismatched source settin
     { wallet_configuration_valid: false },
     { negative_checks: [] },
     { negative_checks: [...(inputs().pki.negative_checks as string[]), 'expired_attester'] },
-    ...names.flatMap((name) => [undefined, NaN, -1, 'future'].map((value) => ({ [name]: value }))),
+    ...names.flatMap((name) =>
+      [undefined, NaN, -1, 'future', now].map((value) => ({ [name]: value })),
+    ),
   ];
   for (const mutation of mutations) {
     const options = inputs();
@@ -160,6 +319,7 @@ test('CLI fails when the validator fails or returns an invalid report without ec
     "process.stderr.write('never-log-this-private-input');process.exit(1)",
     "process.stdout.write('never-log-this-private-input')",
     "process.stdout.write('{}')",
+    `const report=${JSON.stringify(inputs().pki)};report.checked_at=Math.floor(Date.now()/1000);console.log(JSON.stringify(report));process.exit(1)`,
   ]) {
     writeFileSync(cargo, `#!${process.execPath}\n${body}\n`, { mode: 0o700 });
     const result = spawnSync(process.execPath, [command], {
