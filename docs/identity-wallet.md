@@ -340,12 +340,14 @@ Use the explicit runner to require actual SDK execution instead of a silently
 omitted optional check:
 
 ```sh
+chmod 700 /private/tmp/mikaki-multipaz-checkout
 JAVA_HOME=/path/to/jdk21 ANDROID_HOME=/path/to/android-sdk \
   npm run test:identity-wallet-multipaz -- --checkout /private/tmp/mikaki-multipaz-checkout
 ```
 
-The disposable SDK checkout must belong to the current operator and be protected
-from group/other writes and parent-directory replacement; a root-owned sticky
+The disposable SDK checkout must belong to the current operator with mode `0700`
+so other users cannot traverse it or change writable nested files. Its parents
+must prevent group/other writes and directory replacement; a root-owned sticky
 temporary parent is permitted. A temporary path alone does not establish this
 boundary. The runner checks canonical paths and POSIX ownership before executing
 SDK code. The checkout must be at the pinned commit, with unchanged tracked

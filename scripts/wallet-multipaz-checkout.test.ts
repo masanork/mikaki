@@ -16,10 +16,10 @@ test('SDK execution requires an owned checkout protected from shared-directory r
     await symlink(checkout, alias);
     assert.equal(await ownedMultipazCheckout(alias), await realpath(checkout));
 
-    for (const mode of [0o770, 0o777, 0o1777]) {
+    for (const mode of [0o750, 0o755, 0o770, 0o777, 0o1777]) {
       await chmod(checkout, mode);
-      await assert.rejects(ownedMultipazCheckout(checkout), /must not permit/);
-      await assert.rejects(ownedMultipazCheckout(alias), /must not permit/);
+      await assert.rejects(ownedMultipazCheckout(checkout), /must be private/);
+      await assert.rejects(ownedMultipazCheckout(alias), /must be private/);
     }
     await chmod(checkout, 0o700);
     await chmod(workspace, 0o777);
