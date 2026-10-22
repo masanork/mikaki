@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { productionIdentityTestProfile } from './identity-test-profile.ts';
 
@@ -115,7 +116,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     assert.equal(process.argv.length, 2, 'This check takes no arguments');
     const startedAt = Math.floor(Date.now() / 1000);
-    const source = spawnSync('git', ['rev-parse', 'HEAD'], {
+    // Linux/macOS system Git and the explicitly selected Rust installation must
+    // not be shadowed by npm's node_modules/.bin or another PATH entry.
+    const git = '/usr/bin/git';
+    const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo');
+    assert.ok(isAbsolute(cargoHome), 'CARGO_HOME must select an absolute trusted installation');
+    const cargo = join(cargoHome, 'bin', 'cargo');
+    const source = spawnSync(git, ['rev-parse', 'HEAD'], {
       cwd: root,
       encoding: 'utf8',
       timeout: 10_000,
@@ -123,7 +130,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     assert.equal(source.status, 0);
     const sourceCommit = source.stdout.trim();
     assert.match(sourceCommit, /^[a-f0-9]{40}$/);
-    const status = spawnSync('git', ['status', '--porcelain'], {
+    const status = spawnSync(git, ['status', '--porcelain'], {
       cwd: root,
       encoding: 'utf8',
       timeout: 10_000,
@@ -140,7 +147,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     );
     const bytes = readFileSync(resolve(root, publicBundle));
     const result = spawnSync(
-      'cargo',
+      cargo,
       [
         'run',
         '-p',

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -153,7 +153,8 @@ test('a stale, incomplete or substituted PKI report and mismatched source settin
 test('CLI fails when the validator fails or returns an invalid report without echoing its output', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'mikaki-trust-cli-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const cargo = join(directory, 'cargo');
+  mkdirSync(join(directory, 'bin'));
+  const cargo = join(directory, 'bin', 'cargo');
   const command = resolve('scripts/check-identity-trust-freshness.ts');
   for (const body of [
     "process.stderr.write('never-log-this-private-input');process.exit(1)",
@@ -162,7 +163,7 @@ test('CLI fails when the validator fails or returns an invalid report without ec
   ]) {
     writeFileSync(cargo, `#!${process.execPath}\n${body}\n`, { mode: 0o700 });
     const result = spawnSync(process.execPath, [command], {
-      env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+      env: { ...process.env, CARGO_HOME: directory },
       encoding: 'utf8',
       timeout: 10_000,
     });
@@ -170,4 +171,47 @@ test('CLI fails when the validator fails or returns an invalid report without ec
     assert.equal(JSON.parse(result.stdout).status, 'invalid');
     assert.ok(!`${result.stdout}${result.stderr}`.includes('never-log-this-private-input'));
   }
+  const relative = spawnSync(process.execPath, [command], {
+    env: { ...process.env, CARGO_HOME: './relative-installation' },
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  assert.equal(relative.status, 1);
+  assert.equal(JSON.parse(relative.stdout).status, 'invalid');
+});
+
+test('PATH shadowing cannot replace system Git or Cargo from the selected absolute installation', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'mikaki-trust-path-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const installation = join(directory, 'rust');
+  mkdirSync(join(installation, 'bin'), { recursive: true });
+  const shadowed = join(directory, 'shadow-executed');
+  for (const name of ['git', 'cargo']) {
+    writeFileSync(
+      join(directory, name),
+      `#!${process.execPath}\nimport {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(shadowed)},'shadowed');process.exit(1);\n`,
+      { mode: 0o700 },
+    );
+  }
+  const pki = inputs().pki;
+  // This fixture tests process selection only. Actual PKI validation is exercised
+  // separately by the real current-time command and the Rust CI invocation.
+  writeFileSync(
+    join(installation, 'bin', 'cargo'),
+    `#!${process.execPath}\nconst report=${JSON.stringify(pki)};report.checked_at=Math.floor(Date.now()/1000);console.log(JSON.stringify(report));\n`,
+    { mode: 0o700 },
+  );
+  const result = spawnSync(
+    process.execPath,
+    [resolve('scripts/check-identity-trust-freshness.ts')],
+    {
+      env: { ...process.env, CARGO_HOME: installation, PATH: `${directory}:${process.env.PATH}` },
+      encoding: 'utf8',
+      timeout: 10_000,
+    },
+  );
+  assert.equal(existsSync(shadowed), false);
+  const report = JSON.parse(result.stdout);
+  assert.notEqual(report.status, 'invalid', result.stderr);
+  assert.match(report.source_commit, /^[a-f0-9]{40}$/);
 });

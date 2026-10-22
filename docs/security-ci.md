@@ -198,7 +198,10 @@ or an installed Wallet; deployment smoke and device qualification remain separat
 The [boundary and failure tests](../scripts/check-identity-trust-freshness.test.ts)
 run in main CI, covering all six deadline slots, the exact warning/expiry
 boundaries, selected versus unselected policies, incomplete/stale/substituted PKI
-reports, unknown policy records and sanitized validator failures. The scheduled
+reports, unknown policy records, sanitized validator failures and executable
+shadowing. On Linux/macOS the CLI uses `/usr/bin/git` and Cargo from the absolute
+trusted `CARGO_HOME` installation (default `~/.cargo`), bypassing npm/PATH executable
+shadowing. Relative `CARGO_HOME` values fail validation. The scheduled
 monitor is independent of the PR's required `verify` gate, so urgent repairs can
 still pass normal verification while a deadline alert is active.
 
