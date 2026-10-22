@@ -148,6 +148,7 @@ export class MlsChatView {
   readonly #root: HTMLElement;
   readonly #device: VaultMlsDevice;
   readonly #heading: 'h1' | 'h2';
+  readonly #limited: boolean;
   #unsubscribe: (() => void) | undefined;
   #snapshot: ChatSnapshot | undefined;
   #proposal: InvitationOffer | undefined;
@@ -173,11 +174,13 @@ export class MlsChatView {
     offer?: InvitationOffer,
     embedded = false,
     onDraft?: (dirty: boolean) => void,
+    limited = false,
   ) {
     this.#onDraft = onDraft;
     this.#root = root;
     this.#device = device;
     this.#heading = embedded ? 'h2' : 'h1';
+    this.#limited = limited;
     this.#proposal = offer ? invitation(offer) : undefined;
     this.#unsubscribe = device.onClose(this.#locked);
     this.#render();
@@ -436,6 +439,21 @@ export class MlsChatView {
       this.#root.replaceChildren(panel);
       return;
     }
+    if (
+      this.#limited &&
+      (s.replacements.length > 0 || s.replacement_stops.length > 0 || s.recoveries.length > 0)
+    ) {
+      panel.append(
+        node('h2', 'この保存状態は限定ベータの対象外です'),
+        node(
+          'p',
+          '会話の再参加や端末鍵の切り替えは行わず、安全のため停止しています。履歴や鍵を自動で作り直すことはできません。',
+        ),
+        this.#button('チャットをロック', () => this.dispose()),
+      );
+      this.#root.replaceChildren(panel);
+      return;
+    }
     const recovery = this.#recovery();
     const pending = s.replacements.at(-1);
     const stopping = s.replacement_stops.some((s) => s.phase !== 'retired');
@@ -539,11 +557,21 @@ export class MlsChatView {
       ),
     );
     panel.append(form);
-    this.#replacementReview(panel);
-    this.#stoppedReplacementReview(panel);
-    if (!stopping && s.invitation && !frozen && !replacing) this.#termination(panel, !!joined);
-    if (!stopping && !replacing && (!s.invitation || (frozen && recovery.phase === 'closed')))
-      this.#invitationReview(panel);
+    if (this.#limited) {
+      panel.append(
+        node(
+          'p',
+          '限定ベータでは会話の停止、再参加、端末鍵の失効・切り替えには対応していません。必要な場合は送信せず、提供元へ連絡してください。',
+        ),
+      );
+      if (!s.invitation) this.#invitationReview(panel);
+    } else {
+      this.#replacementReview(panel);
+      this.#stoppedReplacementReview(panel);
+      if (!stopping && s.invitation && !frozen && !replacing) this.#termination(panel, !!joined);
+      if (!stopping && !replacing && (!s.invitation || (frozen && recovery.phase === 'closed')))
+        this.#invitationReview(panel);
+    }
     const lock = this.#button('チャットをロック', () => this.dispose());
     // Lock remains available while a network request is pending.
     lock.disabled = false;

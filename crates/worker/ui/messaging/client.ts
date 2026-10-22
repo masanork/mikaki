@@ -150,7 +150,7 @@ export async function mount(
     assert();
     await profile(id, { device: entry.device, phase: 'active' });
     assert();
-    chat = new MlsChatView(root, device, undefined, true, options?.onDraft);
+    chat = new MlsChatView(root, device, undefined, true, options?.onDraft, true);
     await chat.open();
     assert();
   };

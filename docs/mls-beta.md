@@ -28,6 +28,7 @@ Mikakiインスタンスの1対1テキスト会話に固定する。製品ホス
 - [通常画面のホスト](../crates/worker/ui/ProductChat.svelte)は[Wallet／Chatの入口](../crates/worker/ui/ProductWorkspace.svelte)で既に開いたOwner Vaultを受け取る。別のVaultやPRF認証を追加しない。
 - [遅延読込みするクライアント](../crates/worker/ui/messaging/client.ts)、端末custody、ジャーナル、画面を`crates/worker/ui/messaging/`で共有する。検証プローブは同じ実装を再エクスポートする。
 - [製品ルーター](../crates/worker/src/messaging_beta.rs)はCargo feature `messaging-beta`と`MESSAGING_BETA_ENABLED=true`の両方を必要とする。既定ビルド・無効時の`/messaging/*`は404で、メッセージ用スキーマや署名鍵を必要としない。
+- 製品ルーターは上記の登録、指紋確認、招待、承認、配送、前景同期に必要なAPIだけを明示的に許可する。端末失効、会話の停止・再参加、端末鍵の切り替え、サーバー側blockは限定ベータへ公開せず404にする。完全な復旧実装と攻撃プローブは将来プロファイルの検証用に残すが、製品ホストからは到達できない。
 - `/vault/messaging-config`は通常の所有者認証後に有効状態・同じHTTPS origin・公開署名鍵・登録済み端末IDを返す。署名鍵の秘密部分は返さない。ベータのauthorityは同一originの製品設定を起点とし、相手の鍵の承認には別経路の指紋確認が必要。
 - [メッセージ用マイグレーション](../crates/worker/messaging-migrations/)は通常の本番マイグレーション一覧から分離する。`0001_messaging.sql`の後に`0002_beta_profile.sql`を適用する。後者は所有者ごとの端末スロットを1個に制限し、既存の複数端末データには失敗する。
 - `MIKAKI_ISSUER`、独立したEd25519の`MESSAGING_ISSUER_KEY`、既存のDB・Vaultバインディングが必要。署名鍵の値をコードや実行ログに記録しない。
@@ -50,7 +51,9 @@ main Workerルーターで動かし、通常Vault画面をブラウザーから�
 認証済みSSOとWebAuthn PRFのみをテスト用に設定する。端末コード・招待・承認・送信は
 画面から操作し、平文の秘密状態をテストから注入しない。無効時、未認証、セッション失効、
 初回の明示登録、双方向送受信、再読込み、ロック、別ブラウザーの保存状態欠落を確認する。
-モバイル幅の表示とアクセシビリティの構造も確認する。
+モバイル幅の表示とアクセシビリティの構造も確認する。さらに、許可した通常APIは製品経路へ
+到達する一方、端末失効・停止・再参加・鍵切り替え・blockの全ルートと誤ったHTTP methodが
+認証済みでも404になること、および対象外の操作が製品UIに現れないことを確認する。
 
 APIは既存の永続的な流量制限を通る。ローカルテストでは多数の逐次ジャーナル処理が
 同じ送信元に集中するためfixture内の予算を引き上げる。本番の負荷・流量設定を

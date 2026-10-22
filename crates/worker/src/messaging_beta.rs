@@ -154,6 +154,9 @@ pub async fn fetch(request: Request, env: &Env) -> worker::Result<Response> {
 
 #[cfg(feature = "messaging-beta")]
 async fn api(request: Request, env: &Env) -> worker::Result<Response> {
+    if !limited_api(&request)? {
+        return error(404, "not_found");
+    }
     match resources::admit(&request, env).await {
         Ok(true) => crate::messaging::fetch(request, env).await,
         Ok(false) => resources::limited(),
@@ -162,6 +165,57 @@ async fn api(request: Request, env: &Env) -> worker::Result<Response> {
             error(503, "messaging_unavailable")
         }
     }
+}
+
+#[cfg(feature = "messaging-beta")]
+fn limited_api(request: &Request) -> worker::Result<bool> {
+    let path = request.url()?.path().to_owned();
+    let parts: Vec<_> = path.split('/').collect();
+    Ok(matches!(
+        (request.method(), parts.as_slice()),
+        (Method::Get | Method::Post, ["", "messaging", "account"])
+            | (Method::Post, ["", "messaging", "enrollments"])
+            | (
+                Method::Post,
+                ["", "messaging", "enrollments", _, "complete"]
+            )
+            | (Method::Get, ["", "messaging", "devices", _, "binding"])
+            | (Method::Get | Method::Put, ["", "messaging", "heads", _])
+            | (Method::Post, ["", "messaging", "channels", _, "invitation"])
+            | (
+                Method::Get,
+                ["", "messaging", "channels", _, "invitation", _]
+            )
+            | (
+                Method::Post,
+                ["", "messaging", "channels", _, "invitation", "status"]
+            )
+            | (
+                Method::Post,
+                ["", "messaging", "channels", _, "invitation", "packets"]
+            )
+            | (
+                Method::Post,
+                [
+                    "",
+                    "messaging",
+                    "channels",
+                    _,
+                    "invitation",
+                    "packets",
+                    _,
+                    "consume"
+                ]
+            )
+            | (Method::Get, ["", "messaging", "channels", _, "bindings", _])
+            | (Method::Post, ["", "messaging", "channels", _])
+            | (Method::Post, ["", "messaging", "channels", _, "messages"])
+            | (Method::Get, ["", "messaging", "channels", _, "inbox", _])
+            | (
+                Method::Post,
+                ["", "messaging", "channels", _, "messages", _, "consume"]
+            )
+    ))
 }
 
 pub async fn collect(env: &Env) -> worker::Result<()> {
