@@ -2,7 +2,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,20 +52,24 @@ export function checkDocsBindings(
   }
 }
 
-async function main() {
-  const root = fileURLToPath(new URL('../', import.meta.url));
+export async function deployDocsProduction(root = fileURLToPath(new URL('../', import.meta.url))) {
   const source = releaseSource(root);
   assert.ok(source.clean, 'Docs promotion requires clean source');
   assert.equal(process.env.GITHUB_EVENT_NAME, 'push');
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
   assert.equal(process.env.GITHUB_REPOSITORY, 'masanork/mikaki');
   assert.equal(source.commit, process.env.GITHUB_SHA);
+  const output = process.env.GITHUB_OUTPUT;
+  assert.ok(output, 'Docs promotion requires a workflow output file');
+  appendFileSync(output, 'deployed=false\n');
   const git = (args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
   git(['fetch', 'origin', 'main']);
   git(['merge-base', '--is-ancestor', source.commit, 'origin/main']);
   const changed = git(['diff', '--name-only', source.commit, 'origin/main']).trim();
   if (!sourceIsCurrent(changed ? changed.split('\n') : [])) {
-    console.log('A newer application revision is on main; leaving Docs to its CI run.');
+    console.log(
+      '::notice::A newer application revision is on main; leaving Docs and release smoke to its CI run.',
+    );
     return;
   }
   await verifyDocsRelease(root, source);
@@ -200,8 +211,10 @@ async function main() {
     record.activated = true;
     save();
     console.log(wrangler(['triggers', 'deploy', '--config', configPath]));
+    appendFileSync(output, `deployed=true\nversion_id=${id}\nsource_commit=${source.commit}\n`);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  await deployDocsProduction();
