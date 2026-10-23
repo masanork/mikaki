@@ -154,6 +154,45 @@ async function approve(page: Page) {
   await idle(page);
 }
 
+async function limitedApi(f: Fixture, actor: Actor) {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const allowed = await f.worker.fetch(`${origin}/messaging/account`, {
+    headers: { cookie: `__Host-op-sso=${actor.secret}` },
+  });
+  assert.equal(allowed.status, 404);
+  assert.deepEqual(await allowed.json(), { error: 'messaging_account_missing' });
+  for (const path of [
+    `/messaging/devices/${id}/revoke`,
+    `/messaging/channels/${id}/block`,
+    `/messaging/channels/${id}/close`,
+    `/messaging/channels/${id}/rejoin`,
+    `/messaging/channels/${id}/replace`,
+    `/messaging/channels/${id}/replace/predecessor`,
+    `/messaging/channels/${id}/replace/cancel`,
+    `/messaging/channels/${id}/replace/status`,
+    `/messaging/channels/${id}/replace/stop`,
+    `/messaging/channels/${id}/replace/stop/status`,
+  ]) {
+    const denied = await f.worker.fetch(`${origin}${path}`, {
+      method: 'POST',
+      headers: {
+        cookie: `__Host-op-sso=${actor.secret}`,
+        origin,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    assert.equal(denied.status, 404, path);
+    assert.deepEqual(await denied.json(), { error: 'not_found' }, path);
+  }
+  const wrongMethod = await f.worker.fetch(`${origin}/messaging/account`, {
+    method: 'DELETE',
+    headers: { cookie: `__Host-op-sso=${actor.secret}`, origin },
+  });
+  assert.equal(wrongMethod.status, 404);
+  assert.deepEqual(await wrongMethod.json(), { error: 'not_found' });
+}
+
 test(
   'disabled product beta is absent before any messaging schema or issuer key exists',
   { timeout: 60_000 },
@@ -232,8 +271,9 @@ test(
       assert.equal((await f.worker.fetch(`${origin}/vault/messaging-config`)).status, 401);
       assert.equal((await f.worker.fetch(`${origin}/messaging/account`)).status, 401);
       const actorA = await f.seed(),
-        actorB = await f.seed(),
-        a = await client(f, browser, actorA),
+        actorB = await f.seed();
+      await limitedApi(f, actorA);
+      const a = await client(f, browser, actorA),
         b = await client(f, browser, actorB);
       for (const c of [a, b]) {
         await c.openVault();
@@ -271,6 +311,14 @@ test(
       await click(a.page, '同期');
       await click(b.page, '同期');
       await click(a.page, '同期');
+      for (const c of [a, b]) {
+        await expect(
+          c.page.getByRole('button', { name: '会話を停止する', exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          c.page.getByRole('heading', { name: '新しい端末鍵で会話を始める', exact: true }),
+        ).toHaveCount(0);
+      }
       await a.page
         .getByRole('textbox', { name: 'メッセージ', exact: true })
         .fill('Vaultから始める暗号化チャット');
