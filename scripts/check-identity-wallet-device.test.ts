@@ -12,25 +12,27 @@ import {
   walletDevicePreflight,
   writeWalletReport,
 } from './check-identity-wallet-device.ts';
+import { passportFields, passportPolicyFingerprint } from './check-identity-haip-production.ts';
 const root = 'https://auth.mikaki.org';
 const issuer = `${root}/identity/issuer`;
 const fingerprint = Array(32).fill('AB').join(':');
-before(() =>
-  execFileSync(
-    'cargo',
-    [
-      'build',
-      '--quiet',
-      '-p',
-      'mikaki-identity',
-      '--example',
-      'wallet_device_preflight',
-      '--offline',
-      '--locked',
-    ],
-    { stdio: 'pipe', timeout: 60000 },
-  ),
-);
+before(() => {
+  for (const command of ['build', 'test'])
+    execFileSync(
+      'cargo',
+      [
+        command,
+        '--quiet',
+        '-p',
+        'mikaki-identity',
+        '--example',
+        'wallet_device_preflight',
+        '--offline',
+        '--locked',
+      ],
+      { stdio: 'pipe', timeout: 60000 },
+    );
+});
 function fixture() {
   const cert = (purpose: string) =>
     readFileSync(
@@ -174,6 +176,112 @@ function fixture() {
   };
   return { deps, documents };
 }
+function passportFixture() {
+  const result = fixture();
+  const url = `${root}/.well-known/openid-credential-issuer/identity/issuer`;
+  const metadata = JSON.parse(result.documents.get(url)!);
+  metadata.credential_configurations_supported.passport_dg1 = {
+    ...metadata.credential_configurations_supported.linked_document,
+    scope: 'passport_dg1',
+    vct: `${issuer}/types/passport-dg1`,
+    credential_metadata: { claims: passportFields.map((name) => ({ path: [name] })) },
+    passport_evidence_policy: {
+      fingerprint: passportPolicyFingerprint(),
+      valid_until: 1797120000, // Pinned JPN CRL: 2026-12-13T00:00:00Z.
+    },
+  };
+  result.documents.set(url, JSON.stringify(metadata));
+  return result;
+}
+test('passport preflight validates the native HAIP profile and current pinned evidence policy', async () => {
+  const { deps } = passportFixture();
+  const report = await walletDevicePreflight(
+    { sdk: '/fixture/sdk', apk: 'apk', configuration: 'config', online: true, passport: true },
+    deps,
+  );
+  assert.equal(report.prerequisites_ready, true);
+  for (const name of ['passport_dg1', 'passport_evidence_policy'])
+    assert.ok(report.checks.some((c) => c.name === name && c.status === 'pass'));
+  assert.equal(report.qualification, 'not_run');
+});
+test('requesting passport preflight fails when only the age credential profiles are enabled', async () => {
+  const { deps } = fixture();
+  const report = await walletDevicePreflight(
+    { sdk: '/fixture/sdk', apk: 'apk', configuration: 'config', online: true, passport: true },
+    deps,
+  );
+  assert.equal(report.prerequisites_ready, false);
+  assert.ok(report.checks.some((c) => c.name === 'passport_dg1' && c.status === 'blocked'));
+});
+test('passport preflight rejects downgraded HAIP metadata and missing, stale or mismatched policies', async () => {
+  for (const mode of [
+    'vct',
+    'pkce',
+    'request_optional',
+    'response_optional',
+    'claims_missing',
+    'claims_mrz',
+    'policy_missing',
+    'policy_v1',
+    'policy_expired',
+    'policy_overclaimed',
+  ]) {
+    const { deps, documents } = passportFixture();
+    const url = `${root}/.well-known/openid-credential-issuer/identity/issuer`;
+    const metadata = JSON.parse(documents.get(url)!);
+    const passport = metadata.credential_configurations_supported.passport_dg1;
+    if (mode === 'vct') passport.vct = `${issuer}/types/linked-document`;
+    if (mode === 'request_optional')
+      metadata.credential_request_encryption.encryption_required = false;
+    if (mode === 'response_optional')
+      metadata.credential_response_encryption.encryption_required = false;
+    if (mode === 'claims_missing') delete passport.credential_metadata;
+    if (mode === 'claims_mrz') passport.credential_metadata.claims.push({ path: ['mrz'] });
+    if (mode === 'policy_missing') delete passport.passport_evidence_policy;
+    if (mode === 'policy_v1')
+      passport.passport_evidence_policy.fingerprint = 'JgN0G554r6Uwq3moFcjxmIrBntr5dqUOaJNX8dPlQL4';
+    if (mode === 'policy_expired') passport.passport_evidence_policy.valid_until = 1;
+    if (mode === 'policy_overclaimed') passport.passport_evidence_policy.valid_until++;
+    documents.set(url, JSON.stringify(metadata));
+    if (mode === 'pkce') {
+      const oauthUrl = `${root}/.well-known/oauth-authorization-server/identity/issuer`;
+      const oauth = JSON.parse(documents.get(oauthUrl)!);
+      oauth.code_challenge_methods_supported = ['plain'];
+      documents.set(oauthUrl, JSON.stringify(oauth));
+    }
+    const report = await walletDevicePreflight(
+      { sdk: '/fixture/sdk', apk: 'apk', configuration: 'config', online: true, passport: true },
+      deps,
+    );
+    assert.equal(report.prerequisites_ready, false, mode);
+    const name = mode.startsWith('policy_') ? 'passport_evidence_policy' : 'passport_dg1';
+    assert.ok(
+      report.checks.some((c) => c.name === name && c.status === 'blocked'),
+      mode,
+    );
+    assert.equal(report.qualification, 'not_run');
+  }
+});
+test('passport policy JSON keeps duplicate detection and redacts rejected endpoint data', async () => {
+  const { deps, documents } = passportFixture();
+  const url = `${root}/.well-known/openid-credential-issuer/identity/issuer`;
+  documents.set(
+    url,
+    documents
+      .get(url)!
+      .replace(
+        '"passport_evidence_policy":{',
+        '"passport_evidence_policy":{"fingerprint":"private-policy-substitution",',
+      ),
+  );
+  const report = await walletDevicePreflight(
+    { sdk: '/fixture/sdk', apk: 'apk', configuration: 'config', online: true, passport: true },
+    deps,
+  );
+  assert.equal(report.prerequisites_ready, false);
+  assert.ok(report.checks.some((c) => c.name === 'native_profile' && c.status === 'blocked'));
+  assert.ok(!JSON.stringify(report).includes('private-'));
+});
 test('actual Rust profile validator gates a redacted device preflight without claiming E2E qualification', async () => {
   const { deps } = fixture();
   const report = await walletDevicePreflight(

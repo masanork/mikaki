@@ -673,6 +673,18 @@ npm run check:identity-wallet-device -- --online \
 
 `prerequisites_ready` means only those automated prerequisites pass; **`qualification` stays `not_run`**. The supplied config file is validated, but this does not prove the selected APK was built with that file, or that the device has successfully called the private attestation verification service. Confirm the native wallet capability/phase on the selected signed build and attester registration/policy separately. Exact installed-artifact equality proves byte identity at the check time, but does not prove source/configuration provenance or future installation state. An association document being readable is not proof that a particular APK's signature or the device's user setting matches it.
 
+For a passport ceremony, add `--passport` to the command above. This requires
+the `passport_dg1` HAIP profile as well as the existing age profiles. The native
+validator checks the passport VCT, six projected DG1 claim paths, mandatory
+request/response encryption and the same PAR/client-authentication/DPoP/proof
+requirements. It also authenticates the checked-out source's default pinned
+CSCA/CRL policy at the current time and requires the advertised policy fingerprint
+and deadline to match. A disabled passport profile, old fingerprint, stale CRL
+or extra full-MRZ claim blocks readiness. Custom build-time passport CRLs require
+separate policy/provenance qualification; the supplied Wallet configuration does
+not select passport trust. Passing these checks still does not read a passport,
+issue a credential or qualify presentation/Multipaz interoperability.
+
 The live read-only run on **2026-10-03 01:31 UTC** recorded `prerequisites_ready=false` in ignored `local/generated/identity-wallet-device-preflight.json`: credential metadata, authorization metadata and issuer JWKS returned **404**; the public Android association was readable; the issuance callback did not satisfy the protected fallback contract. No Android device was attached. No public Wallet config or signed APK was supplied, so their checks remain blocked. This is an observation of the current public routes, not proof of which deployment flag/configuration caused their absence. No backend activation or deployment was performed.
 
 The follow-up on **2026-10-04 01:13 UTC** recorded the current report in ignored `local/generated/identity-wallet-device-preflight-current.json`. The existing universal release APK passed signature/application-ID checks and matched the published Android association; its public SHA-256 is `0caee181fe32da9854c863f514c4986b57cb04b2d215bf61e0b184a3fcd0d527`. ADB specifically reported no connected device. Metadata/JWKS still returned 404, the callback contract was unqualified, and no public Wallet configuration was supplied. This artifact has not been shown to contain the latest inventory implementation; signature/association checks do not establish build provenance or device E2E qualification.
