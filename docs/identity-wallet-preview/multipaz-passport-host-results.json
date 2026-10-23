@@ -1,6 +1,6 @@
 {
   "status": "passed",
-  "startedAt": "2026-10-23T08:24:03.762Z",
+  "startedAt": "2026-10-23T09:12:43.965Z",
   "sdkCommit": "b741acd1f2a77ffbe2818b71822841781dd7ad9f",
   "mode": "native",
   "scope": "Synthetic host SDK format/signature, native passport presentation and optional linked-document issuance checks; no passport intake, physical device, production trust, full Wallet app or HAIP qualification.",
@@ -8,5 +8,5 @@
     "sdkTests": 1,
     "passportPresentation": true
   },
-  "finishedAt": "2026-10-23T08:26:32.969Z"
+  "finishedAt": "2026-10-23T09:13:38.441Z"
 }

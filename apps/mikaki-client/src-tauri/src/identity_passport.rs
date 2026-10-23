@@ -390,7 +390,7 @@ fn preview(dg1: &[u8], access: &Access) -> Result<CardPreview> {
             .iter()
             .chain(&line[21..27])
             .all(u8::is_ascii_digit)
-        || ![b'M', b'F', b'<'].contains(&line[20])
+        || !b"MF<".contains(&line[20])
         || check(&line[..9]) != line[9]
         || check(&line[13..19]) != line[19]
         || check(&line[21..27]) != line[27]
