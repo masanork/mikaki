@@ -15,7 +15,7 @@ import { assertProductionWorkRolloutSchema } from './production-work-migration.t
 import { productionWorkPacketDigest } from './production-work-packet.ts';
 import { cloudflareMetadataGet } from './production-worker-inventory.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
-import { productionWrangler } from './production-wrangler.ts';
+import { productionWrangler, uploadedVersionView } from './production-wrangler.ts';
 import { assertDedicatedIdentityKey } from './identity-issuer-key.ts';
 import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
 import { assertIdentityHaipSecrets } from './identity-haip-profile.ts';
@@ -541,7 +541,7 @@ async function main() {
   )?.[1];
   assert.ok(checkpointId, 'Wrangler did not return the checkpoint version identity');
   const checkpointVersion = JSON.parse(
-    await wrangler(['versions', 'view', checkpointId, '--config', checkpointConfigPath, '--json']),
+    await uploadedVersionView(checkpointId, checkpointConfigPath, wrangler),
   );
   assert.equal(checkpointVersion.id, checkpointId);
   checkBindings(checkpointVersion, checkpointConfig);
@@ -606,9 +606,7 @@ async function main() {
     assert.ok(id, 'Wrangler did not return an uploaded version ID');
     record.workers[worker!] = { version_id: id, previous_deployment: previous, activated: false };
     writeFileSync(evidence, `${JSON.stringify(record, null, 2)}\n`);
-    const version = JSON.parse(
-      await wrangler(['versions', 'view', id, '--config', configPath!, '--json']),
-    );
+    const version = JSON.parse(await uploadedVersionView(id, configPath!, wrangler));
     assert.equal(version.id, id);
     checkBindings(version, config);
     staged.push({ worker: worker!, configPath: configPath!, config, id });

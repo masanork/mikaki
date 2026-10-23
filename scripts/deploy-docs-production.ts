@@ -17,6 +17,7 @@ import { checkBindings, sourceIsCurrent } from './deploy-production.ts';
 import { releaseSource } from './release-inventory.ts';
 import { verifyDocsRelease } from './prepare-docs-release.ts';
 import { assertProductionBaseline, BASELINE_SCHEMA_QUERY } from './production-baseline.ts';
+import { uploadedVersionView } from './production-wrangler.ts';
 
 type DocsConfig = Parameters<typeof checkBindings>[1] & {
   account_id: string;
@@ -190,9 +191,7 @@ export async function deployDocsProduction(root = fileURLToPath(new URL('../', i
     const evidence = join(root, 'artifacts/production-docs-deployment.json');
     const save = () => writeFileSync(evidence, JSON.stringify(record, null, 2) + '\n');
     save();
-    const version = JSON.parse(
-      wrangler(['versions', 'view', id, '--config', configPath, '--json']),
-    );
+    const version = JSON.parse(await uploadedVersionView(id, configPath, wrangler));
     assert.equal(version.id, id);
     assert.equal(version.annotations['workers/tag'], source.commit.slice(0, 12));
     checkDocsBindings(version, config);
