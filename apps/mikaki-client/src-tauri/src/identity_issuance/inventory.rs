@@ -304,6 +304,9 @@ mod tests {
         request_with_fields(nonce, ["name", "birthdate"])
     }
     fn request_with_fields(nonce: u8, fields: [&str; 2]) -> InventoryRequest {
+        request_queries(nonce, fields, false)
+    }
+    fn request_queries(nonce: u8, fields: [&str; 2], passport: bool) -> InventoryRequest {
         let signer = p256::ecdsa::SigningKey::from_slice(&[5; 32]).unwrap();
         let recipient = p256::ecdsa::SigningKey::from_slice(&[6; 32]).unwrap();
         let registry = VerifierRegistration {
@@ -321,7 +324,11 @@ mod tests {
                 jwk: PublicJwk::from_key(recipient.verifying_key()),
             }),
         };
-        let claims = json!({"iss":"fixture","aud":"https://self-issued.me/v2","client_id":"fixture","response_type":"vp_token","response_mode":"direct_post.jwt","response_uri":registry.response_uri,"nonce":format!("{nonce:043}"),"state":"S".repeat(43),"iat":AT,"exp":AT+120,"dcql_query":{"credentials":[{"id":"name","format":"dc+sd-jwt","meta":{"vct_values":[format!("{ISSUER}/types/linked-document")]},"claims":[{"path":[fields[0]]}]},{"id":"birth","format":"mso_mdoc","meta":{"doctype_value":mdoc::DOCTYPE},"claims":[{"path":[mdoc::NAMESPACE,fields[1]],"intent_to_retain":true}]}]}});
+        let mut credentials = json!([{"id":"name","format":"dc+sd-jwt","meta":{"vct_values":[format!("{ISSUER}/types/linked-document")]},"claims":[{"path":[fields[0]]}]},{"id":"birth","format":"mso_mdoc","meta":{"doctype_value":mdoc::DOCTYPE},"claims":[{"path":[mdoc::NAMESPACE,fields[1]],"intent_to_retain":true}]}]);
+        if passport {
+            credentials.as_array_mut().unwrap().push(json!({"id":"passport","format":"dc+sd-jwt","meta":{"vct_values":[mikaki_identity::passport::credential::vct(ISSUER)]},"claims":[{"path":["name_mrz"]},{"path":["nationality"]}]}));
+        }
+        let claims = json!({"iss":"fixture","aud":"https://self-issued.me/v2","client_id":"fixture","response_type":"vp_token","response_mode":"direct_post.jwt","response_uri":registry.response_uri,"nonce":format!("{nonce:043}"),"state":"S".repeat(43),"iat":AT,"exp":AT+120,"dcql_query":{"credentials":credentials}});
         let compact = issuance::sign_jwt(
             &signer,
             json!({"typ":"oauth-authz-req+jwt","alg":"ES256","kid":"key"}),
@@ -381,15 +388,25 @@ mod tests {
     #[test]
     fn identity_inventory_review_binds_each_credential_and_confirmation_is_atomic() {
         let mut receipts = receipts();
-        let (review, pending) = review(request(1), &receipts, AT).unwrap();
-        assert_eq!(review.credentials.len(), 2);
+        receipts.push(crate::identity_wallet::credential_trust_tests::passport_receipt(9, ISSUER));
+        let (review, pending) = review(
+            request_queries(1, ["name", "birthdate"], true),
+            &receipts,
+            AT,
+        )
+        .unwrap();
+        assert_eq!(review.credentials.len(), 3);
         assert_eq!(review.credentials[0].values, json!({"name":"Fixture"}));
         assert_eq!(
             review.credentials[1].values,
             json!({"birthdate":"1990-02-28"})
         );
         assert_eq!(review.credentials[1].retained_fields, ["birthdate"]);
-        assert_eq!(pending.bindings.len(), 2);
+        assert_eq!(
+            review.credentials[2].values,
+            json!({"name_mrz":"FIXTURE PERSON","nationality":"JPN"})
+        );
+        assert_eq!(pending.bindings.len(), 3);
         let encrypted = response(&pending, &receipts, AT).unwrap();
         assert_eq!(encrypted.split('.').count(), 5);
         if std::env::var("MIKAKI_NATIVE_INVENTORY_PEER").as_deref() == Ok("1") {
@@ -411,7 +428,7 @@ mod tests {
                 .stderr(Stdio::piped())
                 .spawn()
                 .unwrap();
-            child.stdin.take().unwrap().write_all(serde_json::to_string(&json!({"response":&*encrypted,"recipient":recipient,"issuer_key":receipts[0].issuer_key,"issuer":ISSUER,"holder_sd":receipts[0].key.public().unwrap(),"holder_mdoc":receipts[1].key.public().unwrap(),"at":AT,"nonce":pending.request.nonce()})).unwrap().as_bytes()).unwrap();
+            child.stdin.take().unwrap().write_all(serde_json::to_string(&json!({"response":&*encrypted,"recipient":recipient,"issuer_key":receipts[0].issuer_key,"issuer":ISSUER,"holder_sd":receipts[0].key.public().unwrap(),"holder_mdoc":receipts[1].key.public().unwrap(),"holder_passport":receipts[2].key.public().unwrap(),"at":AT,"nonce":pending.request.nonce()})).unwrap().as_bytes()).unwrap();
             let output = child.wait_with_output().unwrap();
             assert!(
                 output.status.success(),

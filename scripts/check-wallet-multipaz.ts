@@ -21,7 +21,7 @@ const summary: {
   finishedAt?: string;
   sdkCommit: string;
   mode: 'native' | 'bidirectional';
-  native?: { sdkTests: number };
+  native?: { sdkTests: number; passportPresentation: true };
   issuer?: { sdkTests: number };
   scope: string;
 } = {
@@ -30,7 +30,7 @@ const summary: {
   sdkCommit: multipazCommit,
   mode: values['native-only'] ? 'native' : 'bidirectional',
   scope:
-    'Synthetic host SDK format/signature and issuance checks; no physical device, production trust, full Wallet app or HAIP qualification.',
+    'Synthetic host SDK format/signature, native passport presentation and optional linked-document issuance checks; no passport intake, physical device, production trust, full Wallet app or HAIP qualification.',
 };
 async function record() {
   await mkdir(new URL('../local/generated/', import.meta.url), { recursive: true });
@@ -103,11 +103,14 @@ try {
     ],
     env,
   );
-  summary.native = await sdkResult(
-    checkout,
-    'org.multipaz.mdoc.response.MikakiPresentationTest',
-    nativeStarted,
-  );
+  summary.native = {
+    ...(await sdkResult(
+      checkout,
+      'org.multipaz.mdoc.response.MikakiPresentationTest',
+      nativeStarted,
+    )),
+    passportPresentation: true,
+  };
   await record();
   if (!values['native-only']) {
     await execute('npm', ['run', 'build:policy'], env);

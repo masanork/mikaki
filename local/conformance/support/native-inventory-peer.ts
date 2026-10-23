@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, verify, X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { compactDecrypt, decodeProtectedHeader, importJWK, jwtVerify } from 'jose';
+import { compactDecrypt, decodeProtectedHeader, importJWK, jwtVerify, type JWK } from 'jose';
 import { verifyNativeWithMultipaz } from './multipaz-presentation.ts';
 import {
   decodeCbor,
@@ -37,9 +37,10 @@ assert.equal(Buffer.from(protectedHeader.apv, 'base64url').toString(), input.non
 const response = JSON.parse(Buffer.from(plaintext).toString());
 assert.deepEqual(Object.keys(response).sort(), ['state', 'vp_token']);
 assert.equal(response.state, 'S'.repeat(43));
-assert.deepEqual(Object.keys(response.vp_token).sort(), ['birth', 'name']);
+assert.deepEqual(Object.keys(response.vp_token).sort(), ['birth', 'name', 'passport']);
 assert.equal(response.vp_token.name.length, 1);
 assert.equal(response.vp_token.birth.length, 1);
+assert.equal(response.vp_token.passport.length, 1);
 async function checkCertificate(leaf: X509Certificate, purpose: 'sd' | 'mdoc') {
   const root = new X509Certificate(
     await readFile(
@@ -64,45 +65,80 @@ async function checkCertificate(leaf: X509Certificate, purpose: 'sd' | 'mdoc') {
     }),
   );
 }
+async function checkSd(
+  sd: string,
+  holder: JWK,
+  vct: string,
+  expected: Record<string, string>,
+  wrongHolder: JWK,
+) {
+  const parts = sd.split('~');
+  assert.equal(parts.length, Object.keys(expected).length + 2);
+  const issuerHeader = decodeProtectedHeader(parts[0]);
+  assert.equal(issuerHeader.typ, 'dc+sd-jwt');
+  assert.equal(issuerHeader.alg, 'ES256');
+  assert.equal(issuerHeader.kid, 'issuer');
+  assert.equal(issuerHeader.x5c!.length, 1);
+  await checkCertificate(new X509Certificate(Buffer.from(issuerHeader.x5c![0], 'base64')), 'sd');
+  const issuerKey = await importJWK(input.issuer_key, 'ES256');
+  const { payload: claims } = await jwtVerify(parts[0], issuerKey, {
+    issuer: input.issuer,
+    currentDate: at,
+    algorithms: ['ES256'],
+  });
+  assert.equal(claims.vct, vct);
+  assert.deepEqual((claims.cnf as any).jwk, holder);
+  assert.equal(claims._sd_alg, 'sha-256');
+  const values: Record<string, string> = {};
+  for (const disclosure of parts.slice(1, -1)) {
+    const item = JSON.parse(Buffer.from(disclosure, 'base64url').toString());
+    assert.equal(item.length, 3);
+    const [, name, value] = item;
+    assert.equal(Object.hasOwn(values, name), false);
+    values[name] = value;
+    assert.ok(
+      (claims._sd as string[]).includes(
+        createHash('sha256').update(disclosure).digest('base64url'),
+      ),
+    );
+  }
+  assert.deepEqual(values, expected);
+  const binding = parts.at(-1)!;
+  const { payload: kb, protectedHeader: kbHeader } = await jwtVerify(
+    binding,
+    await importJWK(holder, 'ES256'),
+    {
+      audience: 'fixture',
+      currentDate: at,
+      algorithms: ['ES256'],
+    },
+  );
+  assert.equal(kbHeader.typ, 'kb+jwt');
+  assert.equal(kb.nonce, input.nonce);
+  assert.equal(kb.iat, input.at);
+  assert.equal(
+    kb.sd_hash,
+    createHash('sha256').update(sd.slice(0, -binding.length)).digest('base64url'),
+  );
+  await assert.rejects(
+    jwtVerify(binding, await importJWK(wrongHolder, 'ES256'), { currentDate: at }),
+  );
+}
 const sd = String(response.vp_token.name[0]);
-const parts = sd.split('~');
-assert.equal(parts.length, 3);
-const issuerHeader = decodeProtectedHeader(parts[0]);
-assert.equal(issuerHeader.typ, 'dc+sd-jwt');
-assert.equal(issuerHeader.alg, 'ES256');
-assert.equal(issuerHeader.kid, 'issuer');
-assert.equal(issuerHeader.x5c!.length, 1);
-await checkCertificate(new X509Certificate(Buffer.from(issuerHeader.x5c![0], 'base64')), 'sd');
-const issuerKey = await importJWK(input.issuer_key, 'ES256');
-const { payload: claims } = await jwtVerify(parts[0], issuerKey, {
-  issuer: input.issuer,
-  currentDate: at,
-  algorithms: ['ES256'],
-});
-assert.equal(claims.vct, `${input.issuer}/types/linked-document`);
-assert.deepEqual((claims.cnf as any).jwk, input.holder_sd);
-assert.equal(claims._sd_alg, 'sha-256');
-const disclosure = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-assert.equal(disclosure.length, 3);
-assert.equal(disclosure[1], 'name');
-assert.equal(disclosure[2], 'Fixture');
-assert.ok(
-  (claims._sd as string[]).includes(createHash('sha256').update(parts[1]).digest('base64url')),
+const passportSd = String(response.vp_token.passport[0]);
+await checkSd(
+  sd,
+  input.holder_sd,
+  `${input.issuer}/types/linked-document`,
+  { name: 'Fixture' },
+  input.holder_mdoc,
 );
-const holderSd = await importJWK(input.holder_sd, 'ES256');
-const { payload: kb, protectedHeader: kbHeader } = await jwtVerify(parts[2], holderSd, {
-  audience: 'fixture',
-  currentDate: at,
-  algorithms: ['ES256'],
-});
-assert.equal(kbHeader.typ, 'kb+jwt');
-assert.equal(kb.nonce, input.nonce);
-assert.equal(
-  kb.sd_hash,
-  createHash('sha256').update(`${parts[0]}~${parts[1]}~`).digest('base64url'),
-);
-await assert.rejects(
-  jwtVerify(parts[2], await importJWK(input.holder_mdoc, 'ES256'), { currentDate: at }),
+await checkSd(
+  passportSd,
+  input.holder_passport,
+  `${input.issuer}/types/passport-dg1`,
+  { name_mrz: 'FIXTURE PERSON', nationality: 'JPN' },
+  input.holder_sd,
 );
 const decoded = decodeCbor(Buffer.from(response.vp_token.birth[0], 'base64url'));
 assert.equal(field(decoded, 'version'), '1.0');
@@ -155,6 +191,8 @@ assert.equal(signatureValid(input.holder_sd, input.nonce), false);
 assert.equal(signatureValid(input.holder_mdoc, 'wrong-nonce'), false);
 await verifyNativeWithMultipaz({
   sd,
+  passport: passportSd,
+  holder_passport: input.holder_passport,
   mdoc: response.vp_token.birth[0],
   nonce: input.nonce,
   at: input.at,
