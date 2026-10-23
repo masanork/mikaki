@@ -2,6 +2,7 @@
 use getrandom::SysRng;
 use mikaki_identity::{
     issuance_encryption::WalletEncryption,
+    passport::{Policy, credential},
     wallet_profile::{self, Configuration},
 };
 use rand_core::{Rng, UnwrapErr};
@@ -18,6 +19,41 @@ struct Input {
     metadata: Option<String>,
     oauth: Option<String>,
     jwks: Option<String>,
+    passport: Option<bool>,
+}
+fn passport_metadata(
+    metadata: &serde_json::Value,
+    oauth: &serde_json::Value,
+) -> Result<(), String> {
+    wallet_profile::validate_metadata(metadata, oauth, credential::CONFIGURATION)?;
+    let claims = metadata["credential_configurations_supported"][credential::CONFIGURATION]
+        ["credential_metadata"]["claims"]
+        .as_array()
+        .ok_or("invalid_metadata")?;
+    if metadata["credential_request_encryption"]["encryption_required"] != true
+        || metadata["credential_response_encryption"]["encryption_required"] != true
+        || claims.len() != credential::FIELDS.len()
+        || claims
+            .iter()
+            .zip(credential::FIELDS)
+            .any(|(claim, name)| claim["path"] != json!([name]))
+    {
+        return Err("invalid_metadata".into());
+    }
+    Ok(())
+}
+fn passport_policy(metadata: &serde_json::Value, at: u64) -> Result<(), String> {
+    let policy = Policy::default();
+    let until = policy
+        .valid_until(at)
+        .map_err(|_| "passport_policy_unavailable")?;
+    let advertised = &metadata["credential_configurations_supported"][credential::CONFIGURATION]["passport_evidence_policy"];
+    if advertised["fingerprint"] != policy.fingerprint()
+        || advertised["valid_until"].as_u64() != Some(until)
+    {
+        return Err("passport_policy_mismatch".into());
+    }
+    Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut bytes = Vec::new();
@@ -64,6 +100,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
+    if input.passport.unwrap_or(false) {
+        check(
+            "passport_dg1",
+            match (&metadata, &oauth) {
+                (Some(m), Some(a)) => passport_metadata(m, a),
+                _ => Err("metadata_unavailable".into()),
+            },
+        );
+        check(
+            "passport_evidence_policy",
+            metadata
+                .as_ref()
+                .ok_or("metadata_unavailable".to_owned())
+                .and_then(|m| passport_policy(m, at)),
+        );
+    }
     let signing = jwks
         .as_ref()
         .ok_or("issuer_key_unavailable".to_owned())
@@ -93,4 +145,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         json!({"checks":checks,"ready":checks.iter().all(|c|c["status"]=="pass")})
     );
     Ok(())
+}
+
+#[test]
+fn advertised_freshness_cannot_override_expired_local_crls() {
+    let metadata = json!({"credential_configurations_supported":{"passport_dg1":{
+        "passport_evidence_policy":{"fingerprint":Policy::default().fingerprint(),"valid_until":u64::MAX}
+    }}});
+    // After the pinned JPN CRL's nextUpdate, even matching policy bytes and a
+    // server-advertised future deadline cannot make the source policy current.
+    assert_eq!(
+        passport_policy(&metadata, 1797120001),
+        Err("passport_policy_unavailable".into())
+    );
 }
