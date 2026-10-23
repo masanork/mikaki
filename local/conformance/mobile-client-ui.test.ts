@@ -116,3 +116,82 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
     await server.close();
   }
 });
+
+test('shared Android sign-in returns to Wallet and opens Chat directly with the same account', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+    });
+    await page.locator('#wallet-login').click();
+    await expect(page.locator('#chat')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__nativeUiTest.arguments.some(
+            (c) => c.command === 'set_app_workspace' && c.args?.visible === true,
+          ),
+        ),
+      )
+      .toBe(true);
+    await page.evaluate(() => window.__nativeUiTest.complete());
+    await expect(page.locator('#wallet')).toBeVisible();
+    await expect(page.locator('#wallet-account-status')).toContainText('WalletとChatに接続済み');
+    await page.getByRole('link', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('#open-chat')).toBeHidden();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__nativeUiTest.arguments.filter((c) => c.command === 'set_app_workspace').at(-1)
+              ?.args?.visible,
+        ),
+      )
+      .toBe(true);
+    await page.getByRole('link', { name: 'Walletを開く', exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__nativeUiTest.arguments.filter((c) => c.command === 'set_app_workspace').at(-1)
+              ?.args?.visible,
+        ),
+      )
+      .toBe(false);
+    const calls = await page.evaluate(() => window.__nativeUiTest.calls);
+    assert.equal(calls.filter((c) => c === 'start_mobile_login').length, 1);
+    assert.equal(calls.includes('open_mikaki_web'), false);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('shared account reports actionable connection failures without disclosing raw errors', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    for (const [phase, message] of [
+      ['configuration_required', '更新'],
+      ['connection_failed', 'ネットワーク'],
+      ['secure_connection_failed', '安全な接続'],
+    ] as const) {
+      const { page, errors } = await createNativeUiPage(browser, server.url, {
+        platform: 'mobile',
+        sharedSession: true,
+        phase,
+      });
+      await expect(page.locator('#wallet-account-status')).toContainText(message);
+      await expect(page.locator('#wallet-login')).toBeEnabled();
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});

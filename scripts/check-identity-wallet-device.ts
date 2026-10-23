@@ -121,6 +121,26 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
   };
   let association: unknown;
   if (options.online) {
+    try {
+      const response = await deps.fetch(`${root}/native/session`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { Origin: root, 'X-Mikaki-App': '1' },
+        signal: AbortSignal.timeout(6000),
+      });
+      // An unauthenticated, cookie-free probe must reach the new app account
+      // endpoint and disclose no identity. This is not a Passkey ceremony.
+      if (
+        response.status !== 401 ||
+        response.headers.get('Cache-Control') !== 'no-store' ||
+        response.headers.has('Access-Control-Allow-Origin') ||
+        response.headers.has('Set-Cookie')
+      )
+        throw new Error();
+      pass('native_account_projection');
+    } catch {
+      blocked('native_account_projection', 'native_account_endpoint_unavailable_or_invalid');
+    }
     for (const [name, url, limit] of [
       ['metadata', `${root}/.well-known/openid-credential-issuer/identity/issuer`, 49152],
       ['oauth', `${root}/.well-known/oauth-authorization-server/identity/issuer`, 16384],

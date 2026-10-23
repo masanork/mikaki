@@ -798,5 +798,7 @@
   "workspaceSnapshotRestoreBoundary": "この保存版を復号した内容だけを送信します。Cloudflare OSは新しいワークスペースを作成します。外部サービスへの接続は再設定が必要です。",
   "workspaceSnapshotRestore": "この内容を送信して新しいワークスペースに復元",
   "workspaceSnapshotWrongOrigin": "保存元と復元先が異なるため、この保存版は送信できません。",
-  "workspaceSnapshotDismiss": "閉じる"
+  "workspaceSnapshotDismiss": "閉じる",
+  "loginPasskeyUnsupported": "この環境ではPasskeyを利用できません。OSとAndroid System WebViewを更新して、もう一度お試しください。",
+  "loginPasskeyOriginUnavailable": "この接続先でPasskeyを利用できません。アプリと接続先の設定を確認する必要があります。"
 }

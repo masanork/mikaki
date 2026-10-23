@@ -7,6 +7,7 @@ export interface NativeUiScenario {
   platform?: 'mobile' | 'desktop';
   signedIn?: boolean;
   phase?: string;
+  sharedSession?: boolean;
   identityReader?: boolean;
   identityWallet?: boolean;
   passportIssuance?: boolean;
@@ -470,6 +471,7 @@ export async function createNativeUiPage(
           pendingPassport = null;
           break;
         case 'open_mikaki_web':
+        case 'set_app_workspace':
           break;
         case 'native_platform':
           result = initial.platform ?? 'mobile';
@@ -481,6 +483,7 @@ export async function createNativeUiPage(
           result = {
             phase: mock.phase,
             subject: mock.subject,
+            shared_session: initial.sharedSession ?? false,
           };
           break;
         case 'start_mobile_login':

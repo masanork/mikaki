@@ -20,6 +20,7 @@ fn main() {
     println!("cargo:rerun-if-changed=ui/OwnerVaultSession.svelte");
     println!("cargo:rerun-if-changed=ui/ProductWorkspace.svelte");
     println!("cargo:rerun-if-changed=ui/ProductChat.svelte");
+    println!("cargo:rerun-if-changed=ui/native-workspace.ts");
     println!("cargo:rerun-if-changed=ui/messaging-module.ts");
     println!("cargo:rerun-if-changed=ui/messaging");
 

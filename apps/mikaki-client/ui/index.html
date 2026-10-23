@@ -70,6 +70,9 @@
         <a class="brand" href="#wallet" aria-label="mikaki Wallet"
           ><img class="brand-mark" src="brand-icon.svg" alt="" width="32" height="32" />mikaki</a
         >
+        <button id="wallet-login-cancel" class="text-button" type="button" hidden>
+          キャンセル
+        </button>
         <button type="button" class="icon-button" id="open-settings" aria-label="設定を開く">
           <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
         </button>
@@ -139,9 +142,6 @@
           <div id="wallet-account" class="wallet-account">
             <p id="wallet-account-status" class="help" role="status" aria-live="polite"></p>
             <button id="wallet-login" class="secondary" type="button">このWalletにログイン</button>
-            <button id="wallet-login-cancel" class="secondary" type="button" hidden>
-              ログインを取り消す
-            </button>
             <button
               id="wallet-logout"
               class="text-button"
@@ -519,7 +519,8 @@
           <button id="open-chat" class="primary" type="button" data-web-destination="chat">
             Chatを開く
           </button>
-          <p class="help">ログインと会話は、このアプリ内のWeb画面で行います。</p>
+          <button id="chat-login" class="primary" type="button" hidden>Passkeyでログイン</button>
+          <p id="chat-help" class="help">Walletと同じPasskeyで、Chatも使えます。</p>
         </section>
         <section id="connection" class="screen" aria-labelledby="connection-title" hidden>
           <p class="eyebrow">CONNECTION</p>

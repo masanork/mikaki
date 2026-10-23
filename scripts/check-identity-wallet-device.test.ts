@@ -160,6 +160,16 @@ function fixture() {
       assert.equal(init?.body, undefined);
       assert.equal(new Headers(init?.headers).get('Authorization'), null);
       const key = String(url);
+      if (key === `${root}/native/session`) {
+        assert.equal(init?.method, 'POST');
+        assert.equal(new Headers(init?.headers).get('Origin'), root);
+        assert.equal(new Headers(init?.headers).get('X-Mikaki-App'), '1');
+        assert.equal(new Headers(init?.headers).get('Cookie'), null);
+        return Response.json(
+          { error: 'authentication_required' },
+          { status: 401, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
       assert.equal(new URL(key).search, '');
       if (key.endsWith('/identity/issuance/callback'))
         return new Response(null, {

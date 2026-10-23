@@ -81,7 +81,9 @@
   };
   let pending = $state<Pending | null>(null);
   let passkeyPending = $state(false);
-  let errorKind = $state<'required' | 'operation' | 'link' | 'expired' | null>(null);
+  let errorKind = $state<
+    'required' | 'operation' | 'link' | 'expired' | 'cancelled' | 'unsupported' | 'origin' | null
+  >(null);
   let invitation = $state('');
   let linkedInvitation = $state(false);
   let checkingInvitation = $state(false);
@@ -360,11 +362,21 @@
       const ticket = loginPrf ?? undefined;
       loginPrf = null;
       await prepareCompletion('/login/finish', response, credential.id, ticket);
-    } catch {
+    } catch (error) {
       if (authentication !== controller || !current(operation)) return;
       passkeyPending = false;
       authentication = null;
-      if (!automatic && !controller.signal.aborted) errorKind = 'operation';
+      if (!controller.signal.aborted) {
+        if (error instanceof DOMException && error.name === 'NotSupportedError')
+          errorKind = 'unsupported';
+        else if (error instanceof DOMException && error.name === 'SecurityError')
+          errorKind = 'origin';
+        else if (!automatic)
+          errorKind =
+            error instanceof DOMException && ['NotAllowedError', 'AbortError'].includes(error.name)
+              ? 'cancelled'
+              : 'operation';
+      }
       busy = false;
       if (!automatic && !controller.signal.aborted)
         await restoreActionFocus(previousFocus, () => document.getElementById('passkey'));
@@ -539,6 +551,15 @@
     {/if}
     {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
         {m.error()}
+      </p>{/if}
+    {#if errorKind === 'cancelled'}<p class="auth-alert" role="alert">
+        {m.productPasskeyCancelled()}
+      </p>{/if}
+    {#if errorKind === 'unsupported'}<p class="auth-alert" role="alert">
+        {m.loginPasskeyUnsupported()}
+      </p>{/if}
+    {#if errorKind === 'origin'}<p class="auth-alert" role="alert">
+        {m.loginPasskeyOriginUnavailable()}
       </p>{/if}
     {#if errorKind === 'expired'}<p class="auth-alert" role="alert">
         {m.loginReviewExpired()}

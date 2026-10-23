@@ -2710,6 +2710,7 @@ dependencies = [
  "subtle",
  "tauri",
  "tauri-build",
+ "tauri-plugin-app-session",
  "tauri-plugin-deep-link",
  "tauri-plugin-identity-proximity",
  "tauri-plugin-identity-reader",
@@ -4951,6 +4952,16 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-app-session"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "zeroize",
 ]
 
 [[package]]
