@@ -16,6 +16,29 @@ const runId = 39709189220;
 const versionId = '00000000-0000-4000-8000-000000000001';
 const deploymentId = '00000000-0000-4000-8000-000000000002';
 const repository = { full_name: 'masanork/mikaki', id: 1382561545 };
+
+test('key staging uses its own exact main workflow identity, never a generic override', () => {
+  const env = {
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF: 'refs/heads/main',
+    GITHUB_REPOSITORY: 'masanork/mikaki',
+    GITHUB_SHA: source.commit,
+    GITHUB_WORKFLOW_REF:
+      'masanork/mikaki/.github/workflows/chat-beta-stage-key.yml@refs/heads/main',
+  };
+  assertChatPreflightContext(env, source, true);
+  assert.throws(() => assertChatPreflightContext(env, source));
+  assert.throws(() =>
+    assertChatPreflightContext({ ...env, GITHUB_EVENT_NAME: 'pull_request' }, source, true),
+  );
+  assert.throws(() =>
+    assertChatPreflightContext(
+      { ...env, GITHUB_WORKFLOW_REF: env.GITHUB_WORKFLOW_REF.replace('main', 'feature') },
+      source,
+      true,
+    ),
+  );
+});
 function candidateFixture() {
   const run = {
     id: runId,

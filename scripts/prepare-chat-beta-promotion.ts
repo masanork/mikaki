@@ -26,6 +26,7 @@ import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 
 const REPOSITORY = 'masanork/mikaki';
 const WORKFLOW = '.github/workflows/chat-beta-preflight.yml';
+const KEY_WORKFLOW = '.github/workflows/chat-beta-stage-key.yml';
 const OP_CONFIG = 'crates/worker/wrangler.production.jsonc';
 type Row = Record<string, unknown>;
 type GithubGet = (path: string) => Promise<unknown>;
@@ -43,11 +44,18 @@ export function chatPreflightRunId(value: unknown): number {
   return id;
 }
 
-export function assertChatPreflightContext(env: NodeJS.ProcessEnv, source: ReleaseSource) {
+export function assertChatPreflightContext(
+  env: NodeJS.ProcessEnv,
+  source: ReleaseSource,
+  keyStage = false,
+) {
   assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.equal(env.GITHUB_REF, 'refs/heads/main');
   assert.equal(env.GITHUB_REPOSITORY, REPOSITORY);
-  assert.equal(env.GITHUB_WORKFLOW_REF, `${REPOSITORY}/${WORKFLOW}@refs/heads/main`);
+  assert.equal(
+    env.GITHUB_WORKFLOW_REF,
+    `${REPOSITORY}/${keyStage ? KEY_WORKFLOW : WORKFLOW}@refs/heads/main`,
+  );
   assert.equal(source.commit, env.GITHUB_SHA);
   assert.match(source.commit, /^[a-f0-9]{40}$/);
   assert.equal(source.clean, true, 'Clean source required');
@@ -219,11 +227,14 @@ export function chatPreflightReport(
 }
 
 async function main() {
-  assert.equal(process.argv.length, 3, 'Usage: prepare-chat-beta-promotion.ts <main-ci-run-id>');
+  assert.ok(
+    process.argv.length === 3 || (process.argv.length === 4 && process.argv[3] === '--key-stage'),
+    'Usage: prepare-chat-beta-promotion.ts <main-ci-run-id> [--key-stage]',
+  );
   const runId = chatPreflightRunId(process.argv[2]);
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = releaseSource(root);
-  assertChatPreflightContext(process.env, source);
+  assertChatPreflightContext(process.env, source, process.argv[3] === '--key-stage');
   const reportDirectory = join(root, 'artifacts/chat-beta-preflight');
   // Refuse old artifacts/reports rather than treating a previous run as fresh proof.
   assert.equal(existsSync(join(root, 'artifacts')), false, 'Fresh artifact directory required');
