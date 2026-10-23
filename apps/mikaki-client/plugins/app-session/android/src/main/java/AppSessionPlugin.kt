@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -39,8 +40,19 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
     private var shown = false
     private var draft = false
     private var page = "chat"
+    private var back: OnBackPressedCallback? = null
 
-    override fun load(webView: WebView) { shell = webView }
+    override fun load(webView: WebView) {
+        shell = webView
+        val owner = activity as AppCompatActivity
+        back = object: OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                // Let the local shell request the normal hide/discard path.
+                if (shell.url?.startsWith("http://tauri.localhost/") == true || shell.url?.startsWith("https://tauri.localhost/") == true)
+                    shell.evaluateJavascript("if(!document.getElementById('wallet-login-cancel').hidden)document.getElementById('wallet-login-cancel').click();location.hash='wallet'", null)
+            }
+        }.also { owner.onBackPressedDispatcher.addCallback(owner, it) }
+    }
 
     private fun trusted(uri: Uri): Boolean =
         uri.scheme == "https" && uri.host == "auth.mikaki.org" &&
@@ -49,6 +61,7 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
     private fun visibility(visible: Boolean) {
         val changed = shown != visible
         shown = visible
+        back?.isEnabled = visible
         workspace?.let {
             // Fixed lifecycle signal only. No keys, account IDs, or cookie values.
             if (changed) it.evaluateJavascript("window.__MIKAKI_WORKSPACE_VISIBLE__=$visible;window.dispatchEvent(new Event('mikaki-workspace-visibility'))", null)
@@ -202,6 +215,7 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
         workspace = null
         ready = false
         shown = false
+        back?.isEnabled = false
         failure = null
         draft = false
     }

@@ -17,4 +17,5 @@ dependencies {
     implementation(project(":tauri-android"))
     implementation("androidx.webkit:webkit:1.17.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.activity:activity-ktx:1.13.0")
 }
