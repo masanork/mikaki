@@ -47,3 +47,10 @@ path = "fuzz_targets/android.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "harness_canary"
+path = "fuzz_targets/harness_canary.rs"
+test = false
+doc = false
+bench = false

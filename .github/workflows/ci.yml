@@ -60,6 +60,7 @@ jobs:
           npm run test:release
           node --test scripts/wallet-multipaz-checkout.test.ts
           npm run test:identity-trust-freshness
+          npm run test:webauthn-fuzz
           node --test scripts/static-sql.test.ts
           npm run test:work-authority-packet
           npm run test:work-authority-allocation

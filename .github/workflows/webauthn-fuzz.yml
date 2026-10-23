@@ -1,38 +1,85 @@
 name: webauthn-parser-fuzz
 on:
   workflow_dispatch:
+    inputs:
+      seconds:
+        description: Exploration seconds per target (1..1800); shorter values are smoke tests
+        type: string
+        required: true
+        default: '1800'
   schedule:
     - cron: '41 5 * * 0'
 permissions:
   contents: read
 concurrency:
   group: webauthn-fuzz-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
-  fuzz:
+  harness:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: node --test scripts/run-webauthn-fuzz.test.ts
       - name: Install pinned fuzz toolchain
         run: |
           rustup toolchain install nightly-2026-09-21 --profile minimal --component rust-src
-          cargo install cargo-fuzz --version 0.13.2 --locked --root target/fuzz-tools
+          cargo +nightly-2026-09-21 install cargo-fuzz --version 0.13.2 --locked --root target/fuzz-tools
           echo "$PWD/target/fuzz-tools/bin" >> "$GITHUB_PATH"
-      - name: Replay independent seed fixtures
-        run: cargo +nightly-2026-09-21 run --manifest-path fuzz/Cargo.toml --locked --bin seed
-      - name: Fuzz WebAuthn parsers and verification
-        run: |
-          cargo +nightly-2026-09-21 fuzz run registration -- -max_total_time=90 -max_len=65538 -timeout=10 -print_final_stats=1
-          cargo +nightly-2026-09-21 fuzz run assertion -- -max_total_time=90 -max_len=65538 -timeout=10 -print_final_stats=1
-          cargo +nightly-2026-09-21 fuzz run android -- -max_total_time=90 -max_len=16416 -timeout=10 -print_final_stats=1
-          cargo +nightly-2026-09-21 fuzz run metadata -- -max_total_time=90 -max_len=131074 -timeout=10 -print_final_stats=1
+      - name: Build the inert detector control
+        run: cargo +nightly-2026-09-21 fuzz build harness_canary --sanitizer address
+      - name: Verify a real fuzzer failure is recorded and detected
+        run: node scripts/run-webauthn-fuzz.ts self-test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: webauthn-fuzz-findings
-          path: fuzz/artifacts/
-          if-no-files-found: ignore
+          name: webauthn-fuzz-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/webauthn-fuzz/harness_canary/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  fuzz:
+    needs: harness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        target: [registration, assertion, android, metadata]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install pinned fuzz toolchain
+        run: |
+          rustup toolchain install nightly-2026-09-21 --profile minimal --component rust-src
+          cargo +nightly-2026-09-21 install cargo-fuzz --version 0.13.2 --locked --root target/fuzz-tools
+          echo "$PWD/target/fuzz-tools/bin" >> "$GITHUB_PATH"
+      - name: Replay independent seed fixtures
+        run: cargo +nightly-2026-09-21 run --manifest-path fuzz/Cargo.toml --locked --bin seed
+      - name: Build the selected instrumented target
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: cargo +nightly-2026-09-21 fuzz build "$FUZZ_TARGET" --sanitizer address
+      - name: Run the bounded campaign and retain its evidence
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          FUZZ_SECONDS: ${{ github.event_name == 'schedule' && '1800' || inputs.seconds }}
+        run: node scripts/run-webauthn-fuzz.ts "$FUZZ_TARGET" "$FUZZ_SECONDS"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: webauthn-fuzz-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/webauthn-fuzz/${{ matrix.target }}/
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
