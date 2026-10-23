@@ -472,6 +472,7 @@ export async function createNativeUiPage(
           break;
         case 'open_mikaki_web':
         case 'set_app_workspace':
+        case 'reset_app_workspace':
           break;
         case 'native_platform':
           result = initial.platform ?? 'mobile';

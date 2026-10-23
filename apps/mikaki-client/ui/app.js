@@ -144,7 +144,7 @@ function render(focus = false) {
       : 'ブラウザでログインを完了してください。'
     : signedIn
       ? sharedSession
-        ? 'WalletとChatに接続済み'
+        ? 'ログイン済み · Wallet / Chat'
         : 'アカウントに接続済み'
       : authenticationMessage(authPhase) ||
         'Passkeyでログインすると、あなたの身分証とChatを開けます。';
@@ -156,7 +156,7 @@ function render(focus = false) {
       ? 'Passkeyの選択画面で本人確認してください。'
       : signedIn
         ? 'Chatを開いています…'
-        : 'Walletと同じPasskeyで、Chatも使えます。'
+        : 'Walletと共通のアカウントでログインします。'
     : 'ログインと会話は、このアプリ内のWeb画面で行います。';
   renderIdentityReader(view);
   renderWalletIssuance(view);
@@ -208,18 +208,7 @@ async function refreshWalletAccount() {
     sharedSession = result?.shared_session === true;
     authPhase = result?.phase ?? 'idle';
     pending = platform === 'mobile' && ['pending', 'exchanging'].includes(result?.phase);
-    if (subject !== walletSubject) {
-      walletSubject = subject;
-      signedIn = typeof subject === 'string' && subject.length > 0;
-      epoch++;
-      walletInventoryGeneration++;
-      walletInventoryLoaded = false;
-      passportCapabilityEpoch = -1;
-      cancelIdentityRead();
-      clearPassportIssuanceReview();
-      clearPresentationReview();
-      clearWalletView();
-    }
+    updateWalletSubject(subject);
     if (!pending && loginReturnView && signedIn) {
       const target = loginReturnView;
       loginReturnView = null;
@@ -227,13 +216,35 @@ async function refreshWalletAccount() {
     } else render();
     if (!pending && authenticationMessage(authPhase)) notice(authenticationMessage(authPhase));
   } catch {
-    $('#wallet-account-status').textContent =
-      'Walletのログイン状態を確認できません。もう一度アプリを開いてください。';
+    if (read !== walletAccountRead || generation !== epoch) return;
+    updateWalletSubject(null);
+    pending = false;
+    authPhase = 'connection_failed';
+    render();
   } finally {
     clearTimeout(walletAccountTimer);
     if ((pending || sharedSession) && !document.hidden)
       walletAccountTimer = setTimeout(() => void refreshWalletAccount(), pending ? 1000 : 10000);
   }
+}
+function updateWalletSubject(subject) {
+  if (subject === walletSubject) return;
+  if (sharedSession && walletSubject !== null) {
+    workspaceKey = '';
+    // Session loss/replacement discards the old remote document immediately;
+    // a draft confirmation must not retain another/unchecked owner's keys.
+    workspaceQueue = workspaceQueue.catch(() => {}).then(() => invoke('reset_app_workspace'));
+  }
+  walletSubject = subject;
+  signedIn = typeof subject === 'string' && subject.length > 0;
+  epoch++;
+  walletInventoryGeneration++;
+  walletInventoryLoaded = false;
+  passportCapabilityEpoch = -1;
+  cancelIdentityRead();
+  clearPassportIssuanceReview();
+  clearPresentationReview();
+  clearWalletView();
 }
 async function login(returnView) {
   if (!available || walletAccountBusy || pending) return;

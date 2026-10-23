@@ -260,6 +260,20 @@ pub async fn start_mobile_browser_login(
 }
 
 #[tauri::command]
+pub async fn reset_app_workspace(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::AppSessionExt;
+        app.app_session().reset()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[tauri::command]
 pub async fn set_app_workspace(
     app: tauri::AppHandle,
     visible: bool,

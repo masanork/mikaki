@@ -66,6 +66,28 @@ test('first-party native account uses the OIDC pairwise namespace and fails clos
       });
     assert.equal((await request(null)).status, 403);
     assert.equal((await request('https://evil.test')).status, 403);
+    assert.equal(
+      (
+        await worker.fetch('https://evil.test/native/session', {
+          method: 'POST',
+          headers: {
+            Origin: 'https://evil.test',
+            'X-Mikaki-App': '1',
+            Cookie: `__Host-op-sso=${cookie}`,
+          },
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await worker.fetch(`${issuer}/native/session?client_id=foreign`, {
+          method: 'POST',
+          headers: { Origin: issuer, 'X-Mikaki-App': '1', Cookie: `__Host-op-sso=${cookie}` },
+        })
+      ).status,
+      400,
+    );
     assert.equal((await request(issuer, false)).status, 403);
     assert.equal((await request(issuer, true, randomBytes(32).toString('base64url'))).status, 401);
     assert.equal((await worker.fetch(`${issuer}/native/session`)).status, 405);

@@ -123,6 +123,7 @@ pub fn run() {
             mobile_oidc::clear_native_session,
             mobile_oidc::cancel_native_login,
             mobile_oidc::set_app_workspace,
+            mobile_oidc::reset_app_workspace,
             mobile_oidc::start_mobile_browser_login,
             mobile_oidc::start_mobile_login
         ])

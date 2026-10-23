@@ -138,7 +138,7 @@ test('shared Android sign-in returns to Wallet and opens Chat directly with the 
       .toBe(true);
     await page.evaluate(() => window.__nativeUiTest.complete());
     await expect(page.locator('#wallet')).toBeVisible();
-    await expect(page.locator('#wallet-account-status')).toContainText('WalletとChatに接続済み');
+    await expect(page.locator('#wallet-account-status')).toContainText('ログイン済み');
     await page.getByRole('link', { name: 'Chat', exact: true }).click();
     await expect(page.locator('#open-chat')).toBeHidden();
     await expect
@@ -190,6 +190,55 @@ test('shared account reports actionable connection failures without disclosing r
       assert.deepEqual(errors, []);
       await page.close();
     }
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('unconfirmed shared session clears cached identity display before allowing a retry', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+      signedIn: true,
+      identityDocuments: [
+        {
+          id: 'saved-private-document',
+          saved_at: 1,
+          preview: {
+            name: '秘密の氏名',
+            address: '秘密の住所',
+            birth_date: '2000-01-01',
+            gender: '1',
+            verification: 'unverified',
+            document_type: 'my_number_card',
+            backend_verifiable: false,
+          },
+        },
+      ],
+    });
+    await expect(page.locator('.document-card')).toHaveCount(1);
+    await page.getByRole('button', { name: /MY NUMBER CARD/ }).click();
+    await expect(page.locator('#wallet-card-values')).toContainText('秘密の住所');
+    await page.evaluate(() => {
+      window.__nativeUiTest.failures.mobile_auth_status = 'private internal diagnostic';
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(page.locator('.document-card')).toHaveCount(0);
+    await expect(page.locator('#wallet-account-status')).toContainText('ネットワーク');
+    await expect(page.locator('#wallet-login')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__nativeUiTest.calls.includes('reset_app_workspace')))
+      .toBe(true);
+    assert.doesNotMatch(
+      await page.locator('body').innerText(),
+      /秘密の氏名|秘密の住所|private internal diagnostic/,
+    );
+    assert.deepEqual(errors, []);
+    await page.close();
   } finally {
     await browser.close();
     await server.close();

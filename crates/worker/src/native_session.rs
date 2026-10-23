@@ -18,6 +18,13 @@ pub async fn session(
     request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
+    let url = request.url()?;
+    if url.origin().ascii_serialization() != enrollment::issuer(&context)? {
+        return error(404, "not_found");
+    }
+    if url.query().is_some() {
+        return error(400, "invalid_request");
+    }
     if !same_origin(&request)? || request.headers().get("X-Mikaki-App")?.as_deref() != Some("1") {
         return error(403, "origin_required");
     }
