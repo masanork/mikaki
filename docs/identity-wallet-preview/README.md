@@ -16,6 +16,7 @@ for account-scoped encrypted read summaries.
 - [Explicit passport number and MRZ display](wallet-passport-revealed.png)
 - [DG1/SOD consistency with issuer trust still unconfirmed](wallet-passport-signature.png)
 - [Multipaz host SDK results](multipaz-host-results.json)
+- [Native passport presentation SDK results](multipaz-passport-host-results.json)
 
 Regenerate with `node --test local/conformance/identity-wallet-ui.test.ts`.
 Physical reading, encrypted storage/restart and Multipaz interoperability require

@@ -149,3 +149,37 @@ identity authority and cannot construct `VerifiedDg1`. Metadata exposes only its
 fingerprint/deadline; readiness fails for missing/stale CRLs, missing issuer key or
 missing passport schema. This does not change the original-evidence verification
 required for every credential.
+
+## Native passport presentation: Multipaz host checkpoint (2026-10-23)
+
+The opt-in native inventory check now includes a synthetic issuer-signed
+`passport_dg1` receipt alongside linked-document SD-JWT and mdoc receipts. The
+native review selects three credentials from a signed DCQL request and generates
+holder-bound presentations in one encrypted response. The independent Node peer
+decrypts that response, checks fixture certificate trust and signatures, and
+requires the passport to disclose exactly `name_mrz` and `nationality`.
+
+The unchanged Multipaz SDK at `b741acd1f2a77ffbe2818b71822841781dd7ad9f`
+also accepts all three native presentations. Its passport checks verify the
+passport VCT, issuer/holder signatures, the two disclosed attributes and the
+explicit absence of other DG1 fields, full MRZ and document number. Changed
+nonce, audience and creation time fail SDK verification. Only public synthetic
+presentation material reaches the SDK; holder private keys stay in the native
+test process.
+
+```sh
+npm run test:identity-wallet-multipaz -- --native-only \
+  --checkout /absolute/path/to/private-pinned-sdk
+```
+
+The runner requires the operator-owned
+private checkout and fresh, non-skipped SDK results. The
+[retained host result](identity-wallet-preview/multipaz-passport-host-results.json)
+records one JVM test containing the three-format/type checks, with
+`native.passportPresentation: true`.
+
+This fixture tests presentation of a synthetic issuer statement. It does not
+exercise passport intake, real CSCA-backed issuance, a full Multipaz Wallet,
+Android custody or a live verifier ceremony. Production trust, HAIP conformance,
+physical-device qualification and generic Wallet reception of the custom
+passport-evidence issuance extension remain separate checks.

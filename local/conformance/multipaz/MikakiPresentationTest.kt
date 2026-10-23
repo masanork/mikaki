@@ -60,6 +60,31 @@ class MikakiPresentationTest {
             assertFailsWith<IllegalStateException> { sd.verify(issuerKey, checkAudience = { false }) }
             assertFailsWith<IllegalStateException> { sd.verify(issuerKey, checkCreationTime = { false }) }
 
+            val passport = SdJwtKb.fromCompactSerialization(text("passport"))
+            val passportClaims = passport.verify(
+                issuerKey = issuerKey,
+                checkNonce = { it == text("nonce") },
+                checkAudience = { it == "fixture" },
+                checkCreationTime = { it.epochSeconds == at }
+            )
+            assertEquals("FIXTURE PERSON", passportClaims["name_mrz"]!!.jsonPrimitive.content)
+            assertEquals("JPN", passportClaims["nationality"]!!.jsonPrimitive.content)
+            for (field in listOf("name", "birthdate", "address", "issuing_state", "birth_date_mrz", "expiry_date_mrz", "sex_mrz", "mrz", "document_number")) {
+                assertFalse(passportClaims.containsKey(field))
+            }
+            assertEquals(text("issuer"), passportClaims["iss"]!!.jsonPrimitive.content)
+            assertEquals("${text("issuer")}/types/passport-dg1", passportClaims["vct"]!!.jsonPrimitive.content)
+            assertEquals("passport", passportClaims["document_type"]!!.jsonPrimitive.content)
+            val evidence = passportClaims["evidence"]!!.jsonObject
+            assertEquals("false", evidence["government_credential"]!!.jsonPrimitive.content)
+            assertEquals("false", evidence["document_validity_verified"]!!.jsonPrimitive.content)
+            assertEquals("false", evidence["live_possession_verified"]!!.jsonPrimitive.content)
+            assertTrue(passportClaims["exp"]!!.jsonPrimitive.content.toLong() > at)
+            assertEquals(EcPublicKey.fromJwk(input["holder_passport"]!!.jsonObject), passport.sdJwt.kbKey)
+            assertFailsWith<IllegalStateException> { passport.verify(issuerKey, checkNonce = { false }) }
+            assertFailsWith<IllegalStateException> { passport.verify(issuerKey, checkAudience = { false }) }
+            assertFailsWith<IllegalStateException> { passport.verify(issuerKey, checkCreationTime = { false }) }
+
             suspend fun transcript(nonce: String, responseUri: String, thumbprint: ByteArray): ByteArray {
                 val info = Cbor.encode(buildCborArray {
                     add("fixture")
