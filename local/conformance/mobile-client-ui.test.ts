@@ -244,3 +244,44 @@ test('unconfirmed shared session clears cached identity display before allowing 
     await server.close();
   }
 });
+
+test('workspace open failure offers one explicit retry without a native command loop', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+      signedIn: true,
+    });
+    await page.evaluate(() => {
+      window.__nativeUiTest.failures.set_app_workspace = 'private native error';
+    });
+    await page.getByRole('link', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('#chat-login')).toHaveText('もう一度開く');
+    await expect(page.locator('#chat-login')).toBeVisible();
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    assert.ok(
+      (await page.evaluate(
+        () => window.__nativeUiTest.calls.filter((c) => c === 'set_app_workspace').length,
+      )) <= 3,
+    );
+    assert.doesNotMatch(await page.locator('body').innerText(), /private native error/);
+    await page.evaluate(() => {
+      delete window.__nativeUiTest.failures.set_app_workspace;
+    });
+    await page.locator('#chat-login').click();
+    await expect(page.locator('#chat-login')).toBeHidden();
+    assert.equal(
+      await page.evaluate(() => window.__nativeUiTest.calls.includes('start_mobile_login')),
+      false,
+    );
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});

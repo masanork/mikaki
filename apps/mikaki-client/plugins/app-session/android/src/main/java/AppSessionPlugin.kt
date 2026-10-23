@@ -8,6 +8,8 @@ import android.net.http.SslError
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
@@ -66,6 +68,13 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
             // Fixed lifecycle signal only. No keys, account IDs, or cookie values.
             if (changed) it.evaluateJavascript("window.__MIKAKI_WORKSPACE_VISIBLE__=$visible;window.dispatchEvent(new Event('mikaki-workspace-visibility'))", null)
             it.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+            if (changed) {
+                if (visible) it.requestFocus()
+                else {
+                    (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(it.windowToken, 0)
+                    shell.requestFocus()
+                }
+            }
         }
     }
 

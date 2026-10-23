@@ -54,9 +54,9 @@ pub async fn session(
         JsValue::from_str(SECTOR),
         JsValue::from_str(&candidate),
     ];
-    db.prepare(&format!("INSERT INTO pairwise_subject(account_id,sector_identifier,sub) SELECT ss.account_id,c.sector_identifier,?7 {authority} ON CONFLICT(account_id,sector_identifier) DO NOTHING"))
+    db.prepare(format!("INSERT INTO pairwise_subject(account_id,sector_identifier,sub) SELECT ss.account_id,c.sector_identifier,?7 {authority} ON CONFLICT(account_id,sector_identifier) DO NOTHING"))
         .bind(&values)?.run().await?;
-    let projection = db.prepare(&format!("SELECT (SELECT sub FROM pairwise_subject WHERE account_id=ss.account_id AND sector_identifier=c.sector_identifier) AS subject,ss.expires_at {authority}"))
+    let projection = db.prepare(format!("SELECT (SELECT sub FROM pairwise_subject WHERE account_id=ss.account_id AND sector_identifier=c.sector_identifier) AS subject,ss.expires_at {authority}"))
         .bind(&values[..6])?.first::<Projection>(None).await?;
     let Some(projection) = projection else {
         return error(401, "authentication_required");

@@ -61,6 +61,7 @@ let loginReturnView = null;
 let workspaceKey = '';
 let workspaceQueue = Promise.resolve();
 let workspacePage = 'chat';
+let workspaceFailed = false;
 
 function authenticationMessage(phase) {
   return (
@@ -80,7 +81,7 @@ function authenticationMessage(phase) {
 }
 function syncWorkspace() {
   if (!sharedSession || !invoke) return;
-  const visible = route() === 'chat' && (signedIn || pending);
+  const visible = route() === 'chat' && (signedIn || pending) && !workspaceFailed;
   const args = {
     visible,
     page: workspacePage,
@@ -101,10 +102,15 @@ function syncWorkspace() {
         workspaceKey = '';
         if (String(error).includes('draft_kept')) navigate('chat', true);
         else {
+          workspaceFailed = true;
+          if (!signedIn) {
+            await invoke('cancel_native_login').catch(() => {});
+            loginReturnView = null;
+          }
           pending = false;
           authPhase = 'workspace_unavailable';
           notice(authenticationMessage(authPhase));
-          render();
+          if (args.visible) render();
         }
       }
     });
@@ -149,14 +155,18 @@ function render(focus = false) {
       : authenticationMessage(authPhase) ||
         'Passkeyでログインすると、あなたの身分証とChatを開けます。';
   $('#wallet-login').textContent = 'Passkeyでログイン';
-  $('#chat-login').hidden = !sharedSession || signedIn || pending;
+  $('#chat-login').hidden = !sharedSession || (!workspaceFailed && (signedIn || pending));
+  $('#chat-login').textContent = signedIn ? 'もう一度開く' : 'Passkeyでログイン';
+  $('#chat').inert = sharedSession && view === 'chat' && (signedIn || pending) && !workspaceFailed;
   $('#open-chat').hidden = sharedSession;
   $('#chat-help').textContent = sharedSession
-    ? pending
-      ? 'Passkeyの選択画面で本人確認してください。'
-      : signedIn
-        ? 'Chatを開いています…'
-        : 'Walletと共通のアカウントでログインします。'
+    ? workspaceFailed
+      ? authenticationMessage('workspace_unavailable')
+      : pending
+        ? 'Passkeyの選択画面で本人確認してください。'
+        : signedIn
+          ? 'Chatを開いています…'
+          : 'Walletと共通のアカウントでログインします。'
     : 'ログインと会話は、このアプリ内のWeb画面で行います。';
   renderIdentityReader(view);
   renderWalletIssuance(view);
@@ -249,6 +259,7 @@ function updateWalletSubject(subject) {
 async function login(returnView) {
   if (!available || walletAccountBusy || pending) return;
   walletAccountBusy = true;
+  workspaceFailed = false;
   pending = true;
   render();
   try {
@@ -271,7 +282,13 @@ async function login(returnView) {
   }
 }
 $('#wallet-login').addEventListener('click', () => void login('wallet'));
-$('#chat-login').addEventListener('click', () => void login('chat'));
+$('#chat-login').addEventListener('click', () => {
+  if (signedIn) {
+    workspaceFailed = false;
+    workspaceKey = '';
+    render();
+  } else void login('chat');
+});
 $('#wallet-login-cancel').addEventListener('click', async () => {
   if (walletAccountBusy) return;
   epoch++;
