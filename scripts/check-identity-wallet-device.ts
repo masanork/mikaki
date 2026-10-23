@@ -14,6 +14,7 @@ type Options = {
   apk?: string;
   configuration?: string;
   serial?: string;
+  passport?: boolean;
 };
 type Dependencies = {
   run(command: string, args: string[], input?: string): string;
@@ -114,7 +115,10 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
       blocked('configuration_file', 'configuration_unreadable_or_oversized');
     }
   }
-  const profile: Record<string, string | undefined> = { configuration };
+  const profile: Record<string, string | boolean | undefined> = {
+    configuration,
+    ...(options.passport ? { passport: true } : {}),
+  };
   let association: unknown;
   if (options.online) {
     for (const [name, url, limit] of [
@@ -181,10 +185,19 @@ export async function walletDevicePreflight(options: Options, deps: Dependencies
         JSON.stringify(profile),
       ),
     );
-    if (!Array.isArray(result.checks) || result.checks.length !== 5) throw new Error();
-    for (const c of result.checks) {
+    const expected = [
+      'wallet_configuration',
+      'linked_document',
+      'linked_document_mdoc',
+      ...(options.passport ? ['passport_dg1', 'passport_evidence_policy'] : []),
+      'issuer_signing_key',
+      'issuer_encryption',
+    ];
+    if (!Array.isArray(result.checks) || result.checks.length !== expected.length)
+      throw new Error();
+    for (const [index, c] of result.checks.entries()) {
       if (
-        typeof c.name !== 'string' ||
+        c.name !== expected[index] ||
         !['pass', 'blocked'].includes(c.status) ||
         (c.reason !== undefined && typeof c.reason !== 'string')
       )
@@ -323,6 +336,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       'wallet-config': { type: 'string' },
       sdk: { type: 'string' },
       serial: { type: 'string' },
+      passport: { type: 'boolean' },
       report: { type: 'string' },
     },
   });
@@ -332,6 +346,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     apk: values.apk,
     configuration: values['wallet-config'],
     serial: values.serial,
+    passport: values.passport,
   });
   console.log(JSON.stringify(report, null, 2));
   if (values.report) writeWalletReport(values.report, report);
