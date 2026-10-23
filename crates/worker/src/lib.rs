@@ -27,6 +27,7 @@ mod messaging_crypto;
 mod enrollment_mail;
 #[cfg(target_arch = "wasm32")]
 mod enrollment_waitlist;
+#[cfg(target_arch = "wasm32")]
 mod native_session;
 #[cfg(any(target_arch = "wasm32", test))]
 mod native_webauthn;
