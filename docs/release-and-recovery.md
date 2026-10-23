@@ -16,6 +16,15 @@ The automated checkpoint rollout uses `deploy` only when creating its first SQLi
 
 Control-plane retries stop after three attempts with one- and two-second delays. Fixed-origin metadata GET requests may retry transient transport, 500/502/503/504, or malformed HTTP 200 responses. Wrangler retries are limited to metadata reads and inactive version uploads on those recognized API response errors. An uncertain upload may leave an extra inactive version; only the returned, independently checked version can be activated. Activation, triggers, database writes, schema changes and resource creation are never automatically retried. Permission failures, invalid configuration and binding/schema drift still stop promotion.
 
+For an ID returned by a successful version upload, OP, UserInfo, checkpoint and
+Docs promotion also wait for its metadata to become readable. Only a version
+lookup reporting Cloudflare `100146`, the expected not-found message and that
+exact ID's API path qualifies. The same `versions view` command runs at most five
+times, with 1/2/4/8-second backoff (15 seconds total waiting). Other failures stop
+immediately; continued absence stops promotion. The returned ID and all existing
+binding, runtime and namespace checks still apply before staged activation. No upload
+or activation is repeated by this visibility wait.
+
 In a clean checkout of the independently selected release commit, download the matching `attested-worker-<commit>` artifact into `artifacts/`. Set `release_commit` to that independently reviewed commit, then verify all five provenance subjects:
 
 ```sh
