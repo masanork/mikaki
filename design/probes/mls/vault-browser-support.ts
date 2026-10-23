@@ -247,17 +247,27 @@ export class Client {
     await this.manager();
     await this.page.evaluate(() => custodyDevice.create());
   }
-  async chat(offer?: InvitationOffer) {
-    await this.page.evaluate(async (offer) => {
-      const style = document.createElement('link');
-      style.rel = 'stylesheet';
-      style.href = '/chat.css';
-      document.head.append(style);
-      const root = document.createElement('main');
-      document.body.replaceChildren(root);
-      globalThis.custodyChat = new custodyModule.MlsChatView(root, custodyDevice, offer);
-      await custodyChat.open();
-    }, offer);
+  async chat(offer?: InvitationOffer, limited = false) {
+    await this.page.evaluate(
+      async ({ offer, limited }) => {
+        const style = document.createElement('link');
+        style.rel = 'stylesheet';
+        style.href = '/chat.css';
+        document.head.append(style);
+        const root = document.createElement('main');
+        document.body.replaceChildren(root);
+        globalThis.custodyChat = new custodyModule.MlsChatView(
+          root,
+          custodyDevice,
+          offer,
+          false,
+          undefined,
+          limited,
+        );
+        await custodyChat.open();
+      },
+      { offer, limited },
+    );
   }
   async open() {
     await this.manager();

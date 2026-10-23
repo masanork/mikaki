@@ -152,6 +152,21 @@ for (const name of (process.env.MIKAKI_MLS_BROWSERS ?? 'chromium').split(',')) {
                   fullPage: true,
                 });
               }
+              await a.chat(undefined, true);
+              await expect(
+                a.page.getByRole('heading', {
+                  name: 'この保存状態は限定ベータの対象外です',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(a.page.getByRole('button', { name: 'チャットをロック' })).toBeVisible();
+              await expect(
+                a.page.getByRole('button', {
+                  name: '再参加先を停止してやり直す',
+                  exact: true,
+                }),
+              ).toHaveCount(0);
+              await a.chat();
               await a.abortCommand('begin_rejoin_recovery');
               await assert.rejects(() => recover(a, previous, failed));
               assert.equal((await snapshot(a)).recoveries.length, 1);
