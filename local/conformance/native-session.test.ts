@@ -106,18 +106,16 @@ test('first-party native account uses the OIDC pairwise namespace and fails clos
     assert.equal(projection.expires_at, now + 3600);
     assert.equal(projection.client_id, registration.client_id);
     assert.deepEqual(await (await request()).json(), projection);
-    assert.deepEqual(
-      await DB.prepare('SELECT account_id,sector_identifier,sub FROM pairwise_subject')
-        .all()
-        .then((r) => r.results),
-      [
-        {
-          account_id: 'owner',
-          sector_identifier: registration.sector_identifier,
-          sub: projection.subject,
-        },
-      ],
-    );
+    const subjects = await DB.prepare(
+      'SELECT account_id,sector_identifier,sub FROM pairwise_subject',
+    ).all();
+    assert.deepEqual(subjects.results, [
+      {
+        account_id: 'owner',
+        sector_identifier: registration.sector_identifier,
+        sub: projection.subject,
+      },
+    ]);
     // Existing OIDC custody must remain addressable, without migrating to raw account IDs.
     const existing = randomBytes(32).toString('base64url');
     await DB.prepare("UPDATE pairwise_subject SET sub=? WHERE account_id='owner'")
