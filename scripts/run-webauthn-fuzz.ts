@@ -22,11 +22,54 @@ export const targets = {
   android: 16_416,
   metadata: 131_074,
 } as const;
+export type FuzzTarget = keyof typeof targets;
+type CampaignTarget = FuzzTarget | 'harness_canary';
+export type FuzzInvocation = {
+  target: CampaignTarget;
+  duration: string;
+  canary: boolean;
+};
 export const toolchain = 'nightly-2026-09-21';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
 const save = (path: string, value: unknown) =>
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+
+function fuzzTarget(value: unknown): FuzzTarget {
+  switch (value) {
+    case 'registration':
+      return 'registration';
+    case 'assertion':
+      return 'assertion';
+    case 'android':
+      return 'android';
+    case 'metadata':
+      return 'metadata';
+    default:
+      assert.fail('unknown fuzz target');
+  }
+}
+
+function campaignTarget(value: unknown, canary: boolean): CampaignTarget {
+  if (canary) {
+    assert.equal(value, 'harness_canary', 'invalid canary target');
+    return 'harness_canary';
+  }
+  return fuzzTarget(value);
+}
+
+/** Convert untrusted CLI strings to fixed internal target literals before any I/O. */
+export function fuzzInvocation(argv: readonly string[]): FuzzInvocation {
+  if (argv.length === 1 && argv[0] === 'self-test') {
+    return { target: 'harness_canary', duration: '1', canary: true };
+  }
+  assert.equal(argv.length, 2, 'expected a target and duration');
+  return {
+    target: fuzzTarget(argv[0]),
+    duration: argv[1] ?? '',
+    canary: false,
+  };
+}
 
 export function budget(value: string) {
   assert.match(value, /^[1-9]\d{0,3}$/, 'duration must be a decimal integer');
@@ -228,16 +271,13 @@ function tools(directory: string) {
 
 /** Each invocation gets a private working corpus; previous mutations are never auto-imported. */
 export async function campaign(
-  target: string,
+  target: CampaignTarget,
   duration: string,
   { directory = root, canary = false } = {},
 ) {
-  const maximum = canary ? 64 : targets[target as keyof typeof targets];
-  assert.ok(
-    maximum && (canary ? target === 'harness_canary' : Object.hasOwn(targets, target)),
-    'unknown fuzz target',
-  );
-  const output = join(directory, 'artifacts/webauthn-fuzz', target);
+  const selectedTarget = campaignTarget(target, canary);
+  const maximum = selectedTarget === 'harness_canary' ? 64 : targets[selectedTarget];
+  const output = join(directory, 'artifacts/webauthn-fuzz', selectedTarget);
   mkdirSync(output, { recursive: true });
   const reportPath = join(output, 'report.json');
   const id = randomUUID();
@@ -248,7 +288,7 @@ export async function campaign(
   mkdirSync(findings);
   const report: Record<string, unknown> = {
     format: 'mikaki-webauthn-fuzz-v1',
-    target,
+    target: selectedTarget,
     execution_id: id,
     started_at: new Date().toISOString(),
     status: 'incomplete',
@@ -281,7 +321,7 @@ export async function campaign(
     if (canary) writeFileSync(join(corpus, 'canary'), 'mikaki fuzz harness canary v1');
     const initial = canary
       ? corpusManifest(corpus, maximum)
-      : corpusManifest(join(directory, 'fuzz/corpus', target), maximum, corpus);
+      : corpusManifest(join(directory, 'fuzz/corpus', selectedTarget), maximum, corpus);
     save(join(run, 'input-manifest.json'), initial);
     report.initial_corpus = { count: initial.count, bytes: initial.bytes };
     save(reportPath, report);
@@ -292,7 +332,7 @@ export async function campaign(
         `+${toolchain}`,
         'fuzz',
         'run',
-        target,
+        selectedTarget,
         corpus,
         '--sanitizer',
         'address',
@@ -352,13 +392,11 @@ if (
   import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href
 ) {
   try {
-    const selfTest = process.argv[2] === 'self-test';
-    const { report, log } = await campaign(
-      selfTest ? 'harness_canary' : process.argv[2],
-      selfTest ? '1' : process.argv[3],
-      { canary: selfTest },
-    );
-    const detected = selfTest && expectedCanaryFailure(report, log);
+    const invocation = fuzzInvocation(process.argv.slice(2));
+    const { report, log } = await campaign(invocation.target, invocation.duration, {
+      canary: invocation.canary,
+    });
+    const detected = invocation.canary && expectedCanaryFailure(report, log);
     console.log(
       JSON.stringify({
         target: report.target,
@@ -367,7 +405,7 @@ if (
         execution_id: report.execution_id,
       }),
     );
-    if (selfTest ? !detected : report.status !== 'passed') process.exitCode = 1;
+    if (invocation.canary ? !detected : report.status !== 'passed') process.exitCode = 1;
   } catch {
     console.error(
       'Fuzz campaign rejected: expected a known target and 1..1800 seconds, or self-test',

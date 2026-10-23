@@ -15,8 +15,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   budget,
+  campaign,
   corpusManifest,
   execute,
+  fuzzInvocation,
   statistics,
   successful,
   type Execution,
@@ -41,6 +43,37 @@ test('only bounded decimal exploration budgets are accepted', () => {
   assert.equal(budget('1800'), 1800);
   for (const input of ['0', '1801', '-1', '', '01', '1.5', '1e3', ' 30', '30\n', '30; echo unsafe'])
     assert.throws(() => budget(input));
+});
+
+test('CLI arguments map only to fixed campaign targets with exact arity', () => {
+  assert.deepEqual(fuzzInvocation(['registration', '30']), {
+    target: 'registration',
+    duration: '30',
+    canary: false,
+  });
+  assert.deepEqual(fuzzInvocation(['self-test']), {
+    target: 'harness_canary',
+    duration: '1',
+    canary: true,
+  });
+  for (const argv of [
+    [],
+    ['registration'],
+    ['registration', '30', '--extra'],
+    ['self-test', '30'],
+    ['../registration', '30'],
+    ['/tmp/registration', '30'],
+    ['--help', '30'],
+    ['registration/../../escape', '30'],
+  ]) {
+    assert.throws(() => fuzzInvocation(argv));
+  }
+});
+
+test('campaign rejects a type-bypassed target before creating artifacts', async (t) => {
+  const root = fixture(t);
+  await assert.rejects(campaign('../escape' as never, '1', { directory: root }), /target/);
+  assert.equal(existsSync(join(root, 'artifacts')), false);
 });
 
 test('a passing exploration needs complete consistent measured statistics', () => {
