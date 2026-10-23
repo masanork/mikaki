@@ -9,6 +9,8 @@ import { multipazCommit } from './multipaz-wallet.ts';
 /** SDK format/signature verification only: decrypted synthetic public proof material stays in memory. */
 export async function verifyNativeWithMultipaz(input: {
   sd: string;
+  passport: string;
+  holder_passport: object;
   mdoc: string;
   nonce: string;
   at: number;

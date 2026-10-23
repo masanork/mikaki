@@ -109,6 +109,45 @@ pub(crate) fn receipt_with_profile(
         credential_trust: Some(policy()),
     }
 }
+/// Synthetic issuer-signed receipt constructed without passport intake or CSCA validation.
+pub(crate) fn passport_receipt(seed: u8, issuer_url: &str) -> Receipt {
+    use sha2::{Digest, Sha256};
+    let mut receipt = receipt_with("dc+sd-jwt", seed, issuer_url);
+    let fields = [
+        ("name_mrz", "FIXTURE PERSON"),
+        ("issuing_state", "JPN"),
+        ("nationality", "JPN"),
+        ("birth_date_mrz", "900228"),
+        ("expiry_date_mrz", "300101"),
+        ("sex_mrz", "F"),
+    ];
+    let disclosures: Vec<_> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (name, value))| {
+            URL_SAFE_NO_PAD.encode(
+                serde_json::to_vec(&json!([
+                    URL_SAFE_NO_PAD.encode([i as u8 + 1; 16]),
+                    name,
+                    value
+                ]))
+                .unwrap(),
+            )
+        })
+        .collect();
+    let hashes: Vec<_> = disclosures
+        .iter()
+        .map(|d| URL_SAFE_NO_PAD.encode(Sha256::digest(d.as_bytes())))
+        .collect();
+    let token = issuance::sign_jwt(
+        &SigningKey::from_slice(&[4; 32]).unwrap(),
+        json!({"typ":"dc+sd-jwt","alg":"ES256","kid":"issuer","x5c":[STANDARD.encode(bytes("sd-signer.der"))]}),
+        json!({"iss":issuer_url,"iat":NOW,"exp":NOW+300,"vct":mikaki_identity::passport::credential::vct(issuer_url),"cnf":{"jwk":receipt.key.public().unwrap()},"_sd_alg":"sha-256","_sd":hashes,"document_type":"passport","evidence":{"assurance":"issuer_authenticated_dg1","checked_data_groups":[1],"verified_at":NOW,"evidence_valid_until":NOW+300,"document_validity_verified":false,"live_possession_verified":false,"government_credential":false}}),
+    ).unwrap();
+    receipt.credential = Zeroizing::new(format!("{token}~{}~", disclosures.join("~")));
+    receipt.validate(issuer_url, NOW).unwrap();
+    receipt
+}
 // Resign the JWT so negative tests target certificate trust rather than JWT signatures.
 fn edit_header(r: &mut Receipt, edit: impl FnOnce(&mut Value)) {
     let (jwt, tail) = r.credential.split_once('~').unwrap();

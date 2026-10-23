@@ -64,7 +64,7 @@ pub(super) fn crypt(key: &[u8; 16], data: &[u8], encrypt: bool) -> Result<Zeroiz
     let cipher = TdesEde3::new_from_slice(expanded.as_ref()).map_err(|_| integrity())?;
     let mut iv = Zeroizing::new([0u8; 8]);
     let mut out = Zeroizing::new(Vec::with_capacity(data.len()));
-    for chunk in data.chunks_exact(8) {
+    for chunk in data.as_chunks::<8>().0 {
         let mut block = Zeroizing::new([0u8; 8]);
         block.copy_from_slice(chunk);
         if encrypt {
@@ -103,7 +103,7 @@ pub(super) fn mac(key: &[u8; 16], data: &[u8]) -> Result<[u8; 8]> {
     let a = Des::new_from_slice(&key[..8]).map_err(|_| integrity())?;
     let b = Des::new_from_slice(&key[8..]).map_err(|_| integrity())?;
     let mut block = Zeroizing::new([0u8; 8]);
-    for chunk in data.chunks_exact(8) {
+    for chunk in data.as_chunks::<8>().0 {
         for i in 0..8 {
             block[i] ^= chunk[i];
         }
