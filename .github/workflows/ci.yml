@@ -291,6 +291,13 @@ jobs:
           git rev-parse HEAD > artifacts/security-authorization/source-commit.txt
           sha256sum crates/worker/build/worker/service.mjs crates/worker/build/worker/shim.mjs crates/worker/build/index.js crates/worker/build/index_bg.wasm > artifacts/security-authorization/bundle-sha256.txt
           npm run test:security-authorization | tee artifacts/security-authorization/results.txt
+      - name: Authentication mix-up and code-race matrix (SEC-03 and SEC-04)
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/security-authentication
+          git rev-parse HEAD > artifacts/security-authentication/source-commit.txt
+          sha256sum crates/worker/build/worker/shim.mjs crates/worker/build/index.js crates/worker/build/index_bg.wasm > artifacts/security-authentication/bundle-sha256.txt
+          npm run test:security-authentication | tee artifacts/security-authentication/results.txt
       - name: Packaged capability attack matrix (SEC-02 and SEC-18)
         run: |
           set -o pipefail
