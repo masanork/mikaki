@@ -4,7 +4,7 @@
   "wasm_pack": "0.15.0",
   "python": "3.12",
   "fonttools": "4.65.0",
-  "brotli": "1.2.0",
+  "brotli": "1.2.1",
   "zopfli": "0.4.3",
   "gjs_files": {
     "crates/font-subsetter/src/bin/build_acgjmp.rs": "51cf9f9b3b283392e8f9cfd85c2d02b18b5c949d3d01b1ee06f743f9ee618c8f",
