@@ -195,6 +195,76 @@ verification, remote populated rollback, physical Passkey/PRF and two-owner
 qualification, and the protected activation path remain explicit pending work.
 No report is accepted as authorization by ordinary promotion.
 
+The [2026-10-23 production preflight](https://github.com/masanork/mikaki/actions/runs/39923082806)
+passed for clean source `065e9f007d91d4ddb766cb77a7ed63679e2f83ed` and successful
+main CI `39917244237`. Its six attested subjects, candidate bytes, exact main
+Sonar gate, disabled OP baseline and complete three-file Chat schema matched.
+It made no production changes. This is historical evidence; refresh it at the
+source selected for any later operation.
+
+## Protected Chat key staging
+
+The manual [chat-beta-stage-key workflow](../.github/workflows/chat-beta-stage-key.yml)
+prepares an independent Ed25519 issuer key without activating a Worker version.
+It runs only on this repository's `main`, uses the existing `production`
+environment, and shares ordinary OP promotion's `production-deployment` lock.
+It first repeats the complete candidate preflight at the selected successful
+push-to-main CI run. The key is exposed only to the subsequent custody step.
+There is no key-generation, secret-registration or dispatch step on merge.
+
+Prepare custody outside the checkout with the
+[key generator](../scripts/messaging-issuer-key.ts). Supply an absolute path to a
+new private file. It creates the file exclusively with mode 0600, creates new
+parent directories with mode 0700, and prints only its path, public JWK,
+RFC 7638 thumbprint and runtime key ID. Retain the private file in the operator's
+protected custody; the generator does not register it anywhere or overwrite a
+previous file. Provision its canonical `{"kty":"OKP","crv":"Ed25519","x":...,"d":...}`
+as the `production` environment's `MESSAGING_ISSUER_KEY` Actions secret through
+the operator's existing secret-management process. Do not put the private JWK
+in workflow inputs, source, issues, screenshots or artifacts.
+
+Dispatch inputs are the exact successful main CI run ID, the reviewed active OP
+version UUID, and the independently reviewed 43-character public `x` value.
+[The staging script](../scripts/stage-chat-beta-key.ts) refuses a missing key,
+ambiguous/noncanonical JWK, wrong algorithm, mismatched seed/public pair or
+different public pin before any write. It checks the same fresh preflight,
+candidate/run and actual main Sonar analysis. The active baseline must remain a
+single 100% ordinary version with no Chat flag or key; workers.dev and version
+preview URLs must both be disabled. The latest uploaded version must initially
+be that exact active version. Another pending upload requires operator review.
+
+The only writes are two `wrangler versions secret bulk` calls with JSON over
+stdin. The first creates an inactive clone containing the Chat key. The second
+creates a key-free inactive successor, because Cloudflare can inherit omitted
+secrets from the latest upload. The original key-bearing version remains
+available by its recorded UUID. No existing version's secrets are edited, and
+neither call changes active traffic. Before and after each write, the script
+checks current source, active deployment, preview exposure and latest upload.
+Each resulting version must retain the baseline script ETag, runtime and every
+original binding, with only the permitted Chat secret addition/removal.
+See Cloudflare's [version secret commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/#versions-secret-bulk)
+and [secret inheritance](https://developers.cloudflare.com/workers/configuration/secrets/#upload-secrets-alongside-code).
+
+Writes are never retried. A timeout, changed latest upload, unknown returned ID
+or failed verification retains a sanitized failed report with the attempted
+stage and any confirmed version IDs; it never automatically deletes secrets,
+activates or rolls back traffic after an uncertain outcome. Inspect metadata
+before any further operation. The workflow serializes repository promotions;
+operators must also avoid concurrent dashboard/API uploads. A successful run
+leaves an inactive successor, so a repeat stage requires a fresh ordinary
+promotion first rather than modifying an unreviewed latest upload.
+
+Only the preflight and `mikaki-chat-key-stage-v1` reports are retained for 14
+days. The key-stage report includes public material and confirmed inactive
+version IDs, always with `active_change_requested=false` and
+`promotion_ready=false`. Local public/private consistency plus a successful
+secret write does not prove a remote signing ceremony: the report explicitly
+keeps `remote_public_key_verified=false`. Remote same-origin configuration and
+public-key verification, populated rollback, real Passkey/PRF and two-owner
+acceptance, and protected beta activation remain separate gates. This workflow
+does not execute a beta artifact, enroll users, migrate, write D1/R2 or enable
+Chat. Ordinary promotion remains default-profile-only.
+
 ## Offline release candidate checks
 
 The beta candidate builder archives `build-messaging-beta`, after the actual

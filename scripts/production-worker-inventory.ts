@@ -480,7 +480,7 @@ export function cloudflareMetadataGet(
   const request: MetadataGet = async (path) => {
     gate(
       path.startsWith(base)
-        ? /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|subdomain|deployments\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
+        ? /^(?:scripts|scripts\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:settings|subdomain|deployments\?page=1&per_page=1|versions\?page=1&per_page=1|versions\/[a-f0-9-]{36}))$/.test(
             path.slice(base.length),
           )
         : new RegExp(`^${queues.replaceAll('/', '\\/')}\\?page=[1-9][0-9]*&per_page=100$`).test(

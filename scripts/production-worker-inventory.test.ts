@@ -524,6 +524,26 @@ test('binding, deployment and roster ambiguity or drift stops planning', async (
     );
 });
 
+test('latest-version metadata has one fixed unfiltered first-page GET', async () => {
+  const path = `/accounts/${target.account}/workers/scripts/mikaki-auth/versions?page=1&per_page=1`;
+  let calls = 0;
+  const get = cloudflareMetadataGet(target.account, 'synthetic-token', async (url, init) => {
+    calls++;
+    assert.equal(url, 'https://api.cloudflare.com/client/v4' + path);
+    assert.equal(init?.method, 'GET');
+    assert.equal(init?.redirect, 'error');
+    return new Response(JSON.stringify({ success: true, result: { items: [{ id: version }] } }));
+  });
+  await get(path);
+  for (const bad of [
+    path + '&deployable=true',
+    path.replace('page=1&', 'page=2&'),
+    path.replace('per_page=1', 'per_page=20'),
+  ])
+    await assert.rejects(get(bad), /Unapproved/);
+  assert.equal(calls, 1);
+});
+
 test('transport is fixed-origin GET metadata, with endpoint allowlist and redacted error bodies', async () => {
   const path = `/accounts/${target.account}/workers/scripts/mikaki-auth/settings`;
   let calls = 0;
