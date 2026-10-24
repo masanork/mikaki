@@ -25,11 +25,15 @@ function fixture(evaluate?: OwnerPrfEvaluator) {
     visible = true;
   const requests: RequestInit[] = [];
   let hold: Promise<void> | undefined;
+  let sessionHold: Promise<void> | undefined;
   let rejectedRecord: string | null = null;
   let sessionTag = identity.session_tag;
   const transport: typeof fetch = async (input, init) => {
     const path = String(input);
-    if (path === '/vault/session') return Response.json({ ...identity, session_tag: sessionTag });
+    if (path === '/vault/session') {
+      if (sessionHold) await sessionHold;
+      return Response.json({ ...identity, session_tag: sessionTag });
+    }
     if (path === '/vault/owner-key') {
       if (init?.method === 'PUT')
         root = {
@@ -137,8 +141,72 @@ function fixture(evaluate?: OwnerPrfEvaluator) {
     hold: (value: Promise<void> | undefined) => {
       hold = value;
     },
+    holdSession: (value: Promise<void> | undefined) => {
+      sessionHold = value;
+    },
   };
 }
+
+test('Passkey return waits for overlapping session confirmation before opening the owner key', async () => {
+  for (const existing of [false, true]) {
+    for (const outcome of ['confirmed', 'replaced', 'locked'] as const) {
+      const f = fixture();
+      if (existing) await f.owner.open();
+      f.owner.dispose();
+      let resume!: () => void, evaluate!: () => void;
+      const resumed = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      const evaluated = new Promise<void>((resolve) => {
+        evaluate = resolve;
+      });
+      const output = new Uint8Array(32).fill(9);
+      let verification: Promise<void> | undefined;
+      let calls = 0;
+      const candidate = new OwnerVaultController(f.scope, 'https://mikaki.test', async () => {
+        calls++;
+        f.holdSession(resumed);
+        verification = f.scope.verify();
+        evaluate();
+        return { credentialId: credential, output };
+      });
+      const opening = candidate.open();
+      let settled = false;
+      void opening.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      try {
+        await evaluated;
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(settled, false, 'wait for the resumed session check');
+        assert.throws(() => candidate.lease());
+        if (outcome === 'replaced') f.replaceSession();
+        if (outcome === 'locked') f.scope.end('manual');
+        resume();
+        if (outcome !== 'confirmed') {
+          await assert.rejects(opening);
+          assert.equal(f.scope.signal.aborted, true);
+          assert.throws(() => candidate.lease());
+          assert.equal(f.rootExists(), existing, 'never bootstrap after invalidation');
+        } else {
+          await opening;
+          assert.equal(candidate.lease().session.opened, true);
+          assert.equal(calls, 1, 'reuse the completed ceremony');
+        }
+        assert.ok(
+          output.every((byte) => byte === 0),
+          'consume the returned PRF bytes',
+        );
+      } finally {
+        resume();
+        await verification;
+        await opening.catch(() => {});
+        candidate.dispose();
+      }
+    }
+  }
+});
 
 test('unified owner controller opens once, preserves exact retries, uses fresh revisions, and never replays historical success over tombstones', async () => {
   const f = fixture();

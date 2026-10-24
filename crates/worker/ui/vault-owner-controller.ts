@@ -136,6 +136,9 @@ export class OwnerVaultController {
           this.assertCurrent(token);
           const result = await this.evaluate(credential, input, signal);
           try {
+            // Returning from the platform Passkey sheet can start the window's
+            // session recheck. Confirm that same session before using its PRF.
+            await this.scope.ensure();
             this.assertCurrent(token);
             return result;
           } catch (error) {
