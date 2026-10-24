@@ -74,6 +74,15 @@ Only RustSec records whose every affected entry is explicitly `informational = u
 
 This change patches `rustls-webpki` to 0.103.16 in all four affected graphs (RUSTSEC-2026-0382), and `webpki-roots` to 1.0.10 in both affected graphs (RUSTSEC-2026-0381). Neither certificate-trust advisory receives an exception. The Identity suite and fresh RustSec scans validate the patch locally; full target builds remain CI evidence.
 
+For RUSTSEC-2026-0387, current `crypto-bigint` graphs are patched to 0.7.6 with
+`ctutils` 0.4.5. Three legacy 0.5.5 graphs remain constrained by upstream OIDC/JOSE
+dependencies. Their public-verification/HTTP-only usage receives three additional
+exact dispositions expiring **2026-11-07 00:00 UTC**, with the dependency paths,
+source review and restrictions recorded in [the advisory review](crypto-bigint-advisory-review.md).
+Wallet signing and ECDH use the separately patched current dependency. These
+three dispositions do not assert that the legacy library is patched or authorize
+private-key operations through it.
+
 Run locally after installing the tools:
 
 ```sh
