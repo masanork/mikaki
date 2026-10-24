@@ -106,5 +106,32 @@
     "owner": "masanork",
     "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
     "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "crypto-bigint",
+    "version": "0.5.5",
+    "advisory": "RUSTSEC-2026-0387",
+    "owner": "masanork",
+    "reason": "openidconnect 4.0.1 retains p256/p384 0.13 for public ID Token verification. Native desktop/mobile OIDC only verifies issuer signatures; no signing or ECDH uses this dependency. Wallet signing and ECDH use the separately pinned p256 0.14 with crypto-bigint 0.7.6. No compatible upstream 0.5 patch exists. Re-review before any legacy private-key use; migrate when upstream permits. See docs/crypto-bigint-advisory-review.md.",
+    "expires": "2026-11-07"
+  },
+  {
+    "lockfile": "design/probes/jose/Cargo.lock",
+    "package": "crypto-bigint",
+    "version": "0.5.5",
+    "advisory": "RUSTSEC-2026-0387",
+    "owner": "masanork",
+    "reason": "The isolated jsonwebtoken 11.1.0 RustCrypto probe exports only public-key signature verification and imports no signing API. Its upstream p256/p384 0.13 constraints cannot resolve crypto-bigint 0.7.6. No product private keys enter this graph. Remove when an upstream-compatible patch is available; re-review before private-key operations. See docs/crypto-bigint-advisory-review.md.",
+    "expires": "2026-11-07"
+  },
+  {
+    "lockfile": "design/probes/native-identity-http/Cargo.lock",
+    "package": "crypto-bigint",
+    "version": "0.5.5",
+    "advisory": "RUSTSEC-2026-0387",
+    "owner": "masanork",
+    "reason": "The isolated probe compiles the actual native VP HTTP adapter, using openidconnect 4.0.1 only for its reqwest HTTP re-export. Its transitive p256/p384 0.13 is not used for private-key operations; no product secret integer enters crypto-bigint 0.5.5. Remove when upstream permits a patched version; re-review before extending this scope. See docs/crypto-bigint-advisory-review.md.",
+    "expires": "2026-11-07"
   }
 ]
