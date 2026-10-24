@@ -121,6 +121,25 @@ Passing `GITHUB_SHA` locally makes Cargo rerun its source-metadata build script 
 
 Work qualification also sets `pipefail` before piping its test process through `tee`. Without it, the log writer's success can hide a failed test command: main run `39537412997` displayed a successful product job despite two failed, obsolete navigation assertions. The updated journey verifies the Wallet/Chat entry, then explicitly navigates to the separately enabled Work deep link with the real login cookie; it does not restore Work links to normal navigation. Dependent WebMCP cases propagate a failed prerequisite, bound held-request waits, and retain synthetic browser failure evidence instead of stalling until the CI job limit.
 
+## Authentication mix-up and code-race matrix
+
+`npm run test:security-authentication` runs four grouped attack/control cases against the emitted Rust Worker package in two workerd isolates sharing one disposable D1 authority. It creates two native public clients for one synthetic owner through the real administration helper, issues authorization codes through `/authorize`, and exchanges them through `/token`. Both Workers' `/version` source commits must match the checkout. CI retains the source commit, shim/Wasm hashes and output under `security-authentication/` in `authentication-worker-contracts-*` for 14 days; `pipefail` makes a failed matrix fail `verify`.
+
+| Scenario subset | Executed oracle |
+| --- | --- |
+| SEC-04: client A names client B's registered callback | The OP returns a direct 400 without a redirect and creates no authorization code. |
+| SEC-04: client, callback or PKCE substitution at token exchange | Every attempt returns `invalid_grant`; the exact code remains unconsumed and no token row exists. The original client, callback and verifier still exchange it successfully. |
+| SEC-03: the same code is exchanged concurrently through two Worker isolates | Exactly one response succeeds and one token row exists. The configured code-reuse policy revokes that raced issuance rather than leaving an uncertain winner usable. |
+| SEC-03: a valid code is replayed after a successful response | The matching issuance is revoked. A token issued from another client's independent code remains active. |
+
+The matrix compares the actual `authorization_code` and `token_issue` rows, not HTTP status alone. It deliberately uses synthetic seeded SSO state so it does not qualify Passkey ceremony concurrency, an RP's local state/nonce validation, confidential-client assertions, DPoP, browser navigation, remote D1, deployment or physical devices. It is partial SEC-03/04 evidence rather than a complete scenario disposition or ASVS assessment.
+
+Build with the owner matrix prerequisites above, then run:
+
+```sh
+npm run test:security-authentication
+```
+
 ## Service capability attack matrix
 
 `npm run test:security-boundaries` runs nine attack/control cases against the emitted default `service.mjs`, its actual named `AgentStore`, and disposable local D1/R2 in workerd. The calling Worker has named service bindings but no D1/R2 bindings. `/version` must match the checkout's commit; the diagnostic records build cleanliness and the profile. The `worker-contracts` job retains source, service/shim/Wasm hashes and output under `security-boundaries/` in `authentication-worker-contracts-*` for 14 days, with `pipefail` propagating a failed test to `verify`.

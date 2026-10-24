@@ -4,8 +4,8 @@
     "repository": "https://github.com/digital-go-jp/gjs",
     "commit": "a36551122f53271e23997729cfdf11afdca028b3",
     "wasm_sha256": "947b4350efd3194acf38ac0cfaf42c3782effacb9f1de5371b4067298f5c8e6c",
-    "lock_sha256": "c5a25f08082bdb0bea8b57b113f8e355a600882317589cfb77561a3ec33b73dc",
-    "compression": "fontTools 4.65.0 WOFF2 glyf transform + Brotli 1.2.0"
+    "lock_sha256": "21c752b24401009ef94cc874652722d78a8e8a15539e5a36271d8b05a65c04b7",
+    "compression": "fontTools 4.65.0 WOFF2 glyf transform + Brotli 1.2.1"
   },
   "sources": [
     {

@@ -26,6 +26,28 @@ const coverage = JSON.parse(readFileSync(new URL('coverage.json', root), 'utf8')
   >;
 };
 
+test('font regeneration requirements match the recorded toolchain', () => {
+  const lock = JSON.parse(
+    readFileSync(new URL('../../scripts/fonts.lock.json', import.meta.url), 'utf8'),
+  ) as { fonttools: string; brotli: string; zopfli: string };
+  const requirements = readFileSync(
+    new URL('../../scripts/fonts-requirements.txt', import.meta.url),
+    'utf8',
+  )
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .sort();
+  assert.deepEqual(
+    requirements,
+    [
+      `fonttools[woff]==${lock.fonttools}`,
+      `Brotli==${lock.brotli}`,
+      `zopfli==${lock.zopfli}`,
+    ].sort(),
+  );
+});
+
 test('Bunsen inventory preserves both styles and records the accepted administrative gap', () => {
   assert.deepEqual(
     manifest.sources.map(({ id, codepoints, variation_sequences }) => ({

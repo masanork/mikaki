@@ -73,7 +73,7 @@ flowchart TD
 
 ## Priority attack scenarios
 
-All twenty scenarios initially have execution status `planned`. Priority P0 is the first assessment batch; P1 follows it before the scoped assessment closes. Test references identify related starting points, whose assertions and environment must be reviewed before recording scenario coverage. The [owner authorization matrix](security-ci.md#owner-authorization-attack-matrix) adds executable partial SEC-01/06 coverage, the [service capability matrix](security-ci.md#service-capability-attack-matrix) adds partial SEC-02/18 coverage, and the [Agent grant matrix](security-ci.md#agent-grant-disclosure-and-commit-matrix) adds partial SEC-06/09 coverage. Their stated local scopes do not complete any whole scenario.
+All twenty scenarios initially have execution status `planned`. Priority P0 is the first assessment batch; P1 follows it before the scoped assessment closes. Test references identify related starting points, whose assertions and environment must be reviewed before recording scenario coverage. The [owner authorization matrix](security-ci.md#owner-authorization-attack-matrix) adds executable partial SEC-01/06 coverage, the [authentication matrix](security-ci.md#authentication-mix-up-and-code-race-matrix) adds partial SEC-03/04 coverage, the [service capability matrix](security-ci.md#service-capability-attack-matrix) adds partial SEC-02/18 coverage, and the [Agent grant matrix](security-ci.md#agent-grant-disclosure-and-commit-matrix) adds partial SEC-06/09 coverage. Their stated local scopes do not complete any whole scenario.
 
 | ID | Priority | Attacker action | Required outcome and evidence | Starting point |
 | --- | --- | --- | --- | --- |

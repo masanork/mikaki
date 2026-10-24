@@ -10,10 +10,12 @@ import logging
 import multiprocessing
 import shutil
 import subprocess
+import brotli
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from font_woff2 import browser_compatible_woff2
+from fontTools import __version__ as fonttools_version
 from fontTools.ttLib import TTFont
 from fontTools.merge import Merger
 from fontTools.pens.recordingPen import DecomposingRecordingPen
@@ -279,7 +281,7 @@ manifest = {'schema_version': 1, 'subsetter': {'repository': 'https://github.com
              'commit': subprocess.check_output(['git', '-C', str(args.gjs), 'rev-parse', 'HEAD'], text=True).strip(),
              'wasm_sha256': digest((args.wasm_dir / 'font_subsetter_bg.wasm').read_bytes()),
              'lock_sha256': digest((ROOT / 'scripts/fonts.lock.json').read_bytes()),
-             'compression': 'fontTools 4.65.0 WOFF2 glyf transform + Brotli 1.2.0'},
+             'compression': f'fontTools {fonttools_version} WOFF2 glyf transform + Brotli {brotli.__version__}'},
             'sources': families, 'files': files, 'coverage': 'coverage.json'}
 (output / 'manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')
 kept = {r['file'] for r in files}
