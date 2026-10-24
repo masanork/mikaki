@@ -522,8 +522,22 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install pinned Android build targets
         run: |
+          set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+          for attempt in 1 2 3; do
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' \
+              && test -x "$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" \
+              && grep -Eq '^Pkg.Revision = 28\.2\.13676358$' "$ANDROID_HOME/ndk/28.2.13676358/source.properties"; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo '::error::Pinned Android SDK/NDK installation failed after three attempts'
+              exit 1
+            fi
+            echo "::warning::Android SDK installation or validation failed; fetching a fresh archive (attempt $attempt)"
+            rm -rf "${ANDROID_HOME:?}/.temp" "$ANDROID_HOME/ndk/28.2.13676358"
+            sleep "$((attempt * 5))"
+          done
           printf 'NDK_HOME=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
       - run: npm ci --prefix apps/mikaki-client
       - name: Build Android aarch64 debug APK
