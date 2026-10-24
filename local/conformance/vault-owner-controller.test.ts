@@ -153,16 +153,21 @@ test('Passkey return waits for overlapping session confirmation before opening t
       const f = fixture();
       if (existing) await f.owner.open();
       f.owner.dispose();
-      const resumed = Promise.withResolvers<void>();
-      const evaluated = Promise.withResolvers<void>();
+      let resume!: () => void, evaluate!: () => void;
+      const resumed = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      const evaluated = new Promise<void>((resolve) => {
+        evaluate = resolve;
+      });
       const output = new Uint8Array(32).fill(9);
       let verification: Promise<void> | undefined;
       let calls = 0;
       const candidate = new OwnerVaultController(f.scope, 'https://mikaki.test', async () => {
         calls++;
-        f.holdSession(resumed.promise);
+        f.holdSession(resumed);
         verification = f.scope.verify();
-        evaluated.resolve();
+        evaluate();
         return { credentialId: credential, output };
       });
       const opening = candidate.open();
@@ -172,13 +177,13 @@ test('Passkey return waits for overlapping session confirmation before opening t
         () => (settled = true),
       );
       try {
-        await evaluated.promise;
+        await evaluated;
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(settled, false, 'wait for the resumed session check');
         assert.throws(() => candidate.lease());
         if (outcome === 'replaced') f.replaceSession();
         if (outcome === 'locked') f.scope.end('manual');
-        resumed.resolve();
+        resume();
         if (outcome !== 'confirmed') {
           await assert.rejects(opening);
           assert.equal(f.scope.signal.aborted, true);
@@ -194,7 +199,7 @@ test('Passkey return waits for overlapping session confirmation before opening t
           'consume the returned PRF bytes',
         );
       } finally {
-        resumed.resolve();
+        resume();
         await verification;
         await opening.catch(() => {});
         candidate.dispose();
