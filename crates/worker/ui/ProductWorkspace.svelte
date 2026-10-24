@@ -8,17 +8,20 @@
   import type { OwnerLoginPrf } from './vault-login-prf.ts';
   import type { Locale } from './paraglide/runtime.js';
   import * as m from './paraglide/messages.js';
+  import { nativeWorkspace, workspaceReady, workspaceVisible } from './native-workspace.ts';
 
   let { locale, takeLogin }: { locale: Locale; takeLogin?: () => OwnerLoginPrf | undefined } =
     $props();
   const native = '__MIKAKI_NATIVE__' in window;
+  const shell = nativeWorkspace();
   const context = vaultContext(),
     scope = context.current();
   let owner: OwnerVaultController | null = $state(null);
-  let tab = $state(location.hash === '#chat' ? 'chat' : 'wallet');
+  let chatGeneration = $state(0);
+  let tab = $state(shell || location.hash === '#chat' ? 'chat' : 'wallet');
   let busy = $state(false),
     status = $state(''),
-    settings = $state(false);
+    settings = $state(shell && window.__MIKAKI_NATIVE_PAGE__ === 'account');
   let passkeysBusy = $state(false),
     unconfirmed = $state(false);
   const ja = $derived(locale === 'ja');
@@ -74,44 +77,71 @@
   }
   onMount(() => {
     const initial = takeLogin?.();
-    if (initial) void unlock(initial);
-    else void scope.verify().catch(() => scope.end('unconfirmed'));
+    // Consume any document-local PRF handoff before allowing the app to hide
+    // this view. Subsequent tab switches retain the document and key lease.
+    void (async () => {
+      try {
+        if (initial) await unlock(initial);
+        else await scope.verify();
+        scope.assert();
+        workspaceReady();
+      } catch {
+        scope.end('unconfirmed');
+      }
+    })();
     const unregister = context.registerResume(async () => {
-      if (owner) await owner.resume();
+      if (owner) {
+        await owner.resume();
+        chatGeneration++;
+      }
     });
     const visibility = () => {
-      if (document.hidden) owner?.suspend();
+      if (!workspaceVisible()) owner?.suspend();
     };
     document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('mikaki-workspace-visibility', visibility);
+    const page = () => {
+      if (context.hasDrafts?.() && !confirm(m.productVaultDiscard())) return;
+      settings = window.__MIKAKI_NATIVE_PAGE__ === 'account';
+      tab = 'chat';
+    };
+    window.addEventListener('mikaki-workspace-page', page);
     return () => {
       unregister();
       document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('mikaki-workspace-visibility', visibility);
+      window.removeEventListener('mikaki-workspace-page', page);
       owner?.dispose();
     };
   });
 </script>
 
 <div class="vault-shell product-mvp">
-  <ProductHeader {locale} showOrigin onlock={context.lock} lockLabel={ja ? 'ロック' : 'Lock'} />
+  {#if !shell}<ProductHeader
+      {locale}
+      showOrigin
+      onlock={context.lock}
+      lockLabel={ja ? 'ロック' : 'Lock'}
+    />{/if}
   <main id="product-main" class="product-main" tabindex="-1">
-    <div class="product-heading">
-      <h1>mikaki</h1>
-      <button type="button" aria-expanded={settings} onclick={toggleSettings}
-        >{ja ? '設定' : 'Settings'}</button
-      >
-    </div>
-    <nav class="mvp-tabs" aria-label={ja ? '画面' : 'Pages'}>
-      <button
-        type="button"
-        aria-current={tab === 'wallet' ? 'page' : undefined}
-        onclick={() => select('wallet')}>Wallet</button
-      >
-      <button
-        type="button"
-        aria-current={tab === 'chat' ? 'page' : undefined}
-        onclick={() => select('chat')}>Chat</button
-      >
-    </nav>
+    {#if !shell}<div class="product-heading">
+        <h1>mikaki</h1>
+        <button type="button" aria-expanded={settings} onclick={toggleSettings}
+          >{ja ? '設定' : 'Settings'}</button
+        >
+      </div>
+      <nav class="mvp-tabs" aria-label={ja ? '画面' : 'Pages'}>
+        <button
+          type="button"
+          aria-current={tab === 'wallet' ? 'page' : undefined}
+          onclick={() => select('wallet')}>Wallet</button
+        >
+        <button
+          type="button"
+          aria-current={tab === 'chat' ? 'page' : undefined}
+          onclick={() => select('chat')}>Chat</button
+        >
+      </nav>{/if}
     {#if settings}
       <section class="product-card" aria-label={ja ? '設定' : 'Settings'}>
         <h2>{ja ? '設定' : 'Settings'}</h2>
@@ -165,7 +195,11 @@
         <p role="status">{status}</p>
       </section>
     {:else}
-      <ProductChat {owner} {locale} disabled={passkeysBusy || unconfirmed} />
+      {#key chatGeneration}<ProductChat
+          {owner}
+          {locale}
+          disabled={passkeysBusy || unconfirmed}
+        />{/key}
     {/if}
   </main>
 </div>

@@ -277,6 +277,75 @@ test('bootstrap passkey enrollment opens Wallet and Chat, preserves PRF custody 
       'sign-in opens the product with one Passkey assertion',
     );
     assert.equal(await page.getByRole('button', { name: 'Passkeyで開く', exact: true }).count(), 0);
+    // Exercise the persistent Android workspace contract with a real virtual
+    // WebAuthn assertion/PRF. The actual Android Credential Manager remains a
+    // separate connected-device qualification.
+    await context.addInitScript(() => {
+      if (window.name !== 'native-session-fixture') return;
+      Object.defineProperty(window, '__MIKAKI_NATIVE_SHELL__', { value: true });
+      window.__MIKAKI_NATIVE_PAGE__ = 'chat';
+      window.__MIKAKI_WORKSPACE_VISIBLE__ = true;
+      window.MikakiWorkspace = {
+        postMessage: (value) => console.info(`native-workspace:${value}`),
+      };
+    });
+    await page.evaluate(() => {
+      window.name = 'native-session-fixture';
+    });
+    await context.clearCookies({ name: '__Host-op-sso' });
+    const ready = page.waitForEvent('console', {
+      predicate: (message) => message.text() === 'native-workspace:ready',
+    });
+    const beforeNativeSignIn = assertions;
+    await page.goto(`${issuer}/signin?lang=ja`);
+    await ready;
+    await expect(
+      page.getByText('この接続先ではChatをまだ利用できません。', { exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      assertions,
+      beforeNativeSignIn + 1,
+      'native sign-in consumes its PRF in one assertion',
+    );
+    assert.equal(await page.locator('.mvp-tabs').count(), 0, 'the app owns the tabs');
+    const hide = () =>
+      page.evaluate(() => {
+        window.__MIKAKI_WORKSPACE_VISIBLE__ = false;
+        window.dispatchEvent(new Event('mikaki-workspace-visibility'));
+      });
+    const show = () =>
+      page.evaluate(() => {
+        window.__MIKAKI_WORKSPACE_VISIBLE__ = true;
+        window.dispatchEvent(new Event('mikaki-workspace-visibility'));
+      });
+    await hide();
+    await expect(page.locator('#product-main')).toBeHidden();
+    await show();
+    await expect(
+      page.getByText('この接続先ではChatをまだ利用できません。', { exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      assertions,
+      beforeNativeSignIn + 1,
+      'returning from Wallet revalidates without another PRF',
+    );
+    const nativeSso = (await context.cookies(issuer)).find(
+      (cookie) => cookie.name === '__Host-op-sso',
+    )!;
+    await hide();
+    await context.addCookies([firstSso]);
+    await show();
+    await expect(page.locator('#vault-lock-title')).toBeVisible();
+    await expect(page.locator('#product-main')).toHaveCount(0);
+    assert.equal(
+      assertions,
+      beforeNativeSignIn + 1,
+      'replacement sessions lock rather than silently authenticating',
+    );
+    await context.addCookies([nativeSso]);
+    await page.evaluate(() => {
+      window.name = '';
+    });
     assert.deepEqual(
       (await DB.prepare('SELECT * FROM vault_owner_key_head').all()).results,
       ownerKey.results,

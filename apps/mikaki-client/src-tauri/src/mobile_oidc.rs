@@ -20,9 +20,14 @@ use zeroize::Zeroizing;
 const ISSUER: &str = "https://auth.mikaki.org";
 const CALLBACK: &str = "https://app.mikaki.org/oidc/native/callback";
 const LOGIN_LIFETIME: Duration = Duration::from_secs(180);
+#[cfg(target_os = "android")]
+#[path = "mobile_app_session.rs"]
+mod app_session;
 
 pub struct MobileAuthState {
     starting: AtomicBool,
+    #[cfg(target_os = "android")]
+    syncing: AtomicBool,
     inner: Mutex<Inner>,
 }
 
@@ -31,6 +36,12 @@ struct Inner {
     session: Option<StoredSession>,
     phase: &'static str,
     generation: u64,
+    #[cfg(target_os = "android")]
+    checked_at: Option<Instant>,
+    #[cfg(target_os = "android")]
+    login_deadline: Option<Instant>,
+    #[cfg(target_os = "android")]
+    app_session_allowed: bool,
 }
 
 struct PendingLogin {
@@ -44,7 +55,8 @@ struct PendingLogin {
 struct StoredSession {
     subject: String,
     // UserInfo token only. It is never returned to the local WebView.
-    _access_token: Zeroizing<String>,
+    _access_token: Option<Zeroizing<String>>,
+    valid_until: Instant,
 }
 
 #[derive(Serialize)]
@@ -56,6 +68,7 @@ pub struct LoginResult {
 pub struct MobileStatus {
     phase: &'static str,
     subject: Option<String>,
+    shared_session: bool,
 }
 
 struct StartingGuard<'a> {
@@ -77,11 +90,19 @@ impl Default for MobileAuthState {
     fn default() -> Self {
         Self {
             starting: AtomicBool::new(false),
+            #[cfg(target_os = "android")]
+            syncing: AtomicBool::new(false),
             inner: Mutex::new(Inner {
                 pending: None,
                 session: None,
                 phase: "idle",
                 generation: 0,
+                #[cfg(target_os = "android")]
+                checked_at: None,
+                #[cfg(target_os = "android")]
+                login_deadline: None,
+                #[cfg(target_os = "android")]
+                app_session_allowed: false,
             }),
         }
     }
@@ -94,15 +115,24 @@ pub fn native_platform() -> &'static str {
 
 #[tauri::command]
 pub fn native_session(state: State<'_, MobileAuthState>) -> Result<Option<LoginResult>, String> {
-    let inner = state.inner.lock().map_err(|_| "session unavailable")?;
+    let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
+    expire_session(&mut inner);
     Ok(inner.session.as_ref().map(|session| LoginResult {
         subject: session.subject.clone(),
     }))
 }
 
 #[tauri::command]
-pub fn mobile_auth_status(state: State<'_, MobileAuthState>) -> Result<MobileStatus, String> {
+pub async fn mobile_auth_status(
+    app: tauri::AppHandle,
+    state: State<'_, MobileAuthState>,
+) -> Result<MobileStatus, String> {
+    #[cfg(target_os = "android")]
+    app_session::refresh(&app, &state).await?;
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
     let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
+    expire_session(&mut inner);
     if inner
         .pending
         .as_ref()
@@ -112,6 +142,7 @@ pub fn mobile_auth_status(state: State<'_, MobileAuthState>) -> Result<MobileSta
         inner.phase = "expired";
     }
     Ok(MobileStatus {
+        shared_session: cfg!(target_os = "android"),
         phase: inner.phase,
         subject: inner
             .session
@@ -120,8 +151,34 @@ pub fn mobile_auth_status(state: State<'_, MobileAuthState>) -> Result<MobileSta
     })
 }
 
+fn expire_session(inner: &mut Inner) {
+    #[cfg(target_os = "android")]
+    if inner
+        .login_deadline
+        .is_some_and(|deadline| Instant::now() >= deadline)
+    {
+        inner.login_deadline = None;
+        inner.app_session_allowed = false;
+        inner.generation = inner.generation.wrapping_add(1);
+        if inner.phase == "pending" {
+            inner.phase = "expired";
+        }
+    }
+    if inner
+        .session
+        .as_ref()
+        .is_some_and(|s| Instant::now() >= s.valid_until)
+    {
+        inner.session = None;
+        inner.phase = "expired";
+    }
+}
+
 #[tauri::command]
-pub fn cancel_native_login(state: State<'_, MobileAuthState>) -> Result<(), String> {
+pub async fn cancel_native_login(
+    app: tauri::AppHandle,
+    state: State<'_, MobileAuthState>,
+) -> Result<(), String> {
     let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
     inner.pending = None;
     inner.generation = inner.generation.wrapping_add(1);
@@ -131,11 +188,21 @@ pub fn cancel_native_login(state: State<'_, MobileAuthState>) -> Result<(), Stri
     } else {
         "idle"
     };
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::AppSessionExt;
+        inner.login_deadline = None;
+        inner.app_session_allowed = false;
+        drop(inner);
+        app.app_session().reset()?;
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
     Ok(())
 }
 
 #[tauri::command]
-pub fn clear_native_session(
+pub async fn clear_native_session(
     app: tauri::AppHandle,
     state: State<'_, MobileAuthState>,
 ) -> Result<(), String> {
@@ -147,6 +214,15 @@ pub fn clear_native_session(
     inner.phase = "idle";
     inner.generation = inner.generation.wrapping_add(1);
     state.starting.store(false, Ordering::Release);
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::AppSessionExt;
+        inner.checked_at = None;
+        inner.login_deadline = None;
+        inner.app_session_allowed = false;
+        drop(inner);
+        app.app_session().clear()?;
+    }
     Ok(())
 }
 
@@ -155,7 +231,76 @@ pub async fn start_mobile_login(
     app: tauri::AppHandle,
     state: State<'_, MobileAuthState>,
 ) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::AppSessionExt;
+        {
+            let mut inner = state.inner.lock().map_err(|_| "session unavailable")?;
+            inner.generation = inner.generation.wrapping_add(1);
+            inner.session = None;
+            inner.checked_at = None;
+            inner.phase = "pending";
+            inner.login_deadline = Some(Instant::now() + LOGIN_LIFETIME);
+            inner.app_session_allowed = true;
+        }
+        app.app_session().reset()?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "android"))]
     start_mobile_authorization(app, state).await
+}
+
+/// Compatibility path; normal Android sign-in uses the first-party app session.
+#[tauri::command]
+pub async fn start_mobile_browser_login(
+    app: tauri::AppHandle,
+    state: State<'_, MobileAuthState>,
+) -> Result<(), String> {
+    start_mobile_authorization(app, state).await
+}
+
+#[tauri::command]
+pub async fn reset_app_workspace(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::AppSessionExt;
+        app.app_session().reset()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn set_app_workspace(
+    app: tauri::AppHandle,
+    visible: bool,
+    page: String,
+    top: f64,
+    bottom: f64,
+    viewport_width: f64,
+) -> Result<(), String> {
+    if !matches!(page.as_str(), "chat" | "account") {
+        return Err("invalid_workspace".into());
+    }
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_app_session::{AppSessionExt, WorkspaceRequest};
+        app.app_session().workspace(WorkspaceRequest {
+            visible,
+            page,
+            top,
+            bottom,
+            viewport_width,
+        })
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, visible, page, top, bottom, viewport_width);
+        Err("workspace_unavailable".into())
+    }
 }
 
 async fn start_mobile_authorization(
@@ -365,7 +510,12 @@ async fn exchange_code(code: String, pending: PendingLogin) -> Result<StoredSess
     }
     Ok(StoredSession {
         subject: claims.subject().as_str().to_owned(),
-        _access_token: Zeroizing::new(token.access_token().secret().clone()),
+        _access_token: Some(Zeroizing::new(token.access_token().secret().clone())),
+        valid_until: Instant::now()
+            + token
+                .expires_in()
+                .unwrap_or(Duration::from_secs(300))
+                .min(Duration::from_secs(3600)),
     })
 }
 

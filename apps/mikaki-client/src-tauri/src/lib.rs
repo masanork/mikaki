@@ -1,4 +1,9 @@
 #[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+mod app_projection;
+#[cfg(test)]
+#[path = "../client_config.rs"]
+mod client_config;
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
 mod identity_card;
 mod identity_documents;
 mod identity_events;
@@ -71,7 +76,9 @@ pub fn run() {
             native_oidc::start_desktop_login
         ]);
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_native_dpop::init());
+    let builder = builder
+        .plugin(tauri_plugin_native_dpop::init())
+        .plugin(tauri_plugin_app_session::init());
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder
         .manage(mobile_oidc::MobileAuthState::default())
@@ -115,6 +122,9 @@ pub fn run() {
             mobile_oidc::mobile_auth_status,
             mobile_oidc::clear_native_session,
             mobile_oidc::cancel_native_login,
+            mobile_oidc::set_app_workspace,
+            mobile_oidc::reset_app_workspace,
+            mobile_oidc::start_mobile_browser_login,
             mobile_oidc::start_mobile_login
         ])
         .setup(|app| {

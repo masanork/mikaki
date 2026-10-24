@@ -27,6 +27,8 @@ mod messaging_crypto;
 mod enrollment_mail;
 #[cfg(target_arch = "wasm32")]
 mod enrollment_waitlist;
+#[cfg(target_arch = "wasm32")]
+mod native_session;
 #[cfg(any(target_arch = "wasm32", test))]
 mod native_webauthn;
 #[cfg(target_arch = "wasm32")]
@@ -2431,6 +2433,7 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
+        .post_async("/native/session", native_session::session)
         .get_async("/logout", logout::get)
         .post_async("/logout", {
             let logout_context = std::rc::Rc::clone(&logout_context);

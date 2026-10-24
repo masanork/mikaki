@@ -798,5 +798,7 @@
   "workspaceSnapshotRestoreBoundary": "Send only this decrypted snapshot. Cloudflare OS will create a new workspace. Reconnect external services there.",
   "workspaceSnapshotRestore": "Send this snapshot and restore a new workspace",
   "workspaceSnapshotWrongOrigin": "This snapshot belongs to a different app origin and cannot be sent here.",
-  "workspaceSnapshotDismiss": "Dismiss"
+  "workspaceSnapshotDismiss": "Dismiss",
+  "loginPasskeyUnsupported": "Passkeys are unavailable in this environment. Update your OS and Android System WebView, then try again.",
+  "loginPasskeyOriginUnavailable": "Passkeys are unavailable for this connection. The app and site configuration need to be checked."
 }

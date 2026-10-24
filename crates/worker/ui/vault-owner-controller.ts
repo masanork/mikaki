@@ -1,4 +1,5 @@
 import { VaultScope, type LockReason } from './vault-lifecycle.ts';
+import { workspaceVisible } from './native-workspace.ts';
 import { decodeBase64Url, encodeBase64Url } from './vault-crypto.ts';
 import { ownerLoginPrfInput } from './vault-login-prf.ts';
 import { rewrapOwnerKey } from './vault-owner-crypto.ts';
@@ -46,7 +47,7 @@ export const evaluateOwnerPrf: OwnerPrfEvaluator = async (credentialId, input, s
       throw new Error('wrong_credential');
     if (!output || output.byteLength !== 32) throw new Error('prf_unsupported');
     signal.throwIfAborted();
-    if (document.visibilityState !== 'visible') throw new DOMException('Hidden', 'AbortError');
+    if (!workspaceVisible()) throw new DOMException('Hidden', 'AbortError');
     if (loginOutput && loginOutput.byteLength !== 32) throw new Error('prf_unsupported');
     return {
       credentialId: new Uint8Array(credential.rawId),
@@ -75,7 +76,7 @@ export class OwnerVaultController {
     scope: VaultScope,
     origin: string,
     evaluate: OwnerPrfEvaluator = evaluateOwnerPrf,
-    visible = () => typeof document === 'undefined' || document.visibilityState === 'visible',
+    visible = () => typeof document === 'undefined' || workspaceVisible(),
   ) {
     this.scope = scope;
     this.origin = origin;

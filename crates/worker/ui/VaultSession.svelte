@@ -8,6 +8,7 @@
   import { VaultScope, type LockReason } from './vault-lifecycle.js';
   import { VAULT_CONTEXT } from './vault-context.js';
   import { subscribeVaultLock } from './session-events.js';
+  import { workspaceVisible } from './native-workspace.ts';
   let {
     locale,
     sourceReview = false,
@@ -70,7 +71,7 @@
     void tick().then(() => document.getElementById('vault-lock-title')?.focus());
   }
   async function resume(): Promise<void> {
-    if (reason || checking || document.visibilityState !== 'visible') return;
+    if (reason || checking || !workspaceVisible()) return;
     checking = true;
     try {
       await scope.verify();
@@ -80,7 +81,7 @@
       scope.end('unconfirmed');
     } finally {
       checking = false;
-      suspended = !reason && document.visibilityState !== 'visible';
+      suspended = !reason && !workspaceVisible();
     }
   }
   async function reopen(): Promise<void> {
@@ -111,7 +112,7 @@
       }
     };
     const visibility = () => {
-      if (document.visibilityState === 'hidden') suspended = true;
+      if (!workspaceVisible()) suspended = true;
       else void resume();
     };
     const focus = () => {
@@ -128,6 +129,7 @@
     }, 1000);
     for (const name of ['pointerdown', 'keydown', 'input']) window.addEventListener(name, activity);
     document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('mikaki-workspace-visibility', visibility);
     window.addEventListener('focus', focus);
     window.addEventListener('pagehide', pagehide);
     window.addEventListener('popstate', pagehide);
@@ -139,6 +141,7 @@
       for (const name of ['pointerdown', 'keydown', 'input'])
         window.removeEventListener(name, activity);
       document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('mikaki-workspace-visibility', visibility);
       window.removeEventListener('focus', focus);
       window.removeEventListener('pagehide', pagehide);
       window.removeEventListener('popstate', pagehide);

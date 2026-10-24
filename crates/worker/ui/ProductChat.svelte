@@ -4,6 +4,7 @@
   import type { OwnerVaultController } from './vault-owner-controller.ts';
   import type { MessagingMount } from './messaging-module.ts';
   import type { Locale } from './paraglide/runtime.js';
+  import { nativeWorkspace } from './native-workspace.ts';
   let {
     owner,
     locale,
@@ -51,6 +52,7 @@
       const result = await module.mount(owner, root, {
         onDraft: (value) => {
           dirty = value;
+          if (nativeWorkspace()) window.MikakiWorkspace?.postMessage(value ? 'draft' : 'clean');
         },
       });
       if (disposed) result.dispose();
@@ -77,6 +79,7 @@
       unregister();
       mounted?.dispose();
       dirty = false;
+      if (nativeWorkspace()) window.MikakiWorkspace?.postMessage('clean');
     };
   });
 </script>

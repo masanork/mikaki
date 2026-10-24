@@ -55,6 +55,66 @@ let themeChoice = 'system';
 let cardSupported = false;
 let cardBusy = false;
 let cardGeneration = 0;
+let sharedSession = false;
+let authPhase = 'idle';
+let loginReturnView = null;
+let workspaceKey = '';
+let workspaceQueue = Promise.resolve();
+let workspacePage = 'chat';
+let workspaceFailed = false;
+
+function authenticationMessage(phase) {
+  return (
+    {
+      configuration_required:
+        'ログイン機能の更新が必要です。アプリと接続先の更新後に再試行してください。',
+      workspace_unavailable:
+        'この端末のPasskey画面を開けませんでした。Android System WebViewを更新して再試行してください。',
+      connection_failed: '接続できませんでした。ネットワークを確認して、もう一度お試しください。',
+      secure_connection_failed:
+        '安全な接続を確認できませんでした。ネットワークを確認してください。',
+      expired: 'ログインの有効期限が切れました。もう一度Passkeyでログインしてください。',
+      denied: 'ログインを取り消しました。',
+      failed: '認証後の確認を完了できませんでした。もう一度お試しください。',
+    }[phase] ?? ''
+  );
+}
+function syncWorkspace() {
+  if (!sharedSession || !invoke) return;
+  const visible = route() === 'chat' && (signedIn || pending) && !workspaceFailed;
+  const args = {
+    visible,
+    page: workspacePage,
+    top: Math.max(0, Math.min(250, $('.app-header').getBoundingClientRect().bottom)),
+    bottom: Math.max(48, Math.min(300, innerHeight - navigation.getBoundingClientRect().top)),
+    viewportWidth: innerWidth,
+  };
+  const key = JSON.stringify(args);
+  if (workspaceKey === key) return;
+  workspaceKey = key;
+  workspaceQueue = workspaceQueue
+    .catch(() => {})
+    .then(async () => {
+      try {
+        await invoke('set_app_workspace', args);
+      } catch (error) {
+        if (workspaceKey !== key) return;
+        workspaceKey = '';
+        if (String(error).includes('draft_kept')) navigate('chat', true);
+        else {
+          workspaceFailed = true;
+          if (!signedIn) {
+            await invoke('cancel_native_login').catch(() => {});
+            loginReturnView = null;
+          }
+          pending = false;
+          authPhase = 'workspace_unavailable';
+          notice(authenticationMessage(authPhase));
+          if (args.visible) render();
+        }
+      }
+    });
+}
 
 function notice(message = '') {
   $('#status').textContent = message;
@@ -85,10 +145,29 @@ function render(focus = false) {
   $('#wallet-logout').disabled =
     walletAccountBusy || cardBusy || issuanceBusy || savingDocument || walletActive;
   $('#wallet-account-status').textContent = pending
-    ? 'ブラウザでログインを完了してください。'
+    ? sharedSession
+      ? 'Passkeyでログインしています。'
+      : 'ブラウザでログインを完了してください。'
     : signedIn
-      ? 'アカウントに接続済み'
-      : '身分証を保存・復元するには、このWalletにログインしてください。';
+      ? sharedSession
+        ? 'ログイン済み · Wallet / Chat'
+        : 'アカウントに接続済み'
+      : authenticationMessage(authPhase) ||
+        'Passkeyでログインすると、あなたの身分証とChatを開けます。';
+  $('#wallet-login').textContent = 'Passkeyでログイン';
+  $('#chat-login').hidden = !sharedSession || (!workspaceFailed && (signedIn || pending));
+  $('#chat-login').textContent = signedIn ? 'もう一度開く' : 'Passkeyでログイン';
+  $('#chat').inert = sharedSession && view === 'chat' && (signedIn || pending) && !workspaceFailed;
+  $('#open-chat').hidden = sharedSession;
+  $('#chat-help').textContent = sharedSession
+    ? workspaceFailed
+      ? authenticationMessage('workspace_unavailable')
+      : pending
+        ? 'Passkeyの選択画面で本人確認してください。'
+        : signedIn
+          ? 'Chatを開いています…'
+          : 'Walletと共通のアカウントでログインします。'
+    : 'ログインと会話は、このアプリ内のWeb画面で行います。';
   renderIdentityReader(view);
   renderWalletIssuance(view);
   if (view === 'wallet' && signedIn && passportCapabilityEpoch !== epoch)
@@ -118,6 +197,7 @@ function render(focus = false) {
       tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
+  syncWorkspace();
   if (focus) {
     window.scrollTo(0, 0);
     const heading = $('#' + view).querySelector('h1');
@@ -135,49 +215,87 @@ async function refreshWalletAccount() {
     const result = await invoke(platform === 'mobile' ? 'mobile_auth_status' : 'native_session');
     if (read !== walletAccountRead || generation !== epoch) return;
     const subject = result?.subject ?? null;
+    sharedSession = result?.shared_session === true;
+    authPhase = result?.phase ?? 'idle';
     pending = platform === 'mobile' && ['pending', 'exchanging'].includes(result?.phase);
-    if (subject !== walletSubject) {
-      walletSubject = subject;
-      signedIn = typeof subject === 'string' && subject.length > 0;
-      epoch++;
-      walletInventoryGeneration++;
-      walletInventoryLoaded = false;
-      passportCapabilityEpoch = -1;
-      cancelIdentityRead();
-      clearPassportIssuanceReview();
-      clearPresentationReview();
-      clearWalletView();
-    }
-    render();
+    updateWalletSubject(subject);
+    if (!pending && loginReturnView && signedIn) {
+      const target = loginReturnView;
+      loginReturnView = null;
+      navigate(target, true);
+    } else render();
+    if (!pending && authenticationMessage(authPhase)) notice(authenticationMessage(authPhase));
   } catch {
-    $('#wallet-account-status').textContent =
-      'Walletのログイン状態を確認できません。もう一度アプリを開いてください。';
+    if (read !== walletAccountRead || generation !== epoch) return;
+    updateWalletSubject(null);
+    pending = false;
+    authPhase = 'connection_failed';
+    render();
   } finally {
     clearTimeout(walletAccountTimer);
-    if (pending && !document.hidden)
-      walletAccountTimer = setTimeout(() => void refreshWalletAccount(), 1000);
+    if ((pending || sharedSession) && !document.hidden)
+      walletAccountTimer = setTimeout(() => void refreshWalletAccount(), pending ? 1000 : 10000);
   }
 }
-$('#wallet-login').addEventListener('click', async () => {
+function updateWalletSubject(subject) {
+  if (subject === walletSubject) return;
+  if (sharedSession && walletSubject !== null) {
+    workspaceKey = '';
+    // Session loss/replacement discards the old remote document immediately;
+    // a draft confirmation must not retain another/unchecked owner's keys.
+    workspaceQueue = workspaceQueue.catch(() => {}).then(() => invoke('reset_app_workspace'));
+  }
+  walletSubject = subject;
+  signedIn = typeof subject === 'string' && subject.length > 0;
+  epoch++;
+  walletInventoryGeneration++;
+  walletInventoryLoaded = false;
+  passportCapabilityEpoch = -1;
+  cancelIdentityRead();
+  clearPassportIssuanceReview();
+  clearPresentationReview();
+  clearWalletView();
+}
+async function login(returnView) {
   if (!available || walletAccountBusy || pending) return;
   walletAccountBusy = true;
+  workspaceFailed = false;
   pending = true;
   render();
   try {
     await invoke(platform === 'mobile' ? 'start_mobile_login' : 'start_desktop_login');
-  } catch {
+    if (sharedSession) {
+      workspacePage = 'chat';
+      loginReturnView = returnView;
+      workspaceKey = '';
+      navigate('chat');
+    }
+  } catch (error) {
     pending = false;
-    notice('Walletへのログインを完了できませんでした。もう一度お試しください。');
+    authPhase = String(error).includes('client ID')
+      ? 'configuration_required'
+      : 'connection_failed';
+    notice(authenticationMessage(authPhase));
   } finally {
     walletAccountBusy = false;
     await refreshWalletAccount();
   }
+}
+$('#wallet-login').addEventListener('click', () => void login('wallet'));
+$('#chat-login').addEventListener('click', () => {
+  if (signedIn) {
+    workspaceFailed = false;
+    workspaceKey = '';
+    render();
+  } else void login('chat');
 });
 $('#wallet-login-cancel').addEventListener('click', async () => {
   if (walletAccountBusy) return;
   epoch++;
   await invoke('cancel_native_login').catch(() => {});
   pending = false;
+  loginReturnView = null;
+  if (sharedSession) navigate('wallet');
   await refreshWalletAccount();
 });
 $('#wallet-logout').addEventListener('click', async () => {
@@ -186,6 +304,7 @@ $('#wallet-logout').addEventListener('click', async () => {
   epoch++;
   try {
     await invoke('clear_native_session');
+    workspaceKey = '';
     notice(
       'このWalletからログアウトしました。保存した読取記録は、同じアカウントでログインすると復元できます。',
     );
@@ -219,6 +338,12 @@ async function bootstrap() {
 for (const button of document.querySelectorAll('[data-web-destination]')) {
   button.addEventListener('click', async () => {
     if (!invoke || webOpening || cardBusy || issuanceBusy) return;
+    if (sharedSession) {
+      workspacePage = button.dataset.webDestination === 'signin' ? 'account' : 'chat';
+      if (!signedIn) await login(button.dataset.webDestination === 'chat' ? 'chat' : 'wallet');
+      else navigate('chat');
+      return;
+    }
     webOpening = true;
     cancelIdentityRead();
     render();
@@ -234,12 +359,14 @@ for (const button of document.querySelectorAll('[data-web-destination]')) {
     }
   });
 }
+window.addEventListener('resize', syncWorkspace);
 $('#open-settings').addEventListener('click', () => navigate('settings'));
 document.addEventListener('click', (event) => {
   const anchor = event.target.closest('a[href^="#"]');
   if (!anchor) return;
   event.preventDefault();
   notice();
+  if (anchor.dataset.nav === 'chat') workspacePage = 'chat';
   navigate(anchor.hash.slice(1));
 });
 document.querySelectorAll('[data-back]').forEach((button) => {

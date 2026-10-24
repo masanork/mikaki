@@ -116,3 +116,172 @@ test('native shell loads accounts in its WebView and keeps Wallet local', async 
     await server.close();
   }
 });
+
+test('shared Android sign-in returns to Wallet and opens Chat directly with the same account', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+    });
+    await page.locator('#wallet-login').click();
+    await expect(page.locator('#chat')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__nativeUiTest.arguments.some(
+            (c) => c.command === 'set_app_workspace' && c.args?.visible === true,
+          ),
+        ),
+      )
+      .toBe(true);
+    await page.evaluate(() => window.__nativeUiTest.complete());
+    await expect(page.locator('#wallet')).toBeVisible();
+    await expect(page.locator('#wallet-account-status')).toContainText('ログイン済み');
+    await page.getByRole('link', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('#open-chat')).toBeHidden();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__nativeUiTest.arguments.filter((c) => c.command === 'set_app_workspace').at(-1)
+              ?.args?.visible,
+        ),
+      )
+      .toBe(true);
+    await page.getByRole('link', { name: 'Walletを開く', exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__nativeUiTest.arguments.filter((c) => c.command === 'set_app_workspace').at(-1)
+              ?.args?.visible,
+        ),
+      )
+      .toBe(false);
+    const calls = await page.evaluate(() => window.__nativeUiTest.calls);
+    assert.equal(calls.filter((c) => c === 'start_mobile_login').length, 1);
+    assert.equal(calls.includes('open_mikaki_web'), false);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('shared account reports actionable connection failures without disclosing raw errors', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    for (const [phase, message] of [
+      ['configuration_required', '更新'],
+      ['connection_failed', 'ネットワーク'],
+      ['secure_connection_failed', '安全な接続'],
+    ] as const) {
+      const { page, errors } = await createNativeUiPage(browser, server.url, {
+        platform: 'mobile',
+        sharedSession: true,
+        phase,
+      });
+      await expect(page.locator('#wallet-account-status')).toContainText(message);
+      await expect(page.locator('#wallet-login')).toBeEnabled();
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('unconfirmed shared session clears cached identity display before allowing a retry', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+      signedIn: true,
+      identityDocuments: [
+        {
+          id: 'saved-private-document',
+          saved_at: 1,
+          preview: {
+            name: '秘密の氏名',
+            address: '秘密の住所',
+            birth_date: '2000-01-01',
+            gender: '1',
+            verification: 'unverified',
+            document_type: 'my_number_card',
+            backend_verifiable: false,
+          },
+        },
+      ],
+    });
+    await expect(page.locator('.document-card')).toHaveCount(1);
+    await page.getByRole('button', { name: /MY NUMBER CARD/ }).click();
+    await expect(page.locator('#wallet-card-values')).toContainText('秘密の住所');
+    await page.evaluate(() => {
+      window.__nativeUiTest.failures.mobile_auth_status = 'private internal diagnostic';
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(page.locator('.document-card')).toHaveCount(0);
+    await expect(page.locator('#wallet-account-status')).toContainText('ネットワーク');
+    await expect(page.locator('#wallet-login')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__nativeUiTest.calls.includes('reset_app_workspace')))
+      .toBe(true);
+    assert.doesNotMatch(
+      await page.locator('body').innerText(),
+      /秘密の氏名|秘密の住所|private internal diagnostic/,
+    );
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('workspace open failure offers one explicit retry without a native command loop', async () => {
+  const server = await startNativeUiServer();
+  const browser = await chromium.launch();
+  try {
+    const { page, errors } = await createNativeUiPage(browser, server.url, {
+      platform: 'mobile',
+      sharedSession: true,
+      signedIn: true,
+    });
+    await page.evaluate(() => {
+      window.__nativeUiTest.failures.set_app_workspace = 'private native error';
+    });
+    await page.getByRole('link', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('#chat-login')).toHaveText('もう一度開く');
+    await expect(page.locator('#chat-login')).toBeVisible();
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    assert.ok(
+      (await page.evaluate(
+        () => window.__nativeUiTest.calls.filter((c) => c === 'set_app_workspace').length,
+      )) <= 3,
+    );
+    assert.doesNotMatch(await page.locator('body').innerText(), /private native error/);
+    await page.evaluate(() => {
+      delete window.__nativeUiTest.failures.set_app_workspace;
+    });
+    await page.locator('#chat-login').click();
+    await expect(page.locator('#chat-login')).toBeHidden();
+    assert.equal(
+      await page.evaluate(() => window.__nativeUiTest.calls.includes('start_mobile_login')),
+      false,
+    );
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
