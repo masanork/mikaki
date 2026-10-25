@@ -7,6 +7,15 @@ it does not launch a system browser. Desktop and iOS retain their existing OIDC
 paths. External-browser mobile OIDC remains an explicit native compatibility
 command, with PKCE, state, nonce and issuer checks unchanged.
 
+Android may complete a Credential Manager request before the Activity's resume
+notification reaches the WebView. A document-start adapter delays that completed
+PublicKeyCredential for at most one second, until the same selected Chat/account
+view is foreground again. Logical tab selection is tracked separately from
+Activity pause. Cancellation, navigation, a new background transition or timeout
+discards both PRF outputs. The ordinary WebAuthn verifier and fresh Vault session
+checks still run after delivery; this lifecycle barrier grants no account/key
+authority and sends no credential or PRF output to native code.
+
 The ordinary build embeds the public mobile registration from
 `apps/mikaki-client/mobile-client-registration.json`. An explicit
 `MIKAKI_MOBILE_CLIENT_ID` override must be valid; an empty override fails the
