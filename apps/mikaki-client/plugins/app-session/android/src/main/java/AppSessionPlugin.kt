@@ -66,7 +66,7 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
         back?.isEnabled = visible
         workspace?.let {
             // Fixed lifecycle signal only. No keys, account IDs, or cookie values.
-            if (changed) it.evaluateJavascript("window.__MIKAKI_WORKSPACE_VISIBLE__=$visible;window.dispatchEvent(new Event('mikaki-workspace-visibility'))", null)
+            if (changed) it.evaluateJavascript("window.__MIKAKI_WORKSPACE_SELECTED__=$visible;window.__MIKAKI_WORKSPACE_VISIBLE__=$visible;window.dispatchEvent(new Event('mikaki-workspace-visibility'))", null)
             it.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             if (changed) {
                 if (visible) it.requestFocus()
@@ -96,8 +96,9 @@ class AppSessionPlugin(private val activity: Activity): Plugin(activity) {
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
         WebSettingsCompat.setWebAuthenticationSupport(view.settings, WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_APP)
+        val credentialReturn = activity.assets.open("mikaki-app-session/credential-return.js").bufferedReader().use { it.readText() }
         WebViewCompat.addDocumentStartJavaScript(view,
-            "Object.defineProperty(window,'__MIKAKI_NATIVE__',{value:true});Object.defineProperty(window,'__MIKAKI_NATIVE_SHELL__',{value:true});window.__MIKAKI_NATIVE_PAGE__='$page';window.__MIKAKI_WORKSPACE_VISIBLE__=true;",
+            "Object.defineProperty(window,'__MIKAKI_NATIVE__',{value:true});Object.defineProperty(window,'__MIKAKI_NATIVE_SHELL__',{value:true});window.__MIKAKI_NATIVE_PAGE__='$page';window.__MIKAKI_WORKSPACE_VISIBLE__=true;\n" + credentialReturn,
             setOf("https://auth.mikaki.org"))
         WebViewCompat.addWebMessageListener(view, "MikakiWorkspace", setOf("https://auth.mikaki.org")) { _, message, origin, mainFrame, _ ->
             if (mainFrame && trusted(origin)) when (message.data) {

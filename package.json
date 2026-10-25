@@ -64,7 +64,7 @@
     "release:verify": "node scripts/release-inventory.ts verify",
     "release:prepare-upload": "node scripts/prepare-release-upload.ts create",
     "release:verify-upload": "node scripts/prepare-release-upload.ts verify",
-    "test:mobile-ui": "node --test local/conformance/mobile-client-ui.test.ts",
+    "test:mobile-ui": "node --test local/conformance/mobile-client-ui.test.ts local/conformance/native-credential-return.test.ts",
     "preview:mobile-ui": "node docs/mobile-ui-preview/capture.ts",
     "build:website": "node website/build.mjs",
     "build:docs": "node apps/mikaki-docs/build.mjs",
