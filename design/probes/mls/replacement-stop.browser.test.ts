@@ -103,7 +103,8 @@ for (const name of (process.env.MIKAKI_MLS_BROWSERS ?? 'chromium').split(',')) {
   if (!engine) throw new Error(`Unknown browser ${name}`);
   test(
     `${name}: witnessed stop after bilateral admission and another device-key update`,
-    { timeout: qualificationTimeout(360_000) },
+    // Five sequential journeys, including six rejoin cycles, share this deadline.
+    { timeout: qualificationTimeout(600_000) },
     async (t) => {
       const f = await fixture(),
         browser = await engine.launch();
