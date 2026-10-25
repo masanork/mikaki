@@ -342,7 +342,8 @@ export async function prepareCopyRuntimePacket(outputParent: string) {
                 encoding: 'utf8',
                 stdio: ['ignore', 'pipe', 'pipe'],
                 maxBuffer: maximum,
-                timeout: 30000,
+                // Bound offline cached-package processing without a 30s CI cutoff.
+                timeout: 120_000,
               },
             ),
           );
