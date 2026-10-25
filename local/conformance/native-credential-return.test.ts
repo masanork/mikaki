@@ -41,6 +41,13 @@ function fixture(visible = true) {
   const container = new Credentials();
   const timers = new Map<number, { callback: () => void; delay: number }>();
   let sequence = 0;
+  let wall = 10_000;
+  let monotonic = 0;
+  class ClockDate extends Date {
+    static override now() {
+      return wall;
+    }
+  }
   const document = {
     visibilityState: 'visible',
     addEventListener: documentEvents.addEventListener.bind(documentEvents),
@@ -60,6 +67,8 @@ function fixture(visible = true) {
     DOMException,
     ArrayBuffer,
     Uint8Array,
+    Date: ClockDate,
+    performance: { now: () => monotonic },
     setTimeout: (callback: () => void, delay: number) => {
       const id = ++sequence;
       timers.set(id, { callback, delay });
@@ -77,6 +86,10 @@ function fixture(visible = true) {
     complete,
     reject,
     timers,
+    advance: (wallDelta: number, monotonicDelta: number) => {
+      wall += wallDelta;
+      monotonic += monotonicDelta;
+    },
     calls: () => calls,
     received: () => received,
     activity: () => windowEvents.dispatchEvent(new Event('mikaki-workspace-visibility')),
@@ -192,6 +205,43 @@ test('a result returned after cancellation is discarded even in the foreground',
   const rejected = assert.rejects(pending, (error) => error === controller.signal.reason);
   controller.abort();
   f.complete(f.credential);
+  await rejected;
+  assert(f.cleared());
+  assert.equal(f.timers.size, 0);
+});
+
+test('late resume cannot beat a throttled timeout or either clock deadline', async () => {
+  for (const [wall, monotonic] of [
+    [1000, 0],
+    [0, 1000],
+    [-1, 0],
+    [0, -1],
+  ]) {
+    const f = fixture(false);
+    const pending = f.container.get({});
+    const rejected = assert.rejects(pending, { name: 'NotAllowedError' });
+    f.complete(f.credential);
+    await turn();
+    f.advance(wall!, monotonic!);
+    f.window.__MIKAKI_WORKSPACE_VISIBLE__ = true;
+    f.activity();
+    await rejected;
+    assert(f.cleared());
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('a second Activity pause while waiting for the document discards the result', async () => {
+  const f = fixture(false);
+  f.document.visibilityState = 'hidden';
+  const pending = f.container.get({});
+  const rejected = assert.rejects(pending, { name: 'NotAllowedError' });
+  f.complete(f.credential);
+  await turn();
+  f.window.__MIKAKI_WORKSPACE_VISIBLE__ = true;
+  f.activity();
+  f.window.__MIKAKI_WORKSPACE_VISIBLE__ = false;
+  f.activity();
   await rejected;
   assert(f.cleared());
   assert.equal(f.timers.size, 0);

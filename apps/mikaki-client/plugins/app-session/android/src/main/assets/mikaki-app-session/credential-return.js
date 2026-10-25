@@ -28,9 +28,22 @@
       throw signal?.aborted ? signal.reason : cancelled();
     }
     if (foreground()) return credential;
+    const startedWall = Date.now();
+    const startedMonotonic = performance.now();
+    const expired = () => {
+      const wall = Date.now();
+      const monotonic = performance.now();
+      return (
+        wall < startedWall ||
+        monotonic < startedMonotonic ||
+        wall - startedWall >= 1000 ||
+        monotonic - startedMonotonic >= 1000
+      );
+    };
     return new Promise((resolve, reject) => {
       let finished = false;
       let timer;
+      let wasNativeVisible = window.__MIKAKI_WORKSPACE_VISIBLE__ === true;
       const cleanup = () => {
         clearTimeout(timer);
         document.removeEventListener('visibilitychange', visibility);
@@ -46,7 +59,11 @@
         reject(error);
       };
       const activity = () => {
-        if (window.__MIKAKI_WORKSPACE_SELECTED__ !== true) fail(cancelled());
+        const nativeVisible = window.__MIKAKI_WORKSPACE_VISIBLE__ === true;
+        const pausedAgain = wasNativeVisible && !nativeVisible;
+        wasNativeVisible = nativeVisible;
+        if (expired() || pausedAgain || window.__MIKAKI_WORKSPACE_SELECTED__ !== true)
+          fail(cancelled());
         else if (foreground() && !finished) {
           finished = true;
           cleanup();
