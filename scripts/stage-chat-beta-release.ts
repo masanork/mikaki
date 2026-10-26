@@ -35,8 +35,8 @@ type StageIO = {
   current(): Promise<void>;
   verifyBytes(): Promise<void>;
   version(id: string): Promise<Version>;
-  upload(message: string): Promise<string>;
-  clearKey(message: string): Promise<string>;
+  upload(message: string): string | Promise<string>;
+  clearKey(message: string): string | Promise<string>;
   save(report: Row): void;
 };
 export async function withChatReleaseSecret<T>(
@@ -154,7 +154,7 @@ export async function stageChatRelease(
     io.save({ ...report });
     const message = `Chat beta stage ${source.commit}`;
     const output = await io.upload(message);
-    const id = output.match(/Worker Version ID:\s*([a-f0-9-]{36})/)?.[1];
+    const id = /Worker Version ID:\s*([a-f0-9-]{36})/.exec(output)?.[1];
     assert.ok(id && uuid.test(id), 'Unconfirmed upload; inspect before retrying');
     report.version_id = id;
     report.stage = 'inspect_uploaded';
@@ -168,9 +168,10 @@ export async function stageChatRelease(
     io.save({ ...report });
     const tailMessage = `Chat beta key-free tail ${source.commit}`;
     const cleared = await io.clearKey(tailMessage);
-    const tailId = cleared.match(
-      /Created version ([a-f0-9-]{36}) with 0 secrets? created and 1 secrets? deleted\./,
-    )?.[1];
+    const tailId =
+      /Created version ([a-f0-9-]{36}) with 0 secrets? created and 1 secrets? deleted\./.exec(
+        cleared,
+      )?.[1];
     assert.ok(tailId && uuid.test(tailId), 'Unconfirmed key removal; inspect before retrying');
     report.clean_tail_version_id = tailId;
     report.stage = 'inspect_tail';
@@ -266,7 +267,7 @@ async function main() {
         await verifyPreparedUpload(root, destination, manifest, source, false, 'messaging-beta');
       },
       version: async (id) => JSON.parse(await uploadedVersionView(id, CONFIG, wrangler)),
-      upload: async (message) =>
+      upload: (message) =>
         wrangler([
           'versions',
           'upload',
@@ -283,7 +284,7 @@ async function main() {
           '--message',
           message,
         ]),
-      clearKey: async (message) =>
+      clearKey: (message) =>
         wrangler(
           ['versions', 'secret', 'bulk', '--config', CONFIG, '--tag', tag, '--message', message],
           JSON.stringify({ [KEY]: null }),
@@ -298,8 +299,10 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(() => {
+  try {
+    await main();
+  } catch {
     console.error('Chat release stage failed; inspect its sanitized report before retrying.');
     process.exitCode = 1;
-  });
+  }
 }

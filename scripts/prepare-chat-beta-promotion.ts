@@ -54,10 +54,10 @@ export function assertChatPreflightContext(
   assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.equal(env.GITHUB_REF, 'refs/heads/main');
   assert.equal(env.GITHUB_REPOSITORY, REPOSITORY);
-  assert.equal(
-    env.GITHUB_WORKFLOW_REF,
-    `${REPOSITORY}/${stage === true ? KEY_WORKFLOW : stage === 'release-stage' ? RELEASE_WORKFLOW : WORKFLOW}@refs/heads/main`,
-  );
+  let workflow = WORKFLOW;
+  if (stage === true) workflow = KEY_WORKFLOW;
+  if (stage === 'release-stage') workflow = RELEASE_WORKFLOW;
+  assert.equal(env.GITHUB_WORKFLOW_REF, `${REPOSITORY}/${workflow}@refs/heads/main`);
   assert.equal(source.commit, env.GITHUB_SHA);
   assert.match(source.commit, /^[a-f0-9]{40}$/);
   assert.equal(source.clean, true, 'Clean source required');
