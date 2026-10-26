@@ -1,0 +1,68 @@
+name: chat-beta-stage-release
+on:
+  workflow_dispatch:
+    inputs:
+      main_ci_run_id:
+        description: Successful push-to-main CI run at this commit
+        required: true
+        type: string
+      expected_baseline_version:
+        description: Reviewed active default-profile OP version UUID
+        required: true
+        type: string
+      expected_public_key:
+        description: Reviewed Ed25519 public x (43-character base64url)
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+jobs:
+  stage-release:
+    if: github.ref == 'refs/heads/main' && github.repository == 'masanork/mikaki'
+    environment:
+      name: production
+      url: https://auth.mikaki.org
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Refresh candidate, quality, schema and disabled production preflight
+        env:
+          MAIN_CI_RUN_ID: ${{ inputs.main_ci_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: false
+        run: node scripts/prepare-chat-beta-promotion.ts "$MAIN_CI_RUN_ID" --release-stage
+      - name: Stage the verified release and clear secret inheritance without activating
+        env:
+          MAIN_CI_RUN_ID: ${{ inputs.main_ci_run_id }}
+          EXPECTED_BASELINE_VERSION: ${{ inputs.expected_baseline_version }}
+          EXPECTED_CHAT_PUBLIC_KEY: ${{ inputs.expected_public_key }}
+          MESSAGING_ISSUER_KEY: ${{ secrets.MESSAGING_ISSUER_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: false
+        run: node scripts/stage-chat-beta-release.ts "$MAIN_CI_RUN_ID"
+      - name: Retain sanitized reports only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chat-release-stage-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            artifacts/chat-beta-preflight/report.json
+            artifacts/chat-release-stage/report.json
+          if-no-files-found: error
+          retention-days: 14
