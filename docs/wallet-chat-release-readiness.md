@@ -265,6 +265,55 @@ acceptance, and protected beta activation remain separate gates. This workflow
 does not execute a beta artifact, enroll users, migrate, write D1/R2 or enable
 Chat. Ordinary promotion remains default-profile-only.
 
+## Protected inactive Chat release staging
+
+The manual [chat-beta-stage-release workflow](../.github/workflows/chat-beta-stage-release.yml)
+uploads the attested beta OP code and Chat assets, with its independent issuer
+key, as an inactive version. It runs only on this repository's `main` in the
+existing `production` environment, under the `production-deployment` lock.
+Merging code never dispatches this workflow. Ordinary promotion still accepts
+only the default profile.
+
+Inputs are the successful push-to-main CI run at the dispatch commit, the
+reviewed active default-profile OP version UUID, and the independently reviewed
+Ed25519 public `x`. Provision `MESSAGING_ISSUER_KEY` in protected custody as
+described above. This workflow is an alternative to the narrower key-only stage;
+both require the latest upload to be the active ordinary version. A previous
+key-only stage therefore requires a fresh qualified ordinary promotion before
+staging release code.
+
+The workflow repeats candidate signatures, bytes, main Sonar, disabled-baseline
+and remote schema checks. The staging process rechecks source, CI identity and
+quality before each mutation, and revalidates prepared bytes immediately before
+upload. It derives its config from the reviewed OP config: only the explicit
+Chat flag and required Chat key are added. Workers.dev and version preview URLs
+are explicitly disabled. The complete runtime and binding checks remain in use.
+Version overrides require membership in the active deployment; the staged
+version is kept outside that deployment, including at zero percent.
+
+The two mutation commands are one `wrangler versions upload` and one
+`wrangler versions secret bulk` deleting only the Chat key from a new inactive
+successor. The tail keeps the staged beta code and flag but has no Chat issuer
+key, preventing a later ordinary upload from inheriting that secret. It is an
+inheritance guard, **not a rollback target**. The reviewed ordinary baseline
+remains the active rollback target at 100 percent. No deployment, trigger change,
+migration, enrollment or application-data write runs here.
+
+The private upload file is created exclusively with mode 0600 and removed on
+success or failure; private key material is removed from subprocess environments.
+Only sanitized preflight and `mikaki-chat-release-stage-v1` reports are retained,
+with public key material, source/candidate digests and confirmed version IDs.
+Writes are not retried. A changed deployment/latest upload, uncertain response
+or unexpected code, runtime or binding stops further operations and leaves the
+report for inspection. There is no automatic cleanup after an uncertain write.
+
+A passing stage report has `active_change_requested=false` and
+`promotion_ready=false`. Remote public-key/runtime verification, populated
+disable/code rollback, physical two-owner acceptance and the protected activation
+path remain required. Staging metadata alone does not establish those results.
+The relevant Cloudflare contracts are [secret inheritance](https://developers.cloudflare.com/workers/configuration/secrets/#upload-secrets-alongside-code)
+and [version overrides](https://developers.cloudflare.com/workers/versions-and-deployments/version-overrides/).
+
 ## Offline release candidate checks
 
 The beta candidate builder archives `build-messaging-beta`, after the actual

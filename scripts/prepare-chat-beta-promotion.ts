@@ -27,6 +27,7 @@ import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
 const REPOSITORY = 'masanork/mikaki';
 const WORKFLOW = '.github/workflows/chat-beta-preflight.yml';
 const KEY_WORKFLOW = '.github/workflows/chat-beta-stage-key.yml';
+const RELEASE_WORKFLOW = '.github/workflows/chat-beta-stage-release.yml';
 const OP_CONFIG = 'crates/worker/wrangler.production.jsonc';
 type Row = Record<string, unknown>;
 type GithubGet = (path: string) => Promise<unknown>;
@@ -47,14 +48,15 @@ export function chatPreflightRunId(value: unknown): number {
 export function assertChatPreflightContext(
   env: NodeJS.ProcessEnv,
   source: ReleaseSource,
-  keyStage = false,
+  stage: boolean | 'release-stage' = false,
 ) {
+  assert.ok(stage === false || stage === true || stage === 'release-stage');
   assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.equal(env.GITHUB_REF, 'refs/heads/main');
   assert.equal(env.GITHUB_REPOSITORY, REPOSITORY);
   assert.equal(
     env.GITHUB_WORKFLOW_REF,
-    `${REPOSITORY}/${keyStage ? KEY_WORKFLOW : WORKFLOW}@refs/heads/main`,
+    `${REPOSITORY}/${stage === true ? KEY_WORKFLOW : stage === 'release-stage' ? RELEASE_WORKFLOW : WORKFLOW}@refs/heads/main`,
   );
   assert.equal(source.commit, env.GITHUB_SHA);
   assert.match(source.commit, /^[a-f0-9]{40}$/);
@@ -228,13 +230,18 @@ export function chatPreflightReport(
 
 async function main() {
   assert.ok(
-    process.argv.length === 3 || (process.argv.length === 4 && process.argv[3] === '--key-stage'),
-    'Usage: prepare-chat-beta-promotion.ts <main-ci-run-id> [--key-stage]',
+    process.argv.length === 3 ||
+      (process.argv.length === 4 && ['--key-stage', '--release-stage'].includes(process.argv[3]!)),
+    'Usage: prepare-chat-beta-promotion.ts <main-ci-run-id> [--key-stage|--release-stage]',
   );
   const runId = chatPreflightRunId(process.argv[2]);
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = releaseSource(root);
-  assertChatPreflightContext(process.env, source, process.argv[3] === '--key-stage');
+  assertChatPreflightContext(
+    process.env,
+    source,
+    process.argv[3] === '--release-stage' ? 'release-stage' : process.argv[3] === '--key-stage',
+  );
   const reportDirectory = join(root, 'artifacts/chat-beta-preflight');
   // Refuse old artifacts/reports rather than treating a previous run as fresh proof.
   assert.equal(existsSync(join(root, 'artifacts')), false, 'Fresh artifact directory required');

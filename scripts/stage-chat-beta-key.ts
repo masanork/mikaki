@@ -58,6 +58,84 @@ export function assertKeyStagePreflight(
   assert.ok(Number.isFinite(age) && age >= 0 && age <= 15 * 60_000, 'Fresh preflight required');
 }
 
+/** Shared control-plane checks for the two protected staging workflows. */
+export function chatStageContext(
+  root: string,
+  source: ReleaseSource,
+  runId: number,
+  preflight: Row,
+) {
+  const fresh = () =>
+    assertKeyStagePreflight(preflight, source, runId, process.env.EXPECTED_BASELINE_VERSION ?? '');
+  fresh();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    CLOUDFLARE_ACCOUNT_ID: PRODUCTION_WORK_TARGET.account,
+    WRANGLER_LOG: 'log',
+    WRANGLER_SEND_METRICS: 'false',
+  };
+  delete env.MESSAGING_ISSUER_KEY;
+  const command = (binary: string, args: string[], input?: string) =>
+    execFileSync(binary, args, {
+      cwd: root,
+      env,
+      input,
+      encoding: 'utf8',
+      timeout: 120_000,
+      maxBuffer: 4 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  const githubGet = async (path: string) => JSON.parse(command('gh', ['api', path]));
+  const sonarGet = async (path: string) =>
+    JSON.parse(
+      command('curl', [
+        '--fail',
+        '--silent',
+        '--show-error',
+        '--proto',
+        '=https',
+        '--connect-timeout',
+        '10',
+        '--max-time',
+        '25',
+        `https://sonarcloud.io/api/${path}`,
+      ]),
+    );
+  const current = async () => {
+    fresh();
+    command('git', ['fetch', 'origin', 'main']);
+    command('git', ['merge-base', '--is-ancestor', source.commit, 'origin/main']);
+    const paths = command('git', ['diff', '--name-only', source.commit, 'origin/main']).trim();
+    assert.ok(sourceIsCurrent(paths ? paths.split('\n') : []));
+    assert.deepEqual(releaseSource(root), source);
+    assert.deepEqual(await inspectChatCandidate(githubGet, runId, source), preflight.candidate);
+    assert.deepEqual(await inspectChatQualityGate(sonarGet, source), preflight.sonar);
+  };
+  return {
+    fresh,
+    current,
+    config: JSON.parse(readFileSync(join(root, CONFIG), 'utf8')) as Config,
+    get: cloudflareMetadataGet(PRODUCTION_WORK_TARGET.account, process.env.CLOUDFLARE_API_TOKEN!),
+    wrangler: (args: string[], input?: string) =>
+      command(join(root, 'node_modules/.bin/wrangler'), args, input),
+  };
+}
+
+export async function assertChatStageStable(
+  source: ReleaseSource,
+  config: Config,
+  baseline: Baseline,
+  latestId: string,
+  io: Pick<StageIO, 'get' | 'current'>,
+) {
+  await io.current();
+  assert.deepEqual(await inspectChatDisabledBaseline(io.get, source, config), baseline);
+  const exposure = result(await io.get(`${BASE}/subdomain`));
+  assert.equal(exposure.enabled, false);
+  assert.equal(exposure.previews_enabled, false);
+  await latest(io.get, latestId);
+}
+
 type Version = {
   id: string;
   annotations: Record<string, unknown>;
@@ -87,11 +165,12 @@ export function assertKeyClone(
   message: string,
   source: ReleaseSource,
   withKey: boolean,
+  tag: 'chat-key' | 'chat-beta' = 'chat-key',
 ) {
   assert.match(version.id, uuid);
   assert.notEqual(version.id, baseline.id);
   assert.equal(version.annotations['workers/message'], message);
-  assert.equal(version.annotations['workers/tag'], `chat-key-${source.commit.slice(0, 12)}`);
+  assert.equal(version.annotations['workers/tag'], `${tag}-${source.commit.slice(0, 12)}`);
   assert.match(baseline.resources.script.etag, /^[a-f0-9]{32,128}$/);
   assert.equal(version.resources.script.etag, baseline.resources.script.etag);
   assert.deepEqual(version.resources.script_runtime, baseline.resources.script_runtime);
@@ -129,14 +208,8 @@ export async function stageChatKey(
     assert.match(source.commit, /^[a-f0-9]{40}$/);
     assert.match(baseline.version_id, uuid);
     record.key = messagingIssuerPublicKey(raw, expectedPublicKey);
-    const stable = async (latestId: string) => {
-      await io.current();
-      assert.deepEqual(await inspectChatDisabledBaseline(io.get, source, config), baseline);
-      const exposure = result(await io.get(`${BASE}/subdomain`));
-      assert.equal(exposure.enabled, false);
-      assert.equal(exposure.previews_enabled, false);
-      await latest(io.get, latestId);
-    };
+    const stable = (latestId: string) =>
+      assertChatStageStable(source, config, baseline, latestId, io);
     record.stage = 'baseline';
     await stable(baseline.version_id);
     const original = await io.version(baseline.version_id);
@@ -187,6 +260,8 @@ export async function stageChatKey(
 
 async function main() {
   assert.equal(process.argv.length, 3);
+  const raw = process.env.MESSAGING_ISSUER_KEY ?? '';
+  delete process.env.MESSAGING_ISSUER_KEY;
   const runId = chatPreflightRunId(process.argv[2]);
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = releaseSource(root);
@@ -213,63 +288,15 @@ async function main() {
     ) + '\n',
     { mode: 0o600 },
   );
-  const raw = process.env.MESSAGING_ISSUER_KEY ?? '';
   const expected = process.env.EXPECTED_CHAT_PUBLIC_KEY ?? '';
   messagingIssuerPublicKey(raw, expected);
   const preflight = JSON.parse(
     readFileSync(join(root, 'artifacts/chat-beta-preflight/report.json'), 'utf8'),
   );
-  assertKeyStagePreflight(preflight, source, runId, process.env.EXPECTED_BASELINE_VERSION ?? '');
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    WRANGLER_LOG: 'log',
-    WRANGLER_SEND_METRICS: 'false',
-  };
-  delete env.MESSAGING_ISSUER_KEY;
-  const command = (binary: string, args: string[], input?: string) =>
-    execFileSync(binary, args, {
-      cwd: root,
-      env,
-      input,
-      encoding: 'utf8',
-      timeout: 120_000,
-      maxBuffer: 4 * 1024 * 1024,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  const githubGet = async (path: string) => JSON.parse(command('gh', ['api', path]));
-  assert.deepEqual(await inspectChatCandidate(githubGet, runId, source), preflight.candidate);
-  const sonarGet = async (path: string) =>
-    JSON.parse(
-      command('curl', [
-        '--fail',
-        '--silent',
-        '--show-error',
-        '--proto',
-        '=https',
-        '--connect-timeout',
-        '10',
-        '--max-time',
-        '25',
-        `https://sonarcloud.io/api/${path}`,
-      ]),
-    );
-  assert.deepEqual(await inspectChatQualityGate(sonarGet, source), preflight.sonar);
-  const config = JSON.parse(readFileSync(join(root, CONFIG), 'utf8'));
-  const get = cloudflareMetadataGet(
-    PRODUCTION_WORK_TARGET.account,
-    process.env.CLOUDFLARE_API_TOKEN!,
-  );
-  const wrangler = (args: string[], input?: string) =>
-    command(join(root, 'node_modules/.bin/wrangler'), args, input);
+  const { config, get, current, wrangler } = chatStageContext(root, source, runId, preflight);
   await stageChatKey(source, config, preflight.baseline, raw, expected, {
     get,
-    current: async () => {
-      command('git', ['fetch', 'origin', 'main']);
-      command('git', ['merge-base', '--is-ancestor', source.commit, 'origin/main']);
-      const changed = command('git', ['diff', '--name-only', source.commit, 'origin/main']).trim();
-      assert.ok(sourceIsCurrent(changed ? changed.split('\n') : []));
-      assert.deepEqual(releaseSource(root), source);
-    },
+    current,
     version: async (id) => JSON.parse(await uploadedVersionView(id, CONFIG, wrangler)),
     secret: async (operation, message, input) =>
       wrangler(
