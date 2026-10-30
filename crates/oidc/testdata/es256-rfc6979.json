@@ -1,0 +1,8 @@
+{
+  "source": "https://www.rfc-editor.org/rfc/rfc6979.html#appendix-A.2.5",
+  "message": "sample",
+  "public_key": "BGD-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2eQP-EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk",
+  "compressed_public_key": "A2D-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2",
+  "signature": "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxb3yxyULWV8QdQ2x6G24p9l8-kA27mv9AZNxKsvhDrNqA",
+  "alternate_signature": "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxYINONq0pqDvyvJOF5JHWCZyP350e1nqn6l9R-TeChXqQ"
+}

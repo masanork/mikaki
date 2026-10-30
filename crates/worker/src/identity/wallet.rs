@@ -789,13 +789,15 @@ pub(super) async fn token(
     let (_, policy_hash) = policy(ctx)?;
     let db = ctx.env.d1("DB")?;
     let dpop_proof = if let Some(compact) = req.headers().get("dpop")? {
-        let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+        let Ok(proof) = mikaki_oidc::verify_dpop_proof_async(
             &compact,
             "POST",
             &format!("{iss}/token"),
             mikaki_oidc::DpopTarget::Token,
             now()?,
-        ) else {
+        )
+        .await
+        else {
             return error(400, "invalid_dpop_proof");
         };
         let require_nonce = crate::dpop_nonce_required(&ctx.env)?;
@@ -962,13 +964,15 @@ pub async fn par(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
         Err(code) => return error(400, code),
     };
     if let Some(compact) = req.headers().get("dpop")? {
-        let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+        let Ok(proof) = mikaki_oidc::verify_dpop_proof_async(
             &compact,
             "POST",
             &format!("{iss}/par"),
             mikaki_oidc::DpopTarget::Token,
             now()?,
-        ) else {
+        )
+        .await
+        else {
             return error(400, "invalid_dpop_proof");
         };
         if request
@@ -1052,7 +1056,7 @@ pub(super) async fn authorize_sender(
     let Some(compact) = req.headers().get("dpop")? else {
         return Ok(Some(error(401, "invalid_dpop_proof")?));
     };
-    let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+    let Ok(proof) = mikaki_oidc::verify_dpop_proof_async(
         &compact,
         "POST",
         &format!("{}/credential", issuer(ctx)?),
@@ -1061,7 +1065,9 @@ pub(super) async fn authorize_sender(
             thumbprint: jkt,
         },
         now()?,
-    ) else {
+    )
+    .await
+    else {
         return Ok(Some(error(401, "invalid_dpop_proof")?));
     };
     let db = ctx.env.d1("DB")?;

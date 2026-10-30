@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { ECDH, createHash, createPrivateKey, randomBytes, randomUUID, sign } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createTestHarness } from 'wrangler';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
+import { nativeProviderObserver } from './support/oidc-native-provider.ts';
 
 const issuer = 'https://issuer.example';
 const digest = (value: string) => createHash('sha256').update(value).digest('base64url');
@@ -33,6 +34,10 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
     import.meta.url,
   ).pathname;
   config.vars = { MIKAKI_ISSUER: issuer, OP_PRIVATE_JWK: JSON.stringify(privateJwk) };
+  const observed = await nativeProviderObserver(
+    new URL('../..', import.meta.url).pathname,
+    config.main,
+  );
   const options = {
     root: new URL('../..', import.meta.url).pathname,
     workers: [
@@ -45,6 +50,14 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
           queues: { ...config.queues, consumers: [] },
         },
       },
+      {
+        config: {
+          ...config,
+          name: 'mikaki-native-verifier-observed',
+          main: observed.main,
+          queues: { ...config.queues, consumers: [] },
+        },
+      },
     ],
   };
   const harness = createTestHarness(options);
@@ -52,6 +65,7 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     const second = harness.getWorker('mikaki-dpop-second');
+    const observer = harness.getWorker('mikaki-native-verifier-observed');
     await worker.applyD1Migrations('DB');
     let { DB } = await worker.getEnv();
     const { DB: secondDB } = await second.getEnv();
@@ -138,6 +152,7 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
       compact?: string,
       audience: string | string[] = `${issuer}/token`,
       notBefore?: number,
+      observation?: { fault?: string; assertion?: (compact: string) => string },
     ) {
       let builder = new SignJWT({ jti: randomUUID() })
         .setProtectedHeader({ alg: 'ES256', kid: 'client' })
@@ -147,12 +162,14 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         .setIssuedAt(now())
         .setExpirationTime(now() + 60);
       if (notBefore !== undefined) builder = builder.setNotBefore(notBefore);
-      const assertion = await builder.sign(client.privateKey);
-      return worker.fetch(`${issuer}/token`, {
+      const original = await builder.sign(client.privateKey);
+      const assertion = observation?.assertion ? observation.assertion(original) : original;
+      return (observation ? observer : worker).fetch(`${issuer}/token`, {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
           ...(compact ? { DPoP: compact } : {}),
+          ...(observation?.fault ? { 'X-Test-Native-Fault': observation.fault } : {}),
         },
         body: new URLSearchParams({
           grant_type: 'authorization_code',
@@ -235,6 +252,159 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
         const ledger = await DB.prepare('SELECT jti_hash FROM dpop_proof_use').all();
         assert.equal(ledger.results.length, 1);
         assert.match(ledger.results[0].jti_hash, /^[A-Za-z0-9_-]{43}$/);
+      },
+    );
+    await t.test(
+      'native verification preserves compressed registrations and high/low-S JWS',
+      async () => {
+        const key = Buffer.concat([
+          Buffer.from([4]),
+          Buffer.from(clientPublic.x!, 'base64url'),
+          Buffer.from(clientPublic.y!, 'base64url'),
+        ]);
+        const compressed = ECDH.convertKey(key, 'prime256v1', undefined, undefined, 'compressed');
+        const order = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
+        try {
+          await DB.prepare(
+            "UPDATE client_key SET public_key_sec1=? WHERE client_id='rp' AND kid='client'",
+          )
+            .bind(compressed)
+            .run();
+          for (const high of [false, true]) {
+            const response = await exchange(await grant(), await proof(), undefined, undefined, {
+              assertion: (compact) => {
+                const [h, c, s] = compact.split('.');
+                const signature = Buffer.from(s, 'base64url');
+                let scalar = BigInt('0x' + signature.subarray(32).toString('hex'));
+                if (scalar > order / 2n !== high) scalar = order - scalar;
+                Buffer.from(scalar.toString(16).padStart(64, '0'), 'hex').copy(signature, 32);
+                return `${h}.${c}.${signature.toString('base64url')}`;
+              },
+            });
+            assert.equal(response.status, 200, await response.clone().text());
+            const imports = JSON.parse(response.headers.get('X-Test-Native-Imports')!) as {
+              bytes: number;
+              extractable: boolean;
+              usages: string[];
+            }[];
+            assert.deepEqual(
+              imports.map((item) => item.bytes),
+              [65, 33],
+            );
+            for (const item of imports) {
+              assert.equal(item.extractable, false);
+              assert.deepEqual(item.usages, ['verify']);
+            }
+          }
+        } finally {
+          await DB.prepare(
+            "UPDATE client_key SET public_key_sec1=? WHERE client_id='rp' AND kid='client'",
+          )
+            .bind(key)
+            .run();
+        }
+      },
+    );
+    await t.test(
+      'native import/verify failure denies assertions and DPoP without consuming a code',
+      async () => {
+        for (const fault of ['import', 'verify', 'false', 'truthy', 'extractable']) {
+          for (const dpop of [false, true]) {
+            const input = await grant();
+            const before = await DB.prepare('SELECT count(*) AS n FROM assertion_use').first('n');
+            const response = await exchange(
+              input,
+              dpop ? await proof() : undefined,
+              undefined,
+              undefined,
+              { fault },
+            );
+            assert.equal(
+              response.status,
+              dpop ? 400 : 401,
+              `${fault}: ${await response.clone().text()}`,
+            );
+            assert.equal(
+              await DB.prepare('SELECT consumed_by FROM authorization_code WHERE code_hash=?')
+                .bind(codeDigest(input.code))
+                .first('consumed_by'),
+              null,
+            );
+            assert.equal(
+              await DB.prepare('SELECT count(*) AS n FROM assertion_use').first('n'),
+              before,
+            );
+            assert.equal(
+              (await exchange(input, dpop ? await proof() : undefined)).status,
+              200,
+              'failure must not reserve the valid request',
+            );
+          }
+        }
+      },
+    );
+    await t.test(
+      'DER, truncated and out-of-range JWS signatures fail before assertion acceptance',
+      async () => {
+        const privateKey = createPrivateKey({
+          key: await exportJWK(client.privateKey),
+          format: 'jwk',
+        });
+        const invalidSignatures = [
+          Buffer.alloc(63),
+          Buffer.alloc(64),
+          Buffer.alloc(65),
+          Buffer.alloc(64, 255),
+        ];
+        for (const replacement of [...invalidSignatures, null]) {
+          const input = await grant();
+          const response = await exchange(input, undefined, undefined, undefined, {
+            assertion: (compact) => {
+              const [h, c] = compact.split('.');
+              const signature =
+                replacement ??
+                sign('sha256', Buffer.from(`${h}.${c}`), { key: privateKey, dsaEncoding: 'der' });
+              return `${h}.${c}.${signature.toString('base64url')}`;
+            },
+          });
+          assert.equal(response.status, 401);
+          assert.equal(
+            await DB.prepare('SELECT consumed_by FROM authorization_code WHERE code_hash=?')
+              .bind(codeDigest(input.code))
+              .first('consumed_by'),
+            null,
+          );
+        }
+      },
+    );
+    await t.test(
+      'registered-key revocation during native verification is rechecked at D1 acceptance',
+      async () => {
+        const input = await grant();
+        const before = await DB.prepare('SELECT count(*) AS n FROM assertion_use').first('n');
+        try {
+          const response = await exchange(input, undefined, undefined, undefined, {
+            fault: 'revoke-client',
+          });
+          // Preserve the existing atomic-guard error contract on a lost D1 race.
+          assert.equal(response.status, 500, await response.clone().text());
+          assert.equal(response.headers.get('X-Test-Native-Verified'), '1');
+          assert.equal(
+            await DB.prepare('SELECT count(*) AS n FROM assertion_use').first('n'),
+            before,
+          );
+          assert.equal(
+            await DB.prepare('SELECT consumed_by FROM authorization_code WHERE code_hash=?')
+              .bind(codeDigest(input.code))
+              .first('consumed_by'),
+            null,
+          );
+        } finally {
+          await DB.prepare(
+            "UPDATE client_key SET active=1,revision=revision+1 WHERE client_id='rp' AND kid='client'",
+          ).run();
+        }
+        assert.equal((await exchange(input)).status, 200);
       },
     );
     await t.test(
@@ -895,5 +1065,6 @@ test('Rust Worker DPoP issuance and durable cross-worker resource authorization'
     );
   } finally {
     await harness.close();
+    await observed.close();
   }
 });

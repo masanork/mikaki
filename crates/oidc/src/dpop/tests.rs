@@ -1,5 +1,5 @@
 use super::*;
-use p256::ecdsa::{SigningKey, signature::Signer};
+use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use serde_json::{Value, json};
 
 fn key() -> SigningKey {
@@ -31,6 +31,42 @@ fn verify(compact: &str, now: u64) -> Result<VerifiedDpopProof, InvalidDpopProof
         DpopTarget::Token,
         now,
     )
+}
+
+#[test]
+fn async_dpop_entry_preserves_identity_and_rejects_unverified_inputs() {
+    let compact = sign(&header(), &claims(), &key());
+    let verified = crate::es256::ready(verify_dpop_proof_async(
+        &compact,
+        "POST",
+        "https://issuer.example/token",
+        DpopTarget::Token,
+        1000,
+    ))
+    .unwrap();
+    let reference = verify(&compact, 1000).unwrap();
+    assert_eq!(verified.thumbprint(), reference.thumbprint());
+    assert_eq!(verified.jti_hash(), reference.jti_hash());
+    assert_eq!(verified.retain_until(), reference.retain_until());
+    for bad in [
+        "malformed.proof.value".to_owned(),
+        sign(
+            &header(),
+            &claims(),
+            &SigningKey::from_slice(&[8; 32]).unwrap(),
+        ),
+    ] {
+        assert!(
+            crate::es256::ready(verify_dpop_proof_async(
+                &bad,
+                "POST",
+                "https://issuer.example/token",
+                DpopTarget::Token,
+                1000,
+            ))
+            .is_err()
+        );
+    }
 }
 
 #[test]

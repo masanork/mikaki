@@ -1,5 +1,5 @@
+use crate::es256::Es256Verification;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
-use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde::Deserialize;
 
 /// A public key snapshot loaded from trusted client registration storage.
@@ -62,6 +62,10 @@ struct Claims {
 /// Proof that a compact private_key_jwt passed strict ES256 and claim checks.
 /// It is not deserializable; the final store operation must still recheck the
 /// client and key revisions and atomically reserve `(client_id, jti)`.
+///
+/// ```compile_fail
+/// let _: mikaki_oidc::VerifiedClientAssertion = serde_json::from_str("{}").unwrap();
+/// ```
 #[must_use = "reserve this assertion jti once in D1 before processing its grant"]
 pub struct VerifiedClientAssertion {
     client_id: String,
@@ -76,6 +80,30 @@ pub struct VerifiedClientAssertion {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidClientAssertion;
+
+// An unverified capability never leaves this module, even on native import or
+// verification failure. Callers cannot authenticate by supplying a boolean.
+struct PreparedClientAssertion {
+    signature: Es256Verification,
+    assertion: VerifiedClientAssertion,
+}
+
+impl PreparedClientAssertion {
+    fn verify_reference(self) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.signature
+            .verify_reference()
+            .map_err(|_| InvalidClientAssertion)?;
+        Ok(self.assertion)
+    }
+
+    async fn verify_async(self) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.signature
+            .verify_async()
+            .await
+            .map_err(|_| InvalidClientAssertion)?;
+        Ok(self.assertion)
+    }
+}
 
 impl ClientAssertionPolicy {
     pub fn from_seconds(
@@ -124,14 +152,15 @@ impl ClientAssertionKey {
         policy: ClientAssertionPolicy,
         max_assertion_bytes: usize,
     ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
-        self.verify_assertion(
+        self.prepare_assertion(
             compact,
             expected_audience,
             now,
             policy,
             max_assertion_bytes,
             false,
-        )
+        )?
+        .verify_reference()
     }
 
     /// FAPI 2.0 requires the issuer URL, as a single JSON string audience, and
@@ -143,17 +172,60 @@ impl ClientAssertionKey {
         now: u64,
         max_assertion_bytes: usize,
     ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
-        self.verify_assertion(
+        self.prepare_assertion(
             compact,
             issuer,
             now,
             ClientAssertionPolicy::from_seconds(60, 10)?,
             max_assertion_bytes,
             true,
-        )
+        )?
+        .verify_reference()
     }
 
-    fn verify_assertion(
+    /// Async ES256 verification with the same bounded protocol checks and
+    /// registered-key snapshot. Wasm uses Web Crypto; host qualification uses
+    /// the independent reference provider.
+    pub async fn verify_private_key_jwt_async(
+        &self,
+        compact: &str,
+        expected_audience: &str,
+        now: u64,
+        policy: ClientAssertionPolicy,
+        max_assertion_bytes: usize,
+    ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.prepare_assertion(
+            compact,
+            expected_audience,
+            now,
+            policy,
+            max_assertion_bytes,
+            false,
+        )?
+        .verify_async()
+        .await
+    }
+
+    pub async fn verify_fapi_private_key_jwt_async(
+        &self,
+        compact: &str,
+        issuer: &str,
+        now: u64,
+        max_assertion_bytes: usize,
+    ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+        self.prepare_assertion(
+            compact,
+            issuer,
+            now,
+            ClientAssertionPolicy::from_seconds(60, 10)?,
+            max_assertion_bytes,
+            true,
+        )?
+        .verify_async()
+        .await
+    }
+
+    fn prepare_assertion(
         &self,
         compact: &str,
         expected_audience: &str,
@@ -161,7 +233,7 @@ impl ClientAssertionKey {
         policy: ClientAssertionPolicy,
         max_assertion_bytes: usize,
         fapi: bool,
-    ) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
+    ) -> Result<PreparedClientAssertion, InvalidClientAssertion> {
         if !self.active
             || self.client_id.is_empty()
             || self.key_id.is_empty()
@@ -213,27 +285,29 @@ impl ClientAssertionKey {
             return Err(InvalidClientAssertion);
         }
 
-        let verifying_key = VerifyingKey::from_sec1_bytes(&self.sec1_public_key)
-            .map_err(|_| InvalidClientAssertion)?;
-        let signature =
-            Signature::from_slice(&signature_bytes).map_err(|_| InvalidClientAssertion)?;
         let signing_input = format!("{header_part}.{claims_part}");
-        verifying_key
-            .verify(signing_input.as_bytes(), &signature)
-            .map_err(|_| InvalidClientAssertion)?;
+        let signature = Es256Verification::new(
+            &self.sec1_public_key,
+            &signature_bytes,
+            signing_input.as_bytes(),
+        )
+        .map_err(|_| InvalidClientAssertion)?;
 
-        Ok(VerifiedClientAssertion {
-            client_id: self.client_id.clone(),
-            key_id: self.key_id.clone(),
-            client_revision: self.client_revision,
-            key_revision: self.key_revision,
-            audience: expected_audience.to_owned(),
-            jti: claims.jti,
-            issued_at: claims.iat,
-            retain_until: claims
-                .exp
-                .checked_add(policy.clock_skew_seconds)
-                .ok_or(InvalidClientAssertion)?,
+        Ok(PreparedClientAssertion {
+            signature,
+            assertion: VerifiedClientAssertion {
+                client_id: self.client_id.clone(),
+                key_id: self.key_id.clone(),
+                client_revision: self.client_revision,
+                key_revision: self.key_revision,
+                audience: expected_audience.to_owned(),
+                jti: claims.jti,
+                issued_at: claims.iat,
+                retain_until: claims
+                    .exp
+                    .checked_add(policy.clock_skew_seconds)
+                    .ok_or(InvalidClientAssertion)?,
+            },
         })
     }
 }
