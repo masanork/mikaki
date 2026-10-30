@@ -34,6 +34,25 @@ and presentation remain separate evidence. See [LabPKI deployment details](ident
 The sections below retain the earlier preparation and first-party activation
 history.
 
+### Approved single-card trust renewal — 2026-10-30
+
+The operator explicitly approved the reviewed extension and normal deployment in
+this conversation: “そうだね。通常配備に進めて良い”. Only `not_after` of the same
+single-card `mikaki_test` / `age_over_18` policy changes, through
+`2026-11-06T09:38:47Z` (2026-11-06 18:38:47 JST), bounded by the renewed selected
+credential CRLs. The compact policy SHA-256 is
+`2ff30cc2bfa66e9f4db008456e3c1f18a7425bc7983d48d84ef3162f47e8258f`;
+the previous policy and both previous deadline records remain intact.
+
+The new restricted approval record is
+`local/generated/identity-keys/card-issuer-operator-test-renewal-20261030.approval.json`.
+It links the preceding approval by digest. The public deadline registry and
+production source selection bind this exact approved policy; they do not replace
+validation of the production-environment secret. Government issuer root-chain
+verification and live card possession remain unqualified. No additional card,
+claim, Chat activation, or physical qualification is authorized by this renewal.
+Use the existing attested main promotion and source/version-bound production smoke.
+
 ### Proposed single-card trust renewal — 2026-10-22
 
 Main CI [39695682430](https://github.com/masanork/mikaki/actions/runs/39695682430)
@@ -219,10 +238,10 @@ A fresh dedicated P-256 signing key was generated and stored as
 `IDENTITY_ISSUER_JWK` in `masanork/mikaki`'s GitHub **production environment**
 at `2026-10-14T05:40:10Z`. Its public identity is:
 
-| Field | Public value |
-| --- | --- |
-| `kid` | `mikaki-identity-test-0d878e2d-3b54-4dd4-a064-3d2c13bfaad6` |
-| RFC 7638 SHA-256 thumbprint | `aI1NQnj1WPnTUqYPXyQDj6ASntF1C8DMzfO-12bE7y4` |
+| Field                       | Public value                                                |
+| --------------------------- | ----------------------------------------------------------- |
+| `kid`                       | `mikaki-identity-test-0d878e2d-3b54-4dd4-a064-3d2c13bfaad6` |
+| RFC 7638 SHA-256 thumbprint | `aI1NQnj1WPnTUqYPXyQDj6ASntF1C8DMzfO-12bE7y4`               |
 
 The private backup is the mode-0600 ignored file
 `local/generated/identity-keys/issuer-test-20261014.jwk.json` in the primary
@@ -291,17 +310,17 @@ issuance/presentation after source-matched promotion; generic OP smoke and a
 successful policy preflight are not that E2E evidence. Trust secret provisioning,
 the actual activation config, named RP and physical device remain required inputs.
 
-| Profile / requirement | Remaining concrete input or work |
-| --- | --- |
-| Card trust | The selected single-card operator experiment has its explicit test approval and pinned public modulus above, without government-root verification. A broader licence/issuer trust profile still needs an independent source and validation decision; repository fixtures are not an approval source. |
-| First-party single SD-JWT | The canonical selection enables one `age_over_18` receipt from the operator-confirmed key. Verify source-matched promotion, intake/nonce availability and a separate owner/device issuance. No independent Wallet/HAIP, mdoc or batch activation is needed for this slice. |
-| CI secret custody | The dedicated Identity signing key is prepared, and the existing approved test-card policy is normalized to compact JSON in the production-environment secret. Exact digest/profile checks still gate promotion; secret provisioning alone does not establish deployment. |
-| mdoc | Matching Document Signer certificate and its operator/RP trust decision (`IDENTITY_MDOC_CERT_DER`, or the reviewed credential-certificate configuration). This is required for mdoc, not the initial SD-JWT-only slice. |
-| Independent Wallet | Registered exact client ID/name/HTTPS callback in `IDENTITY_WALLET_CLIENTS`, then `IDENTITY_WALLET_ENABLED=true`; compile the corresponding public Wallet configuration. The callback fix alone does not register or authenticate a Wallet. |
-| HAIP / native attester | Purpose-specific client/key-attester and credential-signing trust, separate request-encryption key, required DPoP nonces, attester signing authority/client policy and a deployed Android verifier service binding. Enable the HAIP/attester flags only for this provisioned profile. See the [existing configuration contracts](identity-card-issuance.md#native-attester-enrollment-broker). |
-| UserInfo | Separate `IDENTITY_USERINFO_ENABLED` selection and actual RP-specific owner consent; qualify the chosen age request and release policy separately from Wallet issuance. |
-| Presentation | Name the accepting RP and its exact verifier registration/callback and request. It must inspect the age boolean, validity, signatures and holder/request binding and accept the documented static-evidence assurance. |
-| Device | Signed Android build, matching verified app link and explicit public trust configuration; run the [existing device preflight](../scripts/check-identity-wallet-device.ts), then #117's actual NFC/PIN, receive/persist/delete, account-switch and interrupted-delivery checks. iOS additionally needs the real Apple team/signing identity. |
+| Profile / requirement     | Remaining concrete input or work                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Card trust                | The selected single-card operator experiment has its explicit test approval and pinned public modulus above, without government-root verification. A broader licence/issuer trust profile still needs an independent source and validation decision; repository fixtures are not an approval source.                                                                                           |
+| First-party single SD-JWT | The canonical selection enables one `age_over_18` receipt from the operator-confirmed key. Verify source-matched promotion, intake/nonce availability and a separate owner/device issuance. No independent Wallet/HAIP, mdoc or batch activation is needed for this slice.                                                                                                                     |
+| CI secret custody         | The dedicated Identity signing key is prepared, and the existing approved test-card policy is normalized to compact JSON in the production-environment secret. Exact digest/profile checks still gate promotion; secret provisioning alone does not establish deployment.                                                                                                                      |
+| mdoc                      | Matching Document Signer certificate and its operator/RP trust decision (`IDENTITY_MDOC_CERT_DER`, or the reviewed credential-certificate configuration). This is required for mdoc, not the initial SD-JWT-only slice.                                                                                                                                                                        |
+| Independent Wallet        | Registered exact client ID/name/HTTPS callback in `IDENTITY_WALLET_CLIENTS`, then `IDENTITY_WALLET_ENABLED=true`; compile the corresponding public Wallet configuration. The callback fix alone does not register or authenticate a Wallet.                                                                                                                                                    |
+| HAIP / native attester    | Purpose-specific client/key-attester and credential-signing trust, separate request-encryption key, required DPoP nonces, attester signing authority/client policy and a deployed Android verifier service binding. Enable the HAIP/attester flags only for this provisioned profile. See the [existing configuration contracts](identity-card-issuance.md#native-attester-enrollment-broker). |
+| UserInfo                  | Separate `IDENTITY_USERINFO_ENABLED` selection and actual RP-specific owner consent; qualify the chosen age request and release policy separately from Wallet issuance.                                                                                                                                                                                                                        |
+| Presentation              | Name the accepting RP and its exact verifier registration/callback and request. It must inspect the age boolean, validity, signatures and holder/request binding and accept the documented static-evidence assurance.                                                                                                                                                                          |
+| Device                    | Signed Android build, matching verified app link and explicit public trust configuration; run the [existing device preflight](../scripts/check-identity-wallet-device.ts), then #117's actual NFC/PIN, receive/persist/delete, account-switch and interrupted-delivery checks. iOS additionally needs the real Apple team/signing identity.                                                    |
 
 The operator's LabPKI can now prepare the purpose-separated HAIP development
 certificate material. Its Go-issued chains/CRLs passed Mikaki's actual Rust
