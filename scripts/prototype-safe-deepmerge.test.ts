@@ -1,16 +1,34 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
-const merge: typeof import('../tools/prototype-safe-deepmerge/index.js') = require('@mikaki/prototype-safe-deepmerge');
+const merge: typeof import('../tools/prototype-safe-deepmerge/index.js') = require('deepmerge');
 const upstream: typeof merge = require('../local/conformance/fixtures/deepmerge-4.3.1.cjs');
 
 test('the installed Svelte configuration dependency resolves to the reviewed local fork', () => {
   const pluginRequire = createRequire(require.resolve('@sveltejs/vite-plugin-svelte'));
   assert.equal(
     pluginRequire.resolve('deepmerge'),
-    require.resolve('@mikaki/prototype-safe-deepmerge'),
+    require.resolve('../tools/prototype-safe-deepmerge/index.cjs'),
+  );
+});
+
+test('the local override remains a valid application SBOM dependency', () => {
+  const bom = JSON.parse(
+    execFileSync('npm', ['sbom', '--sbom-format=cyclonedx', '--sbom-type=application'], {
+      cwd: new URL('../', import.meta.url),
+      encoding: 'utf8',
+      timeout: 30_000,
+    }),
+  );
+  assert.ok(
+    bom.components.some(
+      (component: { purl: string; version: string }) =>
+        component.purl === 'pkg:npm/deepmerge@4.3.1-mikaki.1' &&
+        component.version === '4.3.1-mikaki.1',
+    ),
   );
 });
 

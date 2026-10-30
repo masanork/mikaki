@@ -1,6 +1,6 @@
 # Prototype-safe configuration merge
 
-This is a scoped local fork of the published MIT-licensed deepmerge 4.3.1 distribution, used only through the npm override for build tooling. It is not an upstream deepmerge release.
+This is a locally versioned fork of the published MIT-licensed deepmerge 4.3.1 distribution, used only through the npm override for build tooling. Its private package version is `4.3.1-mikaki.1`, not an upstream deepmerge release.
 
 - Source: https://github.com/TehShrike/deepmerge/tree/v4.3.1
 - Upstream artifact: https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz
