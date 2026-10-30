@@ -94,6 +94,13 @@ npm run test:security-authentication
 ```
 
 Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. These implementations do not enable a sharing policy or change passkey/OIDC algorithm allow lists.
+### Next dependency boundary: OIDC
+
+The next bounded candidate is the Worker's ES256 signer. RS256 already imports a Web Crypto key, while ES256 uses `P256TokenSigner` and RustCrypto. Move ES256 signing to a non-extractable runtime CryptoKey while keeping claim construction, client algorithm policy, `kid`, JWKS and rotation unchanged. Acceptance must cover ID Tokens and logout tokens, independent JOSE verification, 64-byte P1363 signature encoding, rejected malformed or mismatched private/public JWKs, and old/new signing-key coexistence. This transition does not require enabling ML-DSA for any client.
+
+Removing that signer alone will not remove P-256 or all RustCrypto from the OP: shared OIDC verifiers, WebAuthn, identity/card operations and native clients still depend on it. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. The separate MLS work also uses a synchronous RustCrypto provider, so it cannot simply call asynchronous Web Crypto through the claim adapter. Full removal needs those boundaries qualified independently.
+
+Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. This implementation neither enables a sharing policy nor changes passkey/OIDC algorithm allow lists.
 
 ## References
 
