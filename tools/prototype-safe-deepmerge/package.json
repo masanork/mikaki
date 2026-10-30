@@ -1,0 +1,21 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1-mikaki.1",
+  "private": true,
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "files": [
+    "index.cjs",
+    "index.d.ts",
+    "LICENSE",
+    "ORIGIN.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.cjs"
+    }
+  },
+  "description": "Local security patch of upstream deepmerge 4.3.1; not an upstream release"
+}

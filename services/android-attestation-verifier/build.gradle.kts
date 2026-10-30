@@ -45,7 +45,10 @@ val formatter by configurations.creating
 val kotlinFiles =
   fileTree("src") { include("**/*.kt") } + files("build.gradle.kts", "settings.gradle.kts")
 
-dependencies { formatter("com.facebook:ktfmt:0.64") }
+dependencies {
+  formatter("com.facebook:ktfmt:0.64")
+  formatter("com.google.guava:guava:33.7.2-jre")
+}
 
 tasks.register<JavaExec>("formatKotlin") {
   classpath = formatter

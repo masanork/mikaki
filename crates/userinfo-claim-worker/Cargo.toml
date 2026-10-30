@@ -14,20 +14,23 @@ worker-entry = []
 conformance-gate = []
 
 [dependencies]
-aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
 base64.workspace = true
-hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
-ml-kem = { version = "=0.3.3", default-features = false, features = ["zeroize"] }
 serde.workspace = true
 url.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 zeroize = "=1.9.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-util.workspace = true
+js-sys = "=0.3.106"
+wasm-bindgen-futures = "=0.4.79"
 wasm-bindgen.workspace = true
 worker = "=0.8.7"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
+hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
+sha2.workspace = true
 
 [lints]
 workspace = true

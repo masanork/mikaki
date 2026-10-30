@@ -360,7 +360,7 @@ test('PATH shadowing cannot replace system Git or Cargo from the selected absolu
   // separately by the real current-time command and the Rust CI invocation.
   writeFileSync(
     join(installation, 'bin', 'cargo'),
-    `#!${process.execPath}\nconst report=${JSON.stringify(pki)};report.checked_at=Math.floor(Date.now()/1000);console.log(JSON.stringify(report));\n`,
+    `#!${process.execPath}\nconst report=${JSON.stringify(pki)};report.checked_at=Math.floor(Date.now()/1000);for(const name of ["sd_jwt_valid_until", "mdoc_valid_until", "attester_valid_until", "wallet_sd_jwt_valid_until", "wallet_mdoc_valid_until"]){report[name]=report.checked_at+86400;}console.log(JSON.stringify(report));\n`,
     { mode: 0o700 },
   );
   const result = spawnSync(

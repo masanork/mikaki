@@ -183,6 +183,7 @@ async function qualifyRecordUserInfo(browserCrypto: boolean, profileBenchmark = 
     });
     const options = convertV4MiniflareOptions({
       name: 'mikaki-userinfo-claim-worker',
+      compatibilityFlags: ['webcrypto_modern_algorithms'],
       compatibilityDate: '2026-09-23',
       modules: true,
       scriptPath: join(claimBuild, 'index.js'),
@@ -231,6 +232,7 @@ async function qualifyRecordUserInfo(browserCrypto: boolean, profileBenchmark = 
     };
     const noSecret = convertV4MiniflareOptions({
       name: 'claims-without-secret',
+      compatibilityFlags: ['webcrypto_modern_algorithms'],
       compatibilityDate: '2026-09-23',
       modules: true,
       scriptPath: join(claimBuild, 'index.js'),

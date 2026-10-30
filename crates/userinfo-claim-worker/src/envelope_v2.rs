@@ -1,22 +1,21 @@
 //! Strict record-v2 ML-KEM-768 HPKE recipient wrap decoder.
 //! Claim operations must supply every binding from trusted live D1 state.
 
-use aes_gcm::{
-    Aes256Gcm, KeyInit as _, Nonce,
-    aead::{Aead as _, Payload},
-};
+#[cfg(any(test, target_arch = "wasm32"))]
+use crate::crypto;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use hpke::{
-    Deserializable as _, Kem as _, OpModeR, Serializable as _, aead::AesGcm256, kdf::HkdfSha256,
-    kem::MlKem768,
-};
-use sha2::{Digest as _, Sha256};
+#[cfg(any(test, target_arch = "wasm32"))]
 use zeroize::Zeroizing;
 
+#[cfg(any(test, target_arch = "wasm32"))]
 const VERSION: u8 = 2;
+#[cfg(any(test, target_arch = "wasm32"))]
 const SUITE: [u8; 6] = [0, 0x41, 0, 1, 0, 2];
+#[cfg(any(test, target_arch = "wasm32"))]
 const DOMAIN: &[u8] = b"mikaki-vault-record-recipient-envelope-v2-draft04";
+#[cfg(any(test, target_arch = "wasm32"))]
 const FRAME_BYTES: usize = 1187;
+#[cfg(any(test, target_arch = "wasm32"))]
 const ENC_END: usize = 1139;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -76,6 +75,7 @@ pub struct RecordBinding<'a> {
     pub ciphertext: &'a [u8],
 }
 
+#[cfg(any(test, target_arch = "wasm32"))]
 fn context(parts: &[&[u8]]) -> Option<Vec<u8>> {
     let mut output = Vec::new();
     for part in parts {
@@ -87,7 +87,8 @@ fn context(parts: &[&[u8]]) -> Option<Vec<u8>> {
 
 /// Returns a data key only for the exact recipient key, ciphertext, and trusted Vault context.
 /// It does not authorize release; live Grant and ClaimRelease checks are required separately.
-pub fn open_record_data_key(
+#[cfg(any(test, target_arch = "wasm32"))]
+pub async fn open_record_data_key(
     seed: &[u8; 64],
     public_key: &[u8],
     key_id: &str,
@@ -99,7 +100,7 @@ pub fn open_record_data_key(
         || generation > 9_007_199_254_740_991
         || !binding.source.valid()
         || !binding.authority.valid()
-        || URL_SAFE_NO_PAD.encode(Sha256::digest(binding.ciphertext))
+        || URL_SAFE_NO_PAD.encode(crypto::sha256(binding.ciphertext).await?)
             != binding.source.ciphertext_sha256
         || binding.ciphertext.len() < 29
         || binding.ciphertext.len() > 24 * 1024
@@ -113,13 +114,10 @@ pub fn open_record_data_key(
     {
         return None;
     }
-    let private_key = <MlKem768 as hpke::Kem>::PrivateKey::from_bytes(seed).ok()?;
-    let derived_public = MlKem768::sk_to_pk(&private_key);
-    let derived_public_bytes = derived_public.to_bytes();
-    if derived_public_bytes.as_slice() != public_key {
+    if crypto::public_key(seed).await?.as_slice() != public_key {
         return None;
     }
-    let expected_key_id: [u8; 32] = Sha256::digest(public_key).into();
+    let expected_key_id = crypto::sha256(public_key).await?;
     if key_id != URL_SAFE_NO_PAD.encode(expected_key_id) || frame[11..43] != expected_key_id {
         return None;
     }
@@ -131,7 +129,7 @@ pub fn open_record_data_key(
         &expected_key_id,
         &generation.to_be_bytes(),
     ])?;
-    let digest: [u8; 32] = Sha256::digest(binding.ciphertext).into();
+    let digest = crypto::sha256(binding.ciphertext).await?;
     let source = binding.source;
     let aad = context(&[
         b"2",
@@ -148,21 +146,14 @@ pub fn open_record_data_key(
         b"userinfo",
         b"oidc.userinfo.name",
     ])?;
-    let encapsulated =
-        <MlKem768 as hpke::Kem>::EncappedKey::from_bytes(&frame[51..ENC_END]).ok()?;
-    let mut receiver = hpke::setup_receiver::<AesGcm256, HkdfSha256, MlKem768>(
-        &OpModeR::Base,
-        &private_key,
-        &encapsulated,
-        &info,
-    )
-    .ok()?;
-    let plaintext = Zeroizing::new(receiver.open(&frame[ENC_END..], &aad).ok()?);
+    let plaintext =
+        crypto::open_hpke(seed, &frame[51..ENC_END], &info, &aad, &frame[ENC_END..]).await?;
     Some(Zeroizing::new(plaintext.as_slice().try_into().ok()?))
 }
 
 /// This record profile has no version-1 fallback and never receives an owner wrapper.
-pub fn decrypt_record_name(
+#[cfg(any(test, target_arch = "wasm32"))]
+pub async fn decrypt_record_name(
     data_key: &[u8; 32],
     source: &RecordSource,
     ciphertext: &[u8],
@@ -171,7 +162,7 @@ pub fn decrypt_record_name(
         || ciphertext.len() < 29
         || ciphertext.len() > 24 * 1024
         || ciphertext[0] != 2
-        || URL_SAFE_NO_PAD.encode(Sha256::digest(ciphertext)) != source.ciphertext_sha256
+        || URL_SAFE_NO_PAD.encode(crypto::sha256(ciphertext).await?) != source.ciphertext_sha256
     {
         return None;
     }
@@ -186,18 +177,7 @@ pub fn decrypt_record_name(
         source.kind.as_bytes(),
         source.revision.to_string().as_bytes(),
     ])?;
-    let aead = Aes256Gcm::new_from_slice(data_key).ok()?;
-    let nonce = Nonce::try_from(&ciphertext[1..13]).ok()?;
-    let plaintext = Zeroizing::new(
-        aead.decrypt(
-            &nonce,
-            Payload {
-                msg: &ciphertext[13..],
-                aad: &aad,
-            },
-        )
-        .ok()?,
-    );
+    let plaintext = crypto::decrypt(data_key, &ciphertext[1..13], &aad, &ciphertext[13..]).await?;
     if plaintext.is_empty() || plaintext.len() > 1024 {
         return None;
     }
@@ -209,9 +189,34 @@ pub fn decrypt_record_name(
     Some(Zeroizing::new(name.to_owned()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use aes_gcm::{
+        Aes256Gcm, KeyInit as _, Nonce,
+        aead::{Aead as _, Payload},
+    };
+    use sha2::{Digest as _, Sha256};
+
+    fn open_record_data_key(
+        seed: &[u8; 64],
+        public: &[u8],
+        key_id: &str,
+        generation: u64,
+        frame: &[u8],
+        binding: &RecordBinding<'_>,
+    ) -> Option<Zeroizing<[u8; 32]>> {
+        crypto::ready(super::open_record_data_key(
+            seed, public, key_id, generation, frame, binding,
+        ))
+    }
+    fn decrypt_record_name(
+        key: &[u8; 32],
+        source: &RecordSource,
+        ciphertext: &[u8],
+    ) -> Option<Zeroizing<String>> {
+        crypto::ready(super::decrypt_record_name(key, source, ciphertext))
+    }
     #[test]
     fn independent_noble_record_fixture_and_v1_isolation() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
