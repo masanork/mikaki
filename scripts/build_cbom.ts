@@ -37,6 +37,13 @@ const ASSETS: Asset[] = [
     'subtle.sign_with_object_and_u8_array',
   ],
   [
+    'ES256 client assertion verifier',
+    'algorithm',
+    { primitive: 'signature', algorithmFamily: 'ECDSA', cryptoFunctions: ['verify'] },
+    'crates/oidc/src/client_assertion.rs',
+    '.verify(signing_input.as_bytes(), &signature)',
+  ],
+  [
     'RS256',
     'algorithm',
     {

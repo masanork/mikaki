@@ -4,6 +4,8 @@ import { buildCbom } from './build_cbom.ts';
 
 test('Chat crypto inventory is source-checked and isolated to the beta profile', async () => {
   const normal = await buildCbom();
+  assert.ok(normal.components.some((item) => item.name === 'ES256 native OIDC signer'));
+  assert.ok(normal.components.some((item) => item.name === 'ES256 client assertion verifier'));
   const beta = await buildCbom('worker', 'messaging-beta');
   assert.ok(beta.components.some((item) => item.name === 'AES-128-GCM Chat messages'));
   assert.ok(
