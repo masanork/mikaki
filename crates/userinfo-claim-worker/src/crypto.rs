@@ -4,9 +4,9 @@ use zeroize::Zeroizing;
 
 #[cfg(target_arch = "wasm32")]
 mod backend {
-    use super::*;
+    use super::Zeroizing;
     use js_sys::Uint8Array;
-    use wasm_bindgen::prelude::*;
+    use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
     #[wasm_bindgen(module = "/src/native_crypto.ts")]
     extern "C" {
@@ -64,7 +64,7 @@ mod backend {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod backend {
-    use super::*;
+    use super::Zeroizing;
     use aes_gcm::{
         Aes256Gcm, KeyInit as _, Nonce,
         aead::{Aead as _, Payload},
@@ -121,7 +121,7 @@ mod backend {
     }
 }
 
-pub use backend::*;
+pub use backend::{decrypt, open_hpke, public_key, sha256};
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub fn ready<T>(future: impl std::future::Future<Output = T>) -> T {

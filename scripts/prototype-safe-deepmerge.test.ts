@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const merge: typeof import('../tools/prototype-safe-deepmerge/index.js') = require('deepmerge');
-const upstream: typeof merge = require('../local/conformance/fixtures/deepmerge-4.3.1.cjs');
+const upstream: typeof merge = require('../local/conformance/testdata/deepmerge-4.3.1.cjs');
 
 test('the installed Svelte configuration dependency resolves to the reviewed local fork', () => {
   const pluginRequire = createRequire(require.resolve('@sveltejs/vite-plugin-svelte'));
