@@ -24,7 +24,7 @@ pub use exchange::{
 };
 pub use signing::{
     IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, LogoutTokenSigningInput,
-    P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey, UserInfoSigningInput,
+    P256RuntimeKey, P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey, UserInfoSigningInput,
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};

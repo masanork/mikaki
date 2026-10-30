@@ -1,6 +1,63 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
+
+/// Public metadata retained after the platform imports a private P-256 key.
+/// No private scalar or Rust signing capability is kept in this value.
+pub struct P256RuntimeKey {
+    kid: String,
+    x: String,
+    y: String,
+}
+
+impl P256RuntimeKey {
+    /// Check bounded schema/encodings and prepare non-exportable native import.
+    /// The caller must successfully import this JWK into Web Crypto to validate
+    /// the point, scalar range and their relation before using the metadata.
+    pub fn prepare_private_jwk(
+        input: &str,
+    ) -> Result<(Self, Zeroizing<String>), InvalidSigningKey> {
+        let mut jwk = parse_private_p256_jwk(input)?;
+        jwk.alg = Some("ES256".into());
+        jwk.use_ = Some("sig".into());
+        jwk.key_ops = Some(vec!["sign".into()]);
+        jwk.ext = None;
+        let encoded = Zeroizing::new(serde_json::to_string(&jwk).map_err(|_| InvalidSigningKey)?);
+        Ok((
+            Self {
+                kid: jwk.kid,
+                x: jwk.x,
+                y: jwk.y,
+            },
+            encoded,
+        ))
+    }
+
+    pub fn kid(&self) -> &str {
+        &self.kid
+    }
+
+    pub fn matches_public_jwk(&self, input: &str) -> bool {
+        if input.len() > 4096 {
+            return false;
+        }
+        let Ok(jwk) = serde_json::from_str::<PublicJwk>(input) else {
+            return false;
+        };
+        jwk.kty == "EC"
+            && jwk.crv == "P-256"
+            && jwk.kid == self.kid
+            && jwk.alg.as_deref().is_none_or(|alg| alg == "ES256")
+            && jwk.use_.as_deref().is_none_or(|use_| use_ == "sig")
+            && jwk.key_ops.as_ref().is_none_or(|ops| ops == &["verify"])
+            && jwk.ext != Some(false)
+            && decode_fixed::<32>(&jwk.x).is_ok()
+            && decode_fixed::<32>(&jwk.y).is_ok()
+            && jwk.x == self.x
+            && jwk.y == self.y
+    }
+}
 
 /// ES256 signing capability loaded from a private P-256 JWK. The private
 /// scalar is never serializable or printable.
@@ -9,13 +66,13 @@ pub struct P256TokenSigner {
     key: SigningKey,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PrivateJwk {
     kty: String,
     crv: String,
     kid: String,
-    d: String,
+    d: Zeroizing<String>,
     x: String,
     y: String,
     #[serde(default)]
@@ -291,6 +348,46 @@ impl LogoutTokenSigningInput {
     }
 }
 
+fn decode_private_scalar(input: &str) -> Result<Zeroizing<[u8; 32]>, InvalidSigningKey> {
+    let mut scalar = Zeroizing::new([0u8; 32]);
+    if input.len() != 43
+        || B64
+            .decode_slice(input, &mut scalar[..])
+            .map_err(|_| InvalidSigningKey)?
+            != 32
+        || Zeroizing::new(B64.encode(&scalar[..])).as_str() != input
+    {
+        return Err(InvalidSigningKey);
+    }
+    Ok(scalar)
+}
+
+fn parse_private_p256_jwk(input: &str) -> Result<PrivateJwk, InvalidSigningKey> {
+    if input.len() > 8192 {
+        return Err(InvalidSigningKey);
+    }
+    let jwk: PrivateJwk = serde_json::from_str(input).map_err(|_| InvalidSigningKey)?;
+    if jwk.kty != "EC"
+        || jwk.crv != "P-256"
+        || jwk.kid.is_empty()
+        || jwk.kid.len() > 128
+        || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
+        || jwk.alg.as_deref().is_some_and(|alg| alg != "ES256")
+        || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
+        || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["sign"])
+        || jwk.ext == Some(false)
+    {
+        return Err(InvalidSigningKey);
+    }
+    let scalar = decode_private_scalar(&jwk.d)?;
+    if scalar.iter().all(|byte| *byte == 0) {
+        return Err(InvalidSigningKey);
+    }
+    decode_fixed::<32>(&jwk.x)?;
+    decode_fixed::<32>(&jwk.y)?;
+    Ok(jwk)
+}
+
 impl P256TokenSigner {
     pub fn sign_userinfo(
         &self,
@@ -359,26 +456,11 @@ impl P256TokenSigner {
     }
 
     pub fn from_private_jwk(input: &str) -> Result<Self, InvalidSigningKey> {
-        if input.len() > 8192 {
-            return Err(InvalidSigningKey);
-        }
-        let jwk: PrivateJwk = serde_json::from_str(input).map_err(|_| InvalidSigningKey)?;
-        if jwk.kty != "EC"
-            || jwk.crv != "P-256"
-            || jwk.kid.is_empty()
-            || jwk.kid.len() > 128
-            || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
-            || jwk.alg.as_deref().is_some_and(|alg| alg != "ES256")
-            || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
-            || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["sign"])
-            || jwk.ext == Some(false)
-        {
-            return Err(InvalidSigningKey);
-        }
-        let scalar = decode_fixed::<32>(&jwk.d)?;
+        let jwk = parse_private_p256_jwk(input)?;
+        let scalar = decode_private_scalar(&jwk.d)?;
         let x = decode_fixed::<32>(&jwk.x)?;
         let y = decode_fixed::<32>(&jwk.y)?;
-        let key = SigningKey::from_slice(&scalar).map_err(|_| InvalidSigningKey)?;
+        let key = SigningKey::from_slice(&scalar[..]).map_err(|_| InvalidSigningKey)?;
         let mut encoded_public = [0u8; 65];
         encoded_public[0] = 4;
         encoded_public[1..33].copy_from_slice(&x);
@@ -763,7 +845,73 @@ mod tests {
             "y":B64.encode(point.y().unwrap()), "alg":"ES256", "use":"sig"
         })
         .to_string();
+        let (runtime, encoded) = P256RuntimeKey::prepare_private_jwk(&private_jwk).unwrap();
+        assert!(runtime.matches_public_jwk(&public_jwk));
+        assert_eq!(runtime.kid(), "op-1");
+        let normalized: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(normalized["key_ops"], serde_json::json!(["sign"]));
+        assert!(normalized.get("ext").is_none());
+        for (name, value) in [
+            ("kid", serde_json::json!("other")),
+            ("alg", serde_json::json!("RS256")),
+            ("key_ops", serde_json::json!(["sign"])),
+            ("d", serde_json::json!(B64.encode(scalar))),
+            ("ext", serde_json::json!(false)),
+        ] {
+            let mut invalid: serde_json::Value = serde_json::from_str(&public_jwk).unwrap();
+            invalid[name] = value;
+            assert!(!runtime.matches_public_jwk(&invalid.to_string()), "{name}");
+        }
+        for (name, value) in [
+            ("d", serde_json::json!(B64.encode([0u8; 32]))),
+            ("x", serde_json::json!("not-base64url")),
+            ("alg", serde_json::json!("RS256")),
+            ("key_ops", serde_json::json!(["verify"])),
+            ("ext", serde_json::json!(false)),
+            ("unknown", serde_json::json!(true)),
+        ] {
+            let mut invalid: serde_json::Value = serde_json::from_str(&private_jwk).unwrap();
+            invalid[name] = value;
+            assert!(
+                P256RuntimeKey::prepare_private_jwk(&invalid.to_string()).is_err(),
+                "{name}"
+            );
+        }
+        assert!(P256RuntimeKey::prepare_private_jwk(&" ".repeat(8193)).is_err());
+        assert!(
+            P256RuntimeKey::prepare_private_jwk(&private_jwk.replacen('{', "{\"kty\":\"EC\",", 1))
+                .is_err()
+        );
         let signer = P256TokenSigner::from_private_jwk(&private_jwk).unwrap();
+        let token = signer
+            .sign_id_token(
+                "https://issuer.example",
+                "subject",
+                "client",
+                "sid",
+                Some("nonce"),
+                10,
+                11,
+                12,
+            )
+            .unwrap();
+        let native_input = IdTokenSigningInput::new(
+            "ES256",
+            runtime.kid(),
+            "https://issuer.example",
+            "subject",
+            "client",
+            "sid",
+            Some("nonce"),
+            10,
+            11,
+            12,
+        )
+        .unwrap();
+        assert_eq!(
+            native_input.as_bytes(),
+            token.rsplit_once('.').unwrap().0.as_bytes()
+        );
         assert!(signer.matches_public_jwk(&public_jwk));
         let different = public_jwk.replace("op-1", "op-2");
         assert!(!signer.matches_public_jwk(&different));

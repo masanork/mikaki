@@ -58,12 +58,16 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
       authorization: string | null = `Bearer ${readyToken}`,
       fault = '',
       dependencyFault = '',
+      privateKey?: string,
     ) => {
       const url = new URL('https://mikaki.test/ready');
       if (fault) url.searchParams.set('r2_fault', fault);
       if (dependencyFault) url.searchParams.set('ready_fault', dependencyFault);
       const response = await op.fetch(url.href, {
-        headers: authorization === null ? {} : { Authorization: authorization },
+        headers: {
+          ...(authorization === null ? {} : { Authorization: authorization }),
+          ...(privateKey === undefined ? {} : { 'X-Test-Private-Jwk': privateKey }),
+        },
       });
       assert.equal(response.status, status);
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
@@ -95,6 +99,39 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await DB.prepare("INSERT INTO signing_key VALUES('ready-op',1,1,'ES256',?)")
       .bind(JSON.stringify(publicJwk))
       .run();
+    await check(204);
+    const otherPrivate = await generateKeyPair('ES256', { extractable: true });
+    const otherJwk = await exportJWK(otherPrivate.privateKey);
+    const malformedKeys = [
+      { ...privateJwk, d: Buffer.alloc(32).toString('base64url') },
+      { ...privateJwk, d: Buffer.alloc(32, 255).toString('base64url') },
+      { ...privateJwk, d: otherJwk.d }, // valid scalar, unrelated public point
+      {
+        ...privateJwk,
+        x: Buffer.alloc(32).toString('base64url'),
+        y: Buffer.alloc(32).toString('base64url'),
+      },
+      { ...privateJwk, x: `${privateJwk.x}=` },
+      { ...privateJwk, alg: 'RS256' },
+      { ...privateJwk, key_ops: ['verify'] },
+      { ...privateJwk, ext: false },
+      { ...privateJwk, unexpected: 'member' },
+    ];
+    for (const key of malformedKeys) {
+      await check(503, `Bearer ${readyToken}`, '', '', JSON.stringify(key));
+      await check(204);
+    }
+    await check(
+      503,
+      `Bearer ${readyToken}`,
+      '',
+      '',
+      JSON.stringify(privateJwk).replace('{', '{"kty":"EC",'),
+    );
+    await check(204);
+    await DB.prepare("UPDATE signing_key SET active=0 WHERE kid='ready-op'").run();
+    await check(503);
+    await DB.prepare("UPDATE signing_key SET active=1 WHERE kid='ready-op'").run();
     await check(204);
     const { VAULT_BLOBS } = await op.getEnv();
     // A feature binary requires the complete upgraded ledger, unlike the preceding bridge.

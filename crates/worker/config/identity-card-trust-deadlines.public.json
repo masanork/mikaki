@@ -8,6 +8,10 @@
     {
       "policy_sha256": "51bae1540d65288588ab4f307d6f5376470a113e2586349f91d9b0315139b116",
       "valid_until": 1793223827
+    },
+    {
+      "policy_sha256": "2ff30cc2bfa66e9f4db008456e3c1f18a7425bc7983d48d84ef3162f47e8258f",
+      "valid_until": 1793957927
     }
   ]
 }

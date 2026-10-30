@@ -68,6 +68,8 @@ export default {
     });
     return new op(context, {
       ...env,
+      // Local fixture only: exercise the actual Rust import/selection path.
+      OP_PRIVATE_JWK: request.headers.get('X-Test-Private-Jwk') ?? env.OP_PRIVATE_JWK,
       VAULT_BLOBS: bucket,
       DB: database,
       USERINFO_CLAIMS: claims,
