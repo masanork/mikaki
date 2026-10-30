@@ -1,6 +1,6 @@
 # Phased adoption of ML-KEM and ML-DSA
 
-**Implementation update, 2026-10-30:** The claim Worker now delegates ML-KEM-768, HMAC-SHA256, SHA-256 and AES-256-GCM to Workers Web Crypto. Existing record-v2 headers, info/AAD, 64-byte recipient seeds and authorization predicates remain unchanged. This change has local workerd and Chromium qualification; it has not been deployed or used to enable production sharing. ML-DSA product activation is a separate decision. SLH-DSA and FN-DSA are outside the current adoption scope.
+**Implementation update, 2026-10-31:** The claim Worker now delegates ML-KEM-768, HMAC-SHA256, SHA-256 and AES-256-GCM to Workers Web Crypto. Existing record-v2 headers, info/AAD, 64-byte recipient seeds and authorization predicates remain unchanged. The native claim backend and ES256 OIDC signer were deployed from main `8a0e9804be178c49b2203e2422568fe89c939bd9` through the [normal signed release workflow](https://github.com/masanork/mikaki/actions/runs/41093767345). Source-matched public metadata, protected OP/Identity/Android verifier readiness, Docs and font rendering passed. The OP version was `8d0907e3-df10-4733-83c6-80c9a682f3ff`. This deployment did not enable production sharing or qualify a physical issuance/owner/RP journey. ML-DSA product activation is a separate decision. SLH-DSA and FN-DSA are outside the current adoption scope.
 
 **Previous production observations, 2026-09-24:** Production sharing remains disabled. The product browser sender and claim Worker receiver implement a candidate ML-KEM-768 HPKE envelope. An owner approval path stores an envelope and system Grant atomically and supports revocation when D1 policy permits. Node, Chromium, RustCrypto, SQLite, and local workerd tests exercise the pieces. A read-only production probe opened a synthetic product envelope with the live Secrets Store key and rejected owner/ciphertext substitutions. FIDO registration/assertion capture and verification tools are ready for hardware evaluation. Passkey enrollment and OIDC signing have not changed.
 
@@ -80,7 +80,7 @@ Local workerd qualification passed the ID Token/PKCE flow, logout queue/browser 
 
 Same-machine clean-source builds against native-claim parent `7f7cdd47` measured OP Wasm at 7,674,875 → 7,672,948 bytes and JS at 32,543 → 32,775 bytes: combined raw bytes decrease by 1,695; the combined level-9 gzip estimate decreases by 941. The candidate was `b0df2e7a`; its source identity is embedded in the artifact. This boundary is not a meaningful size reduction. Full release CI and production key/owner/RP verification remain separate qualification gates.
 
-P-256 and other RustCrypto implementations remain necessary for shared OIDC verification, WebAuthn, identity/card operations and native clients. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. MLS uses a synchronous RustCrypto provider and cannot simply call asynchronous Web Crypto through the claim adapter. The decision is to remove cryptographic implementations from independently qualified Worker boundaries, while retaining those remaining dependencies until their behavior and API contracts are qualified separately. `zeroize` remains useful for secret-buffer hygiene. Browser noble remains necessary while browser native PQC support is not established. SLH-DSA/FN-DSA are outside the supported adoption scope.
+P-256 and other RustCrypto implementations remain necessary for signing-key/JWKS point validation, WebAuthn, identity/card operations and native clients. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. MLS uses a synchronous RustCrypto provider and cannot simply call asynchronous Web Crypto through the claim adapter. The decision is to remove cryptographic implementations from independently qualified Worker boundaries, while retaining those remaining dependencies until their behavior and API contracts are qualified separately. `zeroize` remains useful for secret-buffer hygiene. Browser noble remains necessary while browser native PQC support is not established. SLH-DSA/FN-DSA are outside the supported adoption scope.
 
 Reproduce the OIDC checks after building the OP and Claim Worker as above:
 
@@ -93,14 +93,27 @@ node --test --test-concurrency=1 local/conformance/native-oidc.test.ts local/con
 npm run test:security-authentication
 ```
 
-Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. These implementations do not enable a sharing policy or change passkey/OIDC algorithm allow lists.
-### Next dependency boundary: OIDC
+### Native OIDC verification boundary
 
-The next bounded candidate is the Worker's ES256 signer. RS256 already imports a Web Crypto key, while ES256 uses `P256TokenSigner` and RustCrypto. Move ES256 signing to a non-extractable runtime CryptoKey while keeping claim construction, client algorithm policy, `kid`, JWKS and rotation unchanged. Acceptance must cover ID Tokens and logout tokens, independent JOSE verification, 64-byte P1363 signature encoding, rejected malformed or mismatched private/public JWKs, and old/new signing-key coexistence. This transition does not require enabling ML-DSA for any client.
+The asynchronous OIDC verification APIs preserve the existing Rust header/claim checks and private, non-deserializable verified capabilities. Only ES256 curve/signature verification crosses the [native bridge](../crates/oidc/src/native_es256.ts). The OP uses it for registered-client `private_key_jwt`, FAPI assertions and DPoP at PAR, token, UserInfo and identity-wallet endpoints. The synchronous RustCrypto verifier remains an independent reference; host tests exercise the same asynchronous protocol path with that reference provider. Wasm always uses Web Crypto and fails closed on native import/verification errors, with no runtime reference fallback.
 
-Removing that signer alone will not remove P-256 or all RustCrypto from the OP: shared OIDC verifiers, WebAuthn, identity/card operations and native clients still depend on it. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. The separate MLS work also uses a synchronous RustCrypto provider, so it cannot simply call asynchronous Web Crypto through the claim adapter. Full removal needs those boundaries qualified independently.
+Both registered SEC1 formats (33-byte compressed and 65-byte uncompressed) and valid high-S/low-S P1363 signatures remain supported. Rust rejects DER, non-64-byte signatures and zero/out-of-range scalars. Native raw-key import validates the curve point. JS snapshots every Wasm input before awaiting, imports public keys as non-extractable with only `verify` usage, and requires a boolean `true` from verification. It retains no process-local key/replay cache.
 
-Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. This implementation neither enables a sharing policy nor changes passkey/OIDC algorithm allow lists.
+The final D1 predicates still recheck client/key revisions, code consumption, live authorization and proof replay state after the native await. The test-only provider observer exercises import/verify failure, unexpected key capability/result values and registered-key revocation during verification against the real compiled OP. RFC 6979 P-256/SHA-256 fixtures are shared by independent host, Node and workerd checks. Node reports measure the exact TypeScript bridge; they are not workerd coverage. The existing 95% line / 90% branch floors apply to both native crypto bridges, with source-hashed LCOV imported into Sonar.
+
+```sh
+cargo test --locked -p mikaki-oidc
+cargo clippy --locked -p mikaki-oidc --all-targets -- -D warnings
+cargo clippy --locked -p mikaki-worker --target wasm32-unknown-unknown --lib -- -D warnings
+npm run check:oidc-crypto
+npm run test:native-crypto-coverage
+node --test --test-concurrency=1 local/conformance/oidc-native-crypto.test.ts local/conformance/dpop-worker.test.ts
+npm run test:security-authentication
+```
+
+Local qualification passed 28 host tests and three compile-fail capability checks; Node measured 40/40 lines and 16/16 branches in the exact bridge. Pinned workerd passed the primitive checks, the 21-test DPoP/FAPI suite, five authentication race tests and eight native OIDC/Identity/Passport/readiness tests. Host and Wasm Clippy, Node/bridge type checks, CBOM/profile isolation, CI rerun contracts and documentation links passed. These are host/local-runtime results; physical device issuance was not run.
+
+This next verification change requires its own complete release CI and source-matched production qualification. P-256 remains linked for signing-key/JWKS point validation, WebAuthn, identity operations and native clients; MLS still requires a synchronous provider. Moving these OIDC primitives alone does not remove all RustCrypto or enable ML-DSA for clients. Physical issuance and the complete production owner/RP flow remain independent acceptance gates.
 
 ## References
 

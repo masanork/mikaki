@@ -295,7 +295,8 @@ pub(super) async fn accept_client_assertion(
     Ok(operation_id)
 }
 
-/// Load one registered key, verify a private_key_jwt in the Rust core, and
+/// Load one registered key, verify a private_key_jwt with strict Rust checks and
+/// native ES256, and
 /// atomically reserve its jti after rechecking the same registration revisions.
 #[cfg(target_arch = "wasm32")]
 #[allow(clippy::too_many_arguments)]
@@ -348,9 +349,11 @@ pub(super) async fn verify_and_accept_client_assertion(
         row.public_key_sec1,
     );
     let assertion = if fapi {
-        key.verify_fapi_private_key_jwt(compact, audience, now, policy.jwt_bytes)
+        key.verify_fapi_private_key_jwt_async(compact, audience, now, policy.jwt_bytes)
+            .await
     } else {
-        key.verify_private_key_jwt(compact, audience, now, policy.assertion, policy.jwt_bytes)
+        key.verify_private_key_jwt_async(compact, audience, now, policy.assertion, policy.jwt_bytes)
+            .await
     }
     .map_err(|_| worker::Error::RustError("invalid_client".into()))?;
     let reservation_id =
@@ -1090,20 +1093,21 @@ pub(super) async fn issue_token_response(
     }
     let now = (now_ms / 1000.0).floor() as u64;
     let mut random = WorkersCryptoRandom;
-    let dpop_proof = request
-        .headers()
-        .get("dpop")?
-        .map(|compact| {
-            mikaki_oidc::verify_dpop_proof(
+    let dpop_proof = if let Some(compact) = request.headers().get("dpop")? {
+        Some(
+            mikaki_oidc::verify_dpop_proof_async(
                 &compact,
                 "POST",
                 &token_endpoint,
                 mikaki_oidc::DpopTarget::Token,
                 now,
             )
-            .map_err(|_| worker::Error::RustError("invalid_dpop_proof".into()))
-        })
-        .transpose()?;
+            .await
+            .map_err(|_| worker::Error::RustError("invalid_dpop_proof".into()))?,
+        )
+    } else {
+        None
+    };
     if fapi && dpop_proof.is_none() {
         return Err(worker::Error::RustError("invalid_dpop_proof".into()));
     }

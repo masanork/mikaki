@@ -46,6 +46,63 @@ fn verify(compact: &str) -> Result<VerifiedClientAssertion, InvalidClientAsserti
         4096,
     )
 }
+
+#[test]
+fn async_assertion_entry_preserves_profiles_and_only_returns_verified_capabilities() {
+    let key = registered("rp", true);
+    let policy = ClientAssertionPolicy::from_seconds(60, 5).unwrap();
+    let compact = signed(&claims());
+    let verified = crate::es256::ready(
+        key.verify_private_key_jwt_async(&compact, ENDPOINT, NOW, policy, 4096),
+    )
+    .unwrap();
+    assert_eq!(verified.client_id(), "rp");
+    assert_eq!(verified.key_id(), "registered-key");
+    assert_eq!(verified.client_revision(), 2);
+    assert_eq!(verified.key_revision(), 3);
+    assert_eq!(verified.jti(), "operation-1");
+    assert_eq!(verified.retain_until(), NOW + 65);
+    let mut fapi = claims();
+    fapi["aud"] = json!("https://op.example");
+    fapi["nbf"] = json!(NOW + 10);
+    let assertion = signed(&fapi);
+    assert!(
+        crate::es256::ready(key.verify_fapi_private_key_jwt_async(
+            &assertion,
+            "https://op.example",
+            NOW,
+            4096,
+        ))
+        .is_ok()
+    );
+    assert!(
+        crate::es256::ready(key.verify_private_key_jwt_async(
+            &assertion,
+            "https://op.example",
+            NOW,
+            policy,
+            4096,
+        ))
+        .is_err()
+    );
+    // A correctly framed assertion signed by an unrelated key must never
+    // produce a capability through the async entry either.
+    let forged = compact_signature_with_other_key(&compact);
+    assert!(
+        crate::es256::ready(
+            key.verify_private_key_jwt_async(&forged, ENDPOINT, NOW, policy, 4096,)
+        )
+        .is_err()
+    );
+}
+
+fn compact_signature_with_other_key(compact: &str) -> String {
+    let input = compact.rsplit_once('.').unwrap().0;
+    let signature: Signature = SigningKey::from_slice(&[8; 32])
+        .unwrap()
+        .sign(input.as_bytes());
+    format!("{input}.{}", B64.encode(signature.to_bytes()))
+}
 fn token(client: &str, assertion: &str) -> TokenEndpointInput {
     serde_json::from_value(json!({
         "grant_type":"authorization_code", "code":B64.encode([4;32]),

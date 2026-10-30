@@ -2007,7 +2007,7 @@ async fn userinfo_route_inner(
             worker::Method::Post => "POST",
             _ => return unauthorized(),
         };
-        let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+        let Ok(proof) = mikaki_oidc::verify_dpop_proof_async(
             &compact,
             method,
             &endpoint,
@@ -2016,7 +2016,9 @@ async fn userinfo_route_inner(
                 thumbprint: &jkt,
             },
             now as u64,
-        ) else {
+        )
+        .await
+        else {
             return invalid_proof();
         };
         if require_nonce

@@ -135,20 +135,19 @@ pub(super) async fn route(
     let redirect_uri = redirect_uri.to_owned();
     let now =
         super::now_seconds().ok_or_else(|| worker::Error::RustError("server_error".into()))?;
-    let proof = request
-        .headers()
-        .get("dpop")?
-        .map(|value| {
-            mikaki_oidc::verify_dpop_proof(
-                &value,
-                "POST",
-                &endpoint,
-                mikaki_oidc::DpopTarget::Token,
-                now,
-            )
-            .map_err(|_| worker::Error::RustError("invalid_dpop_proof".into()))
-        })
-        .transpose();
+    let proof = if let Some(value) = request.headers().get("dpop")? {
+        mikaki_oidc::verify_dpop_proof_async(
+            &value,
+            "POST",
+            &endpoint,
+            mikaki_oidc::DpopTarget::Token,
+            now,
+        )
+        .await
+        .map(Some)
+    } else {
+        Ok(None)
+    };
     let proof = match proof {
         Ok(value) => value,
         Err(_) => return error("invalid_dpop_proof", 400),

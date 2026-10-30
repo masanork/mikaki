@@ -2,6 +2,7 @@
 mod client_assertion;
 mod code;
 mod dpop;
+mod es256;
 mod exchange;
 mod signing;
 #[cfg(test)]
@@ -14,6 +15,7 @@ pub use client_assertion::{
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
+pub use dpop::verify_dpop_proof_async;
 pub use dpop::{DpopTarget, InvalidDpopProof, VerifiedDpopProof, verify_dpop_proof};
 pub use exchange::{
     AuthenticatedTokenEndpointInput, AuthorizationCodeExchange, CodeExchangeInput,
