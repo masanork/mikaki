@@ -70,13 +70,30 @@ npm run check:worker-budgets
 node scripts/build_cbom.ts --component userinfo-claim-worker
 ```
 
-### Next dependency boundary: OIDC
+### Native OIDC signing boundary, 2026-10-30
 
-The next bounded candidate is the Worker's ES256 signer. RS256 already imports a Web Crypto key, while ES256 uses `P256TokenSigner` and RustCrypto. Move ES256 signing to a non-extractable runtime CryptoKey while keeping claim construction, client algorithm policy, `kid`, JWKS and rotation unchanged. Acceptance must cover ID Tokens and logout tokens, independent JOSE verification, 64-byte P1363 signature encoding, rejected malformed or mismatched private/public JWKs, and old/new signing-key coexistence. This transition does not require enabling ML-DSA for any client.
+The [Worker signer](../crates/worker/src/token_signer.rs) now imports ES256 private JWKs as non-extractable ECDSA/P-256 CryptoKeys and signs ID Tokens, logout tokens and signed UserInfo with native SHA-256/ECDSA. RS256 continues to use native signing through the same adapter. Algorithm allow lists, claim construction, `kid`, JWKS and the D1 generation/activation fences remain unchanged. ES256 signatures must be exactly 64-byte P1363 values before JWS encoding. This transition does not enable ML-DSA for a client.
 
-Removing that signer alone will not remove P-256 or all RustCrypto from the OP: shared OIDC verifiers, WebAuthn, identity/card operations and native clients still depend on it. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. The separate MLS work also uses a synchronous RustCrypto provider, so it cannot simply call asynchronous Web Crypto through the claim adapter. Full removal needs those boundaries qualified independently.
+The strict Rust parser bounds input and checks canonical coordinates, private scalar encoding and JWK metadata. Native import must then validate the point, scalar range and their relation before the Worker can use the public-only metadata. Temporary Rust EC scalars and serialized private JWKs are zeroized; private members are removed from the temporary JS import object after success or failure. JS strings and runtime key handles cannot be explicitly erased; this is not a hardware custody claim. The host-only reference signing API remains available for independent verification tests.
 
-Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. This implementation neither enables a sharing policy nor changes passkey/OIDC algorithm allow lists.
+Local workerd qualification passed the ID Token/PKCE flow, logout queue/browser delivery, signed minimal UserInfo with independent JOSE verification for both ES256 and RS256, and readiness with real D1/R2/Claim Worker bindings (14 tests). Additional rotation tests issue independently verified tokens from both active generations, publish both JWKS entries, and preserve nonce/issuer/audience/ACR/auth-time bindings. Readiness rejects inactive keys, mismatched registered public keys, unrelated private scalars, out-of-range/zero scalars, invalid curve points, noncanonical coordinates, duplicate or unknown members and incompatible key metadata. Host tests compare the native signing payload bytes to the reference signer. Host and wasm32 Clippy pass with warnings denied.
+
+Same-machine builds against the native-claim parent measured OP Wasm at 7,674,863 → 7,677,096 bytes and JS at 32,543 → 32,775 bytes: combined raw bytes increase by 2,465; the combined level-9 gzip estimate decreases by 618. This boundary is not a meaningful size reduction. Full release CI and production key/owner/RP verification remain separate qualification gates.
+
+P-256 and other RustCrypto implementations remain necessary for shared OIDC verification, WebAuthn, identity/card operations and native clients. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. MLS uses a synchronous RustCrypto provider and cannot simply call asynchronous Web Crypto through the claim adapter. The decision is to remove cryptographic implementations from independently qualified Worker boundaries, while retaining those remaining dependencies until their behavior and API contracts are qualified separately. `zeroize` remains useful for secret-buffer hygiene. Browser noble remains necessary while browser native PQC support is not established. SLH-DSA/FN-DSA are outside the supported adoption scope.
+
+Reproduce the OIDC checks after building the OP and Claim Worker as above:
+
+```sh
+cargo test --locked -p mikaki-oidc
+cargo clippy --locked -p mikaki-oidc --all-targets -- -D warnings
+cargo clippy --locked -p mikaki-worker --target wasm32-unknown-unknown -- -D warnings
+npm run build:op-authority
+node --test --test-concurrency=1 local/conformance/native-oidc.test.ts local/conformance/worker-readiness.test.ts local/conformance/identity-age-request.test.ts local/conformance/logout-queue.test.ts
+npm run test:security-authentication
+```
+
+Production deployment, real-key verification and the complete production owner/RP flow remain rollout gates. These implementations do not enable a sharing policy or change passkey/OIDC algorithm allow lists.
 
 ## References
 

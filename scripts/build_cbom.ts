@@ -30,11 +30,11 @@ const ASSETS: Asset[] = [
     'crypto.subtle.encrypt',
   ],
   [
-    'ES256',
+    'ES256 native OIDC signer',
     'algorithm',
-    { primitive: 'signature', algorithmFamily: 'ECDSA', cryptoFunctions: ['sign', 'verify'] },
-    'crates/oidc/src/signing.rs',
-    'alg: "ES256"',
+    { primitive: 'signature', algorithmFamily: 'ECDSA', cryptoFunctions: ['sign'] },
+    'crates/worker/src/token_signer.rs',
+    'subtle.sign_with_object_and_u8_array',
   ],
   [
     'RS256',

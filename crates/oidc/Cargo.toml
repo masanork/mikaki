@@ -11,6 +11,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 url.workspace = true
+zeroize = { version = "=1.9.1", features = ["serde"] }
 [dev-dependencies]
 serde_json.workspace = true
 serde_urlencoded = "=0.7.1"
