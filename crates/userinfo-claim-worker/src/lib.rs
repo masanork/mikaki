@@ -1,13 +1,11 @@
 //! Dedicated recipient key boundary. No secret is returned to the OP Worker.
 
+#[cfg(any(test, target_arch = "wasm32"))]
+mod crypto;
 pub mod envelope_v2;
 
 #[cfg(any(test, target_arch = "wasm32"))]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-#[cfg(any(test, target_arch = "wasm32"))]
-use ml_kem::{DecapsulationKey, MlKem768, Seed, kem::KeyExport};
-#[cfg(any(test, target_arch = "wasm32"))]
-use sha2::{Digest, Sha256};
 #[cfg(any(test, target_arch = "wasm32"))]
 use zeroize::Zeroizing;
 
@@ -41,17 +39,20 @@ fn decode_seed(encoded_seed: &str) -> Option<Zeroizing<[u8; 64]>> {
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
-fn public_key_matches(key_id: &str, public_key: &[u8], encoded_seed: &str) -> bool {
+async fn public_key_matches(key_id: &str, public_key: &[u8], encoded_seed: &str) -> bool {
     if key_id.len() != 43 || public_key.len() != 1184 {
         return false;
     }
     let Some(seed) = decode_seed(encoded_seed) else {
         return false;
     };
-    let derived = DecapsulationKey::<MlKem768>::from_seed(Seed::from(*seed));
-    let derived_public = derived.encapsulation_key().to_bytes();
-    URL_SAFE_NO_PAD.encode(Sha256::digest(derived_public)) == key_id
-        && derived_public.as_slice() == public_key
+    let Some(derived_public) = crypto::public_key(&seed).await else {
+        return false;
+    };
+    let Some(digest) = crypto::sha256(&derived_public).await else {
+        return false;
+    };
+    URL_SAFE_NO_PAD.encode(digest) == key_id && derived_public.as_slice() == public_key
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -218,7 +219,11 @@ async fn release_name(
         .as_ref()
         .ok_or_else(|| worker::Error::RustError("missing_claim_blob".into()))?;
     if ciphertext.len() > 24 * 1024
-        || URL_SAFE_NO_PAD.encode(Sha256::digest(ciphertext)) != row.ciphertext_sha256
+        || crypto::sha256(ciphertext)
+            .await
+            .map(|hash| URL_SAFE_NO_PAD.encode(hash))
+            .as_deref()
+            != Some(row.ciphertext_sha256.as_str())
     {
         return unavailable();
     }
@@ -229,7 +234,7 @@ async fn release_name(
     let Some(seed) = decode_seed(&secret) else {
         return unavailable();
     };
-    if !public_key_matches(&row.key_id, &row.public_key, &secret) {
+    if !public_key_matches(&row.key_id, &row.public_key, &secret).await {
         return unavailable();
     }
     let source = envelope_v2::RecordSource {
@@ -259,10 +264,12 @@ async fn release_name(
         row.generation as u64,
         &row.frame,
         &binding,
-    ) else {
+    )
+    .await
+    else {
         return unavailable();
     };
-    let name = envelope_v2::decrypt_record_name(&key, &source, ciphertext);
+    let name = envelope_v2::decrypt_record_name(&key, &source, ciphertext).await;
     let Some(name) = name else {
         return unavailable();
     };
@@ -337,7 +344,7 @@ async fn verify_key(env: &worker::Env, key_id: &str) -> worker::Result<bool> {
         }
     };
     let value = Zeroizing::new(value);
-    let matches = public_key_matches(key_id, &row.public_key, &value);
+    let matches = public_key_matches(key_id, &row.public_key, &value).await;
     if !matches {
         worker::console_warn!("recipient verification unavailable: public key mismatch");
     }
@@ -422,10 +429,16 @@ async fn validate_record_envelope(
         row.generation as u64,
         &frame,
         &binding,
-    ) else {
+    )
+    .await
+    else {
         return Ok(false);
     };
-    Ok(envelope_v2::decrypt_record_name(&key, &value.source, &ciphertext).is_some())
+    Ok(
+        envelope_v2::decrypt_record_name(&key, &value.source, &ciphertext)
+            .await
+            .is_some(),
+    )
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "worker-entry"))]
@@ -493,18 +506,19 @@ pub async fn main(
         .empty())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    fn public_key_matches(key_id: &str, public: &[u8], seed: &str) -> bool {
+        crypto::ready(super::public_key_matches(key_id, public, seed))
+    }
     #[test]
     fn binding_name_and_public_key_must_match_seed() {
         assert!(valid_binding("VAULT_USERINFO_MLKEM_A"));
         assert!(!valid_binding("OP_PRIVATE_JWK"));
         let seed = [0x71; 64];
-        let public = DecapsulationKey::<MlKem768>::from_seed(Seed::from(seed))
-            .encapsulation_key()
-            .to_bytes();
-        let key_id = URL_SAFE_NO_PAD.encode(Sha256::digest(public));
+        let public = crypto::ready(crypto::public_key(&seed)).unwrap();
+        let key_id = URL_SAFE_NO_PAD.encode(crypto::ready(crypto::sha256(&public)).unwrap());
         let encoded = URL_SAFE_NO_PAD.encode(seed);
         assert!(decode_seed(&format!("{encoded}=")).is_none());
         assert!(decode_seed("AQ").is_none());

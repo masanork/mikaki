@@ -137,6 +137,7 @@ jobs:
       - name: Check Node TypeScript sources
         run: |
           npm run check:node
+          npm run check:claim-crypto
           npm run check:helpdesk
       - name: Frontend TypeScript coverage and selected-module regression gate
         run: npm run test:frontend-coverage

@@ -44,7 +44,7 @@
     "gzip": 3145728
   },
   "crates/userinfo-claim-worker/build/index_bg.wasm": {
-    "raw": 803840,
-    "gzip": 271360
+    "raw": 675840,
+    "gzip": 230400
   }
 }
