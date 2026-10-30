@@ -5,11 +5,9 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types/experimental"],
-    "allowJs": true,
-    "checkJs": true,
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/native_crypto.js"]
+  "include": ["src/native_crypto.ts"]
 }

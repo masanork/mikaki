@@ -132,6 +132,28 @@ complete revocation registry. Both are valid from `2026-10-21T21:43:47Z` until
 bindings and the seven-day freshness policy. This is public snapshot maintenance;
 it does not establish deployment or physical-device issuance.
 
+### Public snapshot renewal — 2026-10-30
+
+The existing `mikaki-20261015` HAIP authorities and complete revocation registry
+were used to renew the SD-JWT and mdoc CRLs. Their selected roots match the
+previously pinned DER certificates. The new CRLs are valid from
+`2026-10-30T09:38:47Z` until `2026-11-06T09:38:47Z`; CRL numbers increase, all
+previous serial/date/reason records are retained, and the registry bytes are
+unchanged. SD-JWT retains its one revoked probe; mdoc has no revoked entries.
+
+Only the five CRL arrays were replaced in the public bundle. All certificates,
+keys, anchors and seven-day freshness limits remain unchanged. The source
+credential-certificate variable and derived HAIP policy digest were synchronized.
+The actual Rust checker passes Wallet/Issuer binding and all seven negative
+checks at the current time. This updates source snapshots, not an installed
+Wallet or an active service.
+
+The separate single-card operator approval expired on 2026-10-28. Its proposed
+extension is awaiting explicit operator review under the
+[existing renewal procedure](identity-test-deployment.md#proposed-single-card-trust-renewal--2026-10-22).
+CRL renewal does not extend that approval or authorize provisioning a new card
+trust secret.
+
 ## Next activation work
 
 1. Select the public CA/CRL distribution URL and protect offline CA custody.

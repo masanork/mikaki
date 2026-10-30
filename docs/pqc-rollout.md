@@ -28,7 +28,7 @@ The product envelope currently names draft-04 and decrypted one official [draft-
 
 ## Native claim Worker migration, 2026-10-30
 
-Rust retains strict source/authority parsing, fixed frame/suite checks, seed-to-public-key matching, key IDs, UTF-8/UTF-16 bounds, Grant/ClaimRelease checks, and the final live audit predicate. Only primitive operations cross the asynchronous [Web Crypto boundary](../crates/userinfo-claim-worker/src/native_crypto.js). The HPKE base-mode labeled key schedule preserves the existing draft-04 suite; native ML-KEM output is never used directly as an AES key. This is not a migration to a newer HPKE wire format.
+Rust retains strict source/authority parsing, fixed frame/suite checks, seed-to-public-key matching, key IDs, UTF-8/UTF-16 bounds, Grant/ClaimRelease checks, and the final live audit predicate. Only primitive operations cross the asynchronous [Web Crypto boundary](../crates/userinfo-claim-worker/src/native_crypto.ts). The HPKE base-mode labeled key schedule preserves the existing draft-04 suite; native ML-KEM output is never used directly as an AES key. This is not a migration to a newer HPKE wire format.
 
 The [Rust adapter](../crates/userinfo-claim-worker/src/crypto.rs) copies returned secrets into zeroizing Rust buffers and clears their JS transfer buffers. JS snapshots all Wasm views before the first await and clears seed/shared-secret/PRK/AEAD-key temporaries on success and failure. Imported private and symmetric CryptoKeys are non-extractable. Runtime key handles and Secrets Store custody are still software boundaries; this does not change the existing key-custody model.
 
@@ -39,15 +39,15 @@ Local verification used workerd 1.20261012.1 with compatibility date 2026-09-23 
 - Three host Rust tests passed against the independent reference backend; host and wasm32 Clippy passed with warnings denied.
 - The [native boundary tests](../local/conformance/claim-native-crypto.test.ts) check the transitive release graph, a NIST ML-KEM keygen fixture, the existing noble record fixture, eight concurrent opens, snapshots of caller input, wrong seed/info/AAD/ciphertext rejection, and flag omission. Retained seed/HMAC/AES import buffers are checked for erasure on success and after failure at every import stage.
 - The compiled Rust Worker runs with real disposable local Secrets Store, D1 and R2 bindings in both workerd and Chromium sender flows. Sharing CAS, selected RP consent, post-decryption consent withdrawal and service failures passed. The final runtime selection passed six tests; the existing independent record suite passed another 30 tests.
-- Node TypeScript, the native JS boundary type check, CBOM generation and its profile-isolation test, documentation links, and served UI/server Wasm accounting passed; the six bundle-accounting tests also passed.
+- Node TypeScript, the native TypeScript boundary check, CBOM generation and its profile-isolation test, documentation links, and served UI/server Wasm accounting passed; the six bundle-accounting tests also passed.
 
 Same-machine release builds against current main commit `b018f438`, with the same lockfile versions apart from the claim adapter's dependency edges, measured:
 
 | Artifact | Before, bytes | After, bytes | Before gzip estimate | After gzip estimate |
 | --- | ---: | ---: | ---: | ---: |
-| claim `index_bg.wasm` | 707,893 | 625,833 | 235,485 | 212,305 |
-| claim `index.js` | 24,296 | 27,097 | 6,377 | 7,249 |
-| Combined | 732,189 | 652,930 | 241,862 | 219,554 |
+| claim `index_bg.wasm` | 707,893 | 625,833 | 235,485 | 212,304 |
+| claim `index.js` | 24,296 | 27,097 | 6,377 | 7,251 |
+| Combined | 732,189 | 652,930 | 241,862 | 219,555 |
 
 Wasm shrank 11.59%; combined source bytes fell by 79,259. Gzip values are local level-9 estimates, not observed transfer sizes. These are size measurements, not speed or production-capacity results. The Wasm reporting thresholds are reduced to 675,840 raw / 230,400 gzip-estimate bytes. As on current main, individual resource growth produces warnings; the complete Worker bundle limit is enforced separately. The release dependency-graph test rejects reintroduction of the bundled cryptographic implementations.
 

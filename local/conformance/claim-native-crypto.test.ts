@@ -70,7 +70,7 @@ async function runtime(flags = ['webcrypto_modern_algorithms']) {
       loader: 'js',
       contents: `
         import { nativeSha256, nativePublicKey, nativeOpenHpke, nativeDecryptAes }
-          from './crates/userinfo-claim-worker/src/native_crypto.js';
+          from './crates/userinfo-claim-worker/src/native_crypto.ts';
         export default { async fetch(request) {
           const { operation, inputs, mutate, observeAt } = await request.json();
           const bytes = inputs.map(x => new Uint8Array(x));

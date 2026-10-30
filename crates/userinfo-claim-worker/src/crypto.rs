@@ -8,7 +8,7 @@ mod backend {
     use js_sys::Uint8Array;
     use wasm_bindgen::prelude::*;
 
-    #[wasm_bindgen(module = "/src/native_crypto.js")]
+    #[wasm_bindgen(module = "/src/native_crypto.ts")]
     extern "C" {
         #[wasm_bindgen(catch, js_name = nativeSha256)]
         async fn digest(input: &[u8]) -> Result<Uint8Array, JsValue>;

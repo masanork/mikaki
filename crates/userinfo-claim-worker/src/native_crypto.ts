@@ -1,13 +1,10 @@
-// @ts-check
 // Workers Web Crypto boundary. Requires webcrypto_modern_algorithms.
 // Snapshot Wasm views before yielding: another request may grow Wasm memory.
-/** @param {Uint8Array} input */
-export async function nativeSha256(input) {
+export async function nativeSha256(input: Uint8Array) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input.slice()));
 }
 
-/** @param {Uint8Array} seed */
-export async function nativePublicKey(seed) {
+export async function nativePublicKey(seed: Uint8Array) {
   const snapshot = seed.slice();
   try {
     const privateKey = await crypto.subtle.importKey('raw-seed', snapshot, 'ML-KEM-768', false, [
@@ -22,8 +19,7 @@ export async function nativePublicKey(seed) {
   }
 }
 
-/** @param {...Uint8Array} parts */
-function concat(...parts) {
+function concat(...parts: Uint8Array[]) {
   const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
   let offset = 0;
   for (const part of parts) {
@@ -33,8 +29,7 @@ function concat(...parts) {
   return out;
 }
 
-/** @param {Uint8Array} key @param {Uint8Array} input */
-async function hmac(key, input) {
+async function hmac(key: Uint8Array, input: Uint8Array) {
   const imported = await crypto.subtle.importKey(
     'raw',
     key,
@@ -48,17 +43,22 @@ async function hmac(key, input) {
 // Preserve the existing base-mode ML-KEM-768/HKDF-SHA256/AES-256-GCM
 // draft-04 suite (0x0041, 0x0001, 0x0002). Native ML-KEM is the KEM;
 // its output still passes through the HPKE labeled key schedule.
-/** @param {Uint8Array} seed @param {Uint8Array} encapsulated
- * @param {Uint8Array} info @param {Uint8Array} aad @param {Uint8Array} ciphertext */
-export async function nativeOpenHpke(seed, encapsulated, info, aad, ciphertext) {
+export async function nativeOpenHpke(
+  seed: Uint8Array,
+  encapsulated: Uint8Array,
+  info: Uint8Array,
+  aad: Uint8Array,
+  ciphertext: Uint8Array,
+) {
   const seedBytes = seed.slice();
   const encBytes = encapsulated.slice();
   const infoBytes = info.slice();
   const aadBytes = aad.slice();
   const cipherBytes = ciphertext.slice();
-  let shared, keyBytes, nonce;
-  /** @type {Uint8Array | undefined} */
-  let secret;
+  let shared: Uint8Array | undefined,
+    keyBytes: Uint8Array | undefined,
+    nonce: Uint8Array | undefined;
+  let secret: Uint8Array | undefined;
   try {
     const privateKey = await crypto.subtle.importKey('raw-seed', seedBytes, 'ML-KEM-768', false, [
       'decapsulateBits',
@@ -66,11 +66,9 @@ export async function nativeOpenHpke(seed, encapsulated, info, aad, ciphertext) 
     shared = new Uint8Array(
       await crypto.subtle.decapsulateBits('ML-KEM-768', privateKey, encBytes),
     );
-    /** @param {string} value */
-    const text = (value) => new TextEncoder().encode(value);
+    const text = (value: string) => new TextEncoder().encode(value);
     const prefix = concat(text('HPKE-v1'), text('HPKE'), new Uint8Array([0, 0x41, 0, 1, 0, 2]));
-    /** @param {string} name @param {Uint8Array} value */
-    const label = (name, value) => concat(prefix, text(name), value);
+    const label = (name: string, value: Uint8Array) => concat(prefix, text(name), value);
     const empty = new Uint8Array(0);
     const pskHash = await hmac(new Uint8Array(32), label('psk_id_hash', empty));
     const infoHash = await hmac(new Uint8Array(32), label('info_hash', infoBytes));
@@ -79,8 +77,7 @@ export async function nativeOpenHpke(seed, encapsulated, info, aad, ciphertext) 
     secret = prk;
     // Both outputs fit one HKDF-Expand block. Clear the full block, including
     // unused nonce bytes, after taking the required prefix.
-    /** @param {string} name @param {number} length */
-    const expand = async (name, length) => {
+    const expand = async (name: string, length: number) => {
       const size = new Uint8Array([0, length]);
       const block = await hmac(
         prk,
@@ -111,9 +108,12 @@ export async function nativeOpenHpke(seed, encapsulated, info, aad, ciphertext) 
   }
 }
 
-/** @param {Uint8Array} key @param {Uint8Array} nonce
- * @param {Uint8Array} aad @param {Uint8Array} ciphertext */
-export async function nativeDecryptAes(key, nonce, aad, ciphertext) {
+export async function nativeDecryptAes(
+  key: Uint8Array,
+  nonce: Uint8Array,
+  aad: Uint8Array,
+  ciphertext: Uint8Array,
+) {
   const keyBytes = key.slice();
   const nonceBytes = nonce.slice();
   const aadBytes = aad.slice();

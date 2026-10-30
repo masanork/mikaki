@@ -133,5 +133,41 @@
     "owner": "masanork",
     "reason": "The isolated probe compiles the actual native VP HTTP adapter, using openidconnect 4.0.1 only for its reqwest HTTP re-export. Its transitive p256/p384 0.13 is not used for private-key operations; no product secret integer enters crypto-bigint 0.5.5. Remove when upstream permits a patched version; re-review before extending this scope. See docs/crypto-bigint-advisory-review.md.",
     "expires": "2026-11-07"
+  },
+  {
+    "lockfile": "apps/mikaki-client/plugins/identity-proximity/Cargo.lock",
+    "package": "block-buffer",
+    "version": "0.10.4",
+    "advisory": "GHSA-qwgh-2vcv-g2f7",
+    "owner": "masanork",
+    "reason": "Version-specific false positive: the publisher limits this inline-cursor advisory to >=0.11.0,<0.12.1; 0.10.4 stores pos separately and predates ReadBuffer. See https://github.com/RustCrypto/utils/security/advisories/GHSA-qwgh-2vcv-g2f7 and docs/block-buffer-advisory-review.md. The executable legacy-buffer panic test checks the reported invariant. No 0.11/0.12 affected release is exempted. Remove when the aggregate database range is corrected.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
+    "package": "block-buffer",
+    "version": "0.10.4",
+    "advisory": "GHSA-qwgh-2vcv-g2f7",
+    "owner": "masanork",
+    "reason": "Version-specific false positive: the publisher limits this inline-cursor advisory to >=0.11.0,<0.12.1; 0.10.4 stores pos separately and predates ReadBuffer. See https://github.com/RustCrypto/utils/security/advisories/GHSA-qwgh-2vcv-g2f7 and docs/block-buffer-advisory-review.md. The executable legacy-buffer panic test checks the reported invariant. No 0.11/0.12 affected release is exempted. Remove when the aggregate database range is corrected.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/jose/Cargo.lock",
+    "package": "block-buffer",
+    "version": "0.10.4",
+    "advisory": "GHSA-qwgh-2vcv-g2f7",
+    "owner": "masanork",
+    "reason": "Version-specific false positive: the publisher limits this inline-cursor advisory to >=0.11.0,<0.12.1; 0.10.4 stores pos separately and predates ReadBuffer. See https://github.com/RustCrypto/utils/security/advisories/GHSA-qwgh-2vcv-g2f7 and docs/block-buffer-advisory-review.md. The executable legacy-buffer panic test checks the reported invariant. No 0.11/0.12 affected release is exempted. Remove when the aggregate database range is corrected.",
+    "expires": "2026-11-20"
+  },
+  {
+    "lockfile": "design/probes/native-identity-http/Cargo.lock",
+    "package": "block-buffer",
+    "version": "0.10.4",
+    "advisory": "GHSA-qwgh-2vcv-g2f7",
+    "owner": "masanork",
+    "reason": "Version-specific false positive: the publisher limits this inline-cursor advisory to >=0.11.0,<0.12.1; 0.10.4 stores pos separately and predates ReadBuffer. See https://github.com/RustCrypto/utils/security/advisories/GHSA-qwgh-2vcv-g2f7 and docs/block-buffer-advisory-review.md. The executable legacy-buffer panic test checks the reported invariant. No 0.11/0.12 affected release is exempted. Remove when the aggregate database range is corrected.",
+    "expires": "2026-11-20"
   }
 ]
