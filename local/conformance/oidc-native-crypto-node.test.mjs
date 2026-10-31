@@ -2,7 +2,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { nativeVerifyEs256 } from '../../crates/oidc/src/native_es256.ts';
+import {
+  nativeValidateEs256PublicKey,
+  nativeVerifyEs256,
+} from '../../crates/oidc/src/native_es256.ts';
 
 const fixture = JSON.parse(
   await readFile(new URL('../../crates/oidc/testdata/es256-rfc6979.json', import.meta.url), 'utf8'),
@@ -23,6 +26,42 @@ async function override(method, implementation, run) {
 
 test('native OIDC ES256 boundary with the RFC 6979 P-256/SHA-256 fixture', async (t) => {
   const verify = () => nativeVerifyEs256(bytes('public_key'), bytes('signature'), message());
+  await t.test(
+    'public-point validation uses the same verify-only import and snapshots its input',
+    async () => {
+      for (const name of ['public_key', 'compressed_public_key']) {
+        const key = bytes(name),
+          pending = nativeValidateEs256PublicKey(key);
+        key.fill(0);
+        assert.equal(await pending, true);
+      }
+      const offCurve = new Uint8Array(65);
+      offCurve[0] = 4;
+      await assert.rejects(nativeValidateEs256PublicKey(offCurve));
+      await override(
+        'importKey',
+        () => {
+          throw new Error('injected import failure');
+        },
+        async () => {
+          await assert.rejects(
+            nativeValidateEs256PublicKey(bytes('public_key')),
+            /injected import failure/,
+          );
+        },
+      );
+      await override(
+        'importKey',
+        async () => ({ extractable: true }),
+        async () => {
+          await assert.rejects(
+            nativeValidateEs256PublicKey(bytes('public_key')),
+            /verification key/,
+          );
+        },
+      );
+    },
+  );
   await t.test('33/65-byte SEC1 and both S values verify; substitutions fail', async () => {
     for (const key of ['public_key', 'compressed_public_key']) {
       for (const signature of ['signature', 'alternate_signature']) {

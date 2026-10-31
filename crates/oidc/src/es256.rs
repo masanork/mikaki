@@ -1,8 +1,9 @@
 //! Private primitive boundary. Only the protocol verifiers may turn successful
 //! verification into an authenticated capability; no unchecked finish API is public.
+#[cfg(not(target_arch = "wasm32"))]
 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 
 pub(crate) struct Es256Verification {
@@ -51,6 +52,7 @@ impl Es256Verification {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn verify_reference(self) -> Result<(), InvalidEs256Signature> {
         let key =
             VerifyingKey::from_sec1_bytes(&self.public_key).map_err(|_| InvalidEs256Signature)?;
@@ -97,7 +99,7 @@ impl Es256Verification {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) fn ready<T>(future: impl std::future::Future<Output = T>) -> T {
     use std::task::{Context, Poll, Waker};
     match std::pin::pin!(future)
@@ -107,4 +109,33 @@ pub(crate) fn ready<T>(future: impl std::future::Future<Output = T>) -> T {
         Poll::Ready(value) => value,
         Poll::Pending => panic!("the host reference provider must not perform asynchronous I/O"),
     }
+}
+
+// Public-key validation and signature verification use the same provider and
+// strict key capability checks, without retaining a cache across requests.
+pub(crate) async fn validate_public_key_async(
+    public_key: &[u8],
+) -> Result<(), InvalidEs256Signature> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        VerifyingKey::from_sec1_bytes(public_key).map_err(|_| InvalidEs256Signature)?;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+        #[wasm_bindgen(module = "/src/native_es256.ts")]
+        extern "C" {
+            #[wasm_bindgen(catch, js_name = nativeValidateEs256PublicKey)]
+            async fn validate(public_key: &[u8]) -> Result<JsValue, JsValue>;
+        }
+        if validate(public_key)
+            .await
+            .map_err(|_| InvalidEs256Signature)?
+            .as_bool()
+            != Some(true)
+        {
+            return Err(InvalidEs256Signature);
+        }
+    }
+    Ok(())
 }

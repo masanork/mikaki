@@ -1,4 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+#[cfg(not(target_arch = "wasm32"))]
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
@@ -61,6 +62,7 @@ impl P256RuntimeKey {
 
 /// ES256 signing capability loaded from a private P-256 JWK. The private
 /// scalar is never serializable or printable.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct P256TokenSigner {
     kid: String,
     key: SigningKey,
@@ -388,6 +390,94 @@ fn parse_private_p256_jwk(input: &str) -> Result<PrivateJwk, InvalidSigningKey> 
     Ok(jwk)
 }
 
+// Strict bounded metadata is prepared before the provider validates the point.
+// The unverified canonical string never leaves this module.
+struct PreparedPublicJwk {
+    canonical: String,
+    point: Option<[u8; 65]>,
+}
+
+fn prepare_public_jwk(input: &str) -> Option<PreparedPublicJwk> {
+    if input.len() > 4096 {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(input).ok()?;
+    if value.get("kty")?.as_str()? == "RSA" {
+        let jwk: RsaPublicJwk = serde_json::from_str(input).ok()?;
+        validate_rsa_public_metadata(&jwk).then_some(())?;
+        let canonical = serde_json::to_string(&RsaPublicJwk {
+            kty: "RSA".into(),
+            kid: jwk.kid,
+            n: jwk.n,
+            e: jwk.e,
+            alg: Some("RS256".into()),
+            use_: Some("sig".into()),
+            key_ops: None,
+            ext: None,
+        })
+        .ok()?;
+        return Some(PreparedPublicJwk {
+            canonical,
+            point: None,
+        });
+    }
+    let jwk: PublicJwk = serde_json::from_str(input).ok()?;
+    if jwk.kty != "EC"
+        || jwk.crv != "P-256"
+        || jwk.kid.is_empty()
+        || jwk.kid.len() > 128
+        || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
+        || jwk.alg.as_deref().is_some_and(|alg| alg != "ES256")
+        || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
+        || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["verify"])
+        || jwk.ext == Some(false)
+    {
+        return None;
+    }
+    let x = decode_fixed::<32>(&jwk.x).ok()?;
+    let y = decode_fixed::<32>(&jwk.y).ok()?;
+    let mut point = [0u8; 65];
+    point[0] = 4;
+    point[1..33].copy_from_slice(&x);
+    point[33..].copy_from_slice(&y);
+    let canonical = serde_json::to_string(&PublicJwk {
+        kty: jwk.kty,
+        crv: jwk.crv,
+        kid: jwk.kid,
+        x: jwk.x,
+        y: jwk.y,
+        alg: Some("ES256".into()),
+        use_: Some("sig".into()),
+        key_ops: None,
+        ext: None,
+    })
+    .ok()?;
+    Some(PreparedPublicJwk {
+        canonical,
+        point: Some(point),
+    })
+}
+
+/// Validate a public JWKS entry without reflecting private or unknown members.
+/// Wasm validates EC points through Web Crypto; host qualification uses P-256.
+pub async fn canonical_public_jwk_async(input: &str) -> Option<String> {
+    let prepared = prepare_public_jwk(input)?;
+    if let Some(point) = &prepared.point {
+        crate::es256::validate_public_key_async(point).await.ok()?;
+    }
+    Some(prepared.canonical)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn canonical_public_jwk(input: &str) -> Option<String> {
+    let prepared = prepare_public_jwk(input)?;
+    if let Some(point) = &prepared.point {
+        p256::ecdsa::VerifyingKey::from_sec1_bytes(point).ok()?;
+    }
+    Some(prepared.canonical)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl P256TokenSigner {
     pub fn sign_userinfo(
         &self,
@@ -399,60 +489,9 @@ impl P256TokenSigner {
         let signature: Signature = self.key.sign(input.as_bytes());
         input.finish(&signature.to_bytes())
     }
-    /// Validate and return a minimal public ES256 JWK suitable for a JWKS.
-    /// Unknown/private parameters are rejected rather than reflected.
+    /// Host-only independent reference for public JWKS validation.
     pub fn canonical_public_jwk(input: &str) -> Option<String> {
-        if input.len() > 4096 {
-            return None;
-        }
-        let value: serde_json::Value = serde_json::from_str(input).ok()?;
-        if value.get("kty")?.as_str()? == "RSA" {
-            let jwk: RsaPublicJwk = serde_json::from_value(value).ok()?;
-            validate_rsa_public_metadata(&jwk).then_some(())?;
-            return serde_json::to_string(&RsaPublicJwk {
-                kty: "RSA".into(),
-                kid: jwk.kid,
-                n: jwk.n,
-                e: jwk.e,
-                alg: Some("RS256".into()),
-                use_: Some("sig".into()),
-                key_ops: None,
-                ext: None,
-            })
-            .ok();
-        }
-        let jwk: PublicJwk = serde_json::from_str(input).ok()?;
-        if jwk.kty != "EC"
-            || jwk.crv != "P-256"
-            || jwk.kid.is_empty()
-            || jwk.kid.len() > 128
-            || jwk.kid.bytes().any(|byte| byte.is_ascii_control())
-            || jwk.alg.as_deref().is_some_and(|alg| alg != "ES256")
-            || jwk.use_.as_deref().is_some_and(|key_use| key_use != "sig")
-            || jwk.key_ops.as_ref().is_some_and(|ops| ops != &["verify"])
-            || jwk.ext == Some(false)
-        {
-            return None;
-        }
-        let x = decode_fixed::<32>(&jwk.x).ok()?;
-        let y = decode_fixed::<32>(&jwk.y).ok()?;
-        let mut point = [0u8; 65];
-        point[0] = 4;
-        point[1..33].copy_from_slice(&x);
-        point[33..].copy_from_slice(&y);
-        p256::ecdsa::VerifyingKey::from_sec1_bytes(&point).ok()?;
-        serde_json::to_string(&PublicJwk {
-            kty: jwk.kty,
-            crv: jwk.crv,
-            kid: jwk.kid,
-            x: jwk.x,
-            y: jwk.y,
-            alg: Some("ES256".into()),
-            use_: Some("sig".into()),
-            key_ops: None,
-            ext: None,
-        })
-        .ok()
+        canonical_public_jwk(input)
     }
 
     pub fn from_private_jwk(input: &str) -> Result<Self, InvalidSigningKey> {
@@ -637,10 +676,13 @@ impl RsaPrivateTokenKey {
     }
 
     pub fn matches_public_jwk(&self, input: &str) -> bool {
-        let Some(canonical) = P256TokenSigner::canonical_public_jwk(input) else {
+        let Some(prepared) = prepare_public_jwk(input) else {
             return false;
         };
-        let Ok(public) = serde_json::from_str::<RsaPublicJwk>(&canonical) else {
+        if prepared.point.is_some() {
+            return false;
+        }
+        let Ok(public) = serde_json::from_str::<RsaPublicJwk>(&prepared.canonical) else {
             return false;
         };
         public.kty == "RSA"
@@ -782,9 +824,77 @@ fn decode_fixed<const N: usize>(input: &str) -> Result<[u8; N], InvalidSigningKe
     Ok(value)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn async_jwks_validation_preserves_public_metadata_and_rejects_invalid_points() {
+        let data: serde_json::Value =
+            serde_json::from_str(include_str!("../testdata/es256-rfc6979.json")).unwrap();
+        let point = B64.decode(data["public_key"].as_str().unwrap()).unwrap();
+        let original = serde_json::json!({"kty":"EC","crv":"P-256","kid":"op",
+            "x":B64.encode(&point[1..33]),"y":B64.encode(&point[33..]),
+            "alg":"ES256","use":"sig","key_ops":["verify"],"ext":true});
+        let input = original.to_string();
+        let canonical = crate::es256::ready(canonical_public_jwk_async(&input)).unwrap();
+        assert_eq!(canonical_public_jwk(&input).as_ref(), Some(&canonical));
+        let public: serde_json::Value = serde_json::from_str(&canonical).unwrap();
+        assert_eq!(public["x"], original["x"]);
+        assert!(public.get("key_ops").is_none() && public.get("ext").is_none());
+        for (field, value) in [
+            ("kty", serde_json::json!("OKP")),
+            ("crv", serde_json::json!("P-384")),
+            ("kid", serde_json::json!("")),
+            ("kid", serde_json::json!("x".repeat(129))),
+            ("kid", serde_json::json!("control\n")),
+            ("alg", serde_json::json!("ES256K")),
+            ("use", serde_json::json!("enc")),
+            ("key_ops", serde_json::json!([])),
+            ("key_ops", serde_json::json!(["sign"])),
+            ("ext", serde_json::json!(false)),
+            ("x", serde_json::json!(B64.encode([0; 31]))),
+            ("y", serde_json::json!("padded=")),
+            ("d", serde_json::json!("private")),
+        ] {
+            let mut invalid = original.clone();
+            invalid[field] = value;
+            assert!(
+                crate::es256::ready(canonical_public_jwk_async(&invalid.to_string())).is_none(),
+                "{field}"
+            );
+        }
+        let mut invalid = original.clone();
+        invalid["x"] = serde_json::json!(B64.encode([0; 32]));
+        invalid["y"] = serde_json::json!(B64.encode([0; 32]));
+        assert!(crate::es256::ready(canonical_public_jwk_async(&invalid.to_string())).is_none());
+        for invalid in [
+            "".to_owned(),
+            "[]".into(),
+            "{}".into(),
+            "{\"kty\":1}".into(),
+            "x".repeat(4097),
+            input.replace("\"kid\":\"op\"", "\"kid\":\"op\",\"kid\":\"other\""),
+        ] {
+            assert!(crate::es256::ready(canonical_public_jwk_async(&invalid)).is_none());
+        }
+    }
+
+    #[test]
+    fn rsa_jwks_validation_is_independent_of_ec_and_rejects_duplicate_fields() {
+        let mut modulus = [0x80u8; 256];
+        modulus[255] = 0x81;
+        let input = serde_json::json!({"kty":"RSA","kid":"rsa","n":B64.encode(modulus),"e":"AQAB","key_ops":[]}).to_string();
+        let canonical = crate::es256::ready(canonical_public_jwk_async(&input)).unwrap();
+        assert_eq!(canonical_public_jwk(&input).as_ref(), Some(&canonical));
+        for invalid in [
+            input.replace("\"e\":\"AQAB\"", "\"e\":\"Ag\",\"e\":\"AQAB\""),
+            input.replace("\"kid\":\"rsa\"", "\"kid\":\"rsa\",\"kid\":\"other\""),
+        ] {
+            assert!(crate::es256::ready(canonical_public_jwk_async(&invalid)).is_none());
+            assert!(canonical_public_jwk(&invalid).is_none());
+        }
+    }
 
     #[test]
     fn rs256_public_jwk_is_canonicalized_and_private_fields_rejected() {

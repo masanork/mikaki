@@ -1543,7 +1543,8 @@ async fn jwks_route(
         .results::<SigningPublicKeyRow>()?;
     let mut keys = Vec::with_capacity(rows.len());
     for row in rows {
-        let jwk = mikaki_oidc::P256TokenSigner::canonical_public_jwk(&row.public_jwk)
+        let jwk = mikaki_oidc::canonical_public_jwk_async(&row.public_jwk)
+            .await
             .ok_or_else(|| worker::Error::RustError("invalid signing key configuration".into()))?;
         keys.push(
             serde_json::from_str(&jwk).map_err(|_| {
