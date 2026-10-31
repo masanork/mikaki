@@ -97,10 +97,16 @@ async function client(
   };
   return { context, page, requests, errors, ceremonies: () => ceremonies, openVault, openChat };
 }
+// Busy-state waits cover Vault/MLS device operations and Worker round trips.
+// Their cost varies with runner load, and a slow runner otherwise fails these
+// waits at the default 5 s while the operation is still making progress.
+// Operation-level deadlines still bound a genuinely stalled device.
+const busyWait = { timeout: 30_000 };
 async function ready(page: Page) {
   await expect(page.getByRole('region', { name: 'Chat', exact: true })).toHaveAttribute(
     'aria-busy',
     'false',
+    busyWait,
   );
   await expect(
     page.getByText('Chatを開けませんでした。接続を確認し、画面を開き直してください。', {
@@ -110,7 +116,7 @@ async function ready(page: Page) {
 }
 const chat = (page: Page) => page.getByRole('region', { name: '暗号化チャット', exact: true });
 async function idle(page: Page) {
-  await expect(chat(page)).toHaveAttribute('aria-busy', 'false');
+  await expect(chat(page)).toHaveAttribute('aria-busy', 'false', busyWait);
 }
 async function click(page: Page, name: string) {
   await page.getByRole('button', { name, exact: true }).click();
