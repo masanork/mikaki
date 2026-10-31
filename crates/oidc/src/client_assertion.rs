@@ -89,6 +89,7 @@ struct PreparedClientAssertion {
 }
 
 impl PreparedClientAssertion {
+    #[cfg(not(target_arch = "wasm32"))]
     fn verify_reference(self) -> Result<VerifiedClientAssertion, InvalidClientAssertion> {
         self.signature
             .verify_reference()
@@ -144,6 +145,7 @@ impl ClientAssertionKey {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn verify_private_key_jwt(
         &self,
         compact: &str,
@@ -165,6 +167,7 @@ impl ClientAssertionKey {
 
     /// FAPI 2.0 requires the issuer URL, as a single JSON string audience, and
     /// accepts `iat`/`nbf` up to ten seconds ahead of the local clock.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn verify_fapi_private_key_jwt(
         &self,
         compact: &str,

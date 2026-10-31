@@ -226,7 +226,8 @@ async fn sign_rs256(mut req: Request, _ctx: RouteContext<()>) -> Result<Response
     usages.push(&JsValue::from_str("sign"));
     let key = mikaki_oidc::RsaPrivateTokenKey::from_private_jwk(&keys.private)
         .map_err(|_| worker::Error::RustError("RSA JWK validation failed".into()))?;
-    let canonical_public_jwk = mikaki_oidc::P256TokenSigner::canonical_public_jwk(&keys.public)
+    let canonical_public_jwk = mikaki_oidc::canonical_public_jwk_async(&keys.public)
+        .await
         .ok_or_else(|| worker::Error::RustError("RSA public JWK validation failed".into()))?;
     if !key.matches_public_jwk(&canonical_public_jwk) {
         return Err(worker::Error::RustError("RSA key pair mismatch".into()));

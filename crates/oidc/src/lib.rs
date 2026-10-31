@@ -5,7 +5,7 @@ mod dpop;
 mod es256;
 mod exchange;
 mod signing;
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod token_boundary_tests;
 
 pub use client_assertion::{
@@ -15,8 +15,10 @@ pub use client_assertion::{
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use dpop::verify_dpop_proof;
 pub use dpop::verify_dpop_proof_async;
-pub use dpop::{DpopTarget, InvalidDpopProof, VerifiedDpopProof, verify_dpop_proof};
+pub use dpop::{DpopTarget, InvalidDpopProof, VerifiedDpopProof};
 pub use exchange::{
     AuthenticatedTokenEndpointInput, AuthorizationCodeExchange, CodeExchangeInput,
     InvalidAuthenticatedTokenEndpointInput, InvalidCodeExchange, InvalidTokenEndpointInput,
@@ -26,8 +28,12 @@ pub use exchange::{
 };
 pub use signing::{
     IdTokenSigningInput, InvalidIdTokenClaims, InvalidSigningKey, LogoutTokenSigningInput,
-    P256RuntimeKey, P256TokenSigner, PASSKEY_UV_ACR, RsaPrivateTokenKey, UserInfoSigningInput,
+    P256RuntimeKey, PASSKEY_UV_ACR, RsaPrivateTokenKey, UserInfoSigningInput,
+    canonical_public_jwk_async,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use signing::P256TokenSigner;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};

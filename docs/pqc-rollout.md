@@ -80,7 +80,7 @@ Local workerd qualification passed the ID Token/PKCE flow, logout queue/browser 
 
 Same-machine clean-source builds against native-claim parent `7f7cdd47` measured OP Wasm at 7,674,875 → 7,672,948 bytes and JS at 32,543 → 32,775 bytes: combined raw bytes decrease by 1,695; the combined level-9 gzip estimate decreases by 941. The candidate was `b0df2e7a`; its source identity is embedded in the artifact. This boundary is not a meaningful size reduction. Full release CI and production key/owner/RP verification remain separate qualification gates.
 
-P-256 and other RustCrypto implementations remain necessary for signing-key/JWKS point validation, WebAuthn, identity/card operations and native clients. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. MLS uses a synchronous RustCrypto provider and cannot simply call asynchronous Web Crypto through the claim adapter. The decision is to remove cryptographic implementations from independently qualified Worker boundaries, while retaining those remaining dependencies until their behavior and API contracts are qualified separately. `zeroize` remains useful for secret-buffer hygiene. Browser noble remains necessary while browser native PQC support is not established. SLH-DSA/FN-DSA are outside the supported adoption scope.
+P-256 and other RustCrypto implementations remain necessary for WebAuthn, identity/card operations and native clients. WebAuthn's DER signature handling and ES256K support need their own compatibility assessment. MLS uses a synchronous RustCrypto provider and cannot simply call asynchronous Web Crypto through the claim adapter. The decision is to remove cryptographic implementations from independently qualified Worker boundaries, while retaining those remaining dependencies until their behavior and API contracts are qualified separately. `zeroize` remains useful for secret-buffer hygiene. Browser noble remains necessary while browser native PQC support is not established. SLH-DSA/FN-DSA are outside the supported adoption scope.
 
 Reproduce the OIDC checks after building the OP and Claim Worker as above:
 
@@ -113,7 +113,27 @@ npm run test:security-authentication
 
 Local qualification passed 28 host tests and three compile-fail capability checks; Node measured 40/40 lines and 16/16 branches in the exact bridge. Pinned workerd passed the primitive checks, the 21-test DPoP/FAPI suite, five authentication race tests and eight native OIDC/Identity/Passport/readiness tests. Host and Wasm Clippy, Node/bridge type checks, CBOM/profile isolation, CI rerun contracts and documentation links passed. These are host/local-runtime results; physical device issuance was not run.
 
-This next verification change requires its own complete release CI and source-matched production qualification. P-256 remains linked for signing-key/JWKS point validation, WebAuthn, identity operations and native clients; MLS still requires a synchronous provider. Moving these OIDC primitives alone does not remove all RustCrypto or enable ML-DSA for clients. Physical issuance and the complete production owner/RP flow remain independent acceptance gates.
+This verification boundary was deployed from main `65f8b1f4d887df94a470e2afe13dc829c02c274d` through the [complete normal release workflow](https://github.com/masanork/mikaki/actions/runs/41138559154). Source-matched production smoke, protected readiness, Docs and fonts passed; the OP version was `d7c9ac06-96fd-4503-b7de-dffb267d4a52`. Physical issuance and the complete production owner/RP flow remain independent acceptance gates.
+
+### Native JWKS validation and OIDC dependency boundary
+
+The JWKS route now awaits `canonical_public_jwk_async`: Rust checks the bounded, strict public JWK schema and canonical coordinates, then native Web Crypto imports the EC point as a non-extractable, verify-only P-256 key. Invalid points, import failures and unexpected key capabilities reject the response. Validation uses the same native importer as signature verification, without synthetic signatures or a process-local key cache. The active-key query, rotation generations and public JWKS representation remain unchanged.
+
+RSA metadata validation remains independent of EC import. Parsing RSA public metadata directly from the original JSON also rejects duplicate fields that the previous intermediate JSON value could normalize. Valid RSA metadata and the private/public key matcher retain their existing behavior.
+
+`mikaki-oidc` now places `p256` behind a host-only dependency. The synchronous signing, assertion and DPoP reference APIs are available on the host; Wasm consumers use the asynchronous APIs. The isolated workers-rs probe uses the asynchronous public-JWK validator too. Its lockfile adds the three previously introduced Wasm bridge dependency edges without changing package versions. The OIDC Wasm normal graph excludes `p256`, `ecdsa`, `elliptic-curve`, `primeorder`, `rfc6979`, `crypto-bigint` and `signature`. `sha2` remains for PKCE and identifier hashing, and `zeroize` remains for buffer hygiene. This is an OIDC crate boundary: WebAuthn and identity still bring P-256 into the complete OP, while native clients, MLS and browser noble retain their existing providers. This change neither removes all RustCrypto nor enables ML-DSA for clients.
+
+Local qualification passed 30 host tests and three compile-fail capability checks. Node measured 54/54 lines and 22/22 branches in the exact native bridge; the existing 95%/90% floors and coverage exclusions are unchanged. Workerd passed the dependency/primitive checks, 26 OIDC/DPoP tests and 18 signing, readiness, logout and authentication regression tests. These cover both JWKS generations, concurrent retrieval, malformed/off-curve keys, native import failures, capability mismatches, RSA independence and duplicate-field rejection. Host and Wasm Clippy with warnings denied, Node/bridge type checks, browser Wasm and workers-rs probe builds, CBOM/profile isolation and CI rerun contract tests passed. These are local results; this JWKS change requires its own full release CI and source-matched production qualification.
+
+Reproduce the additional boundary checks after building the OP and Claim Worker:
+
+```sh
+cargo tree --locked -p mikaki-oidc --target wasm32-unknown-unknown --edges normal
+cargo clippy --locked -p mikaki-oidc --target wasm32-unknown-unknown --all-targets -- -D warnings
+node --test --test-concurrency=1 local/conformance/oidc-native-crypto.test.ts local/conformance/native-oidc.test.ts local/conformance/dpop-worker.test.ts
+npm run test:oidc-crypto-coverage
+cargo check --locked --manifest-path design/probes/workers-rs/Cargo.toml --target wasm32-unknown-unknown
+```
 
 ## References
 
