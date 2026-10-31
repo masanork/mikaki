@@ -1,9 +1,9 @@
 //! Bounded ES256 RFC 9449 verification. Replay acceptance belongs to D1,
 //! after signature verification, never to a process-local cache.
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
+use crate::es256::Es256Verification;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
-use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -20,6 +20,10 @@ pub struct InvalidDpopProof;
 
 /// This capability cannot be deserialized or constructed by a caller. Accept
 /// its `(thumbprint, jti_hash)` atomically in storage before using the request.
+///
+/// ```compile_fail
+/// let _: mikaki_oidc::VerifiedDpopProof = serde_json::from_str("{}").unwrap();
+/// ```
 #[must_use]
 pub struct VerifiedDpopProof {
     thumbprint: String,
@@ -95,6 +99,7 @@ fn endpoint(value: &str) -> Result<String, InvalidDpopProof> {
     Ok(url.to_string())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn verify_dpop_proof(
     compact: &str,
     method: &str,
@@ -102,6 +107,36 @@ pub fn verify_dpop_proof(
     target: DpopTarget<'_>,
     now: u64,
 ) -> Result<VerifiedDpopProof, InvalidDpopProof> {
+    let (signature, proof) = prepare_dpop_proof(compact, method, request_uri, target, now)?;
+    signature.verify_reference().map_err(|_| InvalidDpopProof)?;
+    Ok(proof)
+}
+
+/// Same bounded proof checks, with Web Crypto on Wasm and the independent
+/// reference provider in host qualification. Replay acceptance
+/// still belongs to the final D1 predicate after this asynchronous boundary.
+pub async fn verify_dpop_proof_async(
+    compact: &str,
+    method: &str,
+    request_uri: &str,
+    target: DpopTarget<'_>,
+    now: u64,
+) -> Result<VerifiedDpopProof, InvalidDpopProof> {
+    let (signature, proof) = prepare_dpop_proof(compact, method, request_uri, target, now)?;
+    signature
+        .verify_async()
+        .await
+        .map_err(|_| InvalidDpopProof)?;
+    Ok(proof)
+}
+
+fn prepare_dpop_proof(
+    compact: &str,
+    method: &str,
+    request_uri: &str,
+    target: DpopTarget<'_>,
+    now: u64,
+) -> Result<(Es256Verification, VerifiedDpopProof), InvalidDpopProof> {
     if compact.len() > 8192 || !matches!(method, "GET" | "POST") || now > i64::MAX as u64 - 80 {
         return Err(InvalidDpopProof);
     }
@@ -165,18 +200,18 @@ pub fn verify_dpop_proof(
     {
         return Err(InvalidDpopProof);
     }
-    let signature = Signature::from_slice(&decode(s)?).map_err(|_| InvalidDpopProof)?;
-    VerifyingKey::from_sec1_bytes(&sec1)
-        .map_err(|_| InvalidDpopProof)?
-        .verify(format!("{h}.{c}").as_bytes(), &signature)
+    let signature = Es256Verification::new(&sec1, &decode(s)?, format!("{h}.{c}").as_bytes())
         .map_err(|_| InvalidDpopProof)?;
-    Ok(VerifiedDpopProof {
-        thumbprint,
-        jti_hash: B64.encode(Sha256::digest(claims.jti.as_bytes())),
-        issued_at: claims.iat,
-        retain_until: claims.iat + 70,
-        nonce: claims.nonce,
-    })
+    Ok((
+        signature,
+        VerifiedDpopProof {
+            thumbprint,
+            jti_hash: B64.encode(Sha256::digest(claims.jti.as_bytes())),
+            issued_at: claims.iat,
+            retain_until: claims.iat + 70,
+            nonce: claims.nonce,
+        },
+    ))
 }
 
 impl VerifiedDpopProof {

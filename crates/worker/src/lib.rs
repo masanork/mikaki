@@ -389,237 +389,9 @@ pub struct AuthorizationCodeContext {
 }
 
 #[cfg(target_arch = "wasm32")]
-enum WorkerTokenSigner {
-    Es256(mikaki_oidc::P256TokenSigner),
-    Rs256 {
-        key: mikaki_oidc::RsaPrivateTokenKey,
-        crypto_key: web_sys::CryptoKey,
-    },
-}
-
+mod token_signer;
 #[cfg(target_arch = "wasm32")]
-impl WorkerTokenSigner {
-    #[allow(clippy::too_many_arguments)]
-    async fn sign_userinfo(
-        &self,
-        issuer: &str,
-        subject: &str,
-        audience: &str,
-        issued_at: u64,
-        expires_at: u64,
-        linked: &serde_json::Value,
-    ) -> worker::Result<String> {
-        let input = mikaki_oidc::UserInfoSigningInput::new(
-            self.algorithm(),
-            self.kid(),
-            issuer,
-            subject,
-            audience,
-            issued_at,
-            expires_at,
-            linked,
-        )
-        .map_err(|_| worker::Error::RustError("server_error".into()))?;
-        match self {
-            Self::Es256(key) => key
-                .sign_userinfo(input)
-                .map_err(|_| worker::Error::RustError("server_error".into())),
-            Self::Rs256 { key, crypto_key } => {
-                let crypto = js_sys::Reflect::get(&js_sys::global(), &"crypto".into())?
-                    .dyn_into::<web_sys::Crypto>()
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let signature = wasm_bindgen_futures::JsFuture::from(
-                    crypto.subtle().sign_with_str_and_u8_array(
-                        "RSASSA-PKCS1-v1_5",
-                        crypto_key,
-                        input.as_bytes(),
-                    )?,
-                )
-                .await?;
-                let signature = js_sys::Uint8Array::new(&signature).to_vec();
-                if signature.len() != key.modulus_bytes() {
-                    return Err(worker::Error::RustError("server_error".into()));
-                }
-                input
-                    .finish(&signature)
-                    .map_err(|_| worker::Error::RustError("server_error".into()))
-            }
-        }
-    }
-    async fn from_secret(input: &str) -> worker::Result<Self> {
-        let value: serde_json::Value = serde_json::from_str(input)
-            .map_err(|_| worker::Error::RustError("server_error".into()))?;
-        match value.get("kty").and_then(serde_json::Value::as_str) {
-            Some("EC") => mikaki_oidc::P256TokenSigner::from_private_jwk(input)
-                .map(Self::Es256)
-                .map_err(|_| worker::Error::RustError("server_error".into())),
-            Some("RSA") => {
-                let key = mikaki_oidc::RsaPrivateTokenKey::from_private_jwk(input)
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let global = js_sys::global();
-                let crypto = js_sys::Reflect::get(&global, &"crypto".into())
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?
-                    .dyn_into::<web_sys::Crypto>()
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let subtle = crypto.subtle();
-                let jwk = js_sys::JSON::parse(
-                    &key.webcrypto_private_jwk_json()
-                        .map_err(|_| worker::Error::RustError("server_error".into()))?,
-                )?
-                .dyn_into::<js_sys::Object>()
-                .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let algorithm = js_sys::JSON::parse(
-                    r#"{"name":"RSASSA-PKCS1-v1_5","hash":{"name":"SHA-256"}}"#,
-                )?
-                .dyn_into::<js_sys::Object>()
-                .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let usages = js_sys::Array::new();
-                usages.push(&wasm_bindgen::JsValue::from_str("sign"));
-                let imported =
-                    wasm_bindgen_futures::JsFuture::from(subtle.import_key_with_object(
-                        "jwk",
-                        &jwk,
-                        &algorithm,
-                        false,
-                        usages.as_ref(),
-                    )?)
-                    .await?;
-                let crypto_key = imported
-                    .dyn_into::<web_sys::CryptoKey>()
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                Ok(Self::Rs256 { key, crypto_key })
-            }
-            _ => Err(worker::Error::RustError("server_error".into())),
-        }
-    }
-
-    fn kid(&self) -> &str {
-        match self {
-            Self::Es256(key) => key.kid(),
-            Self::Rs256 { key, .. } => key.kid(),
-        }
-    }
-
-    fn algorithm(&self) -> &'static str {
-        match self {
-            Self::Es256(_) => "ES256",
-            Self::Rs256 { .. } => "RS256",
-        }
-    }
-
-    fn matches_public_jwk(&self, jwk: &str) -> bool {
-        match self {
-            Self::Es256(key) => key.matches_public_jwk(jwk),
-            Self::Rs256 { key, .. } => key.matches_public_jwk(jwk),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn sign_id_token(
-        &self,
-        issuer: &str,
-        subject: &str,
-        audience: &str,
-        sid: &str,
-        nonce: Option<&str>,
-        auth_time: u64,
-        issued_at: u64,
-        expires_at: u64,
-    ) -> worker::Result<String> {
-        match self {
-            Self::Es256(key) => key
-                .sign_id_token(
-                    issuer, subject, audience, sid, nonce, auth_time, issued_at, expires_at,
-                )
-                .map_err(|_| worker::Error::RustError("server_error".into())),
-            Self::Rs256 { key, crypto_key } => {
-                let input = mikaki_oidc::IdTokenSigningInput::new(
-                    "RS256",
-                    key.kid(),
-                    issuer,
-                    subject,
-                    audience,
-                    sid,
-                    nonce,
-                    auth_time,
-                    issued_at,
-                    expires_at,
-                )
-                .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let global = js_sys::global();
-                let crypto = js_sys::Reflect::get(&global, &"crypto".into())?
-                    .dyn_into::<web_sys::Crypto>()
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let signature = wasm_bindgen_futures::JsFuture::from(
-                    crypto.subtle().sign_with_str_and_u8_array(
-                        "RSASSA-PKCS1-v1_5",
-                        crypto_key,
-                        input.as_bytes(),
-                    )?,
-                )
-                .await?;
-                let signature = js_sys::Uint8Array::new(&signature).to_vec();
-                if signature.len() != key.modulus_bytes() {
-                    return Err(worker::Error::RustError("server_error".into()));
-                }
-                input
-                    .finish(&signature)
-                    .map_err(|_| worker::Error::RustError("server_error".into()))
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn sign_logout_token(
-        &self,
-        issuer: &str,
-        audience: &str,
-        subject: &str,
-        sid: &str,
-        jti: &str,
-        issued_at: u64,
-        expires_at: u64,
-    ) -> worker::Result<String> {
-        match self {
-            Self::Es256(key) => key
-                .sign_logout_token(issuer, audience, subject, sid, jti, issued_at, expires_at)
-                .map_err(|_| worker::Error::RustError("server_error".into())),
-            Self::Rs256 { key, crypto_key } => {
-                let input = mikaki_oidc::LogoutTokenSigningInput::new(
-                    "RS256",
-                    key.kid(),
-                    issuer,
-                    audience,
-                    subject,
-                    sid,
-                    jti,
-                    issued_at,
-                    expires_at,
-                )
-                .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let global = js_sys::global();
-                let crypto = js_sys::Reflect::get(&global, &"crypto".into())?
-                    .dyn_into::<web_sys::Crypto>()
-                    .map_err(|_| worker::Error::RustError("server_error".into()))?;
-                let signature = wasm_bindgen_futures::JsFuture::from(
-                    crypto.subtle().sign_with_str_and_u8_array(
-                        "RSASSA-PKCS1-v1_5",
-                        crypto_key,
-                        input.as_bytes(),
-                    )?,
-                )
-                .await?;
-                let signature = js_sys::Uint8Array::new(&signature).to_vec();
-                if signature.len() != key.modulus_bytes() {
-                    return Err(worker::Error::RustError("server_error".into()));
-                }
-                input
-                    .finish(&signature)
-                    .map_err(|_| worker::Error::RustError("server_error".into()))
-            }
-        }
-    }
-}
+use token_signer::WorkerTokenSigner;
 
 #[cfg(target_arch = "wasm32")]
 impl AuthorizationCodeContext {
@@ -1771,7 +1543,8 @@ async fn jwks_route(
         .results::<SigningPublicKeyRow>()?;
     let mut keys = Vec::with_capacity(rows.len());
     for row in rows {
-        let jwk = mikaki_oidc::P256TokenSigner::canonical_public_jwk(&row.public_jwk)
+        let jwk = mikaki_oidc::canonical_public_jwk_async(&row.public_jwk)
+            .await
             .ok_or_else(|| worker::Error::RustError("invalid signing key configuration".into()))?;
         keys.push(
             serde_json::from_str(&jwk).map_err(|_| {
@@ -2235,7 +2008,7 @@ async fn userinfo_route_inner(
             worker::Method::Post => "POST",
             _ => return unauthorized(),
         };
-        let Ok(proof) = mikaki_oidc::verify_dpop_proof(
+        let Ok(proof) = mikaki_oidc::verify_dpop_proof_async(
             &compact,
             method,
             &endpoint,
@@ -2244,7 +2017,9 @@ async fn userinfo_route_inner(
                 thumbprint: &jkt,
             },
             now as u64,
-        ) else {
+        )
+        .await
+        else {
             return invalid_proof();
         };
         if require_nonce

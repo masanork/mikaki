@@ -1017,12 +1017,16 @@ name = "mikaki-oidc"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "js-sys",
  "p256",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "sha2",
  "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "zeroize",
 ]
 
 [[package]]
@@ -2280,6 +2284,7 @@ version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 dependencies = [
+ "serde",
  "zeroize_derive",
 ]
 

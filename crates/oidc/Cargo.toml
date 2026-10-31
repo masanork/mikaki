@@ -6,13 +6,21 @@ publish.workspace = true
 license.workspace = true
 [dependencies]
 base64.workspace = true
-p256.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 url.workspace = true
+zeroize = { version = "=1.9.1", features = ["serde"] }
 [dev-dependencies]
 serde_json.workspace = true
 serde_urlencoded = "=0.7.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+p256.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "=0.3.106"
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "=0.4.79"
 [lints]
 workspace = true

@@ -14,6 +14,22 @@ type Asset = [
   source: string,
   marker: string,
 ];
+function signatureAsset(
+  name: string,
+  family: 'ECDSA' | 'RSASSA-PKCS1' | 'EdDSA',
+  functions: ('sign' | 'verify')[],
+  source: string,
+  marker: string,
+): Asset {
+  return [
+    name,
+    'algorithm',
+    { primitive: 'signature', algorithmFamily: family, cryptoFunctions: functions },
+    source,
+    marker,
+  ];
+}
+
 const ASSETS: Asset[] = [
   [
     'ML-KEM-768 Vault recipient encapsulation',
@@ -29,24 +45,27 @@ const ASSETS: Asset[] = [
     'crates/worker/ui/vault-recipient-envelope.ts',
     'crypto.subtle.encrypt',
   ],
-  [
-    'ES256',
-    'algorithm',
-    { primitive: 'signature', algorithmFamily: 'ECDSA', cryptoFunctions: ['sign', 'verify'] },
-    'crates/oidc/src/signing.rs',
-    'alg: "ES256"',
-  ],
-  [
+  signatureAsset(
+    'ES256 native OIDC signer',
+    'ECDSA',
+    ['sign'],
+    'crates/worker/src/token_signer.rs',
+    'subtle.sign_with_object_and_u8_array',
+  ),
+  signatureAsset(
+    'ES256 native OIDC verifier',
+    'ECDSA',
+    ['verify'],
+    'crates/oidc/src/native_es256.ts',
+    'crypto.subtle.verify',
+  ),
+  signatureAsset(
     'RS256',
-    'algorithm',
-    {
-      primitive: 'signature',
-      algorithmFamily: 'RSASSA-PKCS1',
-      cryptoFunctions: ['sign', 'verify'],
-    },
+    'RSASSA-PKCS1',
+    ['sign', 'verify'],
     'crates/oidc/src/signing.rs',
     'alg: Some("RS256".into())',
-  ],
+  ),
   [
     'SHA-256',
     'algorithm',
@@ -54,13 +73,7 @@ const ASSETS: Asset[] = [
     'crates/oidc/src/code.rs',
     'Sha256::digest',
   ],
-  [
-    'Ed25519 verifier',
-    'algorithm',
-    { primitive: 'signature', algorithmFamily: 'EdDSA', cryptoFunctions: ['verify'] },
-    'crates/webauthn/src/key.rs',
-    'Ed25519',
-  ],
+  signatureAsset('Ed25519 verifier', 'EdDSA', ['verify'], 'crates/webauthn/src/key.rs', 'Ed25519'),
   [
     'OP signing private key binding',
     'related-crypto-material',

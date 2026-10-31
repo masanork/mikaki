@@ -2,20 +2,24 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { exportJWK, generateKeyPair, SignJWT } from 'jose';
+import { exportJWK, generateKeyPair, jwtVerify, SignJWT } from 'jose';
 import { createTestHarness } from 'wrangler';
 import { registerNativeClient } from '../../scripts/client-admin-store.ts';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
+import { nativeProviderObserver } from './support/oidc-native-provider.ts';
 
 const issuer = 'https://issuer.example';
 const callback = 'https://app.example/oidc/callback';
 const digest = (value: string) => createHash('sha256').update(value).digest('base64url');
 const secret = () => randomBytes(32).toString('base64url');
 
-test('native public OIDC code and PKCE exchange stays separate from confidential RPs', async () => {
+test('native public OIDC code and PKCE exchange stays separate from confidential RPs', async (t) => {
   const op = await generateKeyPair('ES256', { extractable: true });
   const publicJwk = { ...(await exportJWK(op.publicKey)), kid: 'op', alg: 'ES256' };
   const privateJwk = { ...(await exportJWK(op.privateKey)), kid: 'op', alg: 'ES256' };
+  const rotated = await generateKeyPair('ES256', { extractable: true });
+  const rotatedPublic = { ...(await exportJWK(rotated.publicKey)), kid: 'op-next', alg: 'ES256' };
+  const rotatedPrivate = { ...(await exportJWK(rotated.privateKey)), kid: 'op-next', alg: 'ES256' };
   const config = JSON.parse(
     await readFile(new URL('../../crates/worker/wrangler.jsonc', import.meta.url), 'utf8'),
   );
@@ -30,14 +34,38 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
     MIKAKI_NATIVE_VAULT_OAUTH: 'preview',
     OP_PRIVATE_JWK: JSON.stringify(privateJwk),
   };
+  const observed = await nativeProviderObserver(
+    new URL('../..', import.meta.url).pathname,
+    config.main,
+  );
   const harness = createTestHarness({
     root: new URL('../..', import.meta.url).pathname,
-    workers: [{ config }],
+    workers: [
+      { config },
+      {
+        config: {
+          ...config,
+          name: 'op-next',
+          queues: undefined,
+          vars: { ...config.vars, OP_PRIVATE_JWK: JSON.stringify(rotatedPrivate) },
+        },
+      },
+      {
+        config: {
+          ...config,
+          name: 'oidc-native-jwks-observed',
+          main: observed.main,
+          queues: undefined,
+        },
+      },
+    ],
   });
   try {
     await harness.listen();
     const worker = harness.getWorker('mikaki-op-worker');
     await worker.applyD1Migrations('DB');
+    const nextWorker = harness.getWorker('op-next');
+    const observer = harness.getWorker('oidc-native-jwks-observed');
     const { DB } = await worker.getEnv();
     await activateWorkerPolicy(
       DB,
@@ -59,6 +87,9 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       DB.prepare("INSERT INTO credential VALUES('credential','account',1)"),
       DB.prepare("INSERT INTO signing_key VALUES('op',1,1,'ES256',?)").bind(
         JSON.stringify(publicJwk),
+      ),
+      DB.prepare("INSERT INTO signing_key VALUES('op-next',2,1,'ES256',?)").bind(
+        JSON.stringify(rotatedPublic),
       ),
       DB.prepare(
         'INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
@@ -227,8 +258,9 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
       verifier: string,
       extras: Record<string, string> = {},
       dpop?: string,
+      target = worker,
     ) {
-      return worker.fetch(`${issuer}/token`, {
+      return target.fetch(`${issuer}/token`, {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
@@ -254,7 +286,18 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
     const reply = await token(first.code, first.verifier);
     assert.equal(reply.status, 200, await reply.clone().text());
     const issued = (await reply.json()) as { id_token: string; access_token: string };
-    assert.ok(issued.id_token);
+    const verified = await jwtVerify(issued.id_token, op.publicKey, {
+      algorithms: ['ES256'],
+      issuer,
+      audience: clientId,
+    });
+    assert.equal(verified.protectedHeader.kid, 'op');
+    assert.equal(Buffer.from(issued.id_token.split('.')[2], 'base64url').length, 64);
+    assert.equal(verified.payload.nonce, first.nonce);
+    assert.equal(verified.payload.auth_time, now);
+    assert.equal(verified.payload.acr, 'urn:mikaki:acr:passkey-uv');
+    assert.equal(typeof verified.payload.sid, 'string');
+    assert.equal(typeof verified.payload.sub, 'string');
     assert.ok(issued.access_token);
     assert.equal((await token(first.code, first.verifier)).status, 400);
     const tokenRow = await DB.prepare('SELECT revoked FROM token_issue WHERE access_hash=?')
@@ -263,7 +306,150 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
     assert.equal(tokenRow.revoked, 1, 'valid replay revokes the previously issued token');
 
     const second = await authorize();
-    assert.equal((await token(second.code, second.verifier)).status, 200);
+    const rotatedReply = await token(second.code, second.verifier, {}, undefined, nextWorker);
+    assert.equal(rotatedReply.status, 200);
+    const rotatedToken = (await rotatedReply.json()) as { id_token: string };
+    const rotatedVerified = await jwtVerify(rotatedToken.id_token, rotated.publicKey, {
+      algorithms: ['ES256'],
+      issuer,
+      audience: clientId,
+    });
+    assert.equal(rotatedVerified.protectedHeader.kid, 'op-next');
+    assert.equal(rotatedVerified.payload.nonce, second.nonce);
+    const jwks = (await (await worker.fetch(`${issuer}/jwks`)).json()) as {
+      keys: { kid: string }[];
+    };
+    assert.deepEqual(jwks.keys.map((key) => key.kid).sort(), ['op', 'op-next']);
+    await t.test(
+      'JWKS validates EC points through verify-only native import on every request',
+      async () => {
+        const response = await observer.fetch(`${issuer}/jwks`);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), jwks);
+        const imports = JSON.parse(response.headers.get('X-Test-Native-Imports')!) as {
+          bytes: number;
+          extractable: boolean;
+          usages: string[];
+        }[];
+        assert.equal(imports.length, 2);
+        for (const key of imports)
+          assert.deepEqual(key, { bytes: 65, extractable: false, usages: ['verify'] });
+        assert.equal(
+          response.headers.get('X-Test-Native-Verified'),
+          '0',
+          'point validation must not sign or verify a synthetic message',
+        );
+        const concurrent = await Promise.all(
+          Array.from({ length: 8 }, () => worker.fetch(`${issuer}/jwks`)),
+        );
+        for (const reply of concurrent) {
+          assert.equal(reply.status, 200);
+          assert.deepEqual(await reply.json(), jwks);
+        }
+      },
+    );
+    await t.test(
+      'JWKS rejects malformed metadata, private material and off-curve/noncanonical coordinates',
+      async () => {
+        try {
+          for (const [field, value] of [
+            ['crv', 'P-384'],
+            ['alg', 'ES256K'],
+            ['use', 'enc'],
+            ['kid', ''],
+            ['key_ops', []],
+            ['key_ops', ['sign']],
+            ['ext', false],
+            ['d', 'private'],
+            ['x', Buffer.alloc(31).toString('base64url')],
+            ['y', `${publicJwk.y}=`],
+            ['x', Buffer.alloc(32, 255).toString('base64url')],
+          ] as [string, unknown][]) {
+            const invalid: Record<string, unknown> = { ...publicJwk };
+            invalid[field] = value;
+            await DB.prepare("UPDATE signing_key SET public_jwk=? WHERE kid='op'")
+              .bind(JSON.stringify(invalid))
+              .run();
+            assert.equal((await worker.fetch(`${issuer}/jwks`)).status, 500, field);
+          }
+          const offCurve = {
+            ...publicJwk,
+            x: Buffer.alloc(32).toString('base64url'),
+            y: Buffer.alloc(32).toString('base64url'),
+          };
+          for (const invalid of [
+            JSON.stringify(offCurve),
+            JSON.stringify(publicJwk).replace('"kid":"op"', '"kid":"op","kid":"other"'),
+          ]) {
+            await DB.prepare("UPDATE signing_key SET public_jwk=? WHERE kid='op'")
+              .bind(invalid)
+              .run();
+            assert.equal((await worker.fetch(`${issuer}/jwks`)).status, 500);
+          }
+        } finally {
+          await DB.prepare("UPDATE signing_key SET public_jwk=? WHERE kid='op'")
+            .bind(JSON.stringify(publicJwk))
+            .run();
+        }
+        assert.deepEqual(await (await worker.fetch(`${issuer}/jwks`)).json(), jwks);
+      },
+    );
+    await t.test(
+      'native import failure or unexpected key capability cannot publish a JWKS',
+      async () => {
+        for (const fault of ['import', 'extractable']) {
+          assert.equal(
+            (await observer.fetch(`${issuer}/jwks`, { headers: { 'X-Test-Native-Fault': fault } }))
+              .status,
+            500,
+          );
+          assert.deepEqual(await (await observer.fetch(`${issuer}/jwks`)).json(), jwks);
+        }
+      },
+    );
+    await t.test(
+      'RSA public metadata is validated independently of EC and duplicate fields fail closed',
+      async () => {
+        const rsa = await generateKeyPair('RS256', { extractable: true });
+        const rsaJwk = {
+          ...(await exportJWK(rsa.publicKey)),
+          kid: 'rsa',
+          alg: 'RS256',
+          key_ops: [],
+        };
+        try {
+          await DB.prepare("UPDATE signing_key SET active=0 WHERE algorithm='ES256'").run();
+          await DB.prepare("INSERT INTO signing_key VALUES('rsa',1,1,'RS256',?)")
+            .bind(JSON.stringify(rsaJwk))
+            .run();
+          const response = await observer.fetch(`${issuer}/jwks`, {
+            headers: { 'X-Test-Native-Fault': 'import' },
+          });
+          assert.equal(response.status, 200);
+          assert.deepEqual(JSON.parse(response.headers.get('X-Test-Native-Imports')!), []);
+          const publicKeys = (await response.json()) as { keys: Record<string, unknown>[] };
+          assert.equal(publicKeys.keys.length, 1);
+          assert.equal(publicKeys.keys[0].kid, 'rsa');
+          assert.equal(publicKeys.keys[0].use, 'sig');
+          assert.equal(publicKeys.keys[0].key_ops, undefined);
+          const duplicate = JSON.stringify(rsaJwk).replace('"e":"AQAB"', '"e":"Ag","e":"AQAB"');
+          assert.notEqual(duplicate, JSON.stringify(rsaJwk));
+          await DB.prepare("UPDATE signing_key SET public_jwk=? WHERE kid='rsa'")
+            .bind(duplicate)
+            .run();
+          assert.equal((await worker.fetch(`${issuer}/jwks`)).status, 500);
+        } finally {
+          await DB.prepare("DELETE FROM signing_key WHERE kid='rsa'").run();
+          await DB.prepare("UPDATE signing_key SET active=1 WHERE algorithm='ES256'").run();
+        }
+        assert.deepEqual(await (await worker.fetch(`${issuer}/jwks`)).json(), jwks);
+      },
+    );
+    await jwtVerify(issued.id_token, op.publicKey, {
+      algorithms: ['ES256'],
+      issuer,
+      audience: clientId,
+    });
 
     const desktopId = randomUUID();
     const registeredLoopback = 'http://127.0.0.1:0/oidc/callback';
@@ -354,5 +540,6 @@ test('native public OIDC code and PKCE exchange stays separate from confidential
     );
   } finally {
     await harness.close();
+    await observed.close();
   }
 });
