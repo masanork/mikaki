@@ -19,12 +19,12 @@
   },
   "devDependencies": {
     "@noble/post-quantum": "0.7.1",
-    "@openeudi/openid4vp": "0.13.0",
+    "@openeudi/openid4vp": "0.16.1",
     "@openid4vc/oauth2": "0.8.0",
     "@openid4vc/openid4vci": "0.8.0",
-    "cborg": "6.1.3",
-    "jose": "6.2.12",
-    "wrangler": "4.151.1"
+    "cborg": "6.1.4",
+    "jose": "6.2.13",
+    "wrangler": "4.152.0"
   },
   "overrides": {
     "sharp": "0.35.5",
