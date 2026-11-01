@@ -5,22 +5,41 @@
 //! token issuance, phishing mitigation or DPoP replay protection. Do not expose
 //! this state machine directly as a production endpoint.
 
-use crate::VerifiedDpopProof;
+use crate::{VerifiedDpopProof, dpop::endpoint};
+
+/// Construct only from trusted server configuration, never request parameters.
+/// Query and fragment are excluded following DPoP URL comparison semantics.
+pub struct GrantEndpoints {
+    initiation: String,
+    token: String,
+}
+
+impl GrantEndpoints {
+    pub fn new(initiation: &str, token: &str) -> Option<Self> {
+        let initiation = endpoint(initiation).ok()?;
+        let token = endpoint(token).ok()?;
+        if initiation == token {
+            return None;
+        }
+        Some(Self { initiation, token })
+    }
+}
 
 /// The device grant is bound to a verified proof key by a separate,
 /// currently unspecified profile. The proof does not authenticate the client.
-/// The caller must verify the correct HTTP method and endpoint, and atomically
-/// reserve the proof's replay identifier with the corresponding state change.
+/// The caller must use trusted endpoint configuration and atomically reserve
+/// the proof's replay identifier with the corresponding state change.
 /// Unverified key strings cannot be substituted for verified proof objects:
 ///
 /// ```compile_fail
 /// use mikaki_oidc::device_grant::Grant;
-/// let _ = Grant::new("client".into(), "unverified-key", 0, 60, 5);
+/// let _ = Grant::new("client".into(), "unverified-key", unimplemented!(), 0, 60, 5);
 /// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct Grant {
     client: String,
     key_thumbprint: String,
+    token_endpoint: String,
     expires_at: u64,
     interval: u64,
     next_poll_at: u64,
@@ -56,6 +75,7 @@ impl Grant {
     pub fn new(
         client: String,
         proof: &VerifiedDpopProof,
+        endpoints: &GrantEndpoints,
         now: u64,
         expires_at: u64,
         interval: u64,
@@ -63,6 +83,7 @@ impl Grant {
         if client.is_empty()
             || expires_at <= now
             || interval == 0
+            || !proof.is_token_post_to(&endpoints.initiation)
             || proof.issued_at() > now.saturating_add(10)
             || proof.retain_until() < now
         {
@@ -71,6 +92,7 @@ impl Grant {
         Some(Self {
             client,
             key_thumbprint: proof.thumbprint().to_owned(),
+            token_endpoint: endpoints.token.clone(),
             expires_at,
             interval,
             next_poll_at: now.saturating_add(interval),
@@ -104,6 +126,7 @@ impl Grant {
     pub fn poll(&mut self, client: &str, proof: &VerifiedDpopProof, now: u64) -> PollResult {
         if client != self.client
             || proof.thumbprint() != self.key_thumbprint
+            || !proof.is_token_post_to(&self.token_endpoint)
             || proof.issued_at() > now.saturating_add(10)
             || proof.retain_until() < now
         {
@@ -143,14 +166,30 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
     use p256::ecdsa::{Signature, SigningKey, signature::Signer};
     use serde_json::json;
+    use sha2::{Digest, Sha256};
 
     fn proof(key_byte: u8, endpoint: &str, now: u64) -> VerifiedDpopProof {
+        proof_for_method(key_byte, endpoint, "POST", now)
+    }
+    fn proof_for_method(key_byte: u8, endpoint: &str, method: &str, now: u64) -> VerifiedDpopProof {
+        proof_for_target(key_byte, endpoint, method, now, false)
+    }
+    fn proof_for_target(
+        key_byte: u8,
+        endpoint: &str,
+        method: &str,
+        now: u64,
+        resource: bool,
+    ) -> VerifiedDpopProof {
         let key = SigningKey::from_slice(&[key_byte; 32]).unwrap();
         let point = key.verifying_key().to_sec1_point(false);
         let header = json!({"alg":"ES256","typ":"dpop+jwt","jwk":{
             "kty":"EC","crv":"P-256","x":B64.encode(point.x().unwrap()),"y":B64.encode(point.y().unwrap())
         }});
-        let claims = json!({"htm":"POST","htu":endpoint,"jti":"probe", "iat":now});
+        let mut claims = json!({"htm":method,"htu":endpoint,"jti":"probe", "iat":now});
+        if resource {
+            claims["ath"] = json!(B64.encode(Sha256::digest(b"fixture-token")));
+        }
         let input = format!(
             "{}.{}",
             B64.encode(header.to_string()),
@@ -158,7 +197,24 @@ mod tests {
         );
         let signature: Signature = key.sign(input.as_bytes());
         let compact = format!("{input}.{}", B64.encode(signature.to_bytes()));
-        verify_dpop_proof(&compact, "POST", endpoint, DpopTarget::Token, now).unwrap()
+        if resource {
+            let thumbprint = proof_for_target(key_byte, endpoint, method, now, false)
+                .thumbprint()
+                .to_owned();
+            verify_dpop_proof(
+                &compact,
+                method,
+                endpoint,
+                DpopTarget::Resource {
+                    access_token: "fixture-token",
+                    thumbprint: &thumbprint,
+                },
+                now,
+            )
+            .unwrap()
+        } else {
+            verify_dpop_proof(&compact, method, endpoint, DpopTarget::Token, now).unwrap()
+        }
     }
     fn auth_proof() -> VerifiedDpopProof {
         proof(7, "https://issuer.example/device_authorization", 100)
@@ -169,8 +225,15 @@ mod tests {
     fn other_proof(now: u64) -> VerifiedDpopProof {
         proof(8, "https://issuer.example/token", now)
     }
+    fn endpoints() -> GrantEndpoints {
+        GrantEndpoints::new(
+            "https://issuer.example/device_authorization",
+            "https://issuer.example/token",
+        )
+        .unwrap()
+    }
     fn grant() -> Grant {
-        Grant::new("nihos".into(), &auth_proof(), 100, 200, 5).unwrap()
+        Grant::new("nihos".into(), &auth_proof(), &endpoints(), 100, 200, 5).unwrap()
     }
 
     #[test]
@@ -213,6 +276,30 @@ mod tests {
             g.poll("nihos", &token_proof(1), 101),
             PollResult::InvalidGrant
         );
+        assert_eq!(
+            g.poll("nihos", &proof(7, "https://issuer.example/other", 101), 101),
+            PollResult::InvalidGrant
+        );
+        assert_eq!(
+            g.poll("nihos", &auth_proof(), 101),
+            PollResult::InvalidGrant
+        );
+        assert_eq!(
+            g.poll(
+                "nihos",
+                &proof_for_method(7, "https://issuer.example/token", "GET", 101),
+                101
+            ),
+            PollResult::InvalidGrant
+        );
+        assert_eq!(
+            g.poll(
+                "nihos",
+                &proof_for_target(7, "https://issuer.example/token", "POST", 101, true),
+                101
+            ),
+            PollResult::InvalidGrant
+        );
         assert!(g.approve("alice", 102));
         assert_eq!(
             g.poll("nihos", &token_proof(105), 105),
@@ -237,6 +324,21 @@ mod tests {
             denied.poll("nihos", &token_proof(105), 105),
             PollResult::AccessDenied
         );
-        assert!(Grant::new("nihos".into(), &auth_proof(), 100, 200, 0).is_none());
+        assert!(Grant::new("nihos".into(), &auth_proof(), &endpoints(), 100, 200, 0).is_none());
+        assert!(Grant::new("nihos".into(), &token_proof(100), &endpoints(), 100, 200, 5).is_none());
+        assert!(
+            GrantEndpoints::new(
+                "http://issuer.example/device",
+                "https://issuer.example/token"
+            )
+            .is_none()
+        );
+        assert!(
+            GrantEndpoints::new(
+                "https://issuer.example/token",
+                "https://issuer.example/token"
+            )
+            .is_none()
+        );
     }
 }
