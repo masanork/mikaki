@@ -64,3 +64,12 @@ denial, expiry, wrong-key redemption and one-time token-record creation. It
 does not implement a consent endpoint, authenticated session, actual DPoP
 verification, secure rate limiting or production D1 access. The fixture
 accepts synthetic prevalidated input and an injected clock.
+
+`verified-dpop.test.mjs` signs synthetic proofs with P-256, calls the existing
+Rust verifier in a **host process**, and feeds only the verified thumbprint and
+proof ID digest into the local D1 redemption fixture. It checks wrong keys,
+method and endpoint mismatches, stale claims, forged signatures and replay
+against another grant. The process bridge is test-only: it is not the Workers
+Wasm verifier, an HTTP service, a production replay store or evidence of
+atomicity between real verification and database acceptance. The fixture
+still trusts values that the host test passes to it.
