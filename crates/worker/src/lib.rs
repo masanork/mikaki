@@ -8,6 +8,8 @@ mod app_association;
 mod auth_resources;
 #[cfg(target_arch = "wasm32")]
 mod branding;
+#[cfg(target_arch = "wasm32")]
+mod dbsc;
 #[cfg(any(target_arch = "wasm32", test))]
 mod checkpoint_diagnostics;
 #[cfg(target_arch = "wasm32")]
@@ -2208,6 +2210,9 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
+        .get_async("/dbsc/challenge", dbsc::challenge_endpoint)
+        .post_async("/dbsc/register", dbsc::register)
+        .post_async("/dbsc/refresh", dbsc::refresh)
         .post_async("/native/session", native_session::session)
         .get_async("/logout", logout::get)
         .post_async("/logout", {

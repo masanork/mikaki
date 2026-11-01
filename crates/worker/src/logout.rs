@@ -440,6 +440,10 @@ async fn confirm(
         "Set-Cookie",
         "__Host-op-logout=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax",
     )?;
+    response.headers_mut().append(
+        "Sec-Session-Registration",
+        "()",
+    )?;
     Ok(response)
 }
 

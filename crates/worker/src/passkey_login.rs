@@ -682,7 +682,8 @@ pub(super) async fn finish(
         &format!("{sso_id}-review"),
     )?);
     crate::op_authority::batch(&context.env, statements).await?;
-    worker::Response::builder()
+    let dbsc_challenge = crate::dbsc::create_challenge(&db, None).await.unwrap_or_default();
+    let mut builder = worker::Response::builder()
         .with_header(
             "Set-Cookie",
             &format!(
@@ -691,10 +692,18 @@ pub(super) async fn finish(
             ),
         )?
         .with_header("Cache-Control", "no-store")?
-        .with_header("Referrer-Policy", "no-referrer")?
-        .from_json(&LoginFinishOutput {
-            location: login.authorization_url,
-        })
+        .with_header("Referrer-Policy", "no-referrer")?;
+    if !dbsc_challenge.is_empty() {
+        builder = builder.with_header(
+            "Sec-Session-Registration",
+            &format!(
+                "(\"/dbsc/register\"); challenge=\"{dbsc_challenge}\"; path=\"/\"; cookie-names=\"__Host-op-sso\""
+            ),
+        )?;
+    }
+    builder.from_json(&LoginFinishOutput {
+        location: login.authorization_url,
+    })
 }
 
 pub(super) async fn product_stylesheet(
