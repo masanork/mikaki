@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS dbsc_session (
   public_key_sec1 BLOB NOT NULL CHECK(length(public_key_sec1) = 65),
   public_key_jwk TEXT NOT NULL CHECK(length(public_key_jwk) BETWEEN 1 AND 2048),
   created_at INTEGER NOT NULL CHECK(created_at > 0),
-  last_refreshed_at INTEGER NOT NULL CHECK(last_refreshed_at >= created_at)
+  last_refreshed_at INTEGER NOT NULL CHECK(last_refreshed_at >= created_at),
+  cookie_expires_at INTEGER NOT NULL CHECK(cookie_expires_at >= created_at)
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_dbsc_session_sso ON dbsc_session(sso_id);

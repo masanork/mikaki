@@ -104,6 +104,7 @@ async fn admin(db: &worker::d1::D1Database, secret_hash: &str) -> worker::Result
          JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id AND c.active=1 \
          JOIN passkey_credential p ON p.credential_id=c.credential_id \
          WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>CAST(strftime('%s','now') AS INTEGER) \
+         AND NOT EXISTS(SELECT 1 FROM dbsc_session ds WHERE ds.sso_id=ss.sso_id AND ds.cookie_expires_at<=CAST(strftime('%s','now') AS INTEGER)) \
          AND a.active=1 AND a.epoch=ss.epoch",
     )
     .bind(&[JsValue::from_str(secret_hash)])?

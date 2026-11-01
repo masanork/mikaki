@@ -150,10 +150,11 @@ pub(crate) async fn register(
         .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
 
     let session_id = random_string()?;
+    let cookie_expires_at = now + DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS;
 
     db.prepare(
-        "INSERT INTO dbsc_session(session_id, sso_id, public_key_sec1, public_key_jwk, created_at, last_refreshed_at) \
-         VALUES(?1, ?2, ?3, ?4, ?5, ?5)",
+        "INSERT INTO dbsc_session(session_id, sso_id, public_key_sec1, public_key_jwk, created_at, last_refreshed_at, cookie_expires_at) \
+         VALUES(?1, ?2, ?3, ?4, ?5, ?5, ?6)",
     )
     .bind(&[
         JsValue::from_str(&session_id),
@@ -161,6 +162,7 @@ pub(crate) async fn register(
         JsValue::from(js_sys::Uint8Array::from(verified.sec1_public_key.as_slice())),
         JsValue::from_str(&verified.public_key_jwk),
         JsValue::from_f64(now as f64),
+        JsValue::from_f64(cookie_expires_at as f64),
     ])?
     .run()
     .await?;
@@ -259,9 +261,14 @@ pub(crate) async fn refresh(
         .await
         .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
 
-    // Update last_refreshed_at
-    db.prepare("UPDATE dbsc_session SET last_refreshed_at = ?1 WHERE session_id = ?2")
-        .bind(&[JsValue::from_f64(now as f64), JsValue::from_str(&session_id)])?
+    // Update last_refreshed_at and extend server-side short-lived expiry
+    let cookie_expires_at = now + DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS;
+    db.prepare("UPDATE dbsc_session SET last_refreshed_at = ?1, cookie_expires_at = ?2 WHERE session_id = ?3")
+        .bind(&[
+            JsValue::from_f64(now as f64),
+            JsValue::from_f64(cookie_expires_at as f64),
+            JsValue::from_str(&session_id),
+        ])?
         .run()
         .await?;
 

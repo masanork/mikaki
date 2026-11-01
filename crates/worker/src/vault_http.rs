@@ -36,6 +36,7 @@ pub(crate) async fn owner(request: &Request, db: &D1Database) -> worker::Result<
          JOIN account_security a ON a.account_id=ss.account_id \
          JOIN credential c ON c.credential_id=ss.credential_id AND c.account_id=ss.account_id \
          WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>?2 \
+         AND NOT EXISTS(SELECT 1 FROM dbsc_session ds WHERE ds.sso_id=ss.sso_id AND ds.cookie_expires_at<=?2) \
          AND a.active=1 AND a.epoch=ss.epoch AND c.active=1",
     )
     .bind(&[JsValue::from_str(&hash), JsValue::from_f64(now as f64)])?
