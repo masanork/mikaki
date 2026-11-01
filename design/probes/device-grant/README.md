@@ -31,3 +31,17 @@ an injected uniqueness failure. The proof key and ID are synthetic strings;
 the Worker fixture does not validate a DPoP signature. It does not use a
 deployed D1 service, real tokens, user approval, DPoP verification or a public
 endpoint. It is a database experiment, not a ready authentication design.
+
+The local `rate-worker.test.mjs` adds a global fixed-window guessing budget and
+uses Web Crypto HMAC with the same synthetic test vector as the Rust code. Two
+Workers share the local D1 counter; malformed and expired codes still consume
+the budget, and a lookup failure rolls its update back. It returns a match
+signal only for testing, with an injected clock and test key. This fixed-window
+probe is not an acceptable standalone production limiter: a boundary permits
+two windows' worth of attempts, a global limit can deny legitimate users, and
+old buckets require bounded cleanup. Production needs a risk-based layered
+policy for aggregate and individual sources/accounts, trusted server time,
+safe throttled/error UX, response timing and enumeration review, HMAC-key
+custody/rotation, and tests against actual deployed D1. Never accept a clock or
+limiter policy supplied by the client. No claim of user or device authentication
+follows from a matching code.
