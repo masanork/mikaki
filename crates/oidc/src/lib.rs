@@ -2,6 +2,7 @@
 mod client_assertion;
 mod code;
 mod dbsc;
+pub mod device_grant;
 mod dpop;
 mod es256;
 mod exchange;
