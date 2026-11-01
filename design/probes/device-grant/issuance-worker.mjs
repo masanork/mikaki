@@ -8,8 +8,8 @@ export default {
       await env.DB.batch([
         env.DB.prepare('INSERT INTO replay_probe VALUES(?,?)').bind(key, proofId),
         env.DB.prepare(
-          `INSERT INTO issuance_probe
-          (device_digest,user_index,client_id,scope,key_thumbprint,expires_at,state)
+          `INSERT INTO grant_probe
+          (code_digest,user_index,client_id,scope,key_thumbprint,expires_at,state)
           VALUES(?,?,?,?,?,?,'pending')`,
         ).bind(deviceDigest, userIndex, client, scope, key, expires),
         env.DB.prepare('INSERT INTO audit_probe VALUES(?)').bind(

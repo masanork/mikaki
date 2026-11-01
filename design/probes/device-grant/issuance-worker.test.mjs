@@ -22,7 +22,7 @@ test('device and user indexes, replay reservation and audit commit atomically ac
       db.prepare(
         'CREATE TABLE replay_probe(key_thumbprint TEXT NOT NULL, jti_hash TEXT NOT NULL, PRIMARY KEY(key_thumbprint,jti_hash))',
       ),
-      db.prepare(`CREATE TABLE issuance_probe(device_digest TEXT PRIMARY KEY,user_index TEXT NOT NULL UNIQUE,
+      db.prepare(`CREATE TABLE grant_probe(code_digest TEXT PRIMARY KEY,user_index TEXT NOT NULL UNIQUE,
         client_id TEXT NOT NULL,scope TEXT NOT NULL,key_thumbprint TEXT NOT NULL,
         expires_at INTEGER NOT NULL,state TEXT NOT NULL CHECK(state='pending'))`),
       db.prepare('CREATE TABLE audit_probe(id TEXT PRIMARY KEY)'),
@@ -54,7 +54,7 @@ test('device and user indexes, replay reservation and audit commit atomically ac
       }),
     ]);
     assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM issuance_probe').first()).n, 1);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM grant_probe').first()).n, 1);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM replay_probe').first()).n, 1);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM audit_probe').first()).n, 2);
     const rejected =
@@ -67,7 +67,7 @@ test('device and user indexes, replay reservation and audit commit atomically ac
     );
     const issued = await db
       .prepare(
-        'SELECT client_id,scope,key_thumbprint,expires_at,state FROM issuance_probe WHERE device_digest=?',
+        'SELECT client_id,scope,key_thumbprint,expires_at,state FROM grant_probe WHERE code_digest=?',
       )
       .bind(rejected.deviceDigest)
       .first();
@@ -88,7 +88,7 @@ test('device and user indexes, replay reservation and audit commit atomically ac
     assert.equal((await issue(workers[0], { ...failed, fault: true })).status, 409);
     assert.equal(
       await db
-        .prepare('SELECT * FROM issuance_probe WHERE device_digest=?')
+        .prepare('SELECT * FROM grant_probe WHERE code_digest=?')
         .bind(failed.deviceDigest)
         .first(),
       null,
@@ -125,10 +125,7 @@ test('device and user indexes, replay reservation and audit commit atomically ac
       null,
     );
     assert.equal(
-      await db
-        .prepare('SELECT * FROM issuance_probe WHERE user_index=?')
-        .bind('user-other')
-        .first(),
+      await db.prepare('SELECT * FROM grant_probe WHERE user_index=?').bind('user-other').first(),
       null,
     );
   } finally {

@@ -56,3 +56,11 @@ grants or expose a production endpoint. An unknown response after commit is
 not safe to retry blindly: reconcile only through a separately designed policy
 or restart with a fresh request. Production also needs expiry cleanup, bounded
 collision retries, and durable replay retention.
+
+`lifecycle.test.mjs` connects the initiation, HMAC lookup and redemption
+fixtures to one local D1 database. It uses a direct conditional SQL decision
+as a synthetic substitute for user approval, and checks decision races,
+denial, expiry, wrong-key redemption and one-time token-record creation. It
+does not implement a consent endpoint, authenticated session, actual DPoP
+verification, secure rate limiting or production D1 access. The fixture
+accepts synthetic prevalidated input and an injected clock.
