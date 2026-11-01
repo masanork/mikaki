@@ -47,6 +47,10 @@ export const OWNER_MIGRATIONS = [
     name: '0007_passport_issuance.sql',
     sha256: 'da8cbc7435797242290542ab127edd1fe79fb21549aec0d7deb1d09a5bc930b2',
   },
+  {
+    name: '0008_dbsc_sessions.sql',
+    sha256: '3e30fa776c7fea42fa418973e35e1c44dcf642d0944a5c1f9a579883754a1024',
+  },
 ] as const;
 
 export function assertProductionOwnerSchema(

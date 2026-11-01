@@ -11,6 +11,8 @@ mod branding;
 #[cfg(any(target_arch = "wasm32", test))]
 mod checkpoint_diagnostics;
 #[cfg(target_arch = "wasm32")]
+mod dbsc;
+#[cfg(target_arch = "wasm32")]
 mod dpop;
 #[cfg(all(
     target_arch = "wasm32",
@@ -1220,6 +1222,7 @@ async fn authorize_route(
                ON r.client_id=c.client_id AND r.redirect_uri=?3 AND r.active=1 \
              JOIN app_connection g ON g.account_id=ss.account_id AND g.client_id=c.client_id \
              WHERE sx.secret_hash=?1 AND ss.revoked=0 AND ss.expires_at>?4 \
+             AND NOT EXISTS(SELECT 1 FROM dbsc_session ds WHERE ds.sso_id=ss.sso_id AND ds.cookie_expires_at<=?4) \
              AND a.active=1 AND a.epoch=ss.epoch AND cr.active=1 \
              AND c.active=1 AND g.active=1",
         )
@@ -2208,6 +2211,9 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
+        .get_async("/dbsc/challenge", dbsc::challenge_endpoint)
+        .post_async("/dbsc/register", dbsc::register)
+        .post_async("/dbsc/refresh", dbsc::refresh)
         .post_async("/native/session", native_session::session)
         .get_async("/logout", logout::get)
         .post_async("/logout", {

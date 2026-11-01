@@ -57,7 +57,7 @@ test('workerd ES256 raw-key compatibility, async input snapshots and provider fa
       contents: `
         import { nativeVerifyEs256, nativeValidateEs256PublicKey } from './crates/oidc/src/native_es256.ts';
         export default { async fetch(request) {
-          const { inputs, mutate, fault, validate } = await request.json();
+          const { inputs, mutate, fault, validate, requestId } = await request.json();
           const bytes = inputs.map(input => new Uint8Array(input));
           const method = fault === 'import' ? 'importKey' : 'verify';
           const original = crypto.subtle[method];
@@ -65,7 +65,8 @@ test('workerd ES256 raw-key compatibility, async input snapshots and provider fa
           try {
             const pending = validate ? nativeValidateEs256PublicKey(bytes[0]) : nativeVerifyEs256(...bytes);
             if (mutate) bytes.forEach(input => input.fill(0));
-            return Response.json(await pending);
+            const result = await pending;
+            return Response.json(requestId === undefined ? result : { requestId, result });
           } catch { return new Response(null, { status: 422 }); }
           finally { if (fault) crypto.subtle[method] = original; }
         } };`,
@@ -89,6 +90,7 @@ test('workerd ES256 raw-key compatibility, async input snapshots and provider fa
     mutate = false,
     fault?: string,
     validate = false,
+    requestId?: number,
   ) =>
     mf.dispatchFetch('http://test.invalid/', {
       method: 'POST',
@@ -97,6 +99,7 @@ test('workerd ES256 raw-key compatibility, async input snapshots and provider fa
         mutate,
         fault,
         validate,
+        requestId,
       }),
     });
   try {
@@ -109,9 +112,23 @@ test('workerd ES256 raw-key compatibility, async input snapshots and provider fa
         );
       }
     const concurrent = await Promise.all(
-      Array.from({ length: 8 }, () => call(bytes('public_key'), bytes('signature'), message, true)),
+      Array.from({ length: 8 }, async (_, requestId) => {
+        const response = await call(
+          bytes('public_key'),
+          bytes('signature'),
+          message,
+          true,
+          undefined,
+          false,
+          requestId,
+        );
+        return response.json();
+      }),
     );
-    for (const response of concurrent) assert.equal(await response.json(), true);
+    assert.deepEqual(
+      concurrent,
+      Array.from({ length: 8 }, (_, requestId) => ({ requestId, result: true })),
+    );
     for (const name of ['public_key', 'compressed_public_key'])
       assert.equal(
         await (await call(bytes(name), bytes('signature'), message, true, undefined, true)).json(),

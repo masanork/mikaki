@@ -1,6 +1,7 @@
 //! Static confidential ES256 OIDC profile and typed protocol state.
 mod client_assertion;
 mod code;
+mod dbsc;
 mod dpop;
 mod es256;
 mod exchange;
@@ -15,6 +16,12 @@ pub use client_assertion::{
 pub use code::{
     CodeDigest, CodeEntropyError, CodeIssueError, CryptographicRandom, PresentedAuthorizationCode,
 };
+pub use dbsc::{
+    DbscRefreshProof, DbscRegistrationProof, InvalidDbscProof, verify_dbsc_refresh_async,
+    verify_dbsc_registration_async,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub use dbsc::{verify_dbsc_refresh, verify_dbsc_registration};
 #[cfg(not(target_arch = "wasm32"))]
 pub use dpop::verify_dpop_proof;
 pub use dpop::verify_dpop_proof_async;
