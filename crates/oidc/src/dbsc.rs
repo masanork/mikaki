@@ -18,8 +18,7 @@ pub struct DbscRegistrationProof {
     pub public_key_jwk: String,
     pub thumbprint: String,
     pub challenge: String,
-    pub jti: String,
-    pub issued_at: u64,
+    pub issued_at: Option<u64>,
 }
 
 /// Verified proof for DBSC session refresh.
@@ -27,8 +26,8 @@ pub struct DbscRegistrationProof {
 #[must_use]
 pub struct DbscRefreshProof {
     pub challenge: String,
-    pub jti: String,
-    pub issued_at: u64,
+    pub session_id: Option<String>,
+    pub issued_at: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -58,10 +57,11 @@ struct PublicKey {
 
 #[derive(Deserialize)]
 struct Claims {
-    challenge: String,
+    jti: String,
     #[serde(default)]
-    jti: Option<String>,
-    iat: u64,
+    sub: Option<String>,
+    #[serde(default)]
+    iat: Option<u64>,
 }
 
 fn decode(value: &str) -> Result<Vec<u8>, InvalidDbscProof> {
@@ -86,15 +86,15 @@ fn split_compact(compact: &str) -> Result<(&str, &str, &str), InvalidDbscProof> 
 }
 
 fn validate_claims(claims: &Claims, expected_challenge: &str, now: u64) -> Result<(), InvalidDbscProof> {
-    if claims.challenge != expected_challenge
+    if claims.jti != expected_challenge
         || expected_challenge.is_empty()
-        || claims.iat > now.saturating_add(60)
-        || now > claims.iat.saturating_add(120)
+        || claims.jti.len() > 256
+        || claims.jti.bytes().any(|b| b.is_ascii_control())
     {
         return Err(InvalidDbscProof);
     }
-    if let Some(jti) = &claims.jti {
-        if jti.is_empty() || jti.len() > 256 || jti.bytes().any(|b| b.is_ascii_control()) {
+    if let Some(iat) = claims.iat {
+        if iat > now.saturating_add(60) || now > iat.saturating_add(120) {
             return Err(InvalidDbscProof);
         }
     }
@@ -159,8 +159,7 @@ fn parse_dbsc_registration(
             sec1_public_key: sec1,
             public_key_jwk: canonical_jwk,
             thumbprint,
-            challenge: claims.challenge,
-            jti: claims.jti.unwrap_or_default(),
+            challenge: claims.jti,
             issued_at: claims.iat,
         },
     ))
@@ -215,8 +214,8 @@ fn parse_dbsc_refresh(
     Ok((
         verification,
         DbscRefreshProof {
-            challenge: claims.challenge,
-            jti: claims.jti.unwrap_or_default(),
+            challenge: claims.jti,
+            session_id: claims.sub,
             issued_at: claims.iat,
         },
     ))

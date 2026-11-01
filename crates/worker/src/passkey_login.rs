@@ -695,9 +695,9 @@ pub(super) async fn finish(
         .with_header("Referrer-Policy", "no-referrer")?;
     if !dbsc_challenge.is_empty() {
         builder = builder.with_header(
-            "Sec-Session-Registration",
+            "Secure-Session-Registration",
             &format!(
-                "(\"/dbsc/register\"); challenge=\"{dbsc_challenge}\"; path=\"/\"; cookie-names=\"__Host-op-sso\""
+                "(ES256); path=\"/dbsc/register\"; challenge=\"{dbsc_challenge}\"; cookie-names=\"__Host-op-sso\""
             ),
         )?;
     }

@@ -441,7 +441,7 @@ async fn confirm(
         "__Host-op-logout=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax",
     )?;
     response.headers_mut().append(
-        "Sec-Session-Registration",
+        "Secure-Session-Registration",
         "()",
     )?;
     Ok(response)

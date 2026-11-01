@@ -24,6 +24,27 @@ struct ChallengeResponse {
     challenge: String,
 }
 
+#[derive(Serialize)]
+struct RegistrationScope {
+    include_site: bool,
+}
+
+#[derive(Serialize)]
+struct RegistrationCredential {
+    #[serde(rename = "type")]
+    type_: &'static str,
+    name: &'static str,
+    attributes: &'static str,
+}
+
+#[derive(Serialize)]
+struct SessionInstructions {
+    session_identifier: String,
+    refresh_url: &'static str,
+    scope: RegistrationScope,
+    credentials: Vec<RegistrationCredential>,
+}
+
 fn hash_secret(value: &str) -> String {
     let mut h = Sha256::new();
     h.update(value.as_bytes());
@@ -81,7 +102,7 @@ pub(crate) async fn challenge_endpoint(
     _request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    let db = context.env.d1("MIKAKI_DB")?;
+    let db = context.env.d1("DB")?;
     let challenge = create_challenge(&db, None).await?;
 
     worker::Response::builder()
@@ -95,7 +116,7 @@ pub(crate) async fn register(
     mut request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    let db = context.env.d1("MIKAKI_DB")?;
+    let db = context.env.d1("DB")?;
     let now = current_time()?;
 
     // Verify existing SSO session from cookie
@@ -134,18 +155,18 @@ pub(crate) async fn register(
 
     #[derive(Deserialize)]
     struct TempClaims {
-        challenge: String,
+        jti: String,
     }
 
     let payload_bytes = B64.decode(parts[1]).map_err(|_| worker::Error::RustError("bad_b64".into()))?;
     let claims: TempClaims = serde_json::from_slice(&payload_bytes)
         .map_err(|_| worker::Error::RustError("bad_json".into()))?;
 
-    if !consume_challenge(&db, &claims.challenge).await? {
+    if !consume_challenge(&db, &claims.jti).await? {
         return crate::vault_http::error(400, "invalid_or_expired_challenge");
     }
 
-    let verified = verify_dbsc_registration_async(&jwt, &claims.challenge, now)
+    let verified = verify_dbsc_registration_async(&jwt, &claims.jti, now)
         .await
         .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
 
@@ -167,8 +188,21 @@ pub(crate) async fn register(
     .run()
     .await?;
 
-    // Return 200 OK with refreshed short-lived SSO cookie
-    Ok(worker::Response::builder()
+    let instructions = SessionInstructions {
+        session_identifier: session_id,
+        refresh_url: "/dbsc/refresh",
+        scope: RegistrationScope {
+            include_site: true,
+        },
+        credentials: vec![RegistrationCredential {
+            type_: "cookie",
+            name: "__Host-op-sso",
+            attributes: "Path=/; Secure; HttpOnly; SameSite=Lax",
+        }],
+    };
+
+    // Return 200 OK with session instructions and refreshed short-lived SSO cookie
+    worker::Response::builder()
         .with_header(
             "Set-Cookie",
             &format!(
@@ -176,8 +210,7 @@ pub(crate) async fn register(
             ),
         )?
         .with_header("Cache-Control", "no-store")?
-        .with_header("Sec-Session-Registration", &format!("id=\"{session_id}\""))?
-        .empty())
+        .from_json(&instructions)
 }
 
 /// Endpoint for DBSC session refresh: POST /dbsc/refresh
@@ -185,7 +218,7 @@ pub(crate) async fn refresh(
     mut request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
-    let db = context.env.d1("MIKAKI_DB")?;
+    let db = context.env.d1("DB")?;
     let now = current_time()?;
 
     let jwt = if let Some(h) = request.headers().get("Sec-Session-Response")? {
@@ -205,7 +238,7 @@ pub(crate) async fn refresh(
 
     #[derive(Deserialize)]
     struct RefreshClaims {
-        challenge: String,
+        jti: String,
         #[serde(default)]
         sub: Option<String>,
     }
@@ -222,7 +255,7 @@ pub(crate) async fn refresh(
         return crate::vault_http::error(400, "missing_session_id");
     }
 
-    if !consume_challenge(&db, &claims.challenge).await? {
+    if !consume_challenge(&db, &claims.jti).await? {
         let fresh_challenge = create_challenge(&db, Some(&session_id)).await?;
         return Ok(worker::Response::builder()
             .with_status(401)
@@ -244,11 +277,11 @@ pub(crate) async fn refresh(
 
     // Verify parent SSO session is still active
     let sso_active = db.prepare(
-        "SELECT 1 FROM sso_context c JOIN sso_session s ON s.sso_id = c.sso_id \
+        "SELECT 1 AS valid FROM sso_context c JOIN sso_session s ON s.sso_id = c.sso_id \
          WHERE s.sso_id = ?1 AND s.expires_at > ?2",
     )
     .bind(&[JsValue::from_str(&session.sso_id), JsValue::from_f64(now as f64)])?
-    .first::<i32>(None)
+    .first::<i32>(Some("valid"))
     .await?
     .is_some();
 
@@ -257,7 +290,7 @@ pub(crate) async fn refresh(
     }
 
     // Verify DBSC proof against stored public key
-    let _ = verify_dbsc_refresh_async(&jwt, &claims.challenge, &session.public_key_sec1, now)
+    let _ = verify_dbsc_refresh_async(&jwt, &claims.jti, &session.public_key_sec1, now)
         .await
         .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
 
@@ -272,22 +305,25 @@ pub(crate) async fn refresh(
         .run()
         .await?;
 
-    let sso_secret = browser_cookie(&request, "__Host-op-sso")?.unwrap_or_default();
+    // Reissue / rotate SSO secret bound to verified parent session, ensuring valid Cookie is always returned
+    let new_sso_secret = random_string()?;
+    let new_sso_hash = hash_secret(&new_sso_secret);
+
+    db.prepare("UPDATE sso_context SET secret_hash = ?1 WHERE sso_id = ?2")
+        .bind(&[JsValue::from_str(&new_sso_hash), JsValue::from_str(&session.sso_id)])?
+        .run()
+        .await?;
+
     let fresh_challenge = create_challenge(&db, Some(&session_id)).await?;
 
-    let mut builder = worker::Response::builder();
-    builder = builder
+    Ok(worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
-        .with_header("Sec-Session-Challenge", &format!("challenge=\"{fresh_challenge}\"; id=\"{session_id}\""))?;
-
-    if !sso_secret.is_empty() {
-        builder = builder.with_header(
+        .with_header("Sec-Session-Challenge", &format!("challenge=\"{fresh_challenge}\"; id=\"{session_id}\""))?
+        .with_header(
             "Set-Cookie",
             &format!(
-                "__Host-op-sso={sso_secret}; Max-Age={DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax"
+                "__Host-op-sso={new_sso_secret}; Max-Age={DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax"
             ),
-        )?;
-    }
-
-    Ok(builder.empty())
+        )?
+        .empty())
 }

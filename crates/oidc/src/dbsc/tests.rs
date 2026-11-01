@@ -23,12 +23,14 @@ fn header(key: &SigningKey) -> Value {
     })
 }
 
-fn claims(challenge: &str, now: u64) -> Value {
-    json!({
-        "challenge": challenge,
-        "iat": now,
-        "jti": "jwt-id-1"
-    })
+fn claims(challenge: &str, now: Option<u64>) -> Value {
+    let mut v = json!({
+        "jti": challenge
+    });
+    if let Some(t) = now {
+        v["iat"] = json!(t);
+    }
+    v
 }
 
 fn sign(h: &Value, c: &Value, key: &SigningKey) -> String {
@@ -48,14 +50,20 @@ fn test_dbsc_registration_success() {
     let challenge = "test_challenge_1234567890abcdef";
 
     let h = header(&signing_key);
-    let c = claims(challenge, now);
+    let c = claims(challenge, Some(now));
     let jwt = sign(&h, &c, &signing_key);
 
     let verified = verify_dbsc_registration(&jwt, challenge, now).expect("verification failed");
     assert_eq!(verified.challenge, challenge);
-    assert_eq!(verified.jti, "jwt-id-1");
-    assert_eq!(verified.issued_at, now);
+    assert_eq!(verified.issued_at, Some(now));
     assert!(!verified.thumbprint.is_empty());
+
+    // Without iat (standard compliant)
+    let c_no_iat = claims(challenge, None);
+    let jwt_no_iat = sign(&h, &c_no_iat, &signing_key);
+    let verified_no_iat = verify_dbsc_registration(&jwt_no_iat, challenge, now).expect("verification without iat failed");
+    assert_eq!(verified_no_iat.challenge, challenge);
+    assert_eq!(verified_no_iat.issued_at, None);
 }
 
 #[test]
@@ -66,7 +74,7 @@ fn test_dbsc_registration_rejects_wrong_challenge_or_expiry() {
     let h = header(&signing_key);
 
     // Wrong challenge
-    let c_wrong = claims("different_challenge", now);
+    let c_wrong = claims("different_challenge", Some(now));
     let jwt = sign(&h, &c_wrong, &signing_key);
     assert_eq!(
         verify_dbsc_registration(&jwt, challenge, now),
@@ -74,7 +82,7 @@ fn test_dbsc_registration_rejects_wrong_challenge_or_expiry() {
     );
 
     // Expired iat (too old)
-    let c_old = claims(challenge, now - 150);
+    let c_old = claims(challenge, Some(now - 150));
     let jwt = sign(&h, &c_old, &signing_key);
     assert_eq!(
         verify_dbsc_registration(&jwt, challenge, now),
@@ -82,7 +90,7 @@ fn test_dbsc_registration_rejects_wrong_challenge_or_expiry() {
     );
 
     // Future iat (too far ahead)
-    let c_future = claims(challenge, now + 70);
+    let c_future = claims(challenge, Some(now + 70));
     let jwt = sign(&h, &c_future, &signing_key);
     assert_eq!(
         verify_dbsc_registration(&jwt, challenge, now),
@@ -95,7 +103,7 @@ fn test_dbsc_registration_rejects_invalid_type_or_alg() {
     let signing_key = key(1);
     let now = 1730000000;
     let challenge = "test_challenge_1234567890abcdef";
-    let c = claims(challenge, now);
+    let c = claims(challenge, Some(now));
 
     // Invalid typ
     let mut h = header(&signing_key);
@@ -127,9 +135,9 @@ fn test_dbsc_refresh_success_and_tampering() {
         "typ": "dbsc+jwt"
     });
     let c = json!({
-        "challenge": challenge,
-        "iat": now,
-        "jti": "refresh-jti-1"
+        "jti": challenge,
+        "sub": "session-123",
+        "iat": now
     });
 
     let jwt = sign(&h, &c, &signing_key);
@@ -137,7 +145,7 @@ fn test_dbsc_refresh_success_and_tampering() {
 
     let verified = verify_dbsc_refresh(&jwt, challenge, &sec1, now).expect("refresh failed");
     assert_eq!(verified.challenge, challenge);
-    assert_eq!(verified.jti, "refresh-jti-1");
+    assert_eq!(verified.session_id, Some("session-123".into()));
 
     // Tampered signature or different key fails
     let other_key = key(2);
