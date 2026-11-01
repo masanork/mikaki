@@ -8,6 +8,7 @@ const LOGIN_REVIEW: &str = "0005_login_connection_review.sql";
 const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
 const PASSPORT: &str = "0007_passport_issuance.sql";
+const DBSC: &str = "0008_dbsc_sessions.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -39,9 +40,15 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{PASSPORT}")
         }
         PASSPORT => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT}"
+            );
+            ledger == previous || ledger == format!("{previous},{DBSC}")
+        }
+        DBSC => {
             ledger
                 == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT}"
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
                 )
         }
         _ => false,
@@ -178,6 +185,31 @@ mod passport_tests {
         ] {
             assert!(!ready(&invalid, LOGIN_WRAP));
             assert!(!ready(&invalid, PASSPORT));
+        }
+    }
+}
+
+#[cfg(test)]
+mod dbsc_tests {
+    use super::*;
+    #[test]
+    fn dbsc_upgrade_bridges_only_the_complete_previous_chain() {
+        let previous = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT}"
+        );
+        let upgraded = format!("{previous},{DBSC}");
+        assert!(ready(&previous, PASSPORT));
+        assert!(ready(&upgraded, PASSPORT));
+        assert!(ready(&upgraded, DBSC));
+        assert!(!ready(&previous, DBSC));
+        assert!(!ready(&upgraded, LOGIN_WRAP));
+        for invalid in [
+            format!("{upgraded},{DBSC}"),
+            format!("{BASELINE},{WRAPPERS},{DBSC}"),
+            format!("{previous},0008_unknown.sql"),
+        ] {
+            assert!(!ready(&invalid, PASSPORT));
+            assert!(!ready(&invalid, DBSC));
         }
     }
 }
