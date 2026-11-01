@@ -85,7 +85,11 @@ fn split_compact(compact: &str) -> Result<(&str, &str, &str), InvalidDbscProof> 
     Ok((h, c, s))
 }
 
-fn validate_claims(claims: &Claims, expected_challenge: &str, now: u64) -> Result<(), InvalidDbscProof> {
+fn validate_claims(
+    claims: &Claims,
+    expected_challenge: &str,
+    now: u64,
+) -> Result<(), InvalidDbscProof> {
     if claims.jti != expected_challenge
         || expected_challenge.is_empty()
         || claims.jti.len() > 256
@@ -93,10 +97,10 @@ fn validate_claims(claims: &Claims, expected_challenge: &str, now: u64) -> Resul
     {
         return Err(InvalidDbscProof);
     }
-    if let Some(iat) = claims.iat {
-        if iat > now.saturating_add(60) || now > iat.saturating_add(120) {
-            return Err(InvalidDbscProof);
-        }
+    if let Some(iat) = claims.iat
+        && (iat > now.saturating_add(60) || now > iat.saturating_add(120))
+    {
+        return Err(InvalidDbscProof);
     }
     Ok(())
 }
@@ -171,7 +175,10 @@ pub async fn verify_dbsc_registration_async(
     now: u64,
 ) -> Result<DbscRegistrationProof, InvalidDbscProof> {
     let (verification, proof) = parse_dbsc_registration(compact, expected_challenge, now)?;
-    verification.verify_async().await.map_err(|_| InvalidDbscProof)?;
+    verification
+        .verify_async()
+        .await
+        .map_err(|_| InvalidDbscProof)?;
     Ok(proof)
 }
 
@@ -182,7 +189,9 @@ pub fn verify_dbsc_registration(
     now: u64,
 ) -> Result<DbscRegistrationProof, InvalidDbscProof> {
     let (verification, proof) = parse_dbsc_registration(compact, expected_challenge, now)?;
-    verification.verify_reference().map_err(|_| InvalidDbscProof)?;
+    verification
+        .verify_reference()
+        .map_err(|_| InvalidDbscProof)?;
     Ok(proof)
 }
 
@@ -229,7 +238,10 @@ pub async fn verify_dbsc_refresh_async(
 ) -> Result<DbscRefreshProof, InvalidDbscProof> {
     let (verification, proof) =
         parse_dbsc_refresh(compact, expected_challenge, sec1_public_key, now)?;
-    verification.verify_async().await.map_err(|_| InvalidDbscProof)?;
+    verification
+        .verify_async()
+        .await
+        .map_err(|_| InvalidDbscProof)?;
     Ok(proof)
 }
 
@@ -242,6 +254,8 @@ pub fn verify_dbsc_refresh(
 ) -> Result<DbscRefreshProof, InvalidDbscProof> {
     let (verification, proof) =
         parse_dbsc_refresh(compact, expected_challenge, sec1_public_key, now)?;
-    verification.verify_reference().map_err(|_| InvalidDbscProof)?;
+    verification
+        .verify_reference()
+        .map_err(|_| InvalidDbscProof)?;
     Ok(proof)
 }

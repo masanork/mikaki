@@ -1,7 +1,7 @@
 use super::*;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use p256::ecdsa::signature::Signer;
-use p256::ecdsa::{SigningKey, Signature};
+use p256::ecdsa::{Signature, SigningKey};
 use serde_json::{Value, json};
 
 fn key(seed: u8) -> SigningKey {
@@ -61,7 +61,8 @@ fn test_dbsc_registration_success() {
     // Without iat (standard compliant)
     let c_no_iat = claims(challenge, None);
     let jwt_no_iat = sign(&h, &c_no_iat, &signing_key);
-    let verified_no_iat = verify_dbsc_registration(&jwt_no_iat, challenge, now).expect("verification without iat failed");
+    let verified_no_iat = verify_dbsc_registration(&jwt_no_iat, challenge, now)
+        .expect("verification without iat failed");
     assert_eq!(verified_no_iat.challenge, challenge);
     assert_eq!(verified_no_iat.issued_at, None);
 }
@@ -141,7 +142,11 @@ fn test_dbsc_refresh_success_and_tampering() {
     });
 
     let jwt = sign(&h, &c, &signing_key);
-    let sec1 = signing_key.verifying_key().to_sec1_point(false).as_bytes().to_vec();
+    let sec1 = signing_key
+        .verifying_key()
+        .to_sec1_point(false)
+        .as_bytes()
+        .to_vec();
 
     let verified = verify_dbsc_refresh(&jwt, challenge, &sec1, now).expect("refresh failed");
     assert_eq!(verified.challenge, challenge);
