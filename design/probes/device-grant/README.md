@@ -45,3 +45,14 @@ safe throttled/error UX, response timing and enumeration review, HMAC-key
 custody/rotation, and tests against actual deployed D1. Never accept a clock or
 limiter policy supplied by the client. No claim of user or device authentication
 follows from a matching code.
+
+`issuance-worker.test.mjs` probes an initiation batch in local D1: a unique
+proof replay reservation, unique device-code digest, unique user-code HMAC
+index and a synthetic audit row commit together. It checks concurrent user-code
+collisions, device-code collisions and rollback after a later write failure. It
+supplies already-derived synthetic indexes and proof IDs; it does not verify
+signatures, generate or deliver real codes, authenticate a caller, cap pending
+grants or expose a production endpoint. An unknown response after commit is
+not safe to retry blindly: reconcile only through a separately designed policy
+or restart with a fresh request. Production also needs expiry cleanup, bounded
+collision retries, and durable replay retention.
