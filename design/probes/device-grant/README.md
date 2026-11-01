@@ -26,6 +26,8 @@ expiry, revocation and the account-authorized consent boundary. See
 `node --test design/probes/device-grant/d1-worker.test.mjs` additionally runs
 two workerd Workers with the same **local Miniflare D1** database. The fixture
 tests a candidate batch containing an update and a conditional token-record
-insert, including races and an injected uniqueness failure. It does not use a
+insert and a unique replay reservation, including races, a reused proof ID and
+an injected uniqueness failure. The proof key and ID are synthetic strings;
+the Worker fixture does not validate a DPoP signature. It does not use a
 deployed D1 service, real tokens, user approval, DPoP verification or a public
 endpoint. It is a database experiment, not a ready authentication design.

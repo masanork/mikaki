@@ -23,6 +23,9 @@ test('two isolated Workers share atomic D1 grant redemption and token-record rol
         key_thumbprint TEXT NOT NULL, expires_at INTEGER NOT NULL, state TEXT NOT NULL,
         owner TEXT NOT NULL)`),
       db.prepare('CREATE TABLE token_probe(token_digest TEXT PRIMARY KEY, owner TEXT NOT NULL)'),
+      db.prepare(
+        'CREATE TABLE replay_probe(key_thumbprint TEXT NOT NULL, jti_hash TEXT NOT NULL, PRIMARY KEY(key_thumbprint,jti_hash))',
+      ),
     ]);
     const workers = await Promise.all(['first', 'second'].map((name) => mf.getWorker(name)));
     const insert = (code, expires = 200, state = 'approved') =>
@@ -30,10 +33,11 @@ test('two isolated Workers share atomic D1 grant redemption and token-record rol
         .prepare('INSERT INTO grant_probe VALUES(?,?,?,?,?,?)')
         .bind(code, 'nihos', 'key', expires, state, 'alice')
         .run();
+    let proofSequence = 0;
     const redeem = async (worker, input) => {
       const response = await worker.fetch('https://fixture.invalid/', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify({ proofId: `proof-${proofSequence++}`, ...input }),
       });
       return { status: response.status, body: await response.json() };
     };
@@ -125,6 +129,75 @@ test('two isolated Workers share atomic D1 grant redemption and token-record rol
     );
     const retry = await redeem(workers[1], { ...base, code: 'rollback', token: 'retry' });
     assert.deepEqual(retry.body.tokens, [{ owner: 'alice' }]);
+
+    await insert('proof-original');
+    await insert('proof-replay');
+    assert.equal(
+      (
+        await redeem(workers[0], {
+          ...base,
+          code: 'proof-original',
+          token: 'proof-token',
+          proofId: 'same-proof',
+        })
+      ).body.changed,
+      1,
+    );
+    assert.equal(
+      (
+        await redeem(workers[1], {
+          ...base,
+          code: 'proof-replay',
+          token: 'bad-token',
+          proofId: 'same-proof',
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await db
+          .prepare('SELECT state FROM grant_probe WHERE code_digest=?')
+          .bind('proof-replay')
+          .first()
+      ).state,
+      'approved',
+    );
+    assert.equal(
+      (
+        await redeem(workers[1], {
+          ...base,
+          code: 'proof-replay',
+          token: 'good-token',
+          proofId: 'fresh-proof',
+        })
+      ).body.changed,
+      1,
+    );
+
+    await insert('rollback-proof');
+    assert.equal(
+      (
+        await redeem(workers[0], {
+          ...base,
+          code: 'rollback-proof',
+          token: 'duplicate',
+          proofId: 'rolled-back-proof',
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await redeem(workers[1], {
+          ...base,
+          code: 'rollback-proof',
+          token: 'fresh-token',
+          proofId: 'rolled-back-proof',
+        })
+      ).body.changed,
+      1,
+    );
   } finally {
     await mf.dispose();
   }

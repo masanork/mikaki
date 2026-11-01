@@ -2,11 +2,21 @@
 //!
 //! Callers MUST serialize each load/transition/store as one atomic operation;
 //! this module provides no persistence, entropy, authentication, rate limiting,
-//! token issuance, phishing mitigation or DPoP proof validation. Do not expose
+//! token issuance, phishing mitigation or DPoP replay protection. Do not expose
 //! this state machine directly as a production endpoint.
 
-/// The client is bound to a prevalidated proof-key thumbprint by a separate,
-/// currently unspecified profile. Neither string authenticates a client.
+use crate::VerifiedDpopProof;
+
+/// The device grant is bound to a verified proof key by a separate,
+/// currently unspecified profile. The proof does not authenticate the client.
+/// The caller must verify the correct HTTP method and endpoint, and atomically
+/// reserve the proof's replay identifier with the corresponding state change.
+/// Unverified key strings cannot be substituted for verified proof objects:
+///
+/// ```compile_fail
+/// use mikaki_oidc::device_grant::Grant;
+/// let _ = Grant::new("client".into(), "unverified-key", 0, 60, 5);
+/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct Grant {
     client: String,
@@ -40,20 +50,27 @@ pub enum PollResult {
 
 impl Grant {
     /// Times are server-side seconds. The caller verifies client policy, the
-    /// digest of device_code and the cryptographic proof before transition.
+    /// digest of device_code and validates the proof for the initiation
+    /// endpoint before transition. This initial proof is a proposed extension,
+    /// not a standardized RFC 8628 parameter.
     pub fn new(
         client: String,
-        key_thumbprint: String,
+        proof: &VerifiedDpopProof,
         now: u64,
         expires_at: u64,
         interval: u64,
     ) -> Option<Self> {
-        if client.is_empty() || key_thumbprint.is_empty() || expires_at <= now || interval == 0 {
+        if client.is_empty()
+            || expires_at <= now
+            || interval == 0
+            || proof.issued_at() > now.saturating_add(10)
+            || proof.retain_until() < now
+        {
             return None;
         }
         Some(Self {
             client,
-            key_thumbprint,
+            key_thumbprint: proof.thumbprint().to_owned(),
             expires_at,
             interval,
             next_poll_at: now.saturating_add(interval),
@@ -81,11 +98,15 @@ impl Grant {
         true
     }
 
-    /// `verified_key` MUST come from successful proof-of-possession validation,
-    /// not an unverified request field. Atomic persistence must include any
-    /// token issuance or define explicit lost-response recovery.
-    pub fn poll(&mut self, client: &str, verified_key: &str, now: u64) -> PollResult {
-        if client != self.client || verified_key != self.key_thumbprint {
+    /// Proof must be validated for the token endpoint and its replay record
+    /// atomically consumed. Atomic persistence must include token issuance or
+    /// define explicit lost-response recovery. This function alone does neither.
+    pub fn poll(&mut self, client: &str, proof: &VerifiedDpopProof, now: u64) -> PollResult {
+        if client != self.client
+            || proof.thumbprint() != self.key_thumbprint
+            || proof.issued_at() > now.saturating_add(10)
+            || proof.retain_until() < now
+        {
             return PollResult::InvalidGrant;
         }
         if now >= self.expires_at {
@@ -118,37 +139,83 @@ impl Grant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DpopTarget, verify_dpop_proof};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+    use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+    use serde_json::json;
+
+    fn proof(key_byte: u8, endpoint: &str, now: u64) -> VerifiedDpopProof {
+        let key = SigningKey::from_slice(&[key_byte; 32]).unwrap();
+        let point = key.verifying_key().to_sec1_point(false);
+        let header = json!({"alg":"ES256","typ":"dpop+jwt","jwk":{
+            "kty":"EC","crv":"P-256","x":B64.encode(point.x().unwrap()),"y":B64.encode(point.y().unwrap())
+        }});
+        let claims = json!({"htm":"POST","htu":endpoint,"jti":"probe", "iat":now});
+        let input = format!(
+            "{}.{}",
+            B64.encode(header.to_string()),
+            B64.encode(claims.to_string())
+        );
+        let signature: Signature = key.sign(input.as_bytes());
+        let compact = format!("{input}.{}", B64.encode(signature.to_bytes()));
+        verify_dpop_proof(&compact, "POST", endpoint, DpopTarget::Token, now).unwrap()
+    }
+    fn auth_proof() -> VerifiedDpopProof {
+        proof(7, "https://issuer.example/device_authorization", 100)
+    }
+    fn token_proof(now: u64) -> VerifiedDpopProof {
+        proof(7, "https://issuer.example/token", now)
+    }
+    fn other_proof(now: u64) -> VerifiedDpopProof {
+        proof(8, "https://issuer.example/token", now)
+    }
     fn grant() -> Grant {
-        Grant::new("nihos".into(), "key".into(), 100, 200, 5).unwrap()
+        Grant::new("nihos".into(), &auth_proof(), 100, 200, 5).unwrap()
     }
 
     #[test]
     fn pending_slowdown_and_one_time_authorization() {
         let mut g = grant();
         assert_eq!(
-            g.poll("nihos", "key", 105),
+            g.poll("nihos", &token_proof(105), 105),
             PollResult::AuthorizationPending
         );
-        assert_eq!(g.poll("nihos", "key", 106), PollResult::SlowDown);
+        assert_eq!(
+            g.poll("nihos", &token_proof(106), 106),
+            PollResult::SlowDown
+        );
         assert!(g.approve("alice", 107));
         assert_eq!(
-            g.poll("nihos", "key", 116),
+            g.poll("nihos", &token_proof(116), 116),
             PollResult::Authorized {
                 owner: "alice".into()
             }
         );
-        assert_eq!(g.poll("nihos", "key", 130), PollResult::InvalidGrant);
+        assert_eq!(
+            g.poll("nihos", &token_proof(130), 130),
+            PollResult::InvalidGrant
+        );
         assert!(!g.approve("bob", 130));
     }
 
     #[test]
     fn wrong_client_or_key_cannot_consume_or_change_poll_timing() {
         let mut g = grant();
-        assert_eq!(g.poll("other", "key", 101), PollResult::InvalidGrant);
-        assert_eq!(g.poll("nihos", "other", 101), PollResult::InvalidGrant);
+        assert_eq!(
+            g.poll("other", &token_proof(101), 101),
+            PollResult::InvalidGrant
+        );
+        assert_eq!(
+            g.poll("nihos", &other_proof(101), 101),
+            PollResult::InvalidGrant
+        );
+        assert_eq!(
+            g.poll("nihos", &token_proof(1), 101),
+            PollResult::InvalidGrant
+        );
         assert!(g.approve("alice", 102));
         assert_eq!(
-            g.poll("nihos", "key", 105),
+            g.poll("nihos", &token_proof(105), 105),
             PollResult::Authorized {
                 owner: "alice".into()
             }
@@ -159,11 +226,17 @@ mod tests {
     fn expiry_denial_and_invalid_construction() {
         let mut expired = grant();
         assert!(!expired.approve("alice", 200));
-        assert_eq!(expired.poll("nihos", "key", 200), PollResult::ExpiredToken);
+        assert_eq!(
+            expired.poll("nihos", &token_proof(200), 200),
+            PollResult::ExpiredToken
+        );
         let mut denied = grant();
         assert!(denied.deny(101));
         assert!(!denied.approve("alice", 102));
-        assert_eq!(denied.poll("nihos", "key", 105), PollResult::AccessDenied);
-        assert!(Grant::new("nihos".into(), "key".into(), 100, 200, 0).is_none());
+        assert_eq!(
+            denied.poll("nihos", &token_proof(105), 105),
+            PollResult::AccessDenied
+        );
+        assert!(Grant::new("nihos".into(), &auth_proof(), 100, 200, 0).is_none());
     }
 }
