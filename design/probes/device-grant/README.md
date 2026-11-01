@@ -22,3 +22,10 @@ Before any route or discovery is enabled, implement and test the actual D1
 transaction and simultaneous Workers, unknown outcomes, replay store, grant
 expiry, revocation and the account-authorized consent boundary. See
 [issue #325](https://github.com/masanork/mikaki/issues/325).
+
+`node --test design/probes/device-grant/d1-worker.test.mjs` additionally runs
+two workerd Workers with the same **local Miniflare D1** database. The fixture
+tests a candidate batch containing an update and a conditional token-record
+insert, including races and an injected uniqueness failure. It does not use a
+deployed D1 service, real tokens, user approval, DPoP verification or a public
+endpoint. It is a database experiment, not a ready authentication design.
