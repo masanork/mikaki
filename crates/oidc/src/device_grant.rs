@@ -6,6 +6,135 @@
 //! this state machine directly as a production endpoint.
 
 use crate::{VerifiedDpopProof, dpop::endpoint};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
+
+pub const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+
+/// Untrusted public-client form fields. Unknown parameters are ignored per
+/// OAuth; duplicate known fields are rejected by serde's struct deserializer.
+/// The HTTP adapter must enforce a form body size and content type first.
+#[derive(Deserialize)]
+pub struct DeviceAuthorizationInput {
+    client_id: String,
+    scope: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DeviceTokenInput {
+    grant_type: String,
+    client_id: String,
+    device_code: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceInputError {
+    InvalidClient,
+    InvalidScope,
+    InvalidGrant,
+    UnsupportedGrantType,
+}
+
+/// A checked request is not client authentication or user approval.
+#[must_use = "bind this request to a verified proof and persist it atomically"]
+pub struct ValidatedDeviceAuthorization {
+    client_id: String,
+    scope: String,
+}
+
+/// Contains only the digest of the device code, never the bearer code itself.
+#[must_use = "atomically check client, proof replay, grant state and issue a token"]
+pub struct ValidatedDeviceToken {
+    client_id: String,
+    code_digest: String,
+}
+
+fn valid_client_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+}
+
+impl DeviceAuthorizationInput {
+    /// `registered_client` and `allowed_scope` must be selected by trusted
+    /// client registration and policy, not copied from request parameters.
+    /// This initial profile accepts exactly one explicitly requested scope.
+    pub fn validate(
+        self,
+        registered_client: &str,
+        allowed_scope: &str,
+    ) -> Result<ValidatedDeviceAuthorization, DeviceInputError> {
+        if !valid_client_id(&self.client_id) || self.client_id != registered_client {
+            return Err(DeviceInputError::InvalidClient);
+        }
+        let Some(scope) = self.scope else {
+            return Err(DeviceInputError::InvalidScope);
+        };
+        if allowed_scope.is_empty()
+            || scope != allowed_scope
+            || scope.len() > 128
+            || !scope.bytes().all(|byte| {
+                byte == 0x21 || (0x23..=0x5b).contains(&byte) || (0x5d..=0x7e).contains(&byte)
+            })
+        {
+            return Err(DeviceInputError::InvalidScope);
+        }
+        Ok(ValidatedDeviceAuthorization {
+            client_id: self.client_id,
+            scope,
+        })
+    }
+}
+
+impl ValidatedDeviceAuthorization {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+    pub fn scope(&self) -> &str {
+        &self.scope
+    }
+}
+
+impl DeviceTokenInput {
+    /// Profile requires a canonical base64url encoding of 32 random bytes.
+    pub fn validate(
+        self,
+        registered_client: &str,
+    ) -> Result<ValidatedDeviceToken, DeviceInputError> {
+        if self.grant_type != DEVICE_GRANT_TYPE {
+            return Err(DeviceInputError::UnsupportedGrantType);
+        }
+        if !valid_client_id(&self.client_id) || self.client_id != registered_client {
+            return Err(DeviceInputError::InvalidClient);
+        }
+        let code = Zeroizing::new(self.device_code);
+        if code.len() != 43 {
+            return Err(DeviceInputError::InvalidGrant);
+        }
+        let raw = Zeroizing::new(
+            B64.decode(code.as_bytes())
+                .map_err(|_| DeviceInputError::InvalidGrant)?,
+        );
+        if raw.len() != 32 || B64.encode(raw.as_slice()) != code.as_str() {
+            return Err(DeviceInputError::InvalidGrant);
+        }
+        Ok(ValidatedDeviceToken {
+            client_id: self.client_id,
+            code_digest: B64.encode(Sha256::digest(raw.as_slice())),
+        })
+    }
+}
+
+impl ValidatedDeviceToken {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+    pub fn code_digest(&self) -> &str {
+        &self.code_digest
+    }
+}
 
 /// Construct only from trusted server configuration, never request parameters.
 /// Query and fragment are excluded following DPoP URL comparison semantics.
@@ -163,10 +292,86 @@ impl Grant {
 mod tests {
     use super::*;
     use crate::{DpopTarget, verify_dpop_proof};
-    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
     use p256::ecdsa::{Signature, SigningKey, signature::Signer};
     use serde_json::json;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn device_authorization_form_is_bounded_and_policy_scoped() {
+        let parse = |input: &str| serde_urlencoded::from_str::<DeviceAuthorizationInput>(input);
+        let request = parse("client_id=nihos&scope=bookshelf.read&extension=ignored").unwrap();
+        let checked = request.validate("nihos", "bookshelf.read").unwrap();
+        assert_eq!(checked.client_id(), "nihos");
+        assert_eq!(checked.scope(), "bookshelf.read");
+        assert!(parse("client_id=nihos&client_id=other&scope=bookshelf.read").is_err());
+        assert!(parse("client_id=nihos&scope=bookshelf.read&scope=vault.read").is_err());
+        assert_eq!(
+            parse("client_id=other&scope=bookshelf.read")
+                .unwrap()
+                .validate("nihos", "bookshelf.read")
+                .err(),
+            Some(DeviceInputError::InvalidClient)
+        );
+        for form in [
+            "client_id=nihos",
+            "client_id=nihos&scope=",
+            "client_id=nihos&scope=bookshelf.read+vault.read",
+            "client_id=nihos&scope=%22",
+        ] {
+            assert_eq!(
+                parse(form)
+                    .unwrap()
+                    .validate("nihos", "bookshelf.read")
+                    .err(),
+                Some(DeviceInputError::InvalidScope)
+            );
+        }
+        assert_eq!(
+            parse("client_id=nihos&scope=%22")
+                .unwrap()
+                .validate("nihos", "\"")
+                .err(),
+            Some(DeviceInputError::InvalidScope)
+        );
+    }
+
+    #[test]
+    fn device_token_form_keeps_only_canonical_code_digest() {
+        let code = B64.encode([42; 32]);
+        let form = format!(
+            "grant_type={DEVICE_GRANT_TYPE}&client_id=nihos&device_code={code}&extra=ignored"
+        );
+        let parse = |input: &str| serde_urlencoded::from_str::<DeviceTokenInput>(input);
+        let checked = parse(&form).unwrap().validate("nihos").unwrap();
+        assert_eq!(checked.client_id(), "nihos");
+        assert_eq!(checked.code_digest(), B64.encode(Sha256::digest([42; 32])));
+        assert_ne!(checked.code_digest(), code);
+        assert!(parse(&format!("{form}&device_code={code}")).is_err());
+        assert!(parse(&format!("{form}&client_id=other")).is_err());
+        assert_eq!(
+            parse(&form.replace(DEVICE_GRANT_TYPE, "authorization_code"))
+                .unwrap()
+                .validate("nihos")
+                .err(),
+            Some(DeviceInputError::UnsupportedGrantType)
+        );
+        assert_eq!(
+            parse(&form).unwrap().validate("other").err(),
+            Some(DeviceInputError::InvalidClient)
+        );
+        for bad in [
+            String::new(),
+            format!("{}B", "A".repeat(42)),
+            format!("{code}%3D"),
+            "x".repeat(42),
+        ] {
+            let f = form.replace(&code, &bad);
+            assert_eq!(
+                parse(&f).unwrap().validate("nihos").err(),
+                Some(DeviceInputError::InvalidGrant)
+            );
+        }
+    }
 
     fn proof(key_byte: u8, endpoint: &str, now: u64) -> VerifiedDpopProof {
         proof_for_method(key_byte, endpoint, "POST", now)
