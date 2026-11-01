@@ -1,17 +1,120 @@
 //! Experimental RFC 8628 grant state transitions, not an authorization server.
 //!
 //! Callers MUST serialize each load/transition/store as one atomic operation;
-//! this module provides no persistence, entropy, authentication, rate limiting,
+//! this module provides no persistence, entropy source, authentication, rate limiting,
 //! token issuance, phishing mitigation or DPoP replay protection. Do not expose
 //! this state machine directly as a production endpoint.
 
-use crate::{VerifiedDpopProof, dpop::endpoint};
+use crate::{CodeIssueError, CryptographicRandom, VerifiedDpopProof, dpop::endpoint};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 pub const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+const USER_ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const USER_INDEX_DOMAIN: &[u8] = b"mikaki-device-user-code-v1\0";
+const MAX_DEVICE_CODE_LIFETIME: u64 = 600;
+
+/// Secret bearer material must be returned only after atomic persistence of
+/// both indexes succeeds. Never log or retain this object in shared state.
+#[must_use = "persist both indexes atomically before returning the codes"]
+pub struct DeviceCodes {
+    device_code: Zeroizing<String>,
+    user_code: Zeroizing<String>,
+    device_digest: String,
+    user_index: String,
+    expires_at: u64,
+}
+
+impl DeviceCodes {
+    pub fn device_code(&self) -> &str {
+        &self.device_code
+    }
+    pub fn user_code(&self) -> &str {
+        &self.user_code
+    }
+    pub fn device_digest(&self) -> &str {
+        &self.device_digest
+    }
+    pub fn user_index(&self) -> &str {
+        &self.user_index
+    }
+    pub fn expires_at(&self) -> u64 {
+        self.expires_at
+    }
+}
+
+/// Derive an index using a separately provisioned high-entropy, secret HMAC key.
+/// This protects a stolen database alone from offline enumeration. It does not
+/// replace global/per-account rate limits or the cross-device phishing controls.
+/// Only ASCII case and the optional display hyphen are normalized.
+pub fn user_code_index(input: &str, index_key: &[u8; 32]) -> Option<String> {
+    let mut normalized = Zeroizing::new([0_u8; 8]);
+    let bytes = input.as_bytes();
+    if bytes.len() != 8 && !(bytes.len() == 9 && bytes[4] == b'-') {
+        return None;
+    }
+    let mut n = 0;
+    for (i, byte) in bytes.iter().copied().enumerate() {
+        if bytes.len() == 9 && i == 4 {
+            continue;
+        }
+        let upper = byte.to_ascii_uppercase();
+        if !USER_ALPHABET.contains(&upper) {
+            return None;
+        }
+        normalized[n] = upper;
+        n += 1;
+    }
+    let mut mac = Hmac::<Sha256>::new_from_slice(index_key).ok()?;
+    mac.update(USER_INDEX_DOMAIN);
+    mac.update(normalized.as_slice());
+    Some(B64.encode(mac.finalize().into_bytes()))
+}
+
+/// Generates independent 256-bit device and 40-bit user codes. The storage
+/// adapter must reject either index collision atomically, enforce expiry and
+/// online guessing limits, and manage/rotate the secret index key.
+pub fn issue_device_codes(
+    random: &mut impl CryptographicRandom,
+    index_key: &[u8; 32],
+    now: u64,
+    lifetime_seconds: u64,
+) -> Result<DeviceCodes, CodeIssueError> {
+    if lifetime_seconds == 0 || lifetime_seconds > MAX_DEVICE_CODE_LIFETIME {
+        return Err(CodeIssueError::InvalidLifetime);
+    }
+    let expires_at = now
+        .checked_add(lifetime_seconds)
+        .ok_or(CodeIssueError::InvalidLifetime)?;
+    let mut secret = Zeroizing::new([0_u8; 32]);
+    let mut human = Zeroizing::new([0_u8; 8]);
+    random
+        .fill(secret.as_mut())
+        .map_err(|_| CodeIssueError::EntropyUnavailable)?;
+    random
+        .fill(human.as_mut())
+        .map_err(|_| CodeIssueError::EntropyUnavailable)?;
+    let device_code = Zeroizing::new(B64.encode(secret.as_slice()));
+    let mut user_code = Zeroizing::new(String::with_capacity(9));
+    for (index, byte) in human.iter().enumerate() {
+        if index == 4 {
+            user_code.push('-');
+        }
+        user_code.push(char::from(USER_ALPHABET[usize::from(byte & 31)]));
+    }
+    let user_index =
+        user_code_index(&user_code, index_key).expect("generated user code is canonical");
+    Ok(DeviceCodes {
+        device_digest: B64.encode(Sha256::digest(secret.as_slice())),
+        device_code,
+        user_code,
+        user_index,
+        expires_at,
+    })
+}
 
 /// Untrusted public-client form fields. Unknown parameters are ignored per
 /// OAuth; duplicate known fields are rejected by serde's struct deserializer.
@@ -291,10 +394,119 @@ impl Grant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DpopTarget, verify_dpop_proof};
+    use crate::{CodeEntropyError, DpopTarget, verify_dpop_proof};
     use p256::ecdsa::{Signature, SigningKey, signature::Signer};
     use serde_json::json;
     use sha2::{Digest, Sha256};
+
+    struct TestRandom {
+        calls: usize,
+        fail_at: Option<usize>,
+    }
+    impl CryptographicRandom for TestRandom {
+        fn fill(&mut self, output: &mut [u8]) -> Result<(), CodeEntropyError> {
+            self.calls += 1;
+            if self.fail_at == Some(self.calls) {
+                return Err(CodeEntropyError);
+            }
+            for (i, byte) in output.iter_mut().enumerate() {
+                *byte = i as u8;
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn generated_codes_match_their_indexes_and_token_parser() {
+        let mut random = TestRandom {
+            calls: 0,
+            fail_at: None,
+        };
+        let key = [7_u8; 32];
+        let issued = issue_device_codes(&mut random, &key, 100, 600).unwrap();
+        assert_eq!(random.calls, 2);
+        assert_eq!(issued.user_code(), "2345-6789");
+        assert_eq!(issued.expires_at(), 700);
+        assert_eq!(
+            issued.user_index(),
+            "rP8eDgUUftdMC6Fkx3PEnW2mr7lUkCpZiqFsyscvKdo"
+        );
+        assert_eq!(
+            user_code_index("23456789", &key).as_deref(),
+            Some(issued.user_index())
+        );
+        assert_eq!(
+            user_code_index("2345-6789", &key).as_deref(),
+            Some(issued.user_index())
+        );
+        assert_ne!(
+            user_code_index(issued.user_code(), &[8; 32]).as_deref(),
+            Some(issued.user_index())
+        );
+        let parsed = DeviceTokenInput {
+            grant_type: DEVICE_GRANT_TYPE.into(),
+            client_id: "nihos".into(),
+            device_code: issued.device_code().into(),
+        }
+        .validate("nihos")
+        .unwrap();
+        assert_eq!(parsed.code_digest(), issued.device_digest());
+        assert_ne!(issued.device_digest(), issued.device_code());
+    }
+
+    #[test]
+    fn issuance_fails_closed_on_bad_lifetime_and_each_rng_failure() {
+        for lifetime in [0, 601, u64::MAX] {
+            let mut rng = TestRandom {
+                calls: 0,
+                fail_at: None,
+            };
+            assert_eq!(
+                issue_device_codes(&mut rng, &[1; 32], 100, lifetime).err(),
+                Some(CodeIssueError::InvalidLifetime)
+            );
+            assert_eq!(rng.calls, 0);
+        }
+        let mut rng = TestRandom {
+            calls: 0,
+            fail_at: None,
+        };
+        assert_eq!(
+            issue_device_codes(&mut rng, &[1; 32], u64::MAX, 1).err(),
+            Some(CodeIssueError::InvalidLifetime)
+        );
+        for fail_at in [1, 2] {
+            let mut rng = TestRandom {
+                calls: 0,
+                fail_at: Some(fail_at),
+            };
+            assert_eq!(
+                issue_device_codes(&mut rng, &[1; 32], 100, 60).err(),
+                Some(CodeIssueError::EntropyUnavailable)
+            );
+        }
+    }
+
+    #[test]
+    fn user_code_normalization_rejects_ambiguity_and_non_ascii() {
+        let key = [7; 32];
+        assert_eq!(
+            user_code_index("ABCD-EFGH", &key),
+            user_code_index("abcdefgh", &key)
+        );
+        for value in [
+            "",
+            "2345--6789",
+            "2345 6789",
+            "2345678O",
+            "2345678I",
+            "2345678!",
+            "２3456789",
+            "234567890",
+        ] {
+            assert!(user_code_index(value, &key).is_none(), "{value}");
+        }
+    }
 
     #[test]
     fn device_authorization_form_is_bounded_and_policy_scoped() {
