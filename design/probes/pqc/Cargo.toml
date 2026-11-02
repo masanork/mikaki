@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 ml-kem = { version = "=0.3.3", default-features = false, features = ["hazmat", "zeroize"] }
 ml-dsa = { version = "=0.1.1", default-features = false, features = ["zeroize"] }
 wasm-bindgen = "=0.2.129"
-hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
+hpke = { version = "=0.15.0", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 rand_chacha = { version = "=0.10.0", default-features = false }
 sha2 = "=0.11.1"
 

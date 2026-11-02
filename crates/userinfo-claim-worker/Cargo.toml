@@ -29,7 +29,7 @@ worker = "=0.8.7"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
-hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
+hpke = { version = "=0.15.0", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 sha2.workspace = true
 
 [lints]
