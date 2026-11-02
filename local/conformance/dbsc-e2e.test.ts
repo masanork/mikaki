@@ -182,7 +182,24 @@ test(
         method: 'POST',
         headers: refreshHeaders,
       });
-      assert.equal(replay.status, 400, 'replayed proof is rejected');
+      assert.equal(replay.status, 403, 'replayed proof cannot refresh');
+      assert.ok(replay.headers.get('Secure-Session-Challenge'));
+      assert.equal(replay.headers.get('set-cookie'), null);
+      await DB.prepare('UPDATE dbsc_challenge SET expires_at=? WHERE session_id IS NOT NULL')
+        .bind(Math.floor(Date.now() / 1000) - 1)
+        .run();
+      await page.goto(`${issuer}/__test/expire`);
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+      await page.goto(`${issuer}/?lang=en`);
+      await expect
+        .poll(() => requests.filter((r) => r.path === '/dbsc/refresh' && r.status === 200).length, {
+          timeout: 10000,
+        })
+        .toBe(2);
+      assert.ok(
+        requests.filter((r) => r.path === '/dbsc/refresh' && r.status === 403).length >= 2,
+        'expired cached challenge prompts a new challenge',
+      );
       console.log('DBSC_BROWSER_REFRESH', JSON.stringify(requests));
       assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM dbsc_session').first()).n, 1);
       const row = (await DB.prepare('SELECT session_id, sso_id FROM dbsc_session').first()) as {

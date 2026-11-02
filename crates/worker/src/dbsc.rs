@@ -235,6 +235,29 @@ pub(crate) async fn register(
         .from_json(&instructions)
 }
 
+async fn rechallenge(db: &D1Database, session_id: &str) -> worker::Result<worker::Response> {
+    let challenge = create_challenge(db, Some(session_id)).await?;
+    Ok(worker::Response::builder()
+        .with_status(403)
+        .with_header("Cache-Control", "no-store")?
+        .with_header(
+            "Secure-Session-Challenge",
+            &format!("\"{challenge}\";id=\"{session_id}\""),
+        )?
+        .empty())
+}
+
+async fn challenge_is_live(
+    db: &D1Database,
+    challenge: &str,
+    session_id: &str,
+    now: u64,
+) -> worker::Result<bool> {
+    Ok(db.prepare("SELECT 1 AS valid FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
+        .bind(&[JsValue::from_str(challenge), JsValue::from_str(session_id), JsValue::from_f64(now as f64)])?
+        .first::<i32>(Some("valid")).await?.is_some())
+}
+
 /// Endpoint for DBSC session refresh: POST /dbsc/refresh
 pub(crate) async fn refresh(
     request: worker::Request,
@@ -257,15 +280,7 @@ pub(crate) async fn refresh(
     }
     let header = request.headers().get("Secure-Session-Response")?;
     if header.is_none() {
-        let fresh_challenge = create_challenge(&db, Some(session_id)).await?;
-        return Ok(worker::Response::builder()
-            .with_status(403)
-            .with_header("Cache-Control", "no-store")?
-            .with_header(
-                "Secure-Session-Challenge",
-                &format!("\"{fresh_challenge}\";id=\"{session_id}\""),
-            )?
-            .empty());
+        return rechallenge(&db, session_id).await;
     }
     let header = header.unwrap();
     let Some(jwt) = structured_string(&header) else {
@@ -332,6 +347,9 @@ pub(crate) async fn refresh(
     {
         return crate::vault_http::error(400, "invalid_proof");
     }
+    if !challenge_is_live(&db, &claims.jti, session_id, now).await? {
+        return rechallenge(&db, session_id).await;
+    }
     let cookie_expires_at = now + DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS;
     let new_sso_secret = random_string()?;
     let new_sso_hash = hash_secret(&new_sso_secret);
@@ -351,7 +369,10 @@ pub(crate) async fn refresh(
             .bind(&[JsValue::from_str(&guard), JsValue::from_str(&format!("{guard}-sso"))])?,
     ]).await;
     if result.is_err() {
-        return crate::vault_http::error(400, "invalid_or_expired_challenge");
+        if !challenge_is_live(&db, &claims.jti, session_id, now).await? {
+            return rechallenge(&db, session_id).await;
+        }
+        return crate::vault_http::error(500, "refresh_failed");
     }
 
     let fresh_challenge = create_challenge(&db, Some(session_id)).await?;
