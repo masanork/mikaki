@@ -207,3 +207,83 @@ fn rejects_wrong_audience_and_wrong_refresh_session() {
         Err(InvalidDbscProof)
     );
 }
+
+#[test]
+fn asynchronous_registration_and_refresh_verify_and_reject_forged_proofs() {
+    let signer = key(4);
+    let other = key(5);
+    let now = 1_730_000_000;
+    let challenge = "challenge_1234567890123456";
+    let audience = "https://example.test/dbsc";
+    let mut h = header(&signer);
+    h["jwk"] = h.as_object_mut().unwrap().remove("unused").unwrap();
+    let c = claims(challenge, Some(now));
+    let valid = sign(&h, &c, &signer);
+    assert!(
+        crate::es256::ready(verify_dbsc_registration_async(
+            &valid, challenge, audience, now
+        ))
+        .is_ok()
+    );
+    let forged = sign(&h, &c, &other);
+    assert_eq!(
+        crate::es256::ready(verify_dbsc_registration_async(
+            &forged, challenge, audience, now
+        )),
+        Err(InvalidDbscProof)
+    );
+    let refresh = json!({"jti":challenge,"aud":audience,"sub":"session-123","iat":now});
+    let h = json!({"alg":"ES256", "typ":"dbsc+jwt"});
+    let point = signer.verifying_key().to_sec1_point(false);
+    let valid = sign(&h, &refresh, &signer);
+    assert!(
+        crate::es256::ready(verify_dbsc_refresh_async(
+            &valid,
+            challenge,
+            point.as_bytes(),
+            audience,
+            "session-123",
+            now
+        ))
+        .is_ok()
+    );
+    let forged = sign(&h, &refresh, &other);
+    assert_eq!(
+        crate::es256::ready(verify_dbsc_refresh_async(
+            &forged,
+            challenge,
+            point.as_bytes(),
+            audience,
+            "session-123",
+            now
+        )),
+        Err(InvalidDbscProof)
+    );
+}
+
+#[test]
+fn registration_rejects_missing_ambiguous_and_invalid_keys() {
+    let signer = key(6);
+    let now = 1_730_000_000;
+    let challenge = "challenge_1234567890123456";
+    let audience = "https://example.test/dbsc";
+    let mut h = header(&signer);
+    let jwk = h.as_object_mut().unwrap().remove("unused").unwrap();
+    let mut c = claims(challenge, Some(now));
+    let check = |header: &Value, claims: &Value| {
+        assert_eq!(
+            verify_dbsc_registration(&sign(header, claims, &signer), challenge, audience, now),
+            Err(InvalidDbscProof)
+        );
+    };
+    check(&h, &c);
+    h["jwk"] = jwk.clone();
+    c["key"] = jwk.clone();
+    check(&h, &c);
+    h.as_object_mut().unwrap().remove("jwk");
+    c["key"]["crv"] = json!("wrong");
+    check(&h, &c);
+    c["key"] = jwk;
+    c["key"]["x"] = json!(B64.encode([1u8; 31]));
+    check(&h, &c);
+}
