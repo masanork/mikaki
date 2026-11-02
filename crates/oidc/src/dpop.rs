@@ -28,6 +28,9 @@ pub struct InvalidDpopProof;
 pub struct VerifiedDpopProof {
     thumbprint: String,
     jti_hash: String,
+    request_method: String,
+    request_endpoint: String,
+    token_target: bool,
     issued_at: u64,
     retain_until: u64,
     nonce: Option<String>,
@@ -78,7 +81,7 @@ fn decode(value: &str) -> Result<Vec<u8>, InvalidDpopProof> {
     Ok(bytes)
 }
 
-fn endpoint(value: &str) -> Result<String, InvalidDpopProof> {
+pub(crate) fn endpoint(value: &str) -> Result<String, InvalidDpopProof> {
     if value.len() > 2048
         || value
             .bytes()
@@ -146,6 +149,8 @@ fn prepare_dpop_proof(
     else {
         return Err(InvalidDpopProof);
     };
+    let request_endpoint = endpoint(request_uri)?;
+    let token_target = matches!(&target, DpopTarget::Token);
     let header: Header = serde_json::from_slice(&decode(h)?).map_err(|_| InvalidDpopProof)?;
     let claims: Claims = serde_json::from_slice(&decode(c)?).map_err(|_| InvalidDpopProof)?;
     let jwk = header.jwk;
@@ -160,7 +165,7 @@ fn prepare_dpop_proof(
         || jwk.use_.as_deref().is_some_and(|u| u != "sig")
         || jwk.kid.as_ref().is_some_and(|k| k.len() > 128)
         || claims.htm != method
-        || endpoint(&claims.htu)? != endpoint(request_uri)?
+        || endpoint(&claims.htu)? != request_endpoint
         || claims.jti.is_empty()
         || claims.jti.len() > 256
         || claims.jti.bytes().any(|b| b.is_ascii_control())
@@ -207,6 +212,9 @@ fn prepare_dpop_proof(
         VerifiedDpopProof {
             thumbprint,
             jti_hash: B64.encode(Sha256::digest(claims.jti.as_bytes())),
+            request_method: method.to_owned(),
+            request_endpoint,
+            token_target,
             issued_at: claims.iat,
             retain_until: claims.iat + 70,
             nonce: claims.nonce,
@@ -215,6 +223,9 @@ fn prepare_dpop_proof(
 }
 
 impl VerifiedDpopProof {
+    pub(crate) fn is_token_post_to(&self, endpoint: &str) -> bool {
+        self.token_target && self.request_method == "POST" && self.request_endpoint == endpoint
+    }
     pub fn thumbprint(&self) -> &str {
         &self.thumbprint
     }

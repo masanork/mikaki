@@ -1017,6 +1017,7 @@ name = "mikaki-oidc"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "hmac",
  "js-sys",
  "p256",
  "serde",
