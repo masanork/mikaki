@@ -91,17 +91,28 @@ pub(crate) async fn create_challenge(
     Ok(challenge)
 }
 
-async fn consume_challenge(db: &D1Database, challenge: &str) -> worker::Result<bool> {
-    let now = current_time()?;
-    let result = db
-        .prepare("DELETE FROM dbsc_challenge WHERE challenge = ?1 AND expires_at > ?2")
-        .bind(&[JsValue::from_str(challenge), JsValue::from_f64(now as f64)])?
-        .run()
-        .await?;
-
-    Ok(result.meta()?.is_some_and(|m| m.changes == Some(1)))
+fn structured_string(value: &str) -> Option<&str> {
+    let value = if value.starts_with('"') {
+        value.strip_prefix('"')?.strip_suffix('"')?
+    } else {
+        value
+    };
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+    {
+        return None;
+    }
+    Some(value)
 }
 
+fn audience(context: &worker::RouteContext<()>, path: &str) -> worker::Result<String> {
+    let raw = context.env.var("MIKAKI_ISSUER")?.to_string();
+    let issuer = crate::configured_issuer(&raw)
+        .ok_or_else(|| worker::Error::RustError("invalid_issuer".into()))?;
+    Ok(format!("{}{path}", issuer.trim_end_matches('/')))
+}
 /// Endpoint to request a new DBSC challenge: GET /dbsc/challenge
 pub(crate) async fn challenge_endpoint(
     _request: worker::Request,
@@ -118,7 +129,7 @@ pub(crate) async fn challenge_endpoint(
 
 /// Endpoint for DBSC session registration: POST /dbsc/register
 pub(crate) async fn register(
-    mut request: worker::Request,
+    request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
     let db = context.env.d1("DB")?;
@@ -133,7 +144,7 @@ pub(crate) async fn register(
     let sso_row = db
         .prepare(
             "SELECT s.sso_id FROM sso_context c JOIN sso_session s ON s.sso_id = c.sso_id \
-         WHERE c.secret_hash = ?1 AND s.expires_at > ?2",
+         WHERE c.secret_hash = ?1 AND s.expires_at > ?2 AND s.revoked=0 AND EXISTS(SELECT 1 FROM account_security a JOIN credential cr ON cr.account_id=a.account_id AND cr.credential_id=s.credential_id WHERE a.account_id=s.account_id AND a.active=1 AND a.epoch=s.epoch AND cr.active=1)",
         )
         .bind(&[JsValue::from_str(&sso_hash), JsValue::from_f64(now as f64)])?
         .first::<String>(Some("sso_id"))
@@ -143,16 +154,12 @@ pub(crate) async fn register(
         return crate::vault_http::error(401, "invalid_session");
     };
 
-    // Get Sec-Session-Response header (or fallback to body)
-    let jwt = if let Some(h) = request.headers().get("Sec-Session-Response")? {
-        h
-    } else {
-        request.text().await?
-    };
-
-    if jwt.is_empty() {
+    let Some(header) = request.headers().get("Secure-Session-Response")? else {
         return crate::vault_http::error(400, "missing_session_response");
-    }
+    };
+    let Some(jwt) = structured_string(&header) else {
+        return crate::vault_http::error(400, "malformed_session_response");
+    };
 
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {
@@ -170,36 +177,46 @@ pub(crate) async fn register(
     let claims: TempClaims = serde_json::from_slice(&payload_bytes)
         .map_err(|_| worker::Error::RustError("bad_json".into()))?;
 
-    if !consume_challenge(&db, &claims.jti).await? {
-        return crate::vault_http::error(400, "invalid_or_expired_challenge");
-    }
-
-    let verified = verify_dbsc_registration_async(&jwt, &claims.jti, now)
-        .await
-        .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
-
+    let verified = match verify_dbsc_registration_async(
+        jwt,
+        &claims.jti,
+        &audience(&context, "/dbsc/register")?,
+        now,
+    )
+    .await
+    {
+        Ok(proof) => proof,
+        Err(_) => return crate::vault_http::error(400, "invalid_proof"),
+    };
     let session_id = random_string()?;
     let cookie_expires_at = now + DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS;
 
-    db.prepare(
-        "INSERT INTO dbsc_session(session_id, sso_id, public_key_sec1, public_key_jwk, created_at, last_refreshed_at, cookie_expires_at) \
-         VALUES(?1, ?2, ?3, ?4, ?5, ?5, ?6)",
-    )
-    .bind(&[
-        JsValue::from_str(&session_id),
-        JsValue::from_str(&sso_id),
-        JsValue::from(js_sys::Uint8Array::from(verified.sec1_public_key.as_slice())),
-        JsValue::from_str(&verified.public_key_jwk),
-        JsValue::from_f64(now as f64),
-        JsValue::from_f64(cookie_expires_at as f64),
-    ])?
-    .run()
-    .await?;
+    let new_secret = random_string()?;
+    let guard = format!("dbsc-{session_id}");
+    let result = db.batch(vec![
+        db.prepare("DELETE FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
+            .bind(&[JsValue::from_str(&claims.jti), JsValue::from_str(&sso_id), JsValue::from_f64(now as f64)])?,
+        db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
+            .bind(&[JsValue::from_str(&guard)])?,
+        db.prepare("UPDATE sso_context SET secret_hash=?1 WHERE sso_id=?2 AND secret_hash=?3 AND EXISTS(SELECT 1 FROM sso_session s JOIN account_security a ON a.account_id=s.account_id JOIN credential cr ON cr.account_id=a.account_id AND cr.credential_id=s.credential_id WHERE s.sso_id=?2 AND s.revoked=0 AND s.expires_at>?4 AND a.active=1 AND a.epoch=s.epoch AND cr.active=1)")
+            .bind(&[JsValue::from_str(&hash_secret(&new_secret)), JsValue::from_str(&sso_id), JsValue::from_str(&sso_hash), JsValue::from_f64(now as f64)])?,
+        db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
+            .bind(&[JsValue::from_str(&format!("{guard}-sso"))])?,
+        db.prepare("INSERT INTO dbsc_session(session_id,sso_id,public_key_sec1,public_key_jwk,created_at,last_refreshed_at,cookie_expires_at) VALUES(?1,?2,?3,?4,?5,?5,?6)")
+            .bind(&[JsValue::from_str(&session_id), JsValue::from_str(&sso_id), JsValue::from(js_sys::Uint8Array::from(verified.sec1_public_key.as_slice())), JsValue::from_str(&verified.public_key_jwk), JsValue::from_f64(now as f64), JsValue::from_f64(cookie_expires_at as f64)])?,
+        db.prepare("DELETE FROM atomic_guard WHERE operation_id IN (?1,?2)")
+            .bind(&[JsValue::from_str(&guard), JsValue::from_str(&format!("{guard}-sso"))])?,
+    ]).await;
+    if result.is_err() {
+        return crate::vault_http::error(400, "invalid_or_expired_challenge");
+    }
 
     let instructions = SessionInstructions {
         session_identifier: session_id,
         refresh_url: "/dbsc/refresh",
-        scope: RegistrationScope { include_site: true },
+        scope: RegistrationScope {
+            include_site: false,
+        },
         credentials: vec![RegistrationCredential {
             type_: "cookie",
             name: "__Host-op-sso",
@@ -207,83 +224,90 @@ pub(crate) async fn register(
         }],
     };
 
-    // Return 200 OK with session instructions and refreshed short-lived SSO cookie
     worker::Response::builder()
         .with_header(
             "Set-Cookie",
             &format!(
-                "__Host-op-sso={sso_secret}; Max-Age={DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax"
+                "__Host-op-sso={new_secret}; Max-Age={DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax"
             ),
         )?
         .with_header("Cache-Control", "no-store")?
         .from_json(&instructions)
 }
 
+async fn rechallenge(db: &D1Database, session_id: &str) -> worker::Result<worker::Response> {
+    let challenge = create_challenge(db, Some(session_id)).await?;
+    Ok(worker::Response::builder()
+        .with_status(403)
+        .with_header("Cache-Control", "no-store")?
+        .with_header(
+            "Secure-Session-Challenge",
+            &format!("\"{challenge}\";id=\"{session_id}\""),
+        )?
+        .empty())
+}
+
+async fn challenge_is_live(
+    db: &D1Database,
+    challenge: &str,
+    session_id: &str,
+    now: u64,
+) -> worker::Result<bool> {
+    Ok(db.prepare("SELECT 1 AS valid FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
+        .bind(&[JsValue::from_str(challenge), JsValue::from_str(session_id), JsValue::from_f64(now as f64)])?
+        .first::<i32>(Some("valid")).await?.is_some())
+}
+
 /// Endpoint for DBSC session refresh: POST /dbsc/refresh
 pub(crate) async fn refresh(
-    mut request: worker::Request,
+    request: worker::Request,
     context: worker::RouteContext<()>,
 ) -> worker::Result<worker::Response> {
     let db = context.env.d1("DB")?;
     let now = current_time()?;
 
-    let jwt = if let Some(h) = request.headers().get("Sec-Session-Response")? {
-        h
-    } else {
-        request.text().await?
+    let Some(session_header) = request.headers().get("Sec-Secure-Session-Id")? else {
+        return crate::vault_http::error(400, "missing_session_id");
     };
-
-    if jwt.is_empty() {
-        return crate::vault_http::error(400, "missing_session_response");
+    let Some(session_id) = structured_string(&session_header) else {
+        return crate::vault_http::error(400, "invalid_session_id");
+    };
+    let known = db.prepare("SELECT 1 AS valid FROM dbsc_session d JOIN sso_session s ON s.sso_id=d.sso_id JOIN account_security a ON a.account_id=s.account_id JOIN credential c ON c.account_id=a.account_id AND c.credential_id=s.credential_id WHERE d.session_id=?1 AND s.revoked=0 AND s.expires_at>?2 AND a.active=1 AND a.epoch=s.epoch AND c.active=1")
+        .bind(&[JsValue::from_str(session_id), JsValue::from_f64(now as f64)])?
+        .first::<i32>(Some("valid")).await?.is_some();
+    if !known {
+        return crate::vault_http::error(401, "unknown_dbsc_session");
     }
-
+    let header = request.headers().get("Secure-Session-Response")?;
+    if header.is_none() {
+        return rechallenge(&db, session_id).await;
+    }
+    let header = header.unwrap();
+    let Some(jwt) = structured_string(&header) else {
+        return crate::vault_http::error(400, "malformed_session_response");
+    };
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {
         return crate::vault_http::error(400, "malformed_jwt");
     }
-
     #[derive(Deserialize)]
     struct RefreshClaims {
         jti: String,
-        #[serde(default)]
-        sub: Option<String>,
     }
-
-    let payload_bytes = B64
+    let claims: RefreshClaims = match B64
         .decode(parts[1])
-        .map_err(|_| worker::Error::RustError("bad_b64".into()))?;
-    let claims: RefreshClaims = serde_json::from_slice(&payload_bytes)
-        .map_err(|_| worker::Error::RustError("bad_json".into()))?;
-
-    let session_id = claims
-        .sub
-        .or(request
-            .headers()
-            .get("Sec-Session-Id")?
-            .filter(|s| !s.is_empty()))
-        .unwrap_or_default();
-
-    if session_id.is_empty() {
-        return crate::vault_http::error(400, "missing_session_id");
-    }
-
-    if !consume_challenge(&db, &claims.jti).await? {
-        let fresh_challenge = create_challenge(&db, Some(&session_id)).await?;
-        return Ok(worker::Response::builder()
-            .with_status(401)
-            .with_header("Cache-Control", "no-store")?
-            .with_header(
-                "Sec-Session-Challenge",
-                &format!("challenge=\"{fresh_challenge}\"; id=\"{session_id}\""),
-            )?
-            .empty());
-    }
+        .ok()
+        .and_then(|p| serde_json::from_slice(&p).ok())
+    {
+        Some(claims) => claims,
+        None => return crate::vault_http::error(400, "malformed_jwt"),
+    };
 
     let session_row = db
         .prepare(
             "SELECT session_id, sso_id, public_key_sec1 FROM dbsc_session WHERE session_id = ?1",
         )
-        .bind(&[JsValue::from_str(&session_id)])?
+        .bind(&[JsValue::from_str(session_id)])?
         .first::<DbscSessionRow>(None)
         .await?;
 
@@ -295,7 +319,7 @@ pub(crate) async fn refresh(
     let sso_active = db
         .prepare(
             "SELECT 1 AS valid FROM sso_context c JOIN sso_session s ON s.sso_id = c.sso_id \
-         WHERE s.sso_id = ?1 AND s.expires_at > ?2",
+         WHERE s.sso_id = ?1 AND s.expires_at > ?2 AND s.revoked=0 AND EXISTS(SELECT 1 FROM account_security a JOIN credential cr ON cr.account_id=a.account_id AND cr.credential_id=s.credential_id WHERE a.account_id=s.account_id AND a.active=1 AND a.epoch=s.epoch AND cr.active=1)",
         )
         .bind(&[
             JsValue::from_str(&session.sso_id),
@@ -310,38 +334,52 @@ pub(crate) async fn refresh(
     }
 
     // Verify DBSC proof against stored public key
-    let _ = verify_dbsc_refresh_async(&jwt, &claims.jti, &session.public_key_sec1, now)
-        .await
-        .map_err(|_| worker::Error::RustError("verification_failed".into()))?;
-
-    // Update last_refreshed_at and extend server-side short-lived expiry
+    if verify_dbsc_refresh_async(
+        jwt,
+        &claims.jti,
+        &session.public_key_sec1,
+        &audience(&context, "/dbsc/refresh")?,
+        session_id,
+        now,
+    )
+    .await
+    .is_err()
+    {
+        return crate::vault_http::error(400, "invalid_proof");
+    }
+    if !challenge_is_live(&db, &claims.jti, session_id, now).await? {
+        return rechallenge(&db, session_id).await;
+    }
     let cookie_expires_at = now + DBSC_SHORT_LIVED_COOKIE_TTL_SECONDS;
-    db.prepare("UPDATE dbsc_session SET last_refreshed_at = ?1, cookie_expires_at = ?2 WHERE session_id = ?3")
-        .bind(&[
-            JsValue::from_f64(now as f64),
-            JsValue::from_f64(cookie_expires_at as f64),
-            JsValue::from_str(&session_id),
-        ])?
-        .run()
-        .await?;
-
-    // Reissue / rotate SSO secret bound to verified parent session, ensuring valid Cookie is always returned
     let new_sso_secret = random_string()?;
     let new_sso_hash = hash_secret(&new_sso_secret);
+    let guard = format!("dbsc-refresh-{}", random_string()?);
+    let result = db.batch(vec![
+        db.prepare("DELETE FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
+            .bind(&[JsValue::from_str(&claims.jti), JsValue::from_str(session_id), JsValue::from_f64(now as f64)])?,
+        db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
+            .bind(&[JsValue::from_str(&guard)])?,
+        db.prepare("UPDATE sso_context SET secret_hash=?1 WHERE sso_id=?2 AND EXISTS(SELECT 1 FROM sso_session s JOIN account_security a ON a.account_id=s.account_id JOIN credential cr ON cr.account_id=a.account_id AND cr.credential_id=s.credential_id WHERE s.sso_id=?2 AND s.revoked=0 AND s.expires_at>?3 AND a.active=1 AND a.epoch=s.epoch AND cr.active=1)")
+            .bind(&[JsValue::from_str(&new_sso_hash), JsValue::from_str(&session.sso_id), JsValue::from_f64(now as f64)])?,
+        db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
+            .bind(&[JsValue::from_str(&format!("{guard}-sso"))])?,
+        db.prepare("UPDATE dbsc_session SET last_refreshed_at=?1,cookie_expires_at=?2 WHERE session_id=?3")
+            .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64(cookie_expires_at as f64), JsValue::from_str(session_id)])?,
+        db.prepare("DELETE FROM atomic_guard WHERE operation_id IN (?1,?2)")
+            .bind(&[JsValue::from_str(&guard), JsValue::from_str(&format!("{guard}-sso"))])?,
+    ]).await;
+    if result.is_err() {
+        if !challenge_is_live(&db, &claims.jti, session_id, now).await? {
+            return rechallenge(&db, session_id).await;
+        }
+        return crate::vault_http::error(500, "refresh_failed");
+    }
 
-    db.prepare("UPDATE sso_context SET secret_hash = ?1 WHERE sso_id = ?2")
-        .bind(&[
-            JsValue::from_str(&new_sso_hash),
-            JsValue::from_str(&session.sso_id),
-        ])?
-        .run()
-        .await?;
-
-    let fresh_challenge = create_challenge(&db, Some(&session_id)).await?;
+    let fresh_challenge = create_challenge(&db, Some(session_id)).await?;
 
     Ok(worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
-        .with_header("Sec-Session-Challenge", &format!("challenge=\"{fresh_challenge}\"; id=\"{session_id}\""))?
+        .with_header("Secure-Session-Challenge", &format!("\"{fresh_challenge}\";id=\"{session_id}\""))?
         .with_header(
             "Set-Cookie",
             &format!(

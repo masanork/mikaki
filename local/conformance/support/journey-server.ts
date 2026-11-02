@@ -1,4 +1,5 @@
 import { createServer } from 'node:https';
+import { X509Certificate, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -93,6 +94,14 @@ export async function journeyServer(
     if (!address || typeof address === 'string') throw new Error('Journey server address missing');
     return {
       port: address.port,
+      spki: createHash('sha256')
+        .update(
+          new X509Certificate(await readFile(join(directory, 'cert.pem'))).publicKey.export({
+            type: 'spki',
+            format: 'der',
+          }),
+        )
+        .digest('base64'),
       async close() {
         await new Promise<void>((resolve) => {
           server!.closeAllConnections();

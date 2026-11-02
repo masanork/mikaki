@@ -330,6 +330,8 @@ jobs:
           if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium
           npm run test:worker-contracts
+      - name: DBSC Chromium registration and refresh
+        run: npm run test:dbsc-e2e
       - name: Identity presentation, attester, consent and device-preflight regressions
         run: npm run test:identity-contracts
       - id: measurements

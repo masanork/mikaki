@@ -682,7 +682,7 @@ pub(super) async fn finish(
         &format!("{sso_id}-review"),
     )?);
     crate::op_authority::batch(&context.env, statements).await?;
-    let dbsc_challenge = crate::dbsc::create_challenge(&db, None)
+    let dbsc_challenge = crate::dbsc::create_challenge(&db, Some(&sso_id))
         .await
         .unwrap_or_default();
     let mut builder = worker::Response::builder()

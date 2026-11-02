@@ -59,6 +59,10 @@ struct PublicKey {
 struct Claims {
     jti: String,
     #[serde(default)]
+    aud: Option<String>,
+    #[serde(default)]
+    key: Option<PublicKey>,
+    #[serde(default)]
     sub: Option<String>,
     #[serde(default)]
     iat: Option<u64>,
@@ -88,9 +92,17 @@ fn split_compact(compact: &str) -> Result<(&str, &str, &str), InvalidDbscProof> 
 fn validate_claims(
     claims: &Claims,
     expected_challenge: &str,
+    expected_audience: &str,
     now: u64,
 ) -> Result<(), InvalidDbscProof> {
-    if claims.jti != expected_challenge
+    // Chrome currently omits aud and iat in some DBSC deployments. The caller
+    // separately consumes an unpredictable, short-lived challenge bound to this
+    // SSO or DBSC session. When aud or iat is supplied, validate it strictly.
+    if claims
+        .aud
+        .as_deref()
+        .is_some_and(|aud| aud != expected_audience)
+        || claims.jti != expected_challenge
         || expected_challenge.is_empty()
         || claims.jti.len() > 256
         || claims.jti.bytes().any(|b| b.is_ascii_control())
@@ -108,6 +120,7 @@ fn validate_claims(
 fn parse_dbsc_registration(
     compact: &str,
     expected_challenge: &str,
+    expected_audience: &str,
     now: u64,
 ) -> Result<(Es256Verification, DbscRegistrationProof), InvalidDbscProof> {
     let (h, c, s) = split_compact(compact)?;
@@ -123,9 +136,12 @@ fn parse_dbsc_registration(
         return Err(InvalidDbscProof);
     }
 
-    validate_claims(&claims, expected_challenge, now)?;
+    validate_claims(&claims, expected_challenge, expected_audience, now)?;
 
-    let Some(jwk) = header.jwk else {
+    if claims.key.is_some() && header.jwk.is_some() {
+        return Err(InvalidDbscProof);
+    }
+    let Some(jwk) = claims.key.or(header.jwk) else {
         return Err(InvalidDbscProof);
     };
 
@@ -172,9 +188,11 @@ fn parse_dbsc_registration(
 pub async fn verify_dbsc_registration_async(
     compact: &str,
     expected_challenge: &str,
+    expected_audience: &str,
     now: u64,
 ) -> Result<DbscRegistrationProof, InvalidDbscProof> {
-    let (verification, proof) = parse_dbsc_registration(compact, expected_challenge, now)?;
+    let (verification, proof) =
+        parse_dbsc_registration(compact, expected_challenge, expected_audience, now)?;
     verification
         .verify_async()
         .await
@@ -186,9 +204,11 @@ pub async fn verify_dbsc_registration_async(
 pub fn verify_dbsc_registration(
     compact: &str,
     expected_challenge: &str,
+    expected_audience: &str,
     now: u64,
 ) -> Result<DbscRegistrationProof, InvalidDbscProof> {
-    let (verification, proof) = parse_dbsc_registration(compact, expected_challenge, now)?;
+    let (verification, proof) =
+        parse_dbsc_registration(compact, expected_challenge, expected_audience, now)?;
     verification
         .verify_reference()
         .map_err(|_| InvalidDbscProof)?;
@@ -199,6 +219,8 @@ fn parse_dbsc_refresh(
     compact: &str,
     expected_challenge: &str,
     sec1_public_key: &[u8],
+    expected_audience: &str,
+    expected_session: &str,
     now: u64,
 ) -> Result<(Es256Verification, DbscRefreshProof), InvalidDbscProof> {
     let (h, c, s) = split_compact(compact)?;
@@ -214,7 +236,16 @@ fn parse_dbsc_refresh(
         return Err(InvalidDbscProof);
     }
 
-    validate_claims(&claims, expected_challenge, now)?;
+    validate_claims(&claims, expected_challenge, expected_audience, now)?;
+    // Chrome sends the session ID in Sec-Secure-Session-Id; the caller binds
+    // both the stored verification key and the consumed challenge to that ID.
+    if claims
+        .sub
+        .as_deref()
+        .is_some_and(|sub| sub != expected_session)
+    {
+        return Err(InvalidDbscProof);
+    }
 
     let verification =
         Es256Verification::new(sec1_public_key, &decode(s)?, format!("{h}.{c}").as_bytes())
@@ -234,10 +265,18 @@ pub async fn verify_dbsc_refresh_async(
     compact: &str,
     expected_challenge: &str,
     sec1_public_key: &[u8],
+    expected_audience: &str,
+    expected_session: &str,
     now: u64,
 ) -> Result<DbscRefreshProof, InvalidDbscProof> {
-    let (verification, proof) =
-        parse_dbsc_refresh(compact, expected_challenge, sec1_public_key, now)?;
+    let (verification, proof) = parse_dbsc_refresh(
+        compact,
+        expected_challenge,
+        sec1_public_key,
+        expected_audience,
+        expected_session,
+        now,
+    )?;
     verification
         .verify_async()
         .await
@@ -250,10 +289,18 @@ pub fn verify_dbsc_refresh(
     compact: &str,
     expected_challenge: &str,
     sec1_public_key: &[u8],
+    expected_audience: &str,
+    expected_session: &str,
     now: u64,
 ) -> Result<DbscRefreshProof, InvalidDbscProof> {
-    let (verification, proof) =
-        parse_dbsc_refresh(compact, expected_challenge, sec1_public_key, now)?;
+    let (verification, proof) = parse_dbsc_refresh(
+        compact,
+        expected_challenge,
+        sec1_public_key,
+        expected_audience,
+        expected_session,
+        now,
+    )?;
     verification
         .verify_reference()
         .map_err(|_| InvalidDbscProof)?;
