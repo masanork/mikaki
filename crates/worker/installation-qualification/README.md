@@ -2,14 +2,12 @@
 
 Run `npm run test:installation-worker-qualification`. This builds the separate
 `installation-qualification` Wasm example and runs it in local Miniflare with a
-synthetic SSO authority fixture and D1. It exercises the actual Worker owner
+synthetic SSO authority fixture and D1 initialized with the repository migrations. It exercises the actual Worker owner
 lookup, native ES256 verification, and the qualification D1 batch, including
 parallel completion, key and nonce mismatches, replay, and revoked SSO. A local
-fault adapter also changes SSO, account, epoch, credential, client, or redirect
+fault adapter also changes SSO, DBSC, account, epoch, credential, client, or redirect
 authority immediately before the completion batch; each must reject without
-consuming the challenge. A duplicate-key constraint verifies D1 batch rollback. The
-fixture uses only the columns needed by these queries; it is not a migration or
-an integration test against a deployed IdP.
+consuming the challenge. A duplicate-key constraint verifies D1 batch rollback. The fixture is not an integration test against a deployed IdP.
 
 This example must not be deployed or routed by the production Worker. It does
 not issue tokens or create a usable Android session. Its local schema and API

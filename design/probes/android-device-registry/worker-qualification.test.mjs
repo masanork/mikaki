@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { unstable_splitSqlQuery } from 'wrangler';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
@@ -42,32 +43,31 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
   );
   try {
     const db = await mf.getD1Database('DB');
-    const schema = [
-      'CREATE TABLE fixture_installation_fault(id INTEGER PRIMARY KEY,mode TEXT)',
-      'CREATE TABLE account_security(account_id TEXT PRIMARY KEY,epoch INTEGER,active INTEGER)',
-      'CREATE TABLE credential(credential_id TEXT PRIMARY KEY,account_id TEXT,active INTEGER)',
-      'CREATE TABLE sso_session(sso_id TEXT PRIMARY KEY,account_id TEXT,credential_id TEXT,epoch INTEGER,expires_at INTEGER,revoked INTEGER)',
-      'CREATE TABLE sso_context(sso_id TEXT,secret_hash TEXT)',
-      'CREATE TABLE dbsc_session(sso_id TEXT,cookie_expires_at INTEGER)',
-      'CREATE TABLE client(client_id TEXT PRIMARY KEY,active INTEGER,client_type TEXT,auth_method TEXT,sector_identifier TEXT)',
-      'CREATE TABLE client_redirect_uri(client_id TEXT,redirect_uri TEXT,active INTEGER)',
-      "INSERT INTO account_security VALUES('account',1,1)",
-      "INSERT INTO credential VALUES('credential','account',1)",
-      "INSERT INTO sso_session VALUES('session','account','credential',1,unixepoch()+3600,0)",
-      `INSERT INTO sso_context VALUES('session','${hash}')`,
-      "INSERT INTO client VALUES('dfd936fd-f33d-4f82-ae39-f25e08ec7948',1,'native','none','app.mikaki.org')",
-      "INSERT INTO client_redirect_uri VALUES('dfd936fd-f33d-4f82-ae39-f25e08ec7948','https://app.mikaki.org/oidc/native/callback',1)",
-    ];
+    // Apply the repository's real D1 migrations, including triggers and DBSC,
+    // rather than maintaining a parallel sketch of the authority schema.
+    const migrationDir = 'crates/worker/migrations';
+    const migrations = (await readdir(migrationDir)).filter((name) => name.endsWith('.sql')).sort();
+    for (const name of migrations) {
+      const sql = await readFile(`${migrationDir}/${name}`, 'utf8');
+      await db.batch(unstable_splitSqlQuery(sql).map((statement) => db.prepare(statement)));
+    }
     const extra = await readFile('crates/worker/installation-qualification/0001.sql', 'utf8');
-    await db.batch(
-      [
-        ...schema,
-        ...extra
-          .split(';')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      ].map((s) => db.prepare(s)),
-    );
+    await db.batch(unstable_splitSqlQuery(extra).map((statement) => db.prepare(statement)));
+    await db.batch([
+      db.prepare('CREATE TABLE fixture_installation_fault(id INTEGER PRIMARY KEY,mode TEXT)'),
+      db.prepare("INSERT INTO account_security VALUES('account',1,1)"),
+      db.prepare("INSERT INTO credential VALUES('credential','account',1)"),
+      db.prepare(
+        "INSERT INTO sso_session VALUES('session','account','credential',1,unixepoch()+3600,0)",
+      ),
+      db.prepare('INSERT INTO sso_context VALUES(?,?,unixepoch())').bind('session', hash),
+      db.prepare(
+        "INSERT INTO client(client_id,revision,active,client_type,auth_method,allow_missing_pkce,sector_identifier) VALUES('dfd936fd-f33d-4f82-ae39-f25e08ec7948',1,1,'native','none',0,'app.mikaki.org')",
+      ),
+      db.prepare(
+        "INSERT INTO client_redirect_uri VALUES('dfd936fd-f33d-4f82-ae39-f25e08ec7948','https://app.mikaki.org/oidc/native/callback',1)",
+      ),
+    ]);
     async function send(path, body, dpop, withCookie = true) {
       return mf.dispatchFetch(origin + path, {
         method: 'POST',
@@ -119,10 +119,12 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
     // completion batch. None of these attempts may consume the challenge.
     const resets = {
       session: "UPDATE sso_session SET revoked=0 WHERE sso_id='session'",
+      expiry: "UPDATE sso_session SET expires_at=unixepoch()+3600 WHERE sso_id='session'",
+      dbsc: "DELETE FROM dbsc_session WHERE session_id='dbsc'",
       account: "UPDATE account_security SET active=1 WHERE account_id='account'",
       epoch: "UPDATE account_security SET epoch=1 WHERE account_id='account'",
       credential: "UPDATE credential SET active=1 WHERE credential_id='credential'",
-      client: 'UPDATE client SET active=1',
+      client: 'UPDATE client SET active=1,revision=revision+1',
       redirect: 'UPDATE client_redirect_uri SET active=1',
     };
     for (const [mode, reset] of Object.entries(resets)) {
