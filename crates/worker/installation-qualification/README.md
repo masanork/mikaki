@@ -30,3 +30,9 @@ proof-construction module for both requests, using a public fixed fixture key.
 It checks successful D1 registration and the saved thumbprint, wrong nonce,
 and completion replay. The fixed key and synthetic SSO are test inputs; this
 still does not exercise the Android bridge, a consent UI, or network transport.
+
+The local `installation_transaction` types retain the original issuer and key
+between proof steps, validate the short-lived challenge, require a new proof ID,
+and consume the pending state when preparing completion. A completion request is
+not a receipt: a lost response requires reconciliation before any future retry.
+These types do not perform transport authentication, user approval or delivery.

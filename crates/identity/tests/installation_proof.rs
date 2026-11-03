@@ -108,3 +108,111 @@ fn bad_configuration_and_mismatched_signer_fail_closed() {
         .is_err()
     );
 }
+
+#[test]
+fn transaction_retains_key_challenge_and_expiry_until_completion_request() {
+    use mikaki_identity::installation_transaction::Started;
+    let signer = Key {
+        public: key(1),
+        signing: key(1),
+    };
+    let issuer = "https://auth.example";
+    let first = B64.encode([11; 32]);
+    let second = B64.encode([12; 32]);
+    let id = B64.encode([13; 32]);
+    let nonce = B64.encode([14; 32]);
+    let response = serde_json::json!({"id":id,"nonce":nonce,"expires_at":1120}).to_string();
+    let started = Started::begin(&signer, issuer, &first, 1000).unwrap();
+    let _verified_start = verify_dpop_proof(
+        started.proof(),
+        "POST",
+        &format!("{issuer}/native/installations/start"),
+        DpopTarget::Token,
+        1000,
+    )
+    .unwrap();
+    let request = started
+        .challenge(response.as_bytes(), 1001)
+        .unwrap()
+        .complete(&signer, &second, 1002)
+        .unwrap();
+    assert_eq!(request.id, id);
+    let endpoint = format!("{issuer}/native/installations/complete");
+    let verified =
+        verify_dpop_proof(&request.proof, "POST", &endpoint, DpopTarget::Token, 1002).unwrap();
+    let thumbprint = signer.public_key().unwrap().thumbprint().unwrap();
+    assert!(
+        BoundInstallationProof::bind(
+            &PendingInstallation {
+                endpoint: &endpoint,
+                nonce: &nonce,
+                key_thumbprint: &thumbprint,
+                created_at: 1000,
+                expires_at: 1120
+            },
+            &verified,
+            1002
+        )
+        .is_some()
+    );
+}
+
+#[test]
+fn transaction_rejects_invalid_challenges_stale_time_reused_jti_and_key_change() {
+    use mikaki_identity::installation_transaction::Started;
+    let signer = Key {
+        public: key(1),
+        signing: key(1),
+    };
+    let other = Key {
+        public: key(2),
+        signing: key(2),
+    };
+    let first = B64.encode([11; 32]);
+    let second = B64.encode([12; 32]);
+    let id = B64.encode([13; 32]);
+    let nonce = B64.encode([14; 32]);
+    let begin = || Started::begin(&signer, "https://auth.example", &first, 1000).unwrap();
+    let response =
+        |expiry| serde_json::json!({"id":id,"nonce":nonce,"expires_at":expiry}).to_string();
+    assert!(begin().challenge(response(1120).as_bytes(), 999).is_err());
+    assert!(begin().challenge(response(1001).as_bytes(), 1001).is_err());
+    assert!(begin().challenge(response(1131).as_bytes(), 1001).is_err());
+    assert!(
+        begin()
+            .challenge(br#"{"id":"bad","nonce":"bad","expires_at":1120}"#, 1001)
+            .is_err()
+    );
+    let extra =
+        serde_json::json!({"id":id,"nonce":nonce,"expires_at":1120,"extra":true}).to_string();
+    assert!(begin().challenge(extra.as_bytes(), 1001).is_err());
+    assert!(begin().challenge(&vec![b' '; 1025], 1001).is_err());
+    assert!(
+        begin()
+            .challenge(response(1120).as_bytes(), 1001)
+            .unwrap()
+            .complete(&signer, &first, 1002)
+            .is_err()
+    );
+    assert!(
+        begin()
+            .challenge(response(1120).as_bytes(), 1001)
+            .unwrap()
+            .complete(&signer, &second, 1120)
+            .is_err()
+    );
+    assert!(
+        begin()
+            .challenge(response(1120).as_bytes(), 1001)
+            .unwrap()
+            .complete(&signer, &second, 999)
+            .is_err()
+    );
+    assert!(
+        begin()
+            .challenge(response(1120).as_bytes(), 1001)
+            .unwrap()
+            .complete(&other, &second, 1002)
+            .is_err()
+    );
+}

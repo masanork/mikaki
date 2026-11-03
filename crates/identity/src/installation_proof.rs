@@ -19,7 +19,7 @@ pub enum Step<'a> {
     Complete { nonce: &'a str },
 }
 
-fn opaque(value: &str) -> bool {
+pub(crate) fn opaque(value: &str) -> bool {
     value.len() == 43
         && B64
             .decode(value)
@@ -34,6 +34,17 @@ pub fn proof(
     step: Step<'_>,
     jti: &str,
     now: u64,
+) -> Result<String, String> {
+    proof_for_key(signer, issuer, step, jti, now, None)
+}
+
+pub(crate) fn proof_for_key(
+    signer: &impl InstallationSigner,
+    issuer: &str,
+    step: Step<'_>,
+    jti: &str,
+    now: u64,
+    expected: Option<&PublicJwk>,
 ) -> Result<String, String> {
     let invalid = || "invalid_installation_proof".to_owned();
     let url = Url::parse(issuer).map_err(|_| invalid())?;
@@ -59,6 +70,9 @@ pub fn proof(
         _ => return Err(invalid()),
     };
     let public = signer.public_key()?;
+    if expected.is_some_and(|key| key != &public) {
+        return Err(invalid());
+    }
     let verifier = public.verifying_key().map_err(|_| invalid())?;
     let header = json!({"typ":"dpop+jwt","alg":"ES256","jwk":public});
     let mut claims = json!({"htm":"POST","htu":format!("{issuer}{path}"),"iat":now,"jti":jti});
