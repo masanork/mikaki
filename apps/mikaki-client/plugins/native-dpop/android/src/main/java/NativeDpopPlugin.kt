@@ -44,9 +44,45 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     }
     private fun holder(id: String): KeyStore.PrivateKeyEntry =
         keyStore().getEntry(holderAlias(id), null) as? KeyStore.PrivateKeyEntry ?: error("holder absent")
-    private fun publicResult(key: KeyStore.PrivateKeyEntry): JSObject {
-        val point = (key.certificate.publicKey as ECPublicKey).w
+    private fun publicResult(key: ECPublicKey): JSObject {
+        val point = key.w
         return JSObject().apply { put("x", coordinate(point.affineX)); put("y", coordinate(point.affineY)) }
+    }
+    private fun publicResult(key: KeyStore.PrivateKeyEntry): JSObject = publicResult(key.certificate.publicKey as ECPublicKey)
+
+    // Rust-only installation-session key operations. No WebView command or
+    // account/device authorization follows from creating this key.
+    @Command @Synchronized
+    fun createDeviceSessionKey(invoke: Invoke) {
+        var created: String? = null
+        try {
+            val id = invoke.parseArgs(HolderArgs::class.java).id
+            val key = DeviceSessionKeyStore().create(id)
+            created = id
+            invoke.resolve(publicResult(key))
+            created = null
+        } catch (_: Exception) {
+            created?.let { try { DeviceSessionKeyStore().delete(it) } catch (_: Exception) {} }
+            invoke.reject("device_session_key_unavailable")
+        }
+    }
+    @Command @Synchronized
+    fun deviceSessionPublicKey(invoke: Invoke) {
+        try { invoke.resolve(publicResult(DeviceSessionKeyStore().publicKey(invoke.parseArgs(HolderArgs::class.java).id))) }
+        catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    @Command @Synchronized
+    fun signDeviceSession(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(HolderArgs::class.java)
+            val signature = DeviceSessionKeyStore().sign(args.id, args.input)
+            invoke.resolve(JSObject().apply { put("der", b64(signature)) })
+        } catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    @Command @Synchronized
+    fun deleteDeviceSessionKey(invoke: Invoke) {
+        try { DeviceSessionKeyStore().delete(invoke.parseArgs(HolderArgs::class.java).id); invoke.resolve() }
+        catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
     }
     @Command @Synchronized
     fun createHolder(invoke: Invoke) {

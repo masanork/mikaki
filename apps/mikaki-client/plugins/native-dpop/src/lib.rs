@@ -63,6 +63,57 @@ struct WalletPayload {
 }
 #[cfg(target_os = "android")]
 impl<R: Runtime> NativeDpop<R> {
+    /// Device-session keys have a separate namespace from Wallet holder keys.
+    /// The caller must supply a fresh random ID and a protocol-validated JWS input.
+    pub fn create_device_session_key(&self, id: &str) -> Result<PublicKey, String> {
+        self.0
+            .run_mobile_plugin(
+                "createDeviceSessionKey",
+                HolderRequest {
+                    id,
+                    input: "",
+                    payload: "",
+                },
+            )
+            .map_err(|_| "device_session_key_unavailable".into())
+    }
+    pub fn device_session_public_key(&self, id: &str) -> Result<PublicKey, String> {
+        self.0
+            .run_mobile_plugin(
+                "deviceSessionPublicKey",
+                HolderRequest {
+                    id,
+                    input: "",
+                    payload: "",
+                },
+            )
+            .map_err(|_| "device_session_key_unavailable".into())
+    }
+    pub fn sign_device_session(&self, id: &str, input: &str) -> Result<String, String> {
+        self.0
+            .run_mobile_plugin::<Signature>(
+                "signDeviceSession",
+                HolderRequest {
+                    id,
+                    input,
+                    payload: "",
+                },
+            )
+            .map(|signature| signature.der)
+            .map_err(|_| "device_session_key_unavailable".into())
+    }
+    pub fn delete_device_session_key(&self, id: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin(
+                "deleteDeviceSessionKey",
+                HolderRequest {
+                    id,
+                    input: "",
+                    payload: "",
+                },
+            )
+            .map_err(|_| "device_session_key_unavailable".into())
+    }
     pub fn store_documents(&self, owner: &str, payload: &str) -> Result<(), String> {
         self.0
             .run_mobile_plugin("storeDocuments", DocumentRequest { owner, payload })
