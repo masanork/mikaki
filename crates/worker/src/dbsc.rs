@@ -193,7 +193,7 @@ pub(crate) async fn register(
 
     let new_secret = random_string()?;
     let guard = format!("dbsc-{session_id}");
-    let result = db.batch(vec![
+    let result = crate::op_authority::batch(&context.env, vec![
         db.prepare("DELETE FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
             .bind(&[JsValue::from_str(&claims.jti), JsValue::from_str(&sso_id), JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")
@@ -208,7 +208,10 @@ pub(crate) async fn register(
             .bind(&[JsValue::from_str(&guard), JsValue::from_str(&format!("{guard}-sso"))])?,
     ]).await;
     if result.is_err() {
-        return crate::vault_http::error(400, "invalid_or_expired_challenge");
+        if !challenge_is_live(&db, &claims.jti, &sso_id, now).await? {
+            return crate::vault_http::error(400, "invalid_or_expired_challenge");
+        }
+        return crate::vault_http::error(500, "registration_failed");
     }
 
     let instructions = SessionInstructions {
@@ -354,7 +357,7 @@ pub(crate) async fn refresh(
     let new_sso_secret = random_string()?;
     let new_sso_hash = hash_secret(&new_sso_secret);
     let guard = format!("dbsc-refresh-{}", random_string()?);
-    let result = db.batch(vec![
+    let result = crate::op_authority::batch(&context.env, vec![
         db.prepare("DELETE FROM dbsc_challenge WHERE challenge=?1 AND session_id=?2 AND expires_at>?3")
             .bind(&[JsValue::from_str(&claims.jti), JsValue::from_str(session_id), JsValue::from_f64(now as f64)])?,
         db.prepare("INSERT INTO atomic_guard(operation_id,passed) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)")

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { chromium, expect } from '@playwright/test';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createTestHarness } from 'wrangler';
@@ -8,6 +10,7 @@ import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 import { issueBootstrapInvite } from '../../scripts/enrollment-store.ts';
 import { journeyServer } from './support/journey-server.ts';
 import { journeyRp } from './support/journey-rp.ts';
+import { applyWorkMigrations } from './support/work-migrations.ts';
 
 test(
   'DBSC real Chromium: passkey login registers and refreshes a bound session',
@@ -43,13 +46,43 @@ test(
         Buffer.from(rpJwk.x!, 'base64url'),
         Buffer.from(rpJwk.y!, 'base64url'),
       ]);
-      harness = createTestHarness({
-        root: new URL('../..', import.meta.url).pathname,
-        workers: [
+      const root = new URL('../..', import.meta.url).pathname;
+      const authority = 'dbsc-journey';
+      const base = JSON.parse(await readFile(join(root, 'crates/worker/wrangler.jsonc'), 'utf8'));
+      base.assets.directory = join(root, 'assets');
+      const config = {
+        ...base,
+        main: join(root, 'crates/worker/service/entrypoint.ts'),
+        d1_databases: base.d1_databases.map((db: Record<string, unknown>) => ({
+          ...db,
+          migrations_dir: join(root, 'crates/worker/migrations'),
+        })),
+        services: [
           {
-            configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname,
-            vars: { MIKAKI_ISSUER: issuer },
-            secrets: { OP_PRIVATE_JWK: JSON.stringify(privateJwk) },
+            binding: 'WORK_AUTHORITY_CHECKPOINT',
+            service: 'dbsc-checkpoint',
+            entrypoint: 'WorkCheckpointService',
+          },
+        ],
+        vars: { ...base.vars, MIKAKI_ISSUER: issuer },
+        queues: { ...base.queues, consumers: [] },
+        triggers: { crons: [] },
+      };
+      harness = createTestHarness({
+        root,
+        workers: [
+          { config, secrets: { OP_PRIVATE_JWK: JSON.stringify(privateJwk) } },
+          {
+            config: {
+              name: 'dbsc-checkpoint',
+              main: join(root, 'crates/work-checkpoint-worker/worker.ts'),
+              compatibility_date: '2026-10-08',
+              vars: { WORK_AUTHORITY_ID: authority },
+              durable_objects: {
+                bindings: [{ name: 'CHECKPOINTS', class_name: 'WorkCheckpoint' }],
+              },
+              migrations: [{ tag: 'dbsc-v1', new_sqlite_classes: ['WorkCheckpoint'] }],
+            },
           },
         ],
       });
@@ -57,6 +90,7 @@ test(
       const worker = harness.getWorker('mikaki-op-worker');
       await worker.applyD1Migrations('DB');
       const { DB } = await worker.getEnv();
+      await applyWorkMigrations(DB, 14);
       const policy = JSON.parse(
         await readFile(new URL('../generated/worker-policy.json', import.meta.url), 'utf8'),
       );
@@ -78,6 +112,13 @@ test(
         ),
       ]);
       const { invitation } = await issueBootstrapInvite(DB, 'test', 'Disposable DBSC owner');
+      const { CHECKPOINTS } = await harness.getWorker('dbsc-checkpoint').getEnv();
+      const checkpoint = CHECKPOINTS.getByName(authority);
+      const initial = { authority, epoch: 'a'.repeat(64), sequence: 0, tip: 'b'.repeat(64) };
+      await checkpoint.bootstrap(initial, 1);
+      await DB.prepare('INSERT INTO work_authority_checkpoint VALUES(1,?,?,?,?)')
+        .bind(initial.authority, initial.epoch, initial.sequence, initial.tip)
+        .run();
       const rp = await journeyRp(
         issuer,
         rpOrigin,
@@ -232,7 +273,32 @@ test(
         },
       });
       assert.equal(invalid.status, 400, 'wrong signing key is rejected');
-      await DB.prepare('UPDATE sso_session SET revoked=1 WHERE sso_id=?').bind(row.sso_id).run();
+      // Exercise the same guard that protects production sessions before using
+      // a checkpointed fixture transaction to model revocation.
+      await assert.rejects(
+        DB.prepare('UPDATE sso_session SET revoked=1 WHERE sso_id=?').bind(row.sso_id).run(),
+      );
+      const state = await checkpoint.status(1);
+      const permit = await checkpoint.begin(state.checkpoint, randomUUID(), 1);
+      await DB.batch([
+        DB.prepare(
+          'UPDATE work_authority_checkpoint SET sequence=?,tip=? WHERE id=1 AND authority=? AND epoch=? AND sequence=? AND tip=?',
+        ).bind(
+          permit.next.sequence,
+          permit.next.tip,
+          permit.previous.authority,
+          permit.previous.epoch,
+          permit.previous.sequence,
+          permit.previous.tip,
+        ),
+        DB.prepare('INSERT INTO work_authority_frame VALUES(1,?,?,1)').bind(
+          permit.next.sequence,
+          permit.next.tip,
+        ),
+        DB.prepare('UPDATE sso_session SET revoked=1 WHERE sso_id=?').bind(row.sso_id),
+        DB.prepare('DELETE FROM work_authority_frame WHERE id=1'),
+      ]);
+      await checkpoint.commit(permit, permit.next, 1);
       const revoked = await worker.fetch(`${issuer}/dbsc/refresh`, {
         method: 'POST',
         headers: { 'Sec-Secure-Session-Id': `"${row.session_id}"` },
