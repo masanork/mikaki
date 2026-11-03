@@ -21,8 +21,13 @@ audit, and confirms the exact next marker before acknowledging success. An
 unknown result with an old marker remains quarantined. Reconciliation of a
 committed next marker replays no business SQL or external effect. A definitive
 constraint abort can settle an empty marker slot while leaving business state
-unchanged. Missing, stale, pending, frozen or unsupported independent state
-refuses affected work and source plaintext release.
+unchanged. On a subsequent write, if acquiring a permit fails and the exact
+pending next marker is already committed in D1, the coordinator can publish
+that existing permit before acquiring a new one. It never retries the earlier
+business statements. An old, absent or mismatched marker remains quarantined;
+concurrent recovery may still cause an in-flight caller to fail closed. Missing,
+stale, pending, frozen or unsupported independent state refuses source plaintext
+release and other operations that require a current authority observation.
 
 The [private Worker](../crates/work-checkpoint-worker/worker.ts) has a fixed
 authority scope and named service/operator entrypoints. Its default HTTP

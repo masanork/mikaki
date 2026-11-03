@@ -265,9 +265,41 @@ impl WorkStore {
             }
             return Err(Denied::StaleAuthority.into());
         }
-        let expected = observe(self.primary_checkpoint().await, "primary_read", None)?;
-        let operation = opaque()?;
-        let p: Permit = observe(self.checkpoint_call(serde_json::json!({"action":"begin","release":RELEASE,"expected":expected,"operation":operation})).await, "permit_begin", Some(expected.sequence))?;
+        let mut expected = observe(self.primary_checkpoint().await, "primary_read", None)?;
+        let mut operation = opaque()?;
+        let first: Result<Permit> = self.checkpoint_call(serde_json::json!({"action":"begin","release":RELEASE,"expected":expected,"operation":operation})).await;
+        let p: Permit = match first {
+            Ok(p) => p,
+            Err(begin_error) => {
+                // Only an exact, already-committed pending marker is safe to
+                // publish. An old marker remains quarantined, and no prior
+                // business statements or external effects are replayed.
+                let state: CheckpointState = match self
+                    .checkpoint_call(serde_json::json!({"action":"status","release":RELEASE}))
+                    .await
+                {
+                    Ok(state) => state,
+                    Err(_) => {
+                        return observe(Err(begin_error), "permit_begin", Some(expected.sequence));
+                    }
+                };
+                let Some(pending) = state.pending else {
+                    return observe(Err(begin_error), "permit_begin", Some(expected.sequence));
+                };
+                observe(
+                    self.settle_checkpoint(&pending, false).await,
+                    "pending_reconcile",
+                    Some(pending.next.sequence),
+                )?;
+                expected = observe(
+                    self.current_authority_checkpoint().await,
+                    "primary_read",
+                    None,
+                )?;
+                operation = opaque()?;
+                observe(self.checkpoint_call(serde_json::json!({"action":"begin","release":RELEASE,"expected":expected,"operation":operation})).await, "permit_begin", Some(expected.sequence))?
+            }
+        };
         observe(p.validate(), "permit_validation", Some(expected.sequence))?;
         if p.previous != expected || p.operation != operation {
             failure(

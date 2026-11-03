@@ -192,6 +192,26 @@ test(
       await expect(
         page.getByRole('heading', { name: 'Registration complete', exact: true }),
       ).toBeVisible();
+      // Simulate a committed D1 transaction whose checkpoint publication was
+      // lost before the next real login. No business statement is replayed.
+      const beforeLogin = await checkpoint.status(1);
+      const pendingLogin = await checkpoint.begin(beforeLogin.checkpoint, randomUUID(), 1);
+      await DB.batch([
+        DB.prepare(
+          'UPDATE work_authority_checkpoint SET sequence=?,tip=? WHERE id=1 AND authority=? AND epoch=? AND sequence=? AND tip=?',
+        ).bind(
+          pendingLogin.next.sequence,
+          pendingLogin.next.tip,
+          pendingLogin.previous.authority,
+          pendingLogin.previous.epoch,
+          pendingLogin.previous.sequence,
+          pendingLogin.previous.tip,
+        ),
+        DB.prepare(
+          'INSERT INTO work_transition_guard(guard_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
+        ).bind('dbsc-pending-login'),
+        DB.prepare('DELETE FROM work_transition_guard WHERE guard_id=?').bind('dbsc-pending-login'),
+      ]);
       await page.goto(rpOrigin);
       await page.getByRole('link', { name: 'Sign in', exact: true }).click();
       await page.getByRole('button', { name: 'Continue this connection', exact: true }).click();

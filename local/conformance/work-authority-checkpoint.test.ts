@@ -417,6 +417,76 @@ test('one durable pending intent blocks competitors and old-marker reconciliatio
   }
 });
 
+test('a subsequent write recovers an already-committed pending checkpoint without replaying its business changes', async () => {
+  const f = await fixture();
+  try {
+    const expected = await f.current();
+    const plan = await f.checkpoint<Permit>({
+      action: 'begin',
+      release: 1,
+      expected,
+      operation: 'lost-publication-auto',
+    });
+    await f.DB.batch([
+      step(f, plan),
+      f.DB.prepare(await sql('guard')).bind('auto-prior'),
+      f.DB.prepare("DELETE FROM work_transition_guard WHERE guard_id='auto-prior'"),
+    ]);
+    const auditBefore = await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n');
+    const result = await f.native<{ started: boolean }>({
+      action: 'dispatch-preparation',
+      id: f.p.id,
+    });
+    assert.equal(result.started, true);
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n'),
+      Number(auditBefore) + 1,
+    );
+    const state = await f.state();
+    assert.equal(state.pending, null);
+    assert.equal(state.checkpoint.sequence, plan.next.sequence + 1);
+    assert.deepEqual(await f.current(), state.checkpoint);
+  } finally {
+    await f.close();
+  }
+});
+
+test('competing recovery attempts preserve a single preparation transition', async () => {
+  const f = await fixture();
+  try {
+    const expected = await f.current();
+    const plan = await f.checkpoint<Permit>({
+      action: 'begin',
+      release: 1,
+      expected,
+      operation: 'lost-publication-race',
+    });
+    await f.DB.batch([
+      step(f, plan),
+      f.DB.prepare(await sql('guard')).bind('race-prior'),
+      f.DB.prepare("DELETE FROM work_transition_guard WHERE guard_id='race-prior'"),
+    ]);
+    const auditBefore = Number(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n'),
+    );
+    const results = await Promise.allSettled(
+      Array.from({ length: 3 }, () =>
+        f.native<{ started: boolean }>({ action: 'dispatch-preparation', id: f.p.id }),
+      ),
+    );
+    assert.ok(results.some((result) => result.status === 'fulfilled' && result.value.started));
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM work_audit').first('n'),
+      auditBefore + 1,
+    );
+    const state = await f.state();
+    assert.equal(state.pending, null);
+    assert.deepEqual(await f.current(), state.checkpoint);
+  } finally {
+    await f.close();
+  }
+});
+
 test('a committed next marker reconciles a lost publication without replaying SQL; captured old CAS cannot commit', async () => {
   const f = await fixture();
   try {
