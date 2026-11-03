@@ -133,6 +133,13 @@ checks conditional enrollment and revocation under concurrent Workers. Its
 proofs, sessions and clock are synthetic; it does not expose a product endpoint
 or implement a device-bound session.
 
+The [installation proof core](../crates/oidc/src/installation_enrollment.rs)
+now binds a verified ES256 DPoP proof to a server-pending key, nonce, endpoint
+and short deadline. A separate host-verifier/local-D1 test joins that output to
+the fixture's conditional consumption and replay reservation. Owner consent,
+trusted loading of pending state, production Worker/D1 wiring, and token/session
+issuance remain unimplemented; the fixture's verified values are test inputs.
+
 ## Android loading and cancellation observation
 
 On the API 35 tablet emulator, a debug-only APK temporarily bypassed the
