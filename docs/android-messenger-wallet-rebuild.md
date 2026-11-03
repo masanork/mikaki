@@ -174,3 +174,14 @@ server-recognized device. This code does not itself enroll a device, mint or
 refresh tokens, establish replay protection, perform biometric approval, or
 recover orphaned keys after a crash. Those remain requirements before it is
 connected to a service session.
+
+## Local installation proof round trip
+
+The installation proof builder used by the Android key adapter now also drives a
+local Worker/D1 qualification using a public fixed fixture key. Both proof
+steps, the server-generated nonce, persisted public-key thumbprint, wrong-nonce
+rejection and completion replay are checked against the actual Rust Worker and
+repository D1 migrations. This joins the host protocol and server fixture; it
+does not use Android Keystore, authenticate a real account, or exercise an app
+consent screen. The production registration route and usable device session
+remain absent.

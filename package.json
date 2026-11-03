@@ -7,7 +7,7 @@
     "postinstall": "npm ci --prefix tools/svelte-check --ignore-scripts",
     "build:policy": "node scripts/build_policy.ts",
     "test:device-grant-probe": "node --test design/probes/device-grant/store.test.mjs design/probes/device-grant/d1-worker.test.mjs design/probes/device-grant/rate-worker.test.mjs design/probes/device-grant/issuance-worker.test.mjs design/probes/device-grant/lifecycle.test.mjs design/probes/device-grant/verified-dpop.test.mjs",
-    "test:installation-worker-qualification": "tsx scripts/build-installation-qualification.ts && node --test --test-concurrency=1 design/probes/android-device-registry/worker-qualification.test.mjs",
+    "test:installation-worker-qualification": "cargo build --locked -p mikaki-identity --example installation_native_probe && tsx scripts/build-installation-qualification.ts && node --test --test-concurrency=1 design/probes/android-device-registry/worker-qualification.test.mjs",
     "test:installation-enrollment-probe": "cargo build --locked -p mikaki-oidc --example installation_proof_probe && node --test --test-concurrency=1 design/probes/android-device-registry/registry.test.mjs design/probes/android-device-registry/verified-proof.test.mjs",
     "build:work-store-fixture": "npm run build:policy && node scripts/build-work-store-qualification.ts",
     "test:work-store": "npm run build:work-store-fixture && node --test --test-concurrency=1 local/conformance/work-delegation.test.ts local/conformance/work-disclosure.test.ts local/conformance/work-credential-custody.test.ts local/conformance/work-candidate-payload.test.ts scripts/work-git-disclosure.test.ts",

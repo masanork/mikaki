@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { unstable_splitSqlQuery } from 'wrangler';
 import { test } from 'node:test';
@@ -113,6 +114,53 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       (await send(complete, { id: pending.id }, proof(complete, pending.nonce))).status,
       409,
     );
+    // Invoke the same Rust proof builder used by the Android adapter. This
+    // signer deliberately uses a public fixed fixture key, not Android Keystore.
+    function nativeProof(nonce = null) {
+      return execFileSync(resolve('target/debug/examples/installation_native_probe'), [], {
+        input: JSON.stringify({
+          jti: randomBytes(32).toString('base64url'),
+          now: Math.floor(Date.now() / 1000),
+          nonce,
+        }),
+        encoding: 'utf8',
+        timeout: 10000,
+      }).trim();
+    }
+    const nativeStart = await send(start, {}, nativeProof());
+    assert.equal(nativeStart.status, 200, await nativeStart.clone().text());
+    const nativeChallenge = await nativeStart.json();
+    const incorrectNonce = randomBytes(32).toString('base64url');
+    assert.equal(
+      (await send(complete, { id: nativeChallenge.id }, nativeProof(incorrectNonce))).status,
+      400,
+    );
+    const nativeCompleteProof = nativeProof(nativeChallenge.nonce);
+    const nativeComplete = await send(complete, { id: nativeChallenge.id }, nativeCompleteProof);
+    assert.equal(nativeComplete.status, 200, await nativeComplete.clone().text());
+    assert.equal((await nativeComplete.json()).status, 'active');
+    const header = JSON.parse(
+      Buffer.from(nativeCompleteProof.split('.')[0], 'base64url').toString(),
+    );
+    const { x: nativeX, y: nativeY } = header.jwk;
+    const nativeThumbprint = createHash('sha256')
+      .update(JSON.stringify({ crv: 'P-256', kty: 'EC', x: nativeX, y: nativeY }))
+      .digest('base64url');
+    assert.equal(
+      (
+        await db
+          .prepare('SELECT thumbprint FROM installation_device WHERE id=?')
+          .bind(nativeChallenge.id)
+          .first()
+      ).thumbprint,
+      nativeThumbprint,
+    );
+
+    assert.equal(
+      (await send(complete, { id: nativeChallenge.id }, nativeCompleteProof)).status,
+      409,
+    );
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 2);
     const next = await send(start, {}, proof(start));
     const pending2 = await next.json();
     // Invalidate authority after the owner and pending reads but before D1's
@@ -175,7 +223,7 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       (await send(complete, { id: pending2.id }, proof(complete, pending2.nonce))).status,
       401,
     );
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 1);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 2);
     assert.equal(
       (
         await db

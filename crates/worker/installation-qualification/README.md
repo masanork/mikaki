@@ -25,3 +25,8 @@ uses the separate device-session Keystore key; it is not yet invoked by an app
 flow. `cargo test --locked -p mikaki-identity --test installation_proof` checks
 interoperability with the IdP verifier using a synthetic host signer. This is
 not proof of an Android Keystore-to-Worker transaction.
+The Worker qualification also calls a local executable built from that same
+proof-construction module for both requests, using a public fixed fixture key.
+It checks successful D1 registration and the saved thumbprint, wrong nonce,
+and completion replay. The fixed key and synthetic SSO are test inputs; this
+still does not exercise the Android bridge, a consent UI, or network transport.
