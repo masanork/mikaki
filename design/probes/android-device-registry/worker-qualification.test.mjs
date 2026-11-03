@@ -43,6 +43,7 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
   try {
     const db = await mf.getD1Database('DB');
     const schema = [
+      'CREATE TABLE fixture_installation_fault(id INTEGER PRIMARY KEY,mode TEXT)',
       'CREATE TABLE account_security(account_id TEXT PRIMARY KEY,epoch INTEGER,active INTEGER)',
       'CREATE TABLE credential(credential_id TEXT PRIMARY KEY,account_id TEXT,active INTEGER)',
       'CREATE TABLE sso_session(sso_id TEXT PRIMARY KEY,account_id TEXT,credential_id TEXT,epoch INTEGER,expires_at INTEGER,revoked INTEGER)',
@@ -114,6 +115,59 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
     );
     const next = await send(start, {}, proof(start));
     const pending2 = await next.json();
+    // Invalidate authority after the owner and pending reads but before D1's
+    // completion batch. None of these attempts may consume the challenge.
+    const resets = {
+      session: "UPDATE sso_session SET revoked=0 WHERE sso_id='session'",
+      account: "UPDATE account_security SET active=1 WHERE account_id='account'",
+      epoch: "UPDATE account_security SET epoch=1 WHERE account_id='account'",
+      credential: "UPDATE credential SET active=1 WHERE credential_id='credential'",
+      client: 'UPDATE client SET active=1',
+      redirect: 'UPDATE client_redirect_uri SET active=1',
+    };
+    for (const [mode, reset] of Object.entries(resets)) {
+      await db.prepare('INSERT INTO fixture_installation_fault VALUES(1,?)').bind(mode).run();
+      const attempted = proof(complete, pending2.nonce);
+      assert.equal((await send(complete, { id: pending2.id }, attempted)).status, 409, mode);
+      assert.equal(
+        (
+          await db
+            .prepare('SELECT consumed FROM installation_pending WHERE id=?')
+            .bind(pending2.id)
+            .first()
+        ).consumed,
+        0,
+        mode,
+      );
+      await db.prepare(reset).run();
+    }
+    // The same key was already registered above. The final insert fails its
+    // unique constraint after the preceding update and replay insert; the D1
+    // batch must roll both writes back.
+    const replayId = randomUUID();
+    const replayHash = createHash('sha256').update(replayId).digest('base64url');
+    const duplicate = await send(
+      complete,
+      { id: pending2.id },
+      proof(complete, pending2.nonce, replayId),
+    );
+    assert.equal(duplicate.status, 500);
+    assert.equal(
+      (
+        await db
+          .prepare('SELECT consumed FROM installation_pending WHERE id=?')
+          .bind(pending2.id)
+          .first()
+      ).consumed,
+      0,
+    );
+    assert.equal(
+      await db
+        .prepare('SELECT jti_hash FROM installation_proof_use WHERE jti_hash=?')
+        .bind(replayHash)
+        .first(),
+      null,
+    );
     await db.prepare("UPDATE sso_session SET revoked=1 WHERE sso_id='session'").run();
     assert.equal(
       (await send(complete, { id: pending2.id }, proof(complete, pending2.nonce))).status,

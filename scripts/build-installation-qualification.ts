@@ -87,7 +87,10 @@ execFileSync(
 );
 await writeFile(
   join(out, 'worker.mjs'),
-  "import { initSync, fetch } from './qualification.js';\nimport module from './qualification_bg.wasm';\ninitSync({ module });\nexport default { fetch };\n",
+  await readFile(
+    join(root, 'design/probes/android-device-registry/worker-qualification-fixture.mjs'),
+    'utf8',
+  ),
 );
 // Bundle wasm-bindgen's TypeScript crypto snippets for the local Workerd runtime.
 const { build } = await import('esbuild');
