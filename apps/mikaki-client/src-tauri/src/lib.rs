@@ -12,6 +12,8 @@ mod identity_issuance;
 mod identity_passport;
 mod identity_reader;
 mod identity_wallet;
+#[cfg(target_os = "android")]
+mod installation_key;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod mobile_oidc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

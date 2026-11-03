@@ -17,3 +17,11 @@ physical-device qualification. Its hard-coded native client and callback check
 configuration but do not authenticate an app or prove Android Keystore custody.
 Production design must address these gaps and transaction-failure semantics
 before adding a migration or route.
+
+The shared `mikaki_identity::installation_proof` module constructs the two
+qualification DPoP proofs using a native signer and checks the returned DER
+signature against the public key before encoding it. The Android-only adapter
+uses the separate device-session Keystore key; it is not yet invoked by an app
+flow. `cargo test --locked -p mikaki-identity --test installation_proof` checks
+interoperability with the IdP verifier using a synthetic host signer. This is
+not proof of an Android Keystore-to-Worker transaction.

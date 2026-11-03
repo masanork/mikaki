@@ -28,6 +28,7 @@ rustls-pki-types = { version = "=1.15.1", default-features = false, features = [
 x509-cert = { version = "=0.3.0", default-features = false }
 
 [dev-dependencies]
+mikaki-oidc = { path = "../oidc" }
 rand_core = "=0.10.1"
 getrandom = { version = "=0.4.3", features = ["sys_rng"] }
 
