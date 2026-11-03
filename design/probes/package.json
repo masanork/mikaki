@@ -28,6 +28,7 @@
   },
   "overrides": {
     "sharp": "0.35.5",
-    "undici": "7.30.1"
+    "undici": "7.30.1",
+    "@sd-jwt/decode": "npm:@sd-jwt/core@0.20.0"
   }
 }
