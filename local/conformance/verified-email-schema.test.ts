@@ -116,7 +116,7 @@ test('confirmation requires owner session, unexpired challenge and exactly one w
       worker.fetch('https://issuer.example/account/email', {
         headers: { cookie: `__Host-op-sso=${cookie}` },
       });
-    assert.equal((await (await status()).json()).email, null);
+    assert.equal(((await (await status()).json()) as { email: unknown }).email, null);
     assert.equal((await confirm(token, cookie, 'https://wrong.example')).status, 403);
     assert.equal((await confirm(token, 'wrong')).status, 401);
     assert.equal((await confirm(randomBytes(32).toString('base64url'))).status, 409);
@@ -163,7 +163,10 @@ test('confirmation requires owner session, unexpired challenge and exactly one w
     assert.equal((await release('grant', 'rp', 'https://evil.example')).status, 403);
     assert.equal((await release('grant', 'other')).status, 409);
     assert.equal((await release('grant')).status, 200);
-    const statusBody = await (await status()).json();
+    const statusBody = (await (await status()).json()) as {
+      email: { email: string };
+      clients: { released: number }[];
+    };
     assert.equal(statusBody.email.email, 'owner@example.org');
     assert.equal(statusBody.clients[0].released, 1);
     assert.equal(
@@ -229,7 +232,7 @@ test('confirmation requires owner session, unexpired challenge and exactly one w
       headers: { origin: 'https://issuer.example', cookie: `__Host-op-sso=${cookie}` },
     });
     assert.equal(removal.status, 200);
-    assert.equal((await (await status()).json()).email, null);
+    assert.equal(((await (await status()).json()) as { email: unknown }).email, null);
     const removed = await DB.prepare(
       "SELECT email,active,revision FROM account_verified_email WHERE account_id='a'",
     ).first();
