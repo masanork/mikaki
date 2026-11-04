@@ -8,7 +8,8 @@ import {
   sign,
   verify,
 } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 import { readFile, readdir } from 'node:fs/promises';
 import { unstable_splitSqlQuery } from 'wrangler';
 import { test } from 'node:test';
@@ -198,7 +199,57 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
     assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 2);
     // Optional local emulator qualification. The instrumented test package has
     // its own identity and synthetic key; it is not the production app key.
-    let expectedDevices = 2;
+    // Drive the native transaction state through the actual qualification
+    // Worker, including a committed completion whose response is lost.
+    const child = spawn(resolve('target/debug/examples/installation_transaction_probe'), [], {
+      stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+    const exchange = async (input) => {
+      child.stdin.write(`${JSON.stringify(input)}\n`);
+      const timer = AbortSignal.timeout(10000);
+      const next = await Promise.race([
+        lines.next(),
+        new Promise((_, reject) =>
+          timer.addEventListener('abort', () => reject(new Error('native fixture timeout')), {
+            once: true,
+          }),
+        ),
+      ]);
+      assert.equal(next.done, false);
+      const parsed = JSON.parse(next.value);
+      assert.equal(parsed.error, undefined);
+      return parsed;
+    };
+    const jti = () => randomBytes(32).toString('base64url');
+    const now = () => Math.floor(Date.now() / 1000);
+    try {
+      const started = await exchange({ action: 'start', jti: jti(), now: now() });
+      const startReply = await send(start, {}, started.proof);
+      assert.equal(startReply.status, 200, await startReply.clone().text());
+      const challenge = await startReply.json();
+      const completion = await exchange({
+        action: 'challenge',
+        response: challenge,
+        jti: jti(),
+        now: now(),
+      });
+      assert.equal(completion.id, challenge.id);
+      await db.prepare("INSERT INTO fixture_installation_fault VALUES(1,'lost_reply')").run();
+      const lost = await send(complete, { id: completion.id }, completion.proof);
+      assert.equal(lost.status, 500);
+      const query = await exchange({ action: 'status', jti: jti(), now: now() });
+      assert.equal(query.id, challenge.id);
+      const queryReply = await send(status, { id: query.id }, query.proof);
+      assert.equal(queryReply.status, 200, await queryReply.clone().text());
+      const result = await exchange({ action: 'result', response: await queryReply.json() });
+      assert.equal(result.status, 'active');
+      assert.equal((await send(status, { id: query.id }, query.proof)).status, 409);
+    } finally {
+      child.stdin.end();
+      child.kill();
+    }
+    let expectedDevices = 3;
     const serial = process.env.MIKAKI_ANDROID_KEYSTORE_SERIAL;
     if (serial) {
       const adb = process.env.MIKAKI_ANDROID_ADB;

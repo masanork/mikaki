@@ -208,3 +208,9 @@ cover the production app's Rust-to-Kotlin bridge, a real account, an actual
 network connection, physical hardware or a deployed IdP. The Cargo registry
 checkout disappeared during the regular Gradle build, so the test APK was built
 using the separate fixture script documented in the qualification README.
+
+The local Worker test also drives the shared native transaction state through
+start, challenge, a lost completion response and status reconciliation. The
+native state and the Worker execute separately with a synthetic fixed key and
+SSO; this connects their protocol behavior without claiming an app UI, Android
+bridge, deployed service or durable recovery.

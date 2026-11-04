@@ -64,3 +64,10 @@ test creates an ephemeral key, signs the local start, complete and status
 requests, verifies each DER signature on the host, and deletes that key. The
 emulator test does not exercise the production app identity, Rust-to-Kotlin IPC,
 physical hardware, actual user authentication or a deployed Worker.
+
+The host integration also runs `installation_transaction_probe` as a separate
+process: it retains the real native transaction state while the test sends its
+proofs to the local Worker. A committed completion response is deliberately
+lost, then a fresh status proof obtains and parses `active`; replay is rejected.
+The process uses a fixed public fixture key and does not exercise the Android
+adapter or authenticate real transport.
