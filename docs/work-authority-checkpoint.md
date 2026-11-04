@@ -40,15 +40,15 @@ there is no reset, unfreeze or automatic rebase API.
 An operator can inspect the enrolled production authority without changing it:
 
 ```sh
-node scripts/inspect-authority-checkpoint.ts /path/to/private-remote-bindings.jsonc
+node scripts/inspect-authority-checkpoint.ts
 ```
 
-The private Wrangler config must contain only the fixed production account, the
-remote `DB` D1 binding and the remote `CHECKPOINT_BOOTSTRAP` binding to
-`WorkCheckpointBootstrap`; see the pinned values in the diagnostic script.
-The bootstrap binding is privileged and can enroll an authority, although this
-command calls only `inspect` and performs D1 `SELECT`s. Protect the config and
-credentials accordingly. The command accepts no settlement or execution option.
+The command creates a private temporary Wrangler config with only the fixed
+production account, the remote `DB` D1 binding and the remote
+`CHECKPOINT_BOOTSTRAP` binding to `WorkCheckpointBootstrap`, then removes it.
+It accepts no arguments, settlement or execution option. The bootstrap binding
+is privileged and can enroll an authority, although this command calls only
+`inspect` and performs D1 `SELECT`s. Protect the operator credentials accordingly.
 
 The command takes two observations five seconds apart, checking the independent
 state before and after each D1 read. Exit 0 means both observations showed matching

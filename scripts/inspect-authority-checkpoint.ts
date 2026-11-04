@@ -1,8 +1,9 @@
 /** Read-only production authority diagnosis; this capability cannot settle a permit. */
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parse } from 'jsonc-parser';
 import { getPlatformProxy } from 'wrangler';
 import type { D1Database } from '@cloudflare/workers-types';
 import { gcPermitHash, type GcPermit } from './settle-reviewed-auth-gc.ts';
@@ -101,68 +102,68 @@ export async function inspectAuthorityCheckpoint(io: DiagnosticIO, wait: () => P
   return { status: 'mismatch' as const, ...result, ...pending };
 }
 
-export function validateDiagnosticConfig(target: Record<string, unknown>) {
-  assert.deepEqual(Object.keys(target).sort(), [
-    'account_id',
-    'compatibility_date',
-    'd1_databases',
-    'name',
-    'preview_urls',
-    'services',
-    'workers_dev',
-  ]);
-  assert.match(String(target.name), /^[a-z0-9-]{1,63}$/);
-  assert.match(String(target.compatibility_date), /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(target.account_id, '4b749427a0c80c547e726a42aff4b6fc');
-  assert.equal(target.workers_dev, false);
-  assert.equal(target.preview_urls, false);
-  assert.equal(target.env, undefined);
-  assert.deepEqual(target.d1_databases, [
-    {
-      binding: 'DB',
-      database_name: 'mikaki-auth-owner',
-      database_id: 'd0258938-0d27-4110-8aa9-c82e20f3885b',
-      remote: true,
-    },
-  ]);
-  assert.deepEqual(target.services, [
-    {
-      binding: 'CHECKPOINT_BOOTSTRAP',
-      service: 'mikaki-auth-work-checkpoint',
-      entrypoint: 'WorkCheckpointBootstrap',
-      remote: true,
-    },
-  ]);
+export function diagnosticConfig() {
+  return {
+    name: 'mikaki-checkpoint-diagnostic',
+    account_id: '4b749427a0c80c547e726a42aff4b6fc',
+    compatibility_date: '2026-09-23',
+    workers_dev: false,
+    preview_urls: false,
+    d1_databases: [
+      {
+        binding: 'DB',
+        database_name: 'mikaki-auth-owner',
+        database_id: 'd0258938-0d27-4110-8aa9-c82e20f3885b',
+        remote: true,
+      },
+    ],
+    services: [
+      {
+        binding: 'CHECKPOINT_BOOTSTRAP',
+        service: 'mikaki-auth-work-checkpoint',
+        entrypoint: 'WorkCheckpointBootstrap',
+        remote: true,
+      },
+    ],
+  };
 }
 
 async function main() {
-  assert.equal(process.argv.length, 3, 'expected_private_remote_binding_config');
-  const target = parse(await readFile(process.argv[2]!, 'utf8')) as Record<string, unknown>;
-  validateDiagnosticConfig(target);
-  const platform = await getPlatformProxy<{
-    DB: D1Database;
-    CHECKPOINT_BOOTSTRAP: { inspect(): Promise<string> };
-  }>({ configPath: process.argv[2], remoteBindings: true, persist: false });
+  assert.equal(process.argv.length, 2, 'no_arguments_accepted');
+  const directory = await mkdtemp(join(tmpdir(), 'mikaki-checkpoint-diagnostic-'));
   try {
-    const result = await inspectAuthorityCheckpoint(
-      {
-        inspect: () => platform.env.CHECKPOINT_BOOTSTRAP.inspect(),
-        primary: () =>
-          platform.env.DB.prepare(
-            'SELECT authority,epoch,sequence,tip,(SELECT count(*) FROM work_authority_frame) AS open_frames,(SELECT count(*) FROM work_transition_guard) AS open_guards FROM work_authority_checkpoint WHERE id=1',
-          ).first<Primary>(),
-      },
-      () => new Promise((resolve) => setTimeout(resolve, 5000)),
-    );
-    console.log(JSON.stringify(result));
-    if (result.status !== 'healthy') process.exitCode = result.status === 'changing' ? 2 : 1;
+    const configPath = join(directory, 'wrangler.json');
+    await writeFile(configPath, JSON.stringify(diagnosticConfig()), { mode: 0o600, flag: 'wx' });
+    const platform = await getPlatformProxy<{
+      DB: D1Database;
+      CHECKPOINT_BOOTSTRAP: { inspect(): Promise<string> };
+    }>({ configPath, remoteBindings: true, persist: false });
+    try {
+      const result = await inspectAuthorityCheckpoint(
+        {
+          inspect: () => platform.env.CHECKPOINT_BOOTSTRAP.inspect(),
+          primary: () =>
+            platform.env.DB.prepare(
+              'SELECT authority,epoch,sequence,tip,(SELECT count(*) FROM work_authority_frame) AS open_frames,(SELECT count(*) FROM work_transition_guard) AS open_guards FROM work_authority_checkpoint WHERE id=1',
+            ).first<Primary>(),
+        },
+        () => new Promise((resolve) => setTimeout(resolve, 5000)),
+      );
+      console.log(JSON.stringify(result));
+      if (result.status !== 'healthy') process.exitCode = result.status === 'changing' ? 2 : 1;
+    } finally {
+      await platform.dispose();
+    }
   } finally {
-    await platform.dispose();
+    await rm(directory, { recursive: true, force: true });
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  main().catch(() => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await main();
+  } catch {
     console.error('checkpoint_diagnostic_failed');
     process.exitCode = 1;
-  });
+  }
+}

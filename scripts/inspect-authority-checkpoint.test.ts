@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import {
   inspectAuthorityCheckpoint,
-  validateDiagnosticConfig,
+  diagnosticConfig,
   type DiagnosticIO,
 } from './inspect-authority-checkpoint.ts';
 
@@ -122,36 +123,48 @@ test('foreign or malformed permit, object and marker are rejected', async () => 
   );
 });
 
-test('operator config admits only the named production read bindings and no other capabilities', () => {
-  const config = {
-    name: 'checkpoint-diagnostic',
-    account_id: '4b749427a0c80c547e726a42aff4b6fc',
-    compatibility_date: '2026-09-23',
-    workers_dev: false,
-    preview_urls: false,
-    d1_databases: [
-      {
-        binding: 'DB',
-        database_name: 'mikaki-auth-owner',
-        database_id: 'd0258938-0d27-4110-8aa9-c82e20f3885b',
-        remote: true,
-      },
+test('diagnostic config fixes the production targets and exposes no extra bindings', () => {
+  const config = diagnosticConfig();
+  assert.deepEqual(
+    Object.keys(config).sort((a, b) => a.localeCompare(b)),
+    [
+      'account_id',
+      'compatibility_date',
+      'd1_databases',
+      'name',
+      'preview_urls',
+      'services',
+      'workers_dev',
     ],
-    services: [
-      {
-        binding: 'CHECKPOINT_BOOTSTRAP',
-        service: 'mikaki-auth-work-checkpoint',
-        entrypoint: 'WorkCheckpointBootstrap',
-        remote: true,
-      },
-    ],
-  };
-  assert.doesNotThrow(() => validateDiagnosticConfig(config));
-  assert.throws(() =>
-    validateDiagnosticConfig({ ...config, routes: [{ pattern: 'example.test' }] }),
   );
-  assert.throws(() =>
-    validateDiagnosticConfig({ ...config, services: [...config.services, { binding: 'EXTRA' }] }),
+  assert.equal(config.account_id, '4b749427a0c80c547e726a42aff4b6fc');
+  assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
+  assert.deepEqual(config.d1_databases, [
+    {
+      binding: 'DB',
+      database_name: 'mikaki-auth-owner',
+      database_id: 'd0258938-0d27-4110-8aa9-c82e20f3885b',
+      remote: true,
+    },
+  ]);
+  assert.deepEqual(config.services, [
+    {
+      binding: 'CHECKPOINT_BOOTSTRAP',
+      service: 'mikaki-auth-work-checkpoint',
+      entrypoint: 'WorkCheckpointBootstrap',
+      remote: true,
+    },
+  ]);
+});
+
+test('the CLI rejects arguments without opening a remote connection', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/inspect-authority-checkpoint.ts', '/tmp/other-config.json'],
+    { encoding: 'utf8' },
   );
-  assert.throws(() => validateDiagnosticConfig({ ...config, workers_dev: true }));
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /checkpoint_diagnostic_failed/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Establishing remote connection/);
 });
