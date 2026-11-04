@@ -20,6 +20,10 @@ function database(db) {
                     .first();
                   if (fault) {
                     await db.prepare('DELETE FROM fixture_installation_fault WHERE id=1').run();
+                    if (fault.mode === 'lost_reply') {
+                      await s.batch(statements);
+                      throw new Error('synthetic_reply_lost');
+                    }
                     const mutations = {
                       session: "UPDATE sso_session SET revoked=1 WHERE sso_id='session'",
                       expiry:

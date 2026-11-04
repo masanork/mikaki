@@ -16,6 +16,7 @@ pub trait InstallationSigner {
 #[derive(Clone, Copy)]
 pub enum Step<'a> {
     Start,
+    Status,
     Complete { nonce: &'a str },
 }
 
@@ -64,6 +65,7 @@ pub(crate) fn proof_for_key(
     }
     let (path, nonce) = match step {
         Step::Start => ("/native/installations/start", None),
+        Step::Status => ("/native/installations/status", None),
         Step::Complete { nonce } if opaque(nonce) => {
             ("/native/installations/complete", Some(nonce))
         }

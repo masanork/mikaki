@@ -36,3 +36,13 @@ between proof steps, validate the short-lived challenge, require a new proof ID,
 and consume the pending state when preparing completion. A completion request is
 not a receipt: a lost response requires reconciliation before any future retry.
 These types do not perform transport authentication, user approval or delivery.
+
+The local status route reserves a fresh DPoP proof and reads the result in one
+D1 batch after rechecking live SSO and matching the pending ID, owner and key.
+It reports `pending`, `active`, `revoked`, or `unknown`; a pending or unknown
+result is not evidence that an in-flight completion cannot still commit. The
+fixture injects a lost completion response after the database batch commits and
+then verifies that a same-key status query recovers `active`. It also exercises
+wrong-key access, proof replay and authority changes before the status batch.
+Status storage retention, lifecycle management and user-facing recovery remain
+unimplemented, so this route remains qualification-only.

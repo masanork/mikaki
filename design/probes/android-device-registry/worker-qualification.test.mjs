@@ -83,7 +83,8 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       });
     }
     const start = '/native/installations/start',
-      complete = '/native/installations/complete';
+      complete = '/native/installations/complete',
+      status = '/native/installations/status';
     assert.equal((await send(start, {}, proof(start), false)).status, 401);
     const startProof = proof(start);
     const response = await send(start, {}, startProof);
@@ -116,12 +117,13 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
     );
     // Invoke the same Rust proof builder used by the Android adapter. This
     // signer deliberately uses a public fixed fixture key, not Android Keystore.
-    function nativeProof(nonce = null) {
+    function nativeProof(nonce = null, status = false) {
       return execFileSync(resolve('target/debug/examples/installation_native_probe'), [], {
         input: JSON.stringify({
           jti: randomBytes(32).toString('base64url'),
           now: Math.floor(Date.now() / 1000),
           nonce,
+          status,
         }),
         encoding: 'utf8',
         timeout: 10000,
@@ -135,10 +137,35 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       (await send(complete, { id: nativeChallenge.id }, nativeProof(incorrectNonce))).status,
       400,
     );
+    const nativeStatus = () => nativeProof(null, true);
+    const preStatus = await send(status, { id: nativeChallenge.id }, nativeStatus());
+    assert.equal(preStatus.status, 200);
+    assert.equal((await preStatus.json()).status, 'pending');
+    assert.equal((await send(status, { id: nativeChallenge.id }, proof(status))).status, 409);
     const nativeCompleteProof = nativeProof(nativeChallenge.nonce);
-    const nativeComplete = await send(complete, { id: nativeChallenge.id }, nativeCompleteProof);
-    assert.equal(nativeComplete.status, 200, await nativeComplete.clone().text());
-    assert.equal((await nativeComplete.json()).status, 'active');
+    await db.prepare("INSERT INTO fixture_installation_fault VALUES(1,'lost_reply')").run();
+    const lostResponse = await send(complete, { id: nativeChallenge.id }, nativeCompleteProof);
+    assert.equal(lostResponse.status, 500);
+    const statusProof = nativeStatus();
+    const recovered = await send(status, { id: nativeChallenge.id }, statusProof);
+    assert.equal(recovered.status, 200, await recovered.clone().text());
+    assert.equal((await recovered.json()).status, 'active');
+    assert.equal((await send(status, { id: nativeChallenge.id }, statusProof)).status, 409);
+    await db.prepare("INSERT INTO fixture_installation_fault VALUES(1,'session')").run();
+    assert.equal((await send(status, { id: nativeChallenge.id }, nativeStatus())).status, 409);
+    await db.prepare("UPDATE sso_session SET revoked=0 WHERE sso_id='session'").run();
+    await db
+      .prepare("UPDATE installation_device SET state='revoked' WHERE id=?")
+      .bind(nativeChallenge.id)
+      .run();
+    const revokedStatus = await send(status, { id: nativeChallenge.id }, nativeStatus());
+    assert.equal(revokedStatus.status, 200);
+    assert.equal((await revokedStatus.json()).status, 'revoked');
+    await db
+      .prepare("UPDATE installation_device SET state='active' WHERE id=?")
+      .bind(nativeChallenge.id)
+      .run();
+
     const header = JSON.parse(
       Buffer.from(nativeCompleteProof.split('.')[0], 'base64url').toString(),
     );

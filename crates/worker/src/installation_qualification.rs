@@ -14,6 +14,7 @@ const CLIENT: &str = "dfd936fd-f33d-4f82-ae39-f25e08ec7948";
 const CALLBACK: &str = "https://app.mikaki.org/oidc/native/callback";
 const START: &str = "/native/installations/start";
 const COMPLETE: &str = "/native/installations/complete";
+const STATUS: &str = "/native/installations/status";
 const LIVE: &str = "EXISTS(SELECT 1 FROM sso_context sx JOIN sso_session ss ON ss.sso_id=sx.sso_id \
     JOIN account_security a ON a.account_id=ss.account_id \
     JOIN credential cr ON cr.account_id=ss.account_id AND cr.credential_id=ss.credential_id \
@@ -58,6 +59,10 @@ struct Receipt {
 struct Id {
     id: String,
 }
+#[derive(Deserialize)]
+struct Status {
+    status: String,
+}
 
 pub async fn fetch(mut request: Request, env: &Env) -> Result<Response> {
     let url = request.url()?;
@@ -72,7 +77,7 @@ pub async fn fetch(mut request: Request, env: &Env) -> Result<Response> {
         return error(404, "not_found");
     }
     let path = url.path();
-    if !matches!(path, START | COMPLETE) {
+    if !matches!(path, START | COMPLETE | STATUS) {
         return error(404, "not_found");
     }
     if !same_origin(&request)?
@@ -156,6 +161,39 @@ pub async fn fetch(mut request: Request, env: &Env) -> Result<Response> {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {
         return error(400, "invalid_request");
+    }
+    if path == STATUS {
+        // Recheck live authority at the same primary transaction that reserves
+        // this proof and reads the result. An unknown ID/key yields no details.
+        let mut values = principal.to_vec();
+        values.extend([
+            text(&input.id),
+            text(proof.thumbprint()),
+            text(proof.jti_hash()),
+            number(proof.retain_until()),
+            number(proof.issued_at()),
+        ]);
+        let reserve = format!(
+            "INSERT INTO installation_proof_use(thumbprint,jti_hash,retain_until) \
+          SELECT ?7,?8,?9 WHERE {LIVE} AND ?9>=unixepoch() AND ?10<=unixepoch()+10 \
+          AND (SELECT count(*) FROM installation_proof_use)<10000 \
+          AND EXISTS(SELECT 1 FROM installation_pending WHERE id=?6 AND owner=?2 AND thumbprint=?7) \
+          ON CONFLICT(thumbprint,jti_hash) DO NOTHING"
+        );
+        let read = "SELECT CASE WHEN d.state='active' THEN 'active' WHEN d.state='revoked' THEN 'revoked' \
+          WHEN p.consumed=0 AND p.expires_at>unixepoch() THEN 'pending' ELSE 'unknown' END AS status \
+          FROM installation_pending p LEFT JOIN installation_device d ON d.id=p.id AND d.owner=p.owner AND d.thumbprint=p.thumbprint \
+          WHERE p.id=?6 AND p.owner=?2 AND p.thumbprint=?7 AND changes()=1";
+        let results = primary
+            .batch(vec![
+                primary.prepare(reserve).bind(&values)?,
+                primary.prepare(read).bind(&values[..7])?,
+            ])
+            .await?;
+        let Some(row) = results[1].results::<Status>()?.into_iter().next() else {
+            return error(409, "enrollment_unavailable");
+        };
+        return json(&serde_json::json!({"id":input.id,"status":row.status}));
     }
     let pending = primary.prepare("SELECT nonce,thumbprint,created_at,expires_at FROM installation_pending WHERE id=?1 AND owner=?2 AND session_hash=?3 AND credential_id=?4 AND consumed=0 AND expires_at>unixepoch()")
         .bind(&[text(&input.id),text(&actor.account_id),text(&actor.secret_hash),text(&actor.credential_id)])?.first::<Pending>(None).await?;

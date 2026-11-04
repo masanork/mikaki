@@ -185,3 +185,9 @@ repository D1 migrations. This joins the host protocol and server fixture; it
 does not use Android Keystore, authenticate a real account, or exercise an app
 consent screen. The production registration route and usable device session
 remain absent.
+
+The local qualification Worker also supports a same-account, same-key status
+query for an installation attempt. In a fault-injection test, completion commits
+but its response is lost; a fresh signed query returns the saved active status.
+A pending or unknown response does not prove that a concurrent completion will
+not commit. This is not yet an Android recovery flow or a production endpoint.
