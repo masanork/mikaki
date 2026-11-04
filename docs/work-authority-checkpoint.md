@@ -35,6 +35,38 @@ handler returns 404. The OP receives only the service capability. Bootstrap,
 release-floor raising and irreversible freeze belong to a private operator capability;
 there is no reset, unfreeze or automatic rebase API.
 
+### Production diagnosis
+
+An operator can inspect the enrolled production authority without changing it:
+
+```sh
+node scripts/inspect-authority-checkpoint.ts /path/to/private-remote-bindings.jsonc
+```
+
+The private Wrangler config must contain only the fixed production account, the
+remote `DB` D1 binding and the remote `CHECKPOINT_BOOTSTRAP` binding to
+`WorkCheckpointBootstrap`; see the pinned values in the diagnostic script.
+The bootstrap binding is privileged and can enroll an authority, although this
+command calls only `inspect` and performs D1 `SELECT`s. Protect the config and
+credentials accordingly. The command accepts no settlement or execution option.
+
+The command takes two observations five seconds apart, checking the independent
+state before and after each D1 read. Exit 0 means both observations showed matching
+markers and no pending permit; exit 2 means observations changed and should be
+repeated. Exit 1 means a stable non-healthy observation or a diagnostic failure.
+These samples are not a continuous availability guarantee. A pending permit with
+the exact next D1 marker is reported as `pending_committed`; a pending permit with
+the previous marker is `pending_quarantined`. The latter is an unknown outcome,
+not evidence that the business write aborted or that it was a GC operation.
+Mismatch, frozen state, unsupported floor, and open transaction state are
+separate failures. A pending result includes a permit digest and sequences, not
+the permit contents, account data or credentials.
+
+Neither result authorizes a fence, replay, reset or general automatic recovery.
+Identify the exact operation and review incident evidence before any privileged
+settlement; the existing reviewed-GC tool is pinned to a historical incident and
+must not be reused for a different permit without a new review and qualification.
+
 The [OP adapter](../crates/worker/src/op_authority.rs) frames current-main
 enrollment completion, login/session creation, additional Passkey completion,
 admin invitation completion, logout revocation/outbox creation and auth-state
