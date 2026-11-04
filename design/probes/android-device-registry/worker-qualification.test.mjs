@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
+import {
+  createHash,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+  sign,
+  verify,
+} from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { unstable_splitSqlQuery } from 'wrangler';
@@ -188,6 +196,95 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       409,
     );
     assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 2);
+    // Optional local emulator qualification. The instrumented test package has
+    // its own identity and synthetic key; it is not the production app key.
+    let expectedDevices = 2;
+    const serial = process.env.MIKAKI_ANDROID_KEYSTORE_SERIAL;
+    if (serial) {
+      const adb = process.env.MIKAKI_ANDROID_ADB;
+      assert.ok(adb && adb.startsWith('/'), 'set an absolute MIKAKI_ANDROID_ADB path');
+      const keyId = randomBytes(16).toString('hex');
+      const invoke = (mode, input) => {
+        const args = [
+          '-s',
+          serial,
+          'shell',
+          'am',
+          'instrument',
+          '-w',
+          '-r',
+          '-e',
+          'class',
+          'app.mikaki.native_dpop.InstallationProbeTest#perform',
+          '-e',
+          'probe_mode',
+          mode,
+          '-e',
+          'probe_id',
+          keyId,
+        ];
+        if (input) args.push('-e', 'probe_input', input);
+        args.push('app.mikaki.native_dpop.test/androidx.test.runner.AndroidJUnitRunner');
+        const out = execFileSync(adb, args, { encoding: 'utf8', timeout: 60000 });
+        assert.match(out, /OK \(1 test\)/);
+        const match = out.match(/^INSTRUMENTATION_STATUS: probe_result=(.+)\r?$/m);
+        assert.ok(match, out);
+        return match[1].trim();
+      };
+      let created = false;
+      try {
+        created = true; // Clean up even if the create response is lost.
+        const [x, y] = invoke('create').split('.');
+        const jwk = { kty: 'EC', crv: 'P-256', x, y };
+        const publicKey = createPublicKey({ key: jwk, format: 'jwk' });
+        const androidProof = (path, nonce) => {
+          const claims = {
+            htm: 'POST',
+            htu: origin + path,
+            iat: Math.floor(Date.now() / 1000),
+            jti: randomUUID(),
+          };
+          if (nonce) claims.nonce = nonce;
+          const payload = `${enc({ typ: 'dpop+jwt', alg: 'ES256', jwk })}.${enc(claims)}`;
+          const der = Buffer.from(invoke('sign', payload), 'base64url');
+          assert.ok(verify('sha256', Buffer.from(payload), publicKey, der));
+          // DER ECDSA SEQUENCE of two minimally encoded positive P-256 integers.
+          assert.equal(der[0], 0x30);
+          assert.equal(der[1], der.length - 2);
+          let offset = 2;
+          const integer = () => {
+            assert.equal(der[offset++], 2);
+            const length = der[offset++];
+            const bytes = der.subarray(offset, offset + length);
+            offset += length;
+            assert.ok(length >= 1 && length <= 33 && !(bytes[0] & 0x80));
+            assert.ok(length === 1 || bytes[0] !== 0 || bytes[1] & 0x80);
+            const value = length === 33 ? bytes.subarray(1) : bytes;
+            assert.ok(value.length <= 32);
+            return Buffer.concat([Buffer.alloc(32 - value.length), value]);
+          };
+          const raw = Buffer.concat([integer(), integer()]);
+          assert.equal(offset, der.length);
+          return `${payload}.${raw.toString('base64url')}`;
+        };
+        const started = await send(start, {}, androidProof(start));
+        assert.equal(started.status, 200, await started.clone().text());
+        const challenge = await started.json();
+        const finished = await send(
+          complete,
+          { id: challenge.id },
+          androidProof(complete, challenge.nonce),
+        );
+        assert.equal(finished.status, 200, await finished.clone().text());
+        assert.equal((await finished.json()).status, 'active');
+        const checked = await send(status, { id: challenge.id }, androidProof(status));
+        assert.equal(checked.status, 200, await checked.clone().text());
+        assert.equal((await checked.json()).status, 'active');
+        expectedDevices++;
+      } finally {
+        if (created) assert.equal(invoke('delete'), 'deleted');
+      }
+    }
     const next = await send(start, {}, proof(start));
     const pending2 = await next.json();
     // Invalidate authority after the owner and pending reads but before D1's
@@ -250,7 +347,10 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       (await send(complete, { id: pending2.id }, proof(complete, pending2.nonce))).status,
       401,
     );
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n, 2);
+    assert.equal(
+      (await db.prepare('SELECT count(*) AS n FROM installation_device').first()).n,
+      expectedDevices,
+    );
     assert.equal(
       (
         await db

@@ -191,3 +191,20 @@ query for an installation attempt. In a fault-injection test, completion commits
 but its response is lost; a fresh signed query returns the saved active status.
 A pending or unknown response does not prove that a concurrent completion will
 not commit. This is not yet an Android recovery flow or a production endpoint.
+
+## Android Keystore to local Worker qualification
+
+A separate API 35 emulator instrumentation package exercised the unchanged
+`DeviceSessionKeyStore.kt` through local Worker start, completion and status
+requests. The host verified each DER signature before encoding it into the JWS;
+the Worker verified the JWS and wrote the synthetic enrollment to local D1.
+The probe deleted its generated key and the three existing custody tests passed.
+The test APK SHA-256 was
+`4a753d65f7b25a897ca5e38b1006ff4daae9f625695cb253087ff49b759fd198`;
+the copied Keystore source SHA-256 was
+`aa1ca2d726bda3611183cb80026fe8b4cdcf13d47cff3ce9c16d8bd1ac8d65f7`.
+The isolated test package has its own Android identity. This result does not
+cover the production app's Rust-to-Kotlin bridge, a real account, an actual
+network connection, physical hardware or a deployed IdP. The Cargo registry
+checkout disappeared during the regular Gradle build, so the test APK was built
+using the separate fixture script documented in the qualification README.

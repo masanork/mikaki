@@ -52,3 +52,15 @@ bounded status response tied to the original registration ID. The caller must
 verify authenticated HTTPS and HTTP status before parsing. The local transaction
 holds this recovery state in memory and allows at most 16 status proofs; it is
 not durable recovery after process death. Fresh proof IDs are still required.
+
+For optional Android emulator coverage, build the separate test package with
+`ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
+install its printed APK path on a disposable emulator, then set
+`MIKAKI_ANDROID_KEYSTORE_SERIAL` and an absolute `MIKAKI_ANDROID_ADB` when running
+`node --test --test-concurrency=1 design/probes/android-device-registry/worker-qualification.test.mjs`
+after building the normal host/Worker fixtures. This uses the exact
+`DeviceSessionKeyStore.kt` source but a separate instrumentation package. The
+test creates an ephemeral key, signs the local start, complete and status
+requests, verifies each DER signature on the host, and deletes that key. The
+emulator test does not exercise the production app identity, Rust-to-Kotlin IPC,
+physical hardware, actual user authentication or a deployed Worker.
