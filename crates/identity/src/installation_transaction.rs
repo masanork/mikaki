@@ -32,8 +32,37 @@ pub struct Challenged {
 /// A request, not a successful registration receipt. The caller must handle
 /// transport failure as an unknown outcome and reconcile with the server.
 pub struct CompletionRequest {
-    pub id: String,
-    pub proof: Zeroizing<String>,
+    issuer: String,
+    key: PublicJwk,
+    started_at: u64,
+    start_jti: Zeroizing<String>,
+    completion_jti: Zeroizing<String>,
+    status_jtis: Vec<Zeroizing<String>>,
+    id: String,
+    proof: Zeroizing<String>,
+}
+
+/// A signed status request. The outcome is only meaningful after the caller
+/// verifies the HTTPS origin, response status, and authenticated SSO context.
+pub struct StatusRequest {
+    id: String,
+    proof: Zeroizing<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistrationStatus {
+    Pending,
+    Active,
+    Revoked,
+    Unknown,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatusResponse {
+    id: String,
+    status: RegistrationStatus,
 }
 
 #[derive(Deserialize)]
@@ -122,8 +151,81 @@ impl Challenged {
             Some(&self.key),
         )?;
         Ok(CompletionRequest {
+            issuer: self.issuer,
+            key: self.key,
+            started_at: self.started_at,
+            start_jti: self.start_jti,
+            completion_jti: Zeroizing::new(jti.to_owned()),
+            status_jtis: Vec::new(),
             id: self.id,
             proof: Zeroizing::new(compact),
         })
+    }
+}
+
+impl CompletionRequest {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn proof(&self) -> &str {
+        &self.proof
+    }
+
+    /// A fresh JTI and the same native key are required. Failed transport does
+    /// not establish an outcome; each retry must create a new status proof.
+    pub fn status_request(
+        &mut self,
+        signer: &impl InstallationSigner,
+        jti: &str,
+        now: u64,
+    ) -> Result<StatusRequest, String> {
+        if now < self.started_at
+            || self.status_jtis.len() >= 16
+            || jti == self.start_jti.as_str()
+            || jti == self.completion_jti.as_str()
+            || self
+                .status_jtis
+                .iter()
+                .any(|previous| previous.as_str() == jti)
+        {
+            return Err("invalid_installation_status".into());
+        }
+        let compact = proof_for_key(
+            signer,
+            &self.issuer,
+            Step::Status,
+            jti,
+            now,
+            Some(&self.key),
+        )?;
+        self.status_jtis.push(Zeroizing::new(jti.to_owned()));
+        Ok(StatusRequest {
+            id: self.id.clone(),
+            proof: Zeroizing::new(compact),
+        })
+    }
+}
+
+impl StatusRequest {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn proof(&self) -> &str {
+        &self.proof
+    }
+
+    /// Only parse a bounded, successful response from the configured IdP over
+    /// authenticated transport. Neither `Pending` nor `Unknown` rules out an
+    /// in-flight completion, and `Active` is not an app session or token.
+    pub fn response(self, body: &[u8]) -> Result<RegistrationStatus, String> {
+        if body.len() > 1024 {
+            return Err("invalid_installation_status".into());
+        }
+        let response: StatusResponse =
+            serde_json::from_slice(body).map_err(|_| "invalid_installation_status")?;
+        if response.id != self.id {
+            return Err("invalid_installation_status".into());
+        }
+        Ok(response.status)
     }
 }

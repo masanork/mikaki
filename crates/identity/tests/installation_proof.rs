@@ -136,10 +136,10 @@ fn transaction_retains_key_challenge_and_expiry_until_completion_request() {
         .unwrap()
         .complete(&signer, &second, 1002)
         .unwrap();
-    assert_eq!(request.id, id);
+    assert_eq!(request.id(), id);
     let endpoint = format!("{issuer}/native/installations/complete");
     let verified =
-        verify_dpop_proof(&request.proof, "POST", &endpoint, DpopTarget::Token, 1002).unwrap();
+        verify_dpop_proof(request.proof(), "POST", &endpoint, DpopTarget::Token, 1002).unwrap();
     let thumbprint = signer.public_key().unwrap().thumbprint().unwrap();
     assert!(
         BoundInstallationProof::bind(
@@ -215,4 +215,90 @@ fn transaction_rejects_invalid_challenges_stale_time_reused_jti_and_key_change()
             .complete(&other, &second, 1002)
             .is_err()
     );
+}
+
+#[test]
+fn lost_response_status_is_key_bound_and_strictly_parsed() {
+    use mikaki_identity::installation_transaction::{RegistrationStatus, Started};
+    let signer = Key {
+        public: key(1),
+        signing: key(1),
+    };
+    let other = Key {
+        public: key(2),
+        signing: key(2),
+    };
+    let first = B64.encode([11; 32]);
+    let second = B64.encode([12; 32]);
+    let third = B64.encode([15; 32]);
+    let id = B64.encode([13; 32]);
+    let nonce = B64.encode([14; 32]);
+    let challenge = serde_json::json!({"id": id, "nonce": nonce, "expires_at": 1120}).to_string();
+    let mut complete = Started::begin(&signer, "https://auth.example", &first, 1000)
+        .unwrap()
+        .challenge(challenge.as_bytes(), 1001)
+        .unwrap()
+        .complete(&signer, &second, 1002)
+        .unwrap();
+    assert!(complete.status_request(&other, &third, 1003).is_err());
+    assert!(complete.status_request(&signer, &first, 1003).is_err());
+    assert!(complete.status_request(&signer, &second, 1003).is_err());
+    assert!(complete.status_request(&signer, &third, 999).is_err());
+    let status = complete.status_request(&signer, &third, 1003).unwrap();
+    assert_eq!(status.id(), id);
+    let verified = verify_dpop_proof(
+        status.proof(),
+        "POST",
+        "https://auth.example/native/installations/status",
+        DpopTarget::Token,
+        1003,
+    )
+    .unwrap();
+    assert_eq!(
+        verified.thumbprint(),
+        signer.public_key().unwrap().thumbprint().unwrap()
+    );
+    let body = serde_json::json!({"id":id,"status":"active"}).to_string();
+    assert_eq!(
+        status.response(body.as_bytes()).unwrap(),
+        RegistrationStatus::Active
+    );
+    assert!(complete.status_request(&signer, &third, 1004).is_err());
+    for (i, body) in [
+        serde_json::json!({"id":B64.encode([99;32]),"status":"active"}).to_string(),
+        serde_json::json!({"id":id,"status":"mystery"}).to_string(),
+        serde_json::json!({"id":id,"status":"active","extra":true}).to_string(),
+        " ".repeat(1025),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let jti = B64.encode([20 + i as u8; 32]);
+        assert!(
+            complete
+                .status_request(&signer, &jti, 1004)
+                .unwrap()
+                .response(body.as_bytes())
+                .is_err()
+        );
+    }
+    for (i, (value, expected)) in [
+        ("pending", RegistrationStatus::Pending),
+        ("revoked", RegistrationStatus::Revoked),
+        ("unknown", RegistrationStatus::Unknown),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let jti = B64.encode([30 + i as u8; 32]);
+        let body = serde_json::json!({"id":id,"status":value}).to_string();
+        assert_eq!(
+            complete
+                .status_request(&signer, &jti, 1004)
+                .unwrap()
+                .response(body.as_bytes())
+                .unwrap(),
+            expected
+        );
+    }
 }

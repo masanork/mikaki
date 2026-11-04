@@ -46,3 +46,9 @@ then verifies that a same-key status query recovers `active`. It also exercises
 wrong-key access, proof replay and authority changes before the status batch.
 Status storage retention, lifecycle management and user-facing recovery remain
 unimplemented, so this route remains qualification-only.
+
+The native transaction can prepare same-key signed status requests and parse a
+bounded status response tied to the original registration ID. The caller must
+verify authenticated HTTPS and HTTP status before parsing. The local transaction
+holds this recovery state in memory and allows at most 16 status proofs; it is
+not durable recovery after process death. Fresh proof IDs are still required.
