@@ -90,10 +90,12 @@ For an app-process IPC qualification, build the Android debug APK with the
 `scripts/test-android-installation-ipc.sh` with its APK path and an explicit
 disposable emulator serial. The debug-only startup probe uses the actual
 Rust/Kotlin plugin, Android Keystore and no-backup storage to create a key,
-persist completion and status metadata, and reject a repeated status JTI.
+persist completion metadata, force-stop the app, and restore that record in a
+different process to persist a status proof and reject a repeated status JTI.
 It uses synthetic challenge/account inputs, performs no network call, and has
-no WebView command. Release builds reject this feature. It does not demonstrate
-process-death recovery, a real owner ceremony, or deployed server acceptance.
+no WebView command. Release builds reject this feature. This qualifies only the
+debug fixture's process restart; it does not establish a product recovery flow,
+an actual lost network response, a real owner ceremony, or server acceptance.
 
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
