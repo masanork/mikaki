@@ -387,3 +387,98 @@ fn recovery_checkpoint_survives_restart_and_rejects_changed_authority_and_replay
         .is_err()
     );
 }
+
+#[test]
+fn recovery_orchestrator_never_releases_proof_on_failed_or_ambiguous_persistence() {
+    use mikaki_identity::{
+        installation_recovery::{RecoveryStore, persist_completion, persist_status_request},
+        installation_transaction::Started,
+    };
+    use sha2::{Digest, Sha256};
+    use std::sync::Mutex;
+    use zeroize::Zeroizing;
+    #[derive(Default)]
+    struct Store {
+        record: Mutex<Option<Vec<u8>>>,
+        fault: Mutex<u8>,
+    }
+    impl RecoveryStore for Store {
+        fn load(&self) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+            Ok(self.record.lock().unwrap().clone().map(Zeroizing::new))
+        }
+        fn compare_and_set(&self, expected: Option<[u8; 32]>, value: &[u8]) -> Result<(), String> {
+            let mut record = self.record.lock().unwrap();
+            let current = record.as_ref().map(|v| <[u8; 32]>::from(Sha256::digest(v)));
+            if current != expected {
+                return Err("stale".into());
+            }
+            let fault = *self.fault.lock().unwrap();
+            if fault == 1 {
+                return Err("write_failed".into());
+            }
+            *record = Some(value.to_vec());
+            if fault == 2 {
+                return Err("reply_lost".into());
+            }
+            Ok(())
+        }
+    }
+    let signer = Key {
+        public: key(1),
+        signing: key(1),
+    };
+    let owner = B64.encode([16; 32]);
+    let start = B64.encode([11; 32]);
+    let end = B64.encode([12; 32]);
+    let id = B64.encode([13; 32]);
+    let nonce = B64.encode([14; 32]);
+    let challenge = serde_json::json!({"id":id,"nonce":nonce,"expires_at":1120}).to_string();
+    let completion = || {
+        Started::begin(&signer, "https://auth.example", &start, 1000)
+            .unwrap()
+            .challenge(challenge.as_bytes(), 1001)
+            .unwrap()
+            .complete(&signer, &end, 1002)
+            .unwrap()
+    };
+    let store = Store::default();
+    let ambiguous = Store::default();
+    *ambiguous.fault.lock().unwrap() = 2;
+    assert!(persist_completion(&ambiguous, completion(), &owner).is_err());
+    assert!(ambiguous.load().unwrap().is_some());
+    *ambiguous.fault.lock().unwrap() = 0;
+    assert!(persist_completion(&ambiguous, completion(), &owner).is_err());
+    *store.fault.lock().unwrap() = 1;
+    assert!(persist_completion(&store, completion(), &owner).is_err());
+    assert!(store.load().unwrap().is_none());
+    *store.fault.lock().unwrap() = 0;
+    let committed = persist_completion(&store, completion(), &owner).unwrap();
+    assert_eq!(committed.id(), id);
+    assert!(!committed.proof().is_empty());
+    let jti = B64.encode([20; 32]);
+    *store.fault.lock().unwrap() = 2;
+    assert!(
+        persist_status_request(&store, &signer, "https://auth.example", &owner, &jti, 1003)
+            .is_err()
+    );
+    *store.fault.lock().unwrap() = 0;
+    assert!(
+        persist_status_request(&store, &signer, "https://auth.example", &owner, &jti, 1004)
+            .is_err()
+    );
+    let next = B64.encode([21; 32]);
+    let status =
+        persist_status_request(&store, &signer, "https://auth.example", &owner, &next, 1004)
+            .unwrap();
+    assert_eq!(status.id(), id);
+    assert!(
+        verify_dpop_proof(
+            status.proof(),
+            "POST",
+            "https://auth.example/native/installations/status",
+            DpopTarget::Token,
+            1004
+        )
+        .is_ok()
+    );
+}

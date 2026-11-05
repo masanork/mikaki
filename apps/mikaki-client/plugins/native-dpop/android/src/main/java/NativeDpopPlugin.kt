@@ -25,6 +25,9 @@ class AttestedHolderArgs { lateinit var id: String; lateinit var challenge: Stri
 @InvokeArg
 class DocumentArgs { lateinit var owner: String; var payload: String = "" }
 
+@InvokeArg
+class RecoveryArgs { lateinit var id: String; var expected: String? = null; var payload: String = "" }
+
 @TauriPlugin
 class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -83,6 +86,38 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     fun deleteDeviceSessionKey(invoke: Invoke) {
         try { DeviceSessionKeyStore().delete(invoke.parseArgs(HolderArgs::class.java).id); invoke.resolve() }
         catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    // Native Rust only. The caller must validate account/issuer/key bindings and
+    // persist a new proof ID before sending; this store supplies no rollback witness.
+    @Command @Synchronized
+    fun loadInstallationRecovery(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(RecoveryArgs::class.java)
+            plain = InstallationRecoveryStore(activity, args.id).load()
+            invoke.resolve(JSObject().apply { put("payload", plain?.let { b64(it) } ?: org.json.JSONObject.NULL) })
+        } catch (_: Exception) { invoke.reject("installation_recovery_unavailable") }
+        finally { plain?.fill(0) }
+    }
+    @Command @Synchronized
+    fun compareAndSetInstallationRecovery(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(RecoveryArgs::class.java)
+            require(args.payload.length <= 5462)
+            val value = Base64.decode(args.payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            plain = value
+            require(value.size in 1..4096 && b64(value) == args.payload)
+            val expected = args.expected?.let {
+                require(it.length == 43)
+                Base64.decode(it, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING).also { digest ->
+                    require(digest.size == 32 && b64(digest) == it)
+                }
+            }
+            InstallationRecoveryStore(activity, args.id).compareAndSet(expected, value)
+            invoke.resolve()
+        } catch (_: Exception) { invoke.reject("installation_recovery_unavailable") }
+        finally { plain?.fill(0) }
     }
     @Command @Synchronized
     fun createHolder(invoke: Invoke) {

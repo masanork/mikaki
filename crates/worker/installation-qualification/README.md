@@ -70,14 +70,20 @@ and serializes compare-and-set updates with a process and file lock. It checks
 the device key and verifies the written ciphertext before acknowledging. A
 missing file with an existing storage key fails closed. A restored older valid
 ciphertext remains indistinguishable without an independent rollback witness;
-concurrent state across machines, app-integrated storage and server-side replay
-or lifecycle policies are not established by this fixture. The class is not yet
-exposed through the Rust/Kotlin product bridge or used by an app flow.
+concurrent state across machines and server-side replay or lifecycle policies
+are not established by this fixture. A native-only Rust/Kotlin adapter exposes
+load and compare-and-set, but no product registration flow invokes it yet.
 `scripts/test-android-installation-recovery.sh` takes the fixture APK path and
 an explicit emulator serial, then creates, updates and reads the same encrypted
 record in three separate instrumentation processes before cleanup. The
 `InstallationRecoveryStoreTest` separately checks contention, stale writes,
 tampering and the missing-file fence.
+
+The shared persist-before-send helpers release a completion or status proof
+only after the storage compare-and-set reports success. Failed or ambiguous
+storage results do not release a proof, and an already persisted status JTI
+cannot be reused. This helper assumes an authenticated account binding and a
+rollback-protected storage implementation; neither is supplied by the adapter.
 
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,

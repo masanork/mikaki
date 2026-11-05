@@ -12,6 +12,7 @@ pub mod credential_certificate;
 pub mod credential_receipt;
 pub mod evidence;
 pub mod installation_proof;
+pub mod installation_recovery;
 pub mod installation_transaction;
 pub mod issuance;
 pub mod issuance_encryption;

@@ -57,6 +57,13 @@ struct DocumentRequest<'a> {
     payload: &'a str,
 }
 #[cfg(target_os = "android")]
+#[derive(Serialize)]
+struct RecoveryRequest<'a> {
+    id: &'a str,
+    expected: Option<&'a str>,
+    payload: &'a str,
+}
+#[cfg(target_os = "android")]
 #[derive(Deserialize)]
 struct WalletPayload {
     payload: Option<String>,
@@ -113,6 +120,38 @@ impl<R: Runtime> NativeDpop<R> {
                 },
             )
             .map_err(|_| "device_session_key_unavailable".into())
+    }
+    /// Native-only recovery storage. The caller validates account and issuer,
+    /// and must persist each reserved proof ID before transmitting it.
+    pub fn load_installation_recovery(&self, id: &str) -> Result<Option<String>, String> {
+        self.0
+            .run_mobile_plugin::<WalletPayload>(
+                "loadInstallationRecovery",
+                RecoveryRequest {
+                    id,
+                    expected: None,
+                    payload: "",
+                },
+            )
+            .map(|p| p.payload)
+            .map_err(|_| "installation_recovery_unavailable".into())
+    }
+    pub fn compare_and_set_installation_recovery(
+        &self,
+        id: &str,
+        expected: Option<&str>,
+        payload: &str,
+    ) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin(
+                "compareAndSetInstallationRecovery",
+                RecoveryRequest {
+                    id,
+                    expected,
+                    payload,
+                },
+            )
+            .map_err(|_| "installation_recovery_unavailable".into())
     }
     pub fn store_documents(&self, owner: &str, payload: &str) -> Result<(), String> {
         self.0
