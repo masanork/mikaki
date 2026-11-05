@@ -4,6 +4,11 @@ Status: design and qualification baseline, 2026-11-03. This is not a claim that
 the proposed device session, native Chat, recovery or device qualification exists.
 Baseline: main `6395e6b2`. No Android device was attached for this assessment.
 
+This document describes the original experimental branch at that baseline. Its
+account-projection and UI descriptions have not been requalified against later
+main or incorporated by the installation-only integration. The installation
+Worker in this branch is a local qualification fixture, not a production route.
+
 ## Current boundaries
 
 - Android's primary account path uses a first-party WebView with WebAuthn support.
