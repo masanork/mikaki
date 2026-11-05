@@ -64,6 +64,21 @@ these guarantees. No authenticated atomic storage, rollback protection,
 process-death integration, account lifecycle or production route is provided
 by this codec; the host test checks serialization and authority mismatches only.
 
+An isolated Android `InstallationRecoveryStore` additionally encrypts bounded
+checkpoint bytes with a separate Keystore AES-GCM key, uses no-backup storage,
+and serializes compare-and-set updates with a process and file lock. It checks
+the device key and verifies the written ciphertext before acknowledging. A
+missing file with an existing storage key fails closed. A restored older valid
+ciphertext remains indistinguishable without an independent rollback witness;
+concurrent state across machines, app-integrated storage and server-side replay
+or lifecycle policies are not established by this fixture. The class is not yet
+exposed through the Rust/Kotlin product bridge or used by an app flow.
+`scripts/test-android-installation-recovery.sh` takes the fixture APK path and
+an explicit emulator serial, then creates, updates and reads the same encrypted
+record in three separate instrumentation processes before cleanup. The
+`InstallationRecoveryStoreTest` separately checks contention, stale writes,
+tampering and the missing-file fence.
+
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
 install its printed APK path on a disposable emulator, then set
