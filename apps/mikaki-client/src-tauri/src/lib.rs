@@ -12,8 +12,12 @@ mod identity_issuance;
 mod identity_passport;
 mod identity_reader;
 mod identity_wallet;
+#[cfg(all(target_os = "android", feature = "installation-ipc-qualification"))]
+mod installation_ipc_qualification;
 #[cfg(target_os = "android")]
 mod installation_key;
+#[cfg(all(feature = "installation-ipc-qualification", not(debug_assertions)))]
+compile_error!("installation IPC qualification is available only in debug builds");
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod mobile_oidc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -131,6 +135,8 @@ pub fn run() {
         ])
         .setup(|app| {
             web::create(app)?;
+            #[cfg(all(target_os = "android", feature = "installation-ipc-qualification"))]
+            installation_ipc_qualification::start(app.handle().clone());
             let handle = app.handle().clone();
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {

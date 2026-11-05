@@ -8,6 +8,9 @@ description = "Mikaki desktop and mobile client"
 name = "mikaki_client_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+installation-ipc-qualification = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde_json = "1"

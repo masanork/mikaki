@@ -85,6 +85,16 @@ storage results do not release a proof, and an already persisted status JTI
 cannot be reused. This helper assumes an authenticated account binding and a
 rollback-protected storage implementation; neither is supplied by the adapter.
 
+For an app-process IPC qualification, build the Android debug APK with the
+`installation-ipc-qualification` Cargo feature, then run
+`scripts/test-android-installation-ipc.sh` with its APK path and an explicit
+disposable emulator serial. The debug-only startup probe uses the actual
+Rust/Kotlin plugin, Android Keystore and no-backup storage to create a key,
+persist completion and status metadata, and reject a repeated status JTI.
+It uses synthetic challenge/account inputs, performs no network call, and has
+no WebView command. Release builds reject this feature. It does not demonstrate
+process-death recovery, a real owner ceremony, or deployed server acceptance.
+
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
 install its printed APK path on a disposable emulator, then set
