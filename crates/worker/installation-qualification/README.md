@@ -53,6 +53,17 @@ verify authenticated HTTPS and HTTP status before parsing. The local transaction
 holds this recovery state in memory and allows at most 16 status proofs; it is
 not durable recovery after process death. Fresh proof IDs are still required.
 
+The shared transaction also exposes a bounded recovery checkpoint. It contains
+the registration identity, public key and used proof IDs, but no nonce,
+completion proof, token or private key. Restore requires a matching trusted
+issuer, authenticated account binding and current signer. The caller must
+persist the checkpoint before sending completion, then persist each reserved
+status proof ID before transmitting that proof. Reusing an old checkpoint,
+concurrent writers or accepting a caller-controlled account binding defeats
+these guarantees. No authenticated atomic storage, rollback protection,
+process-death integration, account lifecycle or production route is provided
+by this codec; the host test checks serialization and authority mismatches only.
+
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
 install its printed APK path on a disposable emulator, then set

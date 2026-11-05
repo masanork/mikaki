@@ -302,3 +302,88 @@ fn lost_response_status_is_key_bound_and_strictly_parsed() {
         );
     }
 }
+
+#[test]
+fn recovery_checkpoint_survives_restart_and_rejects_changed_authority_and_replay() {
+    use mikaki_identity::installation_transaction::{
+        RecoveryCheckpoint, RegistrationStatus, Started,
+    };
+    let signer = Key {
+        public: key(1),
+        signing: key(1),
+    };
+    let other = Key {
+        public: key(2),
+        signing: key(2),
+    };
+    let issuer = "https://auth.example";
+    let start_jti = B64.encode([11; 32]);
+    let completion_jti = B64.encode([12; 32]);
+    let status_jti = B64.encode([15; 32]);
+    let owner = B64.encode([16; 32]);
+    let id = B64.encode([13; 32]);
+    let nonce = B64.encode([14; 32]);
+    let challenge = serde_json::json!({"id":id,"nonce":nonce,"expires_at":1120}).to_string();
+    let completion = Started::begin(&signer, issuer, &start_jti, 1000)
+        .unwrap()
+        .challenge(challenge.as_bytes(), 1001)
+        .unwrap()
+        .complete(&signer, &completion_jti, 1002)
+        .unwrap();
+    let (checkpoint, completion_proof) = completion.into_recovery(&owner).unwrap();
+    let bytes = checkpoint.encode().unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains(completion_proof.as_str()));
+    assert!(!String::from_utf8_lossy(&bytes).contains(&nonce));
+    assert!(
+        RecoveryCheckpoint::restore(&bytes, issuer, &B64.encode([17; 32]), &signer, 1003).is_err()
+    );
+    assert!(
+        RecoveryCheckpoint::restore(&bytes, "https://other.example", &owner, &signer, 1003)
+            .is_err()
+    );
+    assert!(RecoveryCheckpoint::restore(&bytes, issuer, &owner, &other, 1003).is_err());
+    assert!(RecoveryCheckpoint::restore(&bytes, issuer, &owner, &signer, 999).is_err());
+    assert!(RecoveryCheckpoint::restore(&vec![0; 4097], issuer, &owner, &signer, 1003).is_err());
+    let mut recovered = RecoveryCheckpoint::restore(&bytes, issuer, &owner, &signer, 1003).unwrap();
+    let request = recovered
+        .status_request(&signer, &status_jti, 1003)
+        .unwrap();
+    let persisted = recovered.encode().unwrap(); // Must succeed before transmitting request.
+    drop(recovered);
+    let mut restarted =
+        RecoveryCheckpoint::restore(&persisted, issuer, &owner, &signer, 1004).unwrap();
+    assert!(
+        restarted
+            .status_request(&signer, &status_jti, 1004)
+            .is_err()
+    );
+    let verified = verify_dpop_proof(
+        request.proof(),
+        "POST",
+        &format!("{issuer}/native/installations/status"),
+        DpopTarget::Token,
+        1003,
+    )
+    .unwrap();
+    assert_eq!(
+        verified.thumbprint(),
+        signer.public_key().unwrap().thumbprint().unwrap()
+    );
+    let body = serde_json::json!({"id":id,"status":"active"}).to_string();
+    assert_eq!(
+        request.response(body.as_bytes()).unwrap(),
+        RegistrationStatus::Active
+    );
+    let mut corrupt: serde_json::Value = serde_json::from_slice(&persisted).unwrap();
+    corrupt["status_jtis"] = serde_json::json!([status_jti, status_jti]);
+    assert!(
+        RecoveryCheckpoint::restore(
+            &serde_json::to_vec(&corrupt).unwrap(),
+            issuer,
+            &owner,
+            &signer,
+            1004
+        )
+        .is_err()
+    );
+}
