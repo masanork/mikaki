@@ -109,6 +109,18 @@ parses it, and the test rejects replay and verifies the stored thumbprint.
 This uses host/ADB transport, not Android HTTPS, a deployed IdP, real consent,
 or production enrollment; the debug feature cannot be used in release builds.
 
+The separate `scripts/test-android-installation-https.sh` creates an ephemeral
+test CA and a debug-only APK, then connects the actual Android Rust/Kotlin
+Keystore path over HTTPS to a local TLS proxy and Miniflare/D1. It rejects an
+untrusted server certificate before any Worker request. With the test CA, the
+proxy commits completion and closes the TLS connection without a response; the
+test force-stops and restarts the app, which sends a new same-key status proof
+and parses `active`. The harness checks one start, one completion, one status,
+and no automatic completion retry. The emulator uses a synthetic SSO cookie,
+test CA and locally mapped issuer; no real IdP, real consent, physical device,
+or deployed Worker is qualified. The test CA is compiled only into the
+`installation-https-qualification` debug feature, never a release build.
+
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
 install its printed APK path on a disposable emulator, then set

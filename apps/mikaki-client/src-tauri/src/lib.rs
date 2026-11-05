@@ -12,6 +12,8 @@ mod identity_issuance;
 mod identity_passport;
 mod identity_reader;
 mod identity_wallet;
+#[cfg(all(target_os = "android", feature = "installation-https-qualification"))]
+mod installation_https_qualification;
 #[cfg(all(target_os = "android", feature = "installation-ipc-qualification"))]
 mod installation_ipc_qualification;
 #[cfg(target_os = "android")]
@@ -21,7 +23,8 @@ mod installation_worker_qualification;
 #[cfg(all(
     any(
         feature = "installation-ipc-qualification",
-        feature = "installation-worker-qualification"
+        feature = "installation-worker-qualification",
+        feature = "installation-https-qualification"
     ),
     not(debug_assertions)
 ))]
@@ -29,6 +32,14 @@ compile_error!("installation IPC qualification is available only in debug builds
 #[cfg(all(
     feature = "installation-ipc-qualification",
     feature = "installation-worker-qualification"
+))]
+compile_error!("installation qualification modes cannot be combined");
+#[cfg(all(
+    feature = "installation-https-qualification",
+    any(
+        feature = "installation-ipc-qualification",
+        feature = "installation-worker-qualification"
+    )
 ))]
 compile_error!("installation qualification modes cannot be combined");
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -152,6 +163,8 @@ pub fn run() {
             installation_ipc_qualification::start(app.handle().clone());
             #[cfg(all(target_os = "android", feature = "installation-worker-qualification"))]
             installation_worker_qualification::start(app.handle().clone());
+            #[cfg(all(target_os = "android", feature = "installation-https-qualification"))]
+            installation_https_qualification::start(app.handle().clone());
             let handle = app.handle().clone();
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
