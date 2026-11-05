@@ -14,6 +14,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { unstable_splitSqlQuery } from 'wrangler';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
 const origin = 'https://auth.example';
@@ -250,6 +251,101 @@ test('qualification Worker binds live SSO and signed key to one D1 installation'
       child.kill();
     }
     let expectedDevices = 3;
+    // Optional debug APK: actual app Rust/Kotlin IPC and Android Keystore, with
+    // the host shuttling synthetic protocol messages to this local Worker.
+    if (process.env.MIKAKI_ANDROID_APP_APK) {
+      const serial = process.env.MIKAKI_ANDROID_APP_SERIAL;
+      const adb = process.env.MIKAKI_ANDROID_ADB;
+      assert.match(serial ?? '', /^emulator-\d+$/);
+      assert.ok(adb?.startsWith('/') && process.env.MIKAKI_ANDROID_APP_APK.startsWith('/'));
+      const packageName = 'app.tossa.mikaki';
+      const runAdb = (args, input) =>
+        execFileSync(adb, ['-s', serial, ...args], {
+          encoding: 'utf8',
+          timeout: 120000,
+          input,
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+      const file = (name) => ['shell', 'run-as', packageName, 'cat', name];
+      const waitJson = async (name) => {
+        for (let i = 0; i < 600; i++) {
+          try {
+            const value = JSON.parse(runAdb(file(name)));
+            return value;
+          } catch {
+            await delay(100);
+          }
+        }
+        throw new Error(`Android app qualification timed out: ${name}`);
+      };
+      const writeJson = (name, value) => {
+        runAdb(['shell', 'run-as', packageName, 'tee', `${name}.tmp`], JSON.stringify(value));
+        runAdb(['shell', 'run-as', packageName, 'mv', `${name}.tmp`, name]);
+      };
+      const launch = () =>
+        runAdb([
+          'shell',
+          'monkey',
+          '-p',
+          packageName,
+          '-c',
+          'android.intent.category.LAUNCHER',
+          '1',
+        ]);
+      runAdb(['install', '-r', '-t', process.env.MIKAKI_ANDROID_APP_APK]);
+      runAdb(['shell', 'am', 'force-stop', packageName]);
+      runAdb(['shell', 'pm', 'clear', packageName]); // Disposable emulator only.
+      try {
+        launch();
+        const appStart = await waitJson('installation-worker-start.json');
+        const appStartReply = await send(start, {}, appStart.proof);
+        assert.equal(appStartReply.status, 200, await appStartReply.clone().text());
+        const appChallenge = await appStartReply.json();
+        writeJson('installation-worker-challenge.json', appChallenge);
+        const appCompletion = await waitJson('installation-worker-completion.json');
+        assert.equal(appCompletion.id, appChallenge.id);
+        await db.prepare("INSERT INTO fixture_installation_fault VALUES(1,'lost_reply')").run();
+        assert.equal(
+          (await send(complete, { id: appCompletion.id }, appCompletion.proof)).status,
+          500,
+        );
+        const oldPid = runAdb(['shell', 'pidof', packageName]).trim();
+        assert.ok(oldPid);
+        runAdb(['shell', 'am', 'force-stop', packageName]);
+        launch();
+        const appStatus = await waitJson('installation-worker-status.json');
+        const newPid = runAdb(['shell', 'pidof', packageName]).trim();
+        assert.ok(newPid && newPid !== oldPid);
+        assert.equal(appStatus.id, appChallenge.id);
+        const publicJwk = (compact) =>
+          JSON.parse(Buffer.from(compact.split('.')[0], 'base64url')).jwk;
+        const appKey = publicJwk(appStart.proof);
+        assert.deepEqual(publicJwk(appCompletion.proof), appKey);
+        assert.deepEqual(publicJwk(appStatus.proof), appKey);
+        const appThumbprint = createHash('sha256')
+          .update(JSON.stringify({ crv: 'P-256', kty: 'EC', x: appKey.x, y: appKey.y }))
+          .digest('base64url');
+        assert.equal(
+          (
+            await db
+              .prepare('SELECT thumbprint FROM installation_device WHERE id=?')
+              .bind(appChallenge.id)
+              .first()
+          ).thumbprint,
+          appThumbprint,
+        );
+        const reply = await send(status, { id: appStatus.id }, appStatus.proof);
+        assert.equal(reply.status, 200, await reply.clone().text());
+        const result = await reply.json();
+        assert.equal(result.status, 'active');
+        writeJson('installation-worker-result.json', result);
+        assert.equal((await waitJson('installation-worker-done.json')).status, 'active');
+        assert.equal((await send(status, { id: appStatus.id }, appStatus.proof)).status, 409);
+        expectedDevices++;
+      } finally {
+        runAdb(['shell', 'am', 'force-stop', packageName]);
+      }
+    }
     const serial = process.env.MIKAKI_ANDROID_KEYSTORE_SERIAL;
     if (serial) {
       const adb = process.env.MIKAKI_ANDROID_ADB;

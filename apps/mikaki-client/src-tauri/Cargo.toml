@@ -10,6 +10,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 installation-ipc-qualification = []
+installation-worker-qualification = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

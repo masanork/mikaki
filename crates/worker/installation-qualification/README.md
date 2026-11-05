@@ -97,6 +97,18 @@ no WebView command. Release builds reject this feature. This qualifies only the
 debug fixture's process restart; it does not establish a product recovery flow,
 an actual lost network response, a real owner ceremony, or server acceptance.
 
+The separate debug-only `installation-worker-qualification` app feature can be
+used with `MIKAKI_ANDROID_APP_APK`, `MIKAKI_ANDROID_APP_SERIAL`, and an absolute
+`MIKAKI_ANDROID_ADB` when running the Worker qualification test. It accepts
+only an emulator serial and clears the app data on that disposable emulator.
+The harness shuttles the actual app's Rust/Kotlin Keystore-signed start and
+completion proofs to local Miniflare/D1 using synthetic SSO, injects a lost
+completion response after commit, force-stops the app, and passes its restored
+same-key status proof back to the Worker. The Worker returns `active`, the app
+parses it, and the test rejects replay and verifies the stored thumbprint.
+This uses host/ADB transport, not Android HTTPS, a deployed IdP, real consent,
+or production enrollment; the debug feature cannot be used in release builds.
+
 For optional Android emulator coverage, build the separate test package with
 `ANDROID_HOME=... JAVA_HOME=... scripts/build-android-installation-fixture.sh`,
 install its printed APK path on a disposable emulator, then set
