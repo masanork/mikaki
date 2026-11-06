@@ -156,6 +156,22 @@ test(
         }
         throw new Error(`timed out waiting for ${wanted}`);
       };
+      let networkReady = false;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        try {
+          const booted = runAdb(['shell', 'getprop', 'sys.boot_completed']).trim() === '1';
+          const connectivity = runAdb(['shell', 'dumpsys', 'connectivity']);
+          if (booted && /Active default network:\s*\d+/.test(connectivity)) {
+            runAdb(['shell', 'ping', '-c', '1', '-W', '1', '10.0.2.2']);
+            networkReady = true;
+            break;
+          }
+        } catch {
+          // A newly started emulator may temporarily be offline to adb.
+        }
+        await delay(1000);
+      }
+      assert.ok(networkReady, 'disposable emulator network did not become ready');
       runAdb(['install', '-r', '-t', apk]);
       runAdb(['shell', 'am', 'force-stop', packageName]);
       runAdb(['shell', 'pm', 'clear', packageName]); // Disposable emulator only.
