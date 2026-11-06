@@ -1,17 +1,17 @@
 # Identity test-deployment checkpoint
 
-## Proposed single-card renewal — 2026-11-06, not yet approved
+## Approved single-card renewal — 2026-11-06
 
-This is a review proposal only. It does not approve a card, provision a secret,
-deploy a Worker, or update an installed Wallet. The selected prior approval
-expires at **2026-11-06 09:38:47 UTC**. This proposal changes only the
+The operator approved this exact single-card renewal in direct response to PR
+#341. Approval does not itself provision a secret, deploy a Worker, or update an
+installed Wallet. The selected prior approval expires at **2026-11-06 09:38:47 UTC**. This proposal changes only the
 `not_after` of that same one-card `mikaki_test` / `age_over_18` policy to
 **2026-11-13 06:07:44 UTC**; its compact-policy SHA-256 changes from
 `2ff30cc2bfa66e9f4db008456e3c1f18a7425bc7983d48d84ef3162f47e8258f` to
 `ca2c11b391aa6a02b463f5f0e7348c70eac8989d4b3f79b5122ed4a3d74967e2`.
 The card key, identity, document type, original `not_before` and one-card
-scope are unchanged. Explicit operator review and approval are required before
-provisioning the proposed `IDENTITY_TRUSTED_KEYS` secret or promotion.
+scope are unchanged. The restricted approval record identifies the reviewed
+proposal and policy digest. CI and deployment gates still apply before promotion.
 
 Two new complete CRLs were signed with the existing pinned LabPKI roots in an
 isolated staging directory using a read-only snapshot of the existing registry.
@@ -27,9 +27,8 @@ Only the five corresponding CRL arrays, the derived HAIP policy hash, the
 proposed card-policy hash and its proposed deadline record change here. The
 current-time Rust PKI validator accepted both Issuer and Wallet trust paths and
 all seven negative controls. The local policy preflight checks the same card
-and exact proposed digest; it does not establish operator approval. Production
-readiness, approved secret provisioning, promotion and installed-device
-qualification remain separate gates.
+and exact proposed digest. Production readiness, approved secret provisioning,
+promotion and installed-device qualification remain separate gates.
 
 ## Latest selected profile — HAIP operator age experiment, 2026-10-15
 
