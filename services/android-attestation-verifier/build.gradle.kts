@@ -10,7 +10,7 @@ repositories {
 
 dependencies {
   implementation("com.android.keyattestation:keyattestation:0.4")
-  implementation("com.google.code.gson:gson:2.14.0")
+  implementation("com.google.code.gson:gson:2.15.0")
   implementation("com.google.protobuf:protobuf-javalite:4.36.2")
   implementation("com.google.guava:guava:33.7.2-jre")
   implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
