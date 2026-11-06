@@ -472,7 +472,10 @@ async function backchannel(request: Request, env: SessionContext): Promise<Respo
   const payload = await verifiedLogoutPayload(token, env);
   const event = payload.events;
   const marker =
-    event && typeof event === 'object' && !Array.isArray(event)
+    event &&
+    typeof event === 'object' &&
+    !Array.isArray(event) &&
+    'http://schemas.openid.net/event/backchannel-logout' in event
       ? event['http://schemas.openid.net/event/backchannel-logout']
       : null;
   if (
