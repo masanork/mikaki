@@ -54,17 +54,28 @@ pub(super) fn secret_form(body: &str) -> worker::Result<SecretTokenForm> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(super) async fn authenticate_secret_token_request(
+struct SecretAuthContext<'a> {
+    token_endpoint: &'a str,
+    now: u64,
+    policy: &'a WorkerRuntimePolicy,
+    conformance: bool,
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn authenticate_secret_token_request(
     db: &worker::d1::D1Database,
     form: SecretTokenForm,
     header: Option<&str>,
-    token_endpoint: &str,
-    now: u64,
-    policy: &WorkerRuntimePolicy,
+    context: SecretAuthContext<'_>,
     random: &mut impl mikaki_oidc::CryptographicRandom,
-    conformance: bool,
 ) -> worker::Result<AuthenticatedTokenRequest> {
     use wasm_bindgen::JsValue;
+    let SecretAuthContext {
+        token_endpoint,
+        now,
+        policy,
+        conformance,
+    } = context;
 
     let (client_id, secret, method) = if let Some(header) = header {
         if form.client_secret.is_some() {
@@ -1143,11 +1154,13 @@ pub(super) async fn issue_token_response(
             &db,
             secret_form(&body)?,
             Some(header),
-            &token_endpoint,
-            now,
-            &policy,
+            SecretAuthContext {
+                token_endpoint: &token_endpoint,
+                now,
+                policy: &policy,
+                conformance,
+            },
             &mut random,
-            conformance,
         )
         .await?
     } else if conformance
@@ -1158,11 +1171,13 @@ pub(super) async fn issue_token_response(
             &db,
             form,
             None,
-            &token_endpoint,
-            now,
-            &policy,
+            SecretAuthContext {
+                token_endpoint: &token_endpoint,
+                now,
+                policy: &policy,
+                conformance,
+            },
             &mut random,
-            conformance,
         )
         .await?
     } else if !conformance
