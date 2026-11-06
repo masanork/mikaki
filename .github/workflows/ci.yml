@@ -333,6 +333,8 @@ jobs:
           npm run test:worker-contracts
       - name: DBSC Chromium registration and refresh
         run: npm run test:dbsc-e2e
+      - name: Installation enrollment and lost-response recovery
+        run: npm run test:installation-worker-qualification
       - name: Identity presentation, attester, consent and device-preflight regressions
         run: npm run test:identity-contracts
       - id: measurements
