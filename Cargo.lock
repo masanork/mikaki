@@ -995,6 +995,7 @@ dependencies = [
  "der",
  "getrandom 0.4.3",
  "hkdf",
+ "mikaki-oidc",
  "miniz_oxide",
  "p256",
  "p384",

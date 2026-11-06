@@ -14,6 +14,7 @@ worker-entry = []
 work-qualification = []
 messaging-qualification = []
 messaging-beta = []
+installation-qualification = []
 
 [dependencies]
 serde.workspace = true
@@ -56,6 +57,12 @@ name = "messaging-qualification"
 path = "examples/messaging_qualification.rs"
 crate-type = ["cdylib"]
 required-features = ["messaging-qualification"]
+
+[[example]]
+name = "installation-qualification"
+path = "examples/installation_qualification.rs"
+crate-type = ["cdylib"]
+required-features = ["installation-qualification"]
 
 # Keep both the ordinary and Chat-enabled service inside the existing Wasm budget.
 [package.metadata.wasm-pack.profile.release]

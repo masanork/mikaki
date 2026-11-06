@@ -58,6 +58,7 @@ jobs:
           npm run test:markup
           npm run test:sql
           npm run test:device-grant-probe
+          npm run test:installation-enrollment-probe
           npm run test:release
           node --test scripts/wallet-multipaz-checkout.test.ts
           npm run test:identity-trust-freshness
@@ -332,6 +333,8 @@ jobs:
           npm run test:worker-contracts
       - name: DBSC Chromium registration and refresh
         run: npm run test:dbsc-e2e
+      - name: Installation enrollment and lost-response recovery
+        run: npm run test:installation-worker-qualification
       - name: Identity presentation, attester, consent and device-preflight regressions
         run: npm run test:identity-contracts
       - id: measurements

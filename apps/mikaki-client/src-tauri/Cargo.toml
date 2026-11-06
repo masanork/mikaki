@@ -8,6 +8,11 @@ description = "Mikaki desktop and mobile client"
 name = "mikaki_client_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+installation-ipc-qualification = []
+installation-worker-qualification = []
+installation-https-qualification = ["dep:reqwest"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde_json = "1"
@@ -35,6 +40,7 @@ qrcode = { version = "0.14", default-features = false }
 mikaki-identity = { path = "../../../crates/identity" }
 
 [target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "=0.12.28", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 tauri-plugin-app-session = { path = "../plugins/app-session" }
 tauri-plugin-identity-proximity = { path = "../plugins/identity-proximity" }
 tauri-plugin-identity-reader = { path = "../plugins/identity-reader" }

@@ -25,6 +25,9 @@ class AttestedHolderArgs { lateinit var id: String; lateinit var challenge: Stri
 @InvokeArg
 class DocumentArgs { lateinit var owner: String; var payload: String = "" }
 
+@InvokeArg
+class RecoveryArgs { lateinit var id: String; var expected: String? = null; var payload: String = "" }
+
 @TauriPlugin
 class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -44,9 +47,77 @@ class NativeDpopPlugin(private val activity: Activity): Plugin(activity) {
     }
     private fun holder(id: String): KeyStore.PrivateKeyEntry =
         keyStore().getEntry(holderAlias(id), null) as? KeyStore.PrivateKeyEntry ?: error("holder absent")
-    private fun publicResult(key: KeyStore.PrivateKeyEntry): JSObject {
-        val point = (key.certificate.publicKey as ECPublicKey).w
+    private fun publicResult(key: ECPublicKey): JSObject {
+        val point = key.w
         return JSObject().apply { put("x", coordinate(point.affineX)); put("y", coordinate(point.affineY)) }
+    }
+    private fun publicResult(key: KeyStore.PrivateKeyEntry): JSObject = publicResult(key.certificate.publicKey as ECPublicKey)
+
+    // Rust-only installation-session key operations. No WebView command or
+    // account/device authorization follows from creating this key.
+    @Command @Synchronized
+    fun createDeviceSessionKey(invoke: Invoke) {
+        var created: String? = null
+        try {
+            val id = invoke.parseArgs(HolderArgs::class.java).id
+            val key = DeviceSessionKeyStore().create(id)
+            created = id
+            invoke.resolve(publicResult(key))
+            created = null
+        } catch (_: Exception) {
+            created?.let { try { DeviceSessionKeyStore().delete(it) } catch (_: Exception) {} }
+            invoke.reject("device_session_key_unavailable")
+        }
+    }
+    @Command @Synchronized
+    fun deviceSessionPublicKey(invoke: Invoke) {
+        try { invoke.resolve(publicResult(DeviceSessionKeyStore().publicKey(invoke.parseArgs(HolderArgs::class.java).id))) }
+        catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    @Command @Synchronized
+    fun signDeviceSession(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(HolderArgs::class.java)
+            val signature = DeviceSessionKeyStore().sign(args.id, args.input)
+            invoke.resolve(JSObject().apply { put("der", b64(signature)) })
+        } catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    @Command @Synchronized
+    fun deleteDeviceSessionKey(invoke: Invoke) {
+        try { DeviceSessionKeyStore().delete(invoke.parseArgs(HolderArgs::class.java).id); invoke.resolve() }
+        catch (_: Exception) { invoke.reject("device_session_key_unavailable") }
+    }
+    // Native Rust only. The caller must validate account/issuer/key bindings and
+    // persist a new proof ID before sending; this store supplies no rollback witness.
+    @Command @Synchronized
+    fun loadInstallationRecovery(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(RecoveryArgs::class.java)
+            plain = InstallationRecoveryStore(activity, args.id).load()
+            invoke.resolve(JSObject().apply { put("payload", plain?.let { b64(it) } ?: org.json.JSONObject.NULL) })
+        } catch (_: Exception) { invoke.reject("installation_recovery_unavailable") }
+        finally { plain?.fill(0) }
+    }
+    @Command @Synchronized
+    fun compareAndSetInstallationRecovery(invoke: Invoke) {
+        var plain: ByteArray? = null
+        try {
+            val args = invoke.parseArgs(RecoveryArgs::class.java)
+            require(args.payload.length <= 5462)
+            val value = Base64.decode(args.payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            plain = value
+            require(value.size in 1..4096 && b64(value) == args.payload)
+            val expected = args.expected?.let {
+                require(it.length == 43)
+                Base64.decode(it, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING).also { digest ->
+                    require(digest.size == 32 && b64(digest) == it)
+                }
+            }
+            InstallationRecoveryStore(activity, args.id).compareAndSet(expected, value)
+            invoke.resolve()
+        } catch (_: Exception) { invoke.reject("installation_recovery_unavailable") }
+        finally { plain?.fill(0) }
     }
     @Command @Synchronized
     fun createHolder(invoke: Invoke) {

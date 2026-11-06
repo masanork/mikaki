@@ -14,6 +14,8 @@ mod checkpoint_diagnostics;
 mod dbsc;
 #[cfg(target_arch = "wasm32")]
 mod dpop;
+#[cfg(all(target_arch = "wasm32", feature = "installation-qualification"))]
+pub mod installation_qualification;
 #[cfg(all(
     target_arch = "wasm32",
     any(feature = "messaging-qualification", feature = "messaging-beta")

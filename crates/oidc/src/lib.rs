@@ -6,6 +6,7 @@ pub mod device_grant;
 mod dpop;
 mod es256;
 mod exchange;
+pub mod installation_enrollment;
 mod signing;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod token_boundary_tests;
