@@ -28,9 +28,6 @@ opt-level = "s"
 lto = true
 
 # Keep the ordinary and Chat-enabled Worker within the reviewed Wasm size cap.
-# Third-party cryptographic dependency optimization remains unchanged.
+# Native clients and cryptographic dependency optimization remain unchanged.
 [profile.release.package.mikaki-worker]
-opt-level = "z"
-
-[profile.release.package.mikaki-identity]
 opt-level = "z"
