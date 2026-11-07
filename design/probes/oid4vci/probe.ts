@@ -257,12 +257,13 @@ export class IssuerFixture {
       return errorResponse('invalid_request');
     if (raw.credential_configuration_id !== authority.configuration)
       return errorResponse('unknown_credential_configuration');
-    let parsed: ReturnType<Openid4vciIssuer['parseCredentialRequest']>;
+    let parsed: Awaited<ReturnType<Openid4vciIssuer['parseCredentialRequest']>>;
     let proof: string;
     try {
-      parsed = this.library.parseCredentialRequest({
+      parsed = await this.library.parseCredentialRequest({
         issuerMetadata: this.metadata,
         credentialRequest: raw,
+        contentType: type,
       });
       const proofs = object(raw.proofs);
       if (
