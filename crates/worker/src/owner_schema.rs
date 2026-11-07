@@ -9,6 +9,8 @@ const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
 const PASSPORT: &str = "0007_passport_issuance.sql";
 const DBSC: &str = "0008_dbsc_sessions.sql";
+const SECRET_ROTATION: &str = "0009_client_secret_rotation.sql";
+const VERIFIED_EMAIL: &str = "0010_verified_email.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -46,9 +48,21 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{DBSC}")
         }
         DBSC => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+            );
+            ledger == previous || ledger == format!("{previous},{SECRET_ROTATION}")
+        }
+        SECRET_ROTATION => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION}"
+            );
+            ledger == previous || ledger == format!("{previous},{VERIFIED_EMAIL}")
+        }
+        VERIFIED_EMAIL => {
             ledger
                 == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
                 )
         }
         _ => false,
@@ -58,6 +72,38 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn secret_rotation_upgrade_bridges_only_the_complete_previous_chain() {
+        let previous = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+        );
+        let upgraded = format!("{previous},{SECRET_ROTATION}");
+        assert!(ready(&previous, DBSC));
+        assert!(ready(&upgraded, DBSC));
+        assert!(ready(&upgraded, SECRET_ROTATION));
+        assert!(!ready(&previous, SECRET_ROTATION));
+        assert!(!ready(
+            &format!("{upgraded},{SECRET_ROTATION}"),
+            SECRET_ROTATION
+        ));
+    }
+
+    #[test]
+    fn verified_email_upgrade_bridges_only_the_complete_previous_chain() {
+        let previous = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION}"
+        );
+        let upgraded = format!("{previous},{VERIFIED_EMAIL}");
+        assert!(ready(&previous, SECRET_ROTATION));
+        assert!(ready(&upgraded, SECRET_ROTATION));
+        assert!(ready(&upgraded, VERIFIED_EMAIL));
+        assert!(!ready(&previous, VERIFIED_EMAIL));
+        assert!(!ready(
+            &format!("{upgraded},{VERIFIED_EMAIL}"),
+            VERIFIED_EMAIL
+        ));
+    }
 
     #[test]
     fn bridge_accepts_only_the_two_reviewed_complete_ledgers() {
