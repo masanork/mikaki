@@ -27,8 +27,8 @@ import {
   validateSecretRegistration,
 } from '../../scripts/client-admin-store.ts';
 
-test('secret CLI reads only private regular input and does not print the secret', async () => {
-  if (process.platform === 'win32') return;
+test('secret CLI reads only private regular input and does not print the secret', async (t) => {
+  if (process.platform === 'win32') return t.skip('Requires POSIX ownership and mode checks');
   const dir = await mkdtemp(join(tmpdir(), 'mikaki-client-secret-test-'));
   const path = join(dir, 'input.json');
   const link = join(dir, 'link.json');

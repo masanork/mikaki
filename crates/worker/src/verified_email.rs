@@ -20,6 +20,38 @@ struct Release {
     action: String,
 }
 
+// Keep authorization and request validation in the same order for every JSON mutation.
+async fn json_mutation<T: serde::de::DeserializeOwned>(
+    request: &mut Request,
+    context: &RouteContext<()>,
+) -> worker::Result<Result<(worker::D1Database, crate::vault_http::Owner, T), Response>> {
+    if !context
+        .env
+        .var("MIKAKI_VERIFIED_EMAIL")
+        .is_ok_and(|v| v.to_string() == "on")
+    {
+        return Ok(Err(error(404, "not_found")?));
+    }
+    if !same_origin(request)? {
+        return Ok(Err(error(403, "origin_required")?));
+    }
+    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
+        return Ok(Err(error(415, "json_required")?));
+    }
+    let db = context.env.d1("DB")?;
+    let Some(actor) = owner(request, &db).await? else {
+        return Ok(Err(error(401, "authentication_required")?));
+    };
+    let body = match crate::read_bounded_body(request, 512).await {
+        Ok(body) => body,
+        Err(_) => return Ok(Err(error(413, "body_too_large_or_invalid")?)),
+    };
+    let Ok(body) = serde_json::from_str::<T>(&body) else {
+        return Ok(Err(error(400, "invalid_body")?));
+    };
+    Ok(Ok((db, actor, body)))
+}
+
 pub async fn remove(request: Request, context: RouteContext<()>) -> worker::Result<Response> {
     if !context
         .env
@@ -70,29 +102,9 @@ pub async fn status(request: Request, context: RouteContext<()>) -> worker::Resu
 }
 
 pub async fn release(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if !context
-        .env
-        .var("MIKAKI_VERIFIED_EMAIL")
-        .is_ok_and(|v| v.to_string() == "on")
-    {
-        return error(404, "not_found");
-    }
-    if !same_origin(&request)? {
-        return error(403, "origin_required");
-    }
-    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
-        return error(415, "json_required");
-    }
-    let db = context.env.d1("DB")?;
-    let Some(actor) = owner(&request, &db).await? else {
-        return error(401, "authentication_required");
-    };
-    let body = match crate::read_bounded_body(&mut request, 512).await {
-        Ok(body) => body,
-        Err(_) => return error(413, "body_too_large_or_invalid"),
-    };
-    let Ok(body) = serde_json::from_str::<Release>(&body) else {
-        return error(400, "invalid_body");
+    let (db, actor, body) = match json_mutation::<Release>(&mut request, &context).await? {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
     };
     if body.client_id.is_empty()
         || body.client_id.len() > 128
@@ -143,29 +155,9 @@ struct Start {
 }
 
 pub async fn start(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if !context
-        .env
-        .var("MIKAKI_VERIFIED_EMAIL")
-        .is_ok_and(|v| v.to_string() == "on")
-    {
-        return error(404, "not_found");
-    }
-    if !same_origin(&request)? {
-        return error(403, "origin_required");
-    }
-    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
-        return error(415, "json_required");
-    }
-    let db = context.env.d1("DB")?;
-    let Some(actor) = owner(&request, &db).await? else {
-        return error(401, "authentication_required");
-    };
-    let body = match crate::read_bounded_body(&mut request, 512).await {
-        Ok(body) => body,
-        Err(_) => return error(413, "body_too_large_or_invalid"),
-    };
-    let Ok(body) = serde_json::from_str::<Start>(&body) else {
-        return error(400, "invalid_body");
+    let (db, actor, body) = match json_mutation::<Start>(&mut request, &context).await? {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
     };
     // Reuse the conservative syntax check without folding the potentially
     // case-sensitive local part of the submitted address.
@@ -218,29 +210,9 @@ pub async fn start(mut request: Request, context: RouteContext<()>) -> worker::R
 }
 
 pub async fn confirm(mut request: Request, context: RouteContext<()>) -> worker::Result<Response> {
-    if !context
-        .env
-        .var("MIKAKI_VERIFIED_EMAIL")
-        .is_ok_and(|v| v.to_string() == "on")
-    {
-        return error(404, "not_found");
-    }
-    if !same_origin(&request)? {
-        return error(403, "origin_required");
-    }
-    if request.headers().get("Content-Type")?.as_deref() != Some("application/json") {
-        return error(415, "json_required");
-    }
-    let db = context.env.d1("DB")?;
-    let Some(actor) = owner(&request, &db).await? else {
-        return error(401, "authentication_required");
-    };
-    let body = match crate::read_bounded_body(&mut request, 512).await {
-        Ok(body) => body,
-        Err(_) => return error(413, "body_too_large_or_invalid"),
-    };
-    let Ok(body) = serde_json::from_str::<Confirmation>(&body) else {
-        return error(400, "invalid_body");
+    let (db, actor, body) = match json_mutation::<Confirmation>(&mut request, &context).await? {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
     };
     if !crate::passkey_login::valid_tx(&body.token) {
         return error(400, "invalid_confirmation");

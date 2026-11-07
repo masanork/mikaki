@@ -85,14 +85,14 @@ if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.databa
 const action = options['--action'];
 async function readInput(path: string) {
   if (action !== 'register-secret' && action !== 'rotate-secret') {
-    return JSON.parse(await readFile(path, 'utf8'));
+    return JSON.parse(await readFile(path, 'utf8')); // NOSONAR: This operator CLI intentionally reads the explicitly supplied input file.
   }
   // Open without following a final symlink and validate the opened file itself,
   // avoiding a permissions-check/read race. Secret input is never logged.
   if (process.platform === 'win32' || typeof process.getuid !== 'function') {
     throw new Error('secret input requires POSIX ownership and permission checks');
   }
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); // NOSONAR: The operator explicitly chooses this file; its owner, mode and type are checked below.
   try {
     const stat = await handle.stat();
     if (
