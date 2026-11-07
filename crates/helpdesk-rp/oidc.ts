@@ -475,7 +475,7 @@ async function backchannel(request: Request, env: SessionContext): Promise<Respo
     event &&
     typeof event === 'object' &&
     !Array.isArray(event) &&
-    'http://schemas.openid.net/event/backchannel-logout' in event
+    'http://schemas.openid.net/event/backchannel-logout' in event // NOSONAR: OIDC event identifier, not a network URL.
       ? event['http://schemas.openid.net/event/backchannel-logout']
       : null;
   if (
