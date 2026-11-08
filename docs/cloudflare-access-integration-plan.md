@@ -40,9 +40,14 @@ an existing global Access session. Do not treat app-token revocation alone as
 qualified for immediate access removal; qualify user/global-session revocation
 and any required propagation delay separately.
 An additional synthetic-user revocation returned success; after 30 seconds the
-existing browser did not reach the app, but encountered a redirect loop. This is
-inconclusive as a usable revocation procedure and needs a clean follow-up test.
-The synthetic binding was restored afterward.
+existing browser did not reach the app, but encountered a redirect loop. In a
+follow-up with a new session, the Access user-revocation API again returned
+success; after 30 seconds a direct protected request returned 302 rather than
+the application, and neither that browser nor a fresh context reached the app.
+The IdP binding was revoked during both checks and restored afterwards. This
+qualifies neither the minimum propagation delay nor the user-facing recovery
+from the redirect loop; use an independently rehearsed per-user procedure for
+production.
 
 The test used one synthetic account, one browser and a virtual authenticator.
 It does not verify a physical Passkey, the real owner's mailbox binding, current
