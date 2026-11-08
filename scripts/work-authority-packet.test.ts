@@ -32,7 +32,14 @@ const source = { commit: 'a'.repeat(40), clean: true as const };
 /** Synthetic bytes qualify inventory rejection, never a product deployment. */
 async function fixture(
   baseline:
-    'current' | 'passport' | 'wrap' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
+    | 'current'
+    | 'dbsc'
+    | 'passport'
+    | 'wrap'
+    | 'review'
+    | 'age'
+    | 'waitlist'
+    | 'retained' = 'current',
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-packet-'));
   const write = async (name: string, bytes: string | Buffer) => {
@@ -53,6 +60,7 @@ async function fixture(
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
   const ownerCount = {
     current: OWNER_MIGRATIONS.length,
+    dbsc: 8,
     passport: 7,
     wrap: 6,
     review: 5,
@@ -103,7 +111,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 20);
+    assert.equal(manifest.migrations.length, 22);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -121,6 +129,22 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
     await assert.rejects(verifyAuthorityPacket(f.directory), /inventory_changed/);
     await unlink(join(f.directory, migration));
     await assert.rejects(authoritySchema(join(f.directory, 'migrations')), /migrations_denied/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('retained DBSC packets remain frozen when Access migrations are added', async () => {
+  const f = await fixture('dbsc');
+  try {
+    assert.equal((await verifyAuthorityPacket(f.directory)).migrations.length, 20);
+    for (const name of ['0009_access_email_bindings.sql', '0010_access_email_scope.sql']) {
+      await f.write(
+        `migrations/${name}`,
+        await readFile(join(root, 'crates/worker/migrations', name)),
+      );
+    }
+    await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
   } finally {
     await f.close();
   }
