@@ -51,6 +51,14 @@ export const OWNER_MIGRATIONS = [
     name: '0008_dbsc_sessions.sql',
     sha256: '3e30fa776c7fea42fa418973e35e1c44dcf642d0944a5c1f9a579883754a1024',
   },
+  {
+    name: '0009_client_secret_rotation.sql',
+    sha256: '09a1eda70e62c96188b194496f20218aead168825d7b0e5ad2e207fe2b19e875',
+  },
+  {
+    name: '0010_verified_email.sql',
+    sha256: '430e7cdb5d0f83c1078ec902f57000b79315551132f0a06de4cb0f52d0d3f4a1',
+  },
 ] as const;
 
 export function assertProductionOwnerSchema(
