@@ -5,6 +5,12 @@ use wasm_bindgen::JsValue;
 pub(super) fn scope(value: &str) -> &str {
     match value {
         "profile openid" => "openid profile",
+        "openid email profile"
+        | "openid profile email"
+        | "email openid profile"
+        | "email profile openid"
+        | "profile openid email"
+        | "profile email openid" => "openid email profile",
         _ => value,
     }
 }
@@ -41,7 +47,7 @@ pub(super) fn record(
         || parameters.get("client_id").map(|value| value.as_ref()) != Some(login.client_id.as_str())
         || !matches!(
             requested_scope,
-            "openid" | "openid profile" | "profile openid"
+            "openid" | "openid profile" | "profile openid" | "openid email profile"
         )
     {
         return Err(worker::Error::RustError("invalid_continuation".into()));

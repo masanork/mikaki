@@ -43,7 +43,11 @@
     <div>
       <dt>{m.loginConnectionPurpose()}</dt>
       <dd>
-        {connection.scope.includes('profile') ? m.loginPurposeProfile() : m.loginPurposeSignIn()}
+        {connection.scope.split(' ').includes('email')
+          ? m.loginPurposeAccessEmail()
+          : connection.scope.includes('profile')
+            ? m.loginPurposeProfile()
+            : m.loginPurposeSignIn()}
       </dd>
     </div>
   </dl>

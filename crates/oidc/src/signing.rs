@@ -176,6 +176,10 @@ struct IdTokenClaims<'a> {
     sid: &'a str,
     auth_time: u64,
     acr: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email_verified: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -583,6 +587,8 @@ impl P256TokenSigner {
             sid,
             auth_time,
             acr: PASSKEY_UV_ACR,
+            email: None,
+            email_verified: None,
         })
         .map_err(|_| InvalidIdTokenClaims)?;
         let signing_input = format!("{}.{}", B64.encode(header), B64.encode(claims));
@@ -706,6 +712,29 @@ impl IdTokenSigningInput {
         issued_at: u64,
         expires_at: u64,
     ) -> Result<Self, InvalidIdTokenClaims> {
+        Self::new_with_verified_email(
+            algorithm, kid, issuer, subject, audience, sid, nonce, auth_time, issued_at,
+            expires_at, None,
+        )
+    }
+
+    /// The caller must independently establish that this address belongs to the
+    /// authenticated account and may be disclosed to this client. This method
+    /// only validates its representation; it does not verify ownership.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_verified_email(
+        algorithm: &'static str,
+        kid: &str,
+        issuer: &str,
+        subject: &str,
+        audience: &str,
+        sid: &str,
+        nonce: Option<&str>,
+        auth_time: u64,
+        issued_at: u64,
+        expires_at: u64,
+        email: Option<&str>,
+    ) -> Result<Self, InvalidIdTokenClaims> {
         if !["ES256", "RS256"].contains(&algorithm)
             || kid.is_empty()
             || kid.len() > 128
@@ -718,6 +747,13 @@ impl IdTokenSigningInput {
             || issued_at == 0
             || expires_at <= issued_at
             || auth_time > issued_at
+            || email.is_some_and(|value| {
+                value.is_empty()
+                    || value.len() > 254
+                    || value
+                        .bytes()
+                        .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+            })
         {
             return Err(InvalidIdTokenClaims);
         }
@@ -737,6 +773,8 @@ impl IdTokenSigningInput {
             sid,
             auth_time,
             acr: PASSKEY_UV_ACR,
+            email,
+            email_verified: email.map(|_| true),
         })
         .map_err(|_| InvalidIdTokenClaims)?;
         Ok(Self {
@@ -1025,6 +1063,41 @@ mod tests {
         assert!(signer.matches_public_jwk(&public_jwk));
         let different = public_jwk.replace("op-1", "op-2");
         assert!(!signer.matches_public_jwk(&different));
+    }
+
+    #[test]
+    fn id_token_optional_verified_email_is_explicit_and_bounded() {
+        fn claims(email: Option<&str>) -> Result<serde_json::Value, InvalidIdTokenClaims> {
+            let input = IdTokenSigningInput::new_with_verified_email(
+                "ES256",
+                "key",
+                "https://issuer.example",
+                "sub",
+                "client",
+                "sid",
+                None,
+                10,
+                11,
+                12,
+                email,
+            )?;
+            let encoded = std::str::from_utf8(input.as_bytes())
+                .unwrap()
+                .split('.')
+                .nth(1)
+                .unwrap();
+            Ok(serde_json::from_slice(&B64.decode(encoded).unwrap()).unwrap())
+        }
+        let absent = claims(None).unwrap();
+        assert!(absent.get("email").is_none());
+        assert!(absent.get("email_verified").is_none());
+        let present = claims(Some("Owner@example.test")).unwrap();
+        assert_eq!(present["email"], "Owner@example.test");
+        assert_eq!(present["email_verified"], true);
+        for invalid in ["", "a\nb@example.test", " a@example.test"] {
+            assert!(claims(Some(invalid)).is_err());
+        }
+        assert!(claims(Some(&"a".repeat(255))).is_err());
     }
 
     #[test]

@@ -183,6 +183,14 @@ test('readiness requires usable OP policy, signing key, migrations, R2 and Claim
     await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
       .bind('0008_dbsc_sessions.sql')
       .run();
+    await check(503);
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0009_access_email_bindings.sql')
+      .run();
+    await check(503);
+    await DB.prepare('INSERT INTO d1_migrations(name) VALUES(?)')
+      .bind('0010_access_email_scope.sql')
+      .run();
     await check(204);
     assert.equal((await VAULT_BLOBS.list()).objects.length, 0, 'Probe writes no sentinel');
     await check(503, `Bearer ${readyToken}`, 'error');

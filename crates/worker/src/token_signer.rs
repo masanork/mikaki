@@ -155,8 +155,9 @@ impl WorkerTokenSigner {
         auth_time: u64,
         issued_at: u64,
         expires_at: u64,
+        verified_email: Option<&str>,
     ) -> worker::Result<String> {
-        let input = mikaki_oidc::IdTokenSigningInput::new(
+        let input = mikaki_oidc::IdTokenSigningInput::new_with_verified_email(
             self.algorithm(),
             self.kid(),
             issuer,
@@ -167,6 +168,7 @@ impl WorkerTokenSigner {
             auth_time,
             issued_at,
             expires_at,
+            verified_email,
         )
         .map_err(|_| unavailable())?;
         let signature = self.sign(input.as_bytes()).await?;

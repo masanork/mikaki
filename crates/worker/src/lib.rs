@@ -212,6 +212,7 @@ struct SecretTokenForm {
 #[derive(Deserialize)]
 struct AuthorizationCodeContextRow {
     client_id: String,
+    account_id: String,
     dpop_jkt: Option<String>,
     sid: String,
     sub: String,
@@ -334,6 +335,10 @@ struct JwksResponse {
 struct UserInfoResponse {
     sub: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email_verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mikaki_linked_document: Option<serde_json::Value>,
@@ -379,6 +384,9 @@ struct DiscoveryResponse {
 #[must_use = "use this snapshot only to prepare tokens for a conditional D1 exchange"]
 pub struct AuthorizationCodeContext {
     client_id: String,
+    account_id: String,
+    access_email: Option<String>,
+    access_email_revision: Option<i64>,
     dpop_jkt: Option<String>,
     sid: String,
     sub: String,
@@ -1038,6 +1046,11 @@ async fn authorize_route(
     };
     let allow_missing_pkce =
         conformance_deployment(&context.env)? && registration.allow_missing_pkce == 1;
+    let access_client = access_secret_client(&context.env)?;
+    let access_scope = access_client.as_deref() == Some(client_id.as_str())
+        && parameters
+            .get("scope")
+            .is_some_and(|scope| login_review::scope(scope) == "openid email profile");
     let has_pkce = parameters.contains_key("code_challenge")
         || parameters.contains_key("code_challenge_method");
     let oauth_error = if parsed.too_many || !parsed.duplicates.is_empty() {
@@ -1056,10 +1069,11 @@ async fn authorize_route(
     {
         Some("invalid_request")
     } else if parameters.get("scope").is_some_and(|value| {
-        !matches!(
-            value.as_str(),
-            "openid" | "openid profile" | "profile openid"
-        )
+        !access_scope
+            && !matches!(
+                value.as_str(),
+                "openid" | "openid profile" | "profile openid"
+            )
     }) {
         Some("invalid_scope")
     } else if parameters
@@ -1113,6 +1127,13 @@ async fn authorize_route(
             client_id,
             redirect_uri,
             policy.state_bytes(),
+            policy.nonce_bytes(),
+        )
+    } else if access_scope {
+        raw.validate_for_cloudflare_access(
+            client_id,
+            redirect_uri,
+            policy.request_target_bytes().min(4096),
             policy.nonce_bytes(),
         )
     } else {
@@ -1403,7 +1424,7 @@ async fn authorize_route(
                     .nonce()
                     .map(JsValue::from_str)
                     .unwrap_or(JsValue::NULL),
-                JsValue::from_str(parameters["scope"].as_str()),
+                JsValue::from_str(login_review::scope(&parameters["scope"])),
             ])?,
     ];
     if let (Some(snapshot), Some(age)) = (age_snapshot, age_request.as_ref()) {
@@ -1610,7 +1631,11 @@ async fn discovery_route(
             grant_types_supported: ["authorization_code"],
             subject_types_supported: ["pairwise"],
             id_token_signing_alg_values_supported: ["ES256", "RS256"],
-            scopes_supported: vec!["openid", "profile"],
+            scopes_supported: if access_secret_client(&context.env)?.is_some() {
+                vec!["openid", "profile", "email"]
+            } else {
+                vec!["openid", "profile"]
+            },
             claims_supported: {
                 let mut claims = vec![
                     "iss",
@@ -1626,6 +1651,9 @@ async fn discovery_route(
                 if name_release_available {
                     claims.push("name");
                 }
+                if access_secret_client(&context.env)?.is_some() {
+                    claims.extend(["email", "email_verified"]);
+                }
                 if identity::claims_enabled(&context.env) {
                     claims.push(identity::CLAIM);
                 }
@@ -1640,6 +1668,13 @@ async fn discovery_route(
                 ]
             } else if fapi2_deployment(&context.env)? {
                 vec!["private_key_jwt"]
+            } else if access_secret_client(&context.env)?.is_some() {
+                vec![
+                    "private_key_jwt",
+                    "none",
+                    "client_secret_basic",
+                    "client_secret_post",
+                ]
             } else {
                 vec!["private_key_jwt", "none"]
             },
@@ -1809,7 +1844,7 @@ async fn userinfo_name(
     let Some(scope) = scope else {
         return Err(worker::Error::RustError("invalid_token".into()));
     };
-    if scope.scope == "openid" {
+    if scope.scope == "openid" || scope.scope == "openid email profile" {
         return Ok(None);
     }
     if !matches!(scope.scope.as_str(), "openid profile" | "profile openid") {
@@ -1840,6 +1875,39 @@ async fn userinfo_name(
         return Err(worker::Error::RustError("claim release unavailable".into()));
     }
     Ok(Some(value.name))
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn userinfo_access_email(
+    env: &worker::Env,
+    db: &worker::d1::D1Database,
+    token_hash: &str,
+) -> worker::Result<Option<String>> {
+    let Some(client_id) = access_secret_client(env)? else {
+        return Ok(None);
+    };
+    #[derive(Deserialize)]
+    struct EmailRow {
+        email: String,
+    }
+    let row = db
+        .prepare(
+            "SELECT b.email FROM token_issue ti \
+        JOIN authorization_code ac ON ac.code_hash=ti.code_hash \
+        JOIN code_context cc ON cc.code_hash=ac.code_hash \
+        JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid \
+        JOIN access_email_binding b ON b.client_id=v.client_id AND b.account_id=v.account_id \
+        WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>unixepoch() \
+        AND ac.client_id=?2 AND cc.scope='openid email profile' AND b.active=1 \
+        AND b.revision=ti.access_email_revision",
+        )
+        .bind(&[
+            wasm_bindgen::JsValue::from_str(token_hash),
+            wasm_bindgen::JsValue::from_str(&client_id),
+        ])?
+        .first::<EmailRow>(None)
+        .await?;
+    Ok(row.map(|row| row.email))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2057,12 +2125,15 @@ async fn userinfo_route_inner(
             return Ok(response);
         }
         let name = userinfo_name(&context.env, &db, &token_hash).await?;
+        let email = userinfo_access_email(&context.env, &db, &token_hash).await?;
         return worker::Response::builder()
             .with_header("Cache-Control", "no-store")?
             .with_header("Pragma", "no-cache")?
             .from_json(&UserInfoResponse {
                 sub,
                 name,
+                email_verified: email.as_ref().map(|_| true),
+                email,
                 mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
             });
     }
@@ -2088,12 +2159,15 @@ async fn userinfo_route_inner(
         return Ok(response);
     }
     let name = userinfo_name(&context.env, &db, &token_hash).await?;
+    let email = userinfo_access_email(&context.env, &db, &token_hash).await?;
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Pragma", "no-cache")?
         .from_json(&UserInfoResponse {
             sub: subject.sub,
             name,
+            email_verified: email.as_ref().map(|_| true),
+            email,
             mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
         })
 }

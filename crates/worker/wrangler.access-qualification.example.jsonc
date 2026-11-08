@@ -1,0 +1,36 @@
+{
+  "name": "mikaki-access-qualification",
+  "main": "build/worker/shim.mjs",
+  "compatibility_date": "2026-09-23",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "../../assets",
+    "binding": "FONT_ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "vars": {
+    "MIKAKI_ISSUER": "https://mikaki-access-qualification.masanork.workers.dev",
+    "MIKAKI_ACCESS_SECRET_CLIENT_ID": "mikaki-access-qualification"
+  },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikaki-access-qualification",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+      "remote": true
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "VAULT_BLOBS", "bucket_name": "mikaki-access-qualification" }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "LOGOUT_QUEUE", "queue": "mikaki-access-qualification" }
+    ]
+  }
+}
