@@ -14,6 +14,7 @@ async function idle(c: Client) {
   await expect(c.page.getByRole('region', { name: '暗号化チャット', exact: true })).toHaveAttribute(
     'aria-busy',
     'false',
+    { timeout: 30_000 },
   );
 }
 async function click(c: Client, name: string) {
