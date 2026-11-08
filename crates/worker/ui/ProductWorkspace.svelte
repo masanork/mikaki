@@ -3,6 +3,7 @@
   import ProductHeader from './ProductHeader.svelte';
   import ProductChat from './ProductChat.svelte';
   import OwnerPasskeys from './OwnerPasskeys.svelte';
+  import OwnerEmail from './OwnerEmail.svelte';
   import { vaultContext } from './vault-context.js';
   import { OwnerVaultController, evaluateOwnerPrf } from './vault-owner-controller.ts';
   import type { OwnerLoginPrf } from './vault-login-prf.ts';
@@ -145,7 +146,8 @@
     {#if settings}
       <section class="product-card" aria-label={ja ? '設定' : 'Settings'}>
         <h2>{ja ? '設定' : 'Settings'}</h2>
-        {#if owner}<OwnerPasskeys
+        {#if owner}<OwnerEmail {locale} />
+          <OwnerPasskeys
             {owner}
             disabled={passkeysBusy}
             hasDrafts={() => context.hasDrafts?.() ?? false}

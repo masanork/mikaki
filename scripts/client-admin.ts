@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
 import {
@@ -9,6 +10,9 @@ import {
   listClients,
   registerClient,
   registerNativeClient,
+  registerSecretClient,
+  rotateSecretClient,
+  setClientEmailPolicy,
   retireRedirect,
   retirePostLogoutRedirect,
   retireBackchannelLogout,
@@ -20,6 +24,9 @@ import {
   validateKey,
   validateRegistration,
   validateNativeRegistration,
+  validateSecretRegistration,
+  validateSecretRotation,
+  validateEmailPolicy,
 } from './client-admin-store.ts';
 
 const options: Record<string, string> = {};
@@ -48,6 +55,9 @@ if (
   ![
     'register',
     'register-native',
+    'register-secret',
+    'rotate-secret',
+    'set-email-policy',
     'add-key',
     'retire-key',
     'add-redirect',
@@ -62,7 +72,7 @@ if (
   !['yes', 'no'].includes(options['--apply'])
 ) {
   throw new Error(
-    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|register-native|add-key|retire-key|add-redirect|retire-redirect|add-post-logout-redirect|retire-post-logout-redirect|set-backchannel-logout|retire-backchannel-logout|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
+    'usage: node scripts/client-admin.ts --config CONFIG --remote yes|no --action register|register-native|register-secret|rotate-secret|set-email-policy|add-key|retire-key|add-redirect|retire-redirect|add-post-logout-redirect|retire-post-logout-redirect|set-backchannel-logout|retire-backchannel-logout|disable|list --input JSON --client ID --kid KID --actor NAME --reason TEXT --apply yes|no',
   );
 }
 const remote = options['--remote'] === 'yes';
@@ -73,11 +83,37 @@ if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.databa
   throw new Error('DB binding and --remote must identify the same configured database');
 }
 const action = options['--action'];
-const input = options['--input']
-  ? JSON.parse(await readFile(resolve(options['--input']), 'utf8'))
-  : null;
+async function readInput(path: string) {
+  if (action !== 'register-secret' && action !== 'rotate-secret') {
+    return JSON.parse(await readFile(path, 'utf8')); // NOSONAR: This operator CLI intentionally reads the explicitly supplied input file.
+  }
+  // Open without following a final symlink and validate the opened file itself,
+  // avoiding a permissions-check/read race. Secret input is never logged.
+  if (process.platform === 'win32' || typeof process.getuid !== 'function') {
+    throw new Error('secret input requires POSIX ownership and permission checks');
+  }
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); // NOSONAR: The operator explicitly chooses this file; its owner, mode and type are checked below.
+  try {
+    const stat = await handle.stat();
+    if (
+      !stat.isFile() ||
+      stat.uid !== process.getuid() ||
+      (stat.mode & 0o077) !== 0 ||
+      stat.size > 16384
+    ) {
+      throw new Error('secret input must be an owner-only regular file of at most 16 KiB');
+    }
+    return JSON.parse(await handle.readFile('utf8'));
+  } finally {
+    await handle.close();
+  }
+}
+const input = options['--input'] ? await readInput(resolve(options['--input'])) : null;
 if (action === 'register') validateRegistration(input);
 if (action === 'register-native') validateNativeRegistration(input);
+if (action === 'register-secret') validateSecretRegistration(input);
+if (action === 'rotate-secret') validateSecretRotation(input);
+if (action === 'set-email-policy') validateEmailPolicy(input);
 if (action === 'add-key') validateKey(input);
 if (action === 'add-redirect' || action === 'retire-redirect') validateRedirect(input);
 if (action === 'add-post-logout-redirect' || action === 'retire-post-logout-redirect')
@@ -89,6 +125,8 @@ if (action !== 'list' && (!options['--actor'] || !options['--reason'])) {
 if (
   [
     'add-key',
+    'rotate-secret',
+    'set-email-policy',
     'retire-key',
     'add-redirect',
     'retire-redirect',
@@ -117,6 +155,24 @@ try {
     result = await registerClient(db, input, options['--actor'], options['--reason']);
   else if (action === 'register-native')
     result = await registerNativeClient(db, input, options['--actor'], options['--reason']);
+  else if (action === 'register-secret')
+    result = await registerSecretClient(db, input, options['--actor'], options['--reason']);
+  else if (action === 'rotate-secret')
+    result = await rotateSecretClient(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
+  else if (action === 'set-email-policy')
+    result = await setClientEmailPolicy(
+      db,
+      options['--client'],
+      input,
+      options['--actor'],
+      options['--reason'],
+    );
   else if (action === 'add-key')
     result = await addKey(db, options['--client'], input, options['--actor'], options['--reason']);
   else if (action === 'retire-key')
