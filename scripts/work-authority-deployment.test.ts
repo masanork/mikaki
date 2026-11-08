@@ -380,7 +380,7 @@ test('exclusive child copies frozen bytes and verifies from its own files after 
     await rm(f.parent, { recursive: true });
     assert.equal(
       (await verifyAuthorityDeployment(child, result.child_manifest_sha256, f.parentSha)).members,
-      48,
+      f.manifest.members.length + 7, // parent manifest plus six deployment-specific files
     );
     await assert.rejects(
       verifyAuthorityDeployment(child, 'f'.repeat(64), f.parentSha),

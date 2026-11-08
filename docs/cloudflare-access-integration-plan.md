@@ -56,6 +56,21 @@ Worker. Prepare and qualify an ordered bridge release and compatible rollback,
 including the rebuilt `code_context` table and retained scope-immutability
 trigger, before making a production migration decision.
 
+On 2026-11-08 a separate Cloudflare Worker and D1, both named
+`mikaki-bridge-qualification`, rehearsed that order with a synthetic account
+and Chromium virtual Passkey. The bridge version
+`fe0f5ab4-46ff-4c89-9169-2e8efb737fa9` returned readiness 204 and completed
+OIDC authorization/code exchange with the same account on each 0008, 0009 and
+0010 ledger. Feature version `0c81ef19-acdf-4751-8639-1f45a0d9dc08` then
+returned 204 and completed the exchange on 0010. An explicit Cloudflare version
+rollback to the bridge again returned 204 and completed the exchange; one
+synthetic account and credential remained active. This environment used a
+readiness-only mocked Claim Worker (`mikaki-bridge-qualification-claims`) and
+the qualification R2 bucket. The staging builds are not attested, and the
+exercise did not test production data, Claim delivery, Vault recovery, logout
+delivery or a physical authenticator. Both bridge Workers and their separate D1
+remain provisioned for review.
+
 ## Observed baseline
 
 On 2026-11-07, a read-only Cloudflare API inspection found that the existing
