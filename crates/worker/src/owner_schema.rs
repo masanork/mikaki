@@ -9,6 +9,8 @@ const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
 const PASSPORT: &str = "0007_passport_issuance.sql";
 const DBSC: &str = "0008_dbsc_sessions.sql";
+const ACCESS_BINDING: &str = "0009_access_email_bindings.sql";
+const ACCESS_SCOPE: &str = "0010_access_email_scope.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -46,9 +48,21 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{DBSC}")
         }
         DBSC => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+            );
+            ledger == previous || ledger == format!("{previous},{ACCESS_BINDING}")
+        }
+        ACCESS_BINDING => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{ACCESS_BINDING}"
+            );
+            ledger == previous || ledger == format!("{previous},{ACCESS_SCOPE}")
+        }
+        ACCESS_SCOPE => {
             ledger
                 == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{ACCESS_BINDING},{ACCESS_SCOPE}"
                 )
         }
         _ => false,
@@ -211,5 +225,21 @@ mod dbsc_tests {
             assert!(!ready(&invalid, PASSPORT));
             assert!(!ready(&invalid, DBSC));
         }
+    }
+
+    #[test]
+    fn access_scope_requires_the_complete_ordered_ledger() {
+        let previous = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+        );
+        let binding = format!("{previous},{ACCESS_BINDING}");
+        let scope = format!("{binding},{ACCESS_SCOPE}");
+        assert!(ready(&binding, DBSC));
+        assert!(ready(&binding, ACCESS_BINDING));
+        assert!(ready(&scope, ACCESS_BINDING));
+        assert!(ready(&scope, ACCESS_SCOPE));
+        assert!(!ready(&scope, DBSC));
+        assert!(!ready(&binding, ACCESS_SCOPE));
+        assert!(!ready(&format!("{scope},{ACCESS_SCOPE}"), ACCESS_SCOPE));
     }
 }

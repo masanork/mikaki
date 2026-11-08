@@ -108,12 +108,34 @@ impl PreparedAuthorizationCode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAuthorization;
 
+#[derive(Clone, Copy)]
 enum AuthorizationProfile {
     Core,
     Fapi,
+    CloudflareAccess,
 }
 
 impl Authorization {
+    /// Validate the dedicated Cloudflare Access scope profile. The caller must
+    /// first establish that the registered client is explicitly entitled to
+    /// this profile; this method does not grant email disclosure by itself.
+    pub fn validate_for_cloudflare_access(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        self.validate_with_options(
+            client_id,
+            redirect_uri,
+            state_limit,
+            nonce_limit,
+            false,
+            AuthorizationProfile::CloudflareAccess,
+        )
+    }
+
     pub fn validate(
         &self,
         client_id: &str,
@@ -180,10 +202,21 @@ impl Authorization {
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
-            || !matches!(
-                self.scope.as_str(),
-                "openid" | "openid profile" | "profile openid"
-            )
+            || !match profile {
+                AuthorizationProfile::CloudflareAccess => matches!(
+                    self.scope.as_str(),
+                    "openid email profile"
+                        | "openid profile email"
+                        | "email openid profile"
+                        | "email profile openid"
+                        | "profile openid email"
+                        | "profile email openid"
+                ),
+                _ => matches!(
+                    self.scope.as_str(),
+                    "openid" | "openid profile" | "profile openid"
+                ),
+            }
             || (!matches!(profile, AuthorizationProfile::Fapi) && self.state.is_empty())
             || self.state.len() > state_limit
             || self
@@ -249,6 +282,63 @@ pub fn pkce(verifier: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn access_scope_is_explicit_and_still_requires_pkce_and_state() {
+        let mut request = Authorization {
+            client_id: "access".into(),
+            redirect_uri: "https://team.cloudflareaccess.com/cdn-cgi/access/callback".into(),
+            response_type: "code".into(),
+            scope: String::new(),
+            state: "state".into(),
+            nonce: None,
+            code_challenge: pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
+            code_challenge_method: "S256".into(),
+        };
+        let redirect = "https://team.cloudflareaccess.com/cdn-cgi/access/callback";
+        for scope in [
+            "openid email profile",
+            "openid profile email",
+            "email openid profile",
+            "email profile openid",
+            "profile openid email",
+            "profile email openid",
+        ] {
+            request.scope = scope.into();
+            assert!(
+                request
+                    .validate_for_cloudflare_access("access", redirect, 256, 256)
+                    .is_ok()
+            );
+            assert!(request.validate("access", redirect, 256, 256).is_err());
+        }
+        for scope in [
+            "openid email",
+            "openid email profile email",
+            "openid email profile admin",
+        ] {
+            request.scope = scope.into();
+            assert!(
+                request
+                    .validate_for_cloudflare_access("access", redirect, 256, 256)
+                    .is_err()
+            );
+        }
+        request.scope = "openid email profile".into();
+        request.state.clear();
+        assert!(
+            request
+                .validate_for_cloudflare_access("access", redirect, 256, 256)
+                .is_err()
+        );
+        request.state = "state".into();
+        request.code_challenge.clear();
+        assert!(
+            request
+                .validate_for_cloudflare_access("access", redirect, 256, 256)
+                .is_err()
+        );
+    }
+
     #[test]
     fn fapi_accepts_optional_state_and_order_independent_registered_scopes() {
         let mut request = Authorization {
