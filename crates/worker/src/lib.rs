@@ -106,8 +106,6 @@ mod vault_owner_records;
 mod vault_record_sharing;
 #[cfg(target_arch = "wasm32")]
 mod vault_ui;
-#[cfg(target_arch = "wasm32")]
-mod verified_email;
 
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
@@ -219,10 +217,6 @@ struct AuthorizationCodeContextRow {
     sub: String,
     nonce: Option<String>,
     scope: String,
-    email_requested: i64,
-    verified_email: Option<String>,
-    email_revision: Option<i64>,
-    email_release_revision: Option<i64>,
     auth_time: i64,
     parent_expires_at: i64,
     signing_generation: i64,
@@ -342,10 +336,6 @@ struct UserInfoResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    email: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    email_verified: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     mikaki_linked_document: Option<serde_json::Value>,
 }
 
@@ -394,10 +384,6 @@ pub struct AuthorizationCodeContext {
     sub: String,
     nonce: Option<String>,
     scope: &'static str,
-    base_scope: &'static str,
-    verified_email: Option<String>,
-    email_revision: Option<i64>,
-    email_release_revision: Option<i64>,
     auth_time: u64,
     parent_expires_at: u64,
     signing_kid: String,
@@ -1070,15 +1056,10 @@ async fn authorize_route(
     {
         Some("invalid_request")
     } else if parameters.get("scope").is_some_and(|value| {
-        mikaki_oidc::canonical_oidc_scope(
-            value,
-            !fapi
-                && context
-                    .env
-                    .var("MIKAKI_VERIFIED_EMAIL")
-                    .is_ok_and(|v| v.to_string() == "on"),
+        !matches!(
+            value.as_str(),
+            "openid" | "openid profile" | "profile openid"
         )
-        .is_none()
     }) {
         Some("invalid_scope")
     } else if parameters
@@ -1115,11 +1096,7 @@ async fn authorize_route(
         client_id: client_id.clone(),
         redirect_uri: redirect_uri.clone(),
         response_type: parameters["response_type"].clone(),
-        scope: if parameters["scope"].split(' ').any(|part| part == "profile") {
-            "openid profile".into()
-        } else {
-            "openid".into()
-        },
+        scope: parameters["scope"].clone(),
         state: parameters.get("state").cloned().unwrap_or_default(),
         nonce: parameters.get("nonce").cloned(),
         code_challenge: parameters
@@ -1426,21 +1403,9 @@ async fn authorize_route(
                     .nonce()
                     .map(JsValue::from_str)
                     .unwrap_or(JsValue::NULL),
-                JsValue::from_str(
-                    if parameters["scope"].split(' ').any(|part| part == "profile") {
-                        "openid profile"
-                    } else {
-                        "openid"
-                    },
-                ),
+                JsValue::from_str(parameters["scope"].as_str()),
             ])?,
     ];
-    if parameters["scope"].split(' ').any(|part| part == "email") {
-        statements.push(
-            db.prepare("INSERT INTO authorization_email_scope(code_hash) VALUES(?1)")
-                .bind(&[JsValue::from_str(code_hash)])?,
-        );
-    }
     if let (Some(snapshot), Some(age)) = (age_snapshot, age_request.as_ref()) {
         statements.push(snapshot.insert(&db, code_hash, &parameters["claims"], age)?);
     }
@@ -1645,16 +1610,7 @@ async fn discovery_route(
             grant_types_supported: ["authorization_code"],
             subject_types_supported: ["pairwise"],
             id_token_signing_alg_values_supported: ["ES256", "RS256"],
-            scopes_supported: if context
-                .env
-                .var("MIKAKI_VERIFIED_EMAIL")
-                .is_ok_and(|v| v.to_string() == "on")
-                && !fapi2_deployment(&context.env)?
-            {
-                vec!["openid", "profile", "email"]
-            } else {
-                vec!["openid", "profile"]
-            },
+            scopes_supported: vec!["openid", "profile"],
             claims_supported: {
                 let mut claims = vec![
                     "iss",
@@ -1670,15 +1626,6 @@ async fn discovery_route(
                 if name_release_available {
                     claims.push("name");
                 }
-                if context
-                    .env
-                    .var("MIKAKI_VERIFIED_EMAIL")
-                    .is_ok_and(|v| v.to_string() == "on")
-                    && !fapi2_deployment(&context.env)?
-                {
-                    claims.push("email");
-                    claims.push("email_verified");
-                }
                 if identity::claims_enabled(&context.env) {
                     claims.push(identity::CLAIM);
                 }
@@ -1693,8 +1640,6 @@ async fn discovery_route(
                 ]
             } else if fapi2_deployment(&context.env)? {
                 vec!["private_key_jwt"]
-            } else if normal_secret_basic_enabled(&context.env)? {
-                vec!["private_key_jwt", "client_secret_basic", "none"]
             } else {
                 vec!["private_key_jwt", "none"]
             },
@@ -1895,25 +1840,6 @@ async fn userinfo_name(
         return Err(worker::Error::RustError("claim release unavailable".into()));
     }
     Ok(Some(value.name))
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn userinfo_email(
-    env: &worker::Env,
-    db: &worker::d1::D1Database,
-    token_hash: &str,
-) -> worker::Result<Option<String>> {
-    if !env
-        .var("MIKAKI_VERIFIED_EMAIL")
-        .is_ok_and(|v| v.to_string() == "on")
-    {
-        return Ok(None);
-    }
-    #[derive(Deserialize)]
-    struct Email {
-        email: String,
-    }
-    Ok(db.prepare("SELECT er.email FROM token_issue ti JOIN authorization_code ac ON ac.code_hash=ti.code_hash JOIN authorization_email_scope es ON es.code_hash=ac.code_hash JOIN valid_client_session v ON v.client_id=ac.client_id AND v.sid=ac.sid JOIN client_session cs ON cs.client_id=ac.client_id AND cs.sid=ac.sid JOIN eligible_verified_email_release er ON er.client_id=ac.client_id AND er.account_id=cs.account_id WHERE ti.access_hash=?1 AND ti.revoked=0 AND ti.access_expires_at>unixepoch() LIMIT 1").bind(&[wasm_bindgen::JsValue::from_str(token_hash)])?.first::<Email>(None).await?.map(|r| r.email))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2131,17 +2057,13 @@ async fn userinfo_route_inner(
             return Ok(response);
         }
         let name = userinfo_name(&context.env, &db, &token_hash).await?;
-        let document = identity::userinfo(&context.env, &db, &token_hash).await?;
-        let email = userinfo_email(&context.env, &db, &token_hash).await?;
         return worker::Response::builder()
             .with_header("Cache-Control", "no-store")?
             .with_header("Pragma", "no-cache")?
             .from_json(&UserInfoResponse {
                 sub,
                 name,
-                email_verified: email.as_ref().map(|_| true),
-                email,
-                mikaki_linked_document: document,
+                mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
             });
     }
     let subject = db
@@ -2166,17 +2088,13 @@ async fn userinfo_route_inner(
         return Ok(response);
     }
     let name = userinfo_name(&context.env, &db, &token_hash).await?;
-    let document = identity::userinfo(&context.env, &db, &token_hash).await?;
-    let email = userinfo_email(&context.env, &db, &token_hash).await?;
     worker::Response::builder()
         .with_header("Cache-Control", "no-store")?
         .with_header("Pragma", "no-cache")?
         .from_json(&UserInfoResponse {
             sub: subject.sub,
             name,
-            email_verified: email.as_ref().map(|_| true),
-            email,
-            mikaki_linked_document: document,
+            mikaki_linked_document: identity::userinfo(&context.env, &db, &token_hash).await?,
         })
 }
 
@@ -2295,11 +2213,6 @@ pub async fn main(
         .post_async("/admin/invitations/start", admin_invitations::start)
         .post_async("/admin/invitations/finish", admin_invitations::finish)
         .post_async("/session/check", session_check::check)
-        .get_async("/account/email", verified_email::status)
-        .post_async("/account/email/start", verified_email::start)
-        .post_async("/account/email/confirm", verified_email::confirm)
-        .post_async("/account/email/release", verified_email::release)
-        .post_async("/account/email/remove", verified_email::remove)
         .get_async("/dbsc/challenge", dbsc::challenge_endpoint)
         .post_async("/dbsc/register", dbsc::register)
         .post_async("/dbsc/refresh", dbsc::refresh)
@@ -2519,9 +2432,6 @@ pub async fn scheduled(
 ) {
     if enrollment_mail::run_due(&env).await.is_err() {
         worker::console_error!("{{\"event\":\"enrollment_mail_delivery_failure\"}}");
-    }
-    if verified_email::collect(&env).await.is_err() {
-        worker::console_error!("{{\"event\":\"verified_email_gc_failure\"}}");
     }
     if matches!(event.cron().as_str(), "*/10 * * * *" | "0 3 * * *")
         && vault_gc::run(&env, event.schedule() as u64).await.is_err()

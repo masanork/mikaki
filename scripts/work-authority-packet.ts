@@ -147,29 +147,11 @@ export function authorityTemplates(account: string) {
   };
 }
 
-const packetGenerations = [
-  { baseline: 'retained', ownerCount: 2, count: 'fourteen' },
-  { baseline: 'waitlist', ownerCount: 3, count: 'fifteen' },
-  { baseline: 'age', ownerCount: 4, count: 'sixteen' },
-  { baseline: 'review', ownerCount: 5, count: 'seventeen' },
-  { baseline: 'wrap', ownerCount: 6, count: 'eighteen' },
-  { baseline: 'passport', ownerCount: 7, count: 'nineteen' },
-  { baseline: 'dbsc', ownerCount: 8, count: 'twenty' },
-  { baseline: 'secret', ownerCount: 9, count: 'twenty-one' },
-  { baseline: 'current', ownerCount: 10, count: 'twenty-two' },
-] as const;
-type PacketBaseline = (typeof packetGenerations)[number]['baseline'];
-
-function packetGeneration(names: string[]) {
-  return (
-    [...packetGenerations]
-      .reverse()
-      .find(({ ownerCount }) => names.includes(OWNER_MIGRATIONS[ownerCount - 1]!.name)) ??
-    packetGenerations[0]
-  );
-}
-
-export function authorityPlan(account: string, baseline: PacketBaseline = 'current') {
+export function authorityPlan(
+  account: string,
+  baseline:
+    'current' | 'passport' | 'wrap' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
+) {
   authorityTemplates(account);
   return {
     format_version: 1,
@@ -200,7 +182,19 @@ export function authorityPlan(account: string, baseline: PacketBaseline = 'curre
     qualification: [
       'allocate-and-inventory-dedicated-resources',
       'review-independent-operator-and-release-recovery-ownership',
-      `apply-frozen-${packetGenerations.find((item) => item.baseline === baseline)!.count}-migrations-to-empty-isolated-d1`,
+      baseline === 'retained'
+        ? 'apply-frozen-fourteen-migrations-to-empty-isolated-d1'
+        : baseline === 'waitlist'
+          ? 'apply-frozen-fifteen-migrations-to-empty-isolated-d1'
+          : baseline === 'age'
+            ? 'apply-frozen-sixteen-migrations-to-empty-isolated-d1'
+            : baseline === 'review'
+              ? 'apply-frozen-seventeen-migrations-to-empty-isolated-d1'
+              : baseline === 'wrap'
+                ? 'apply-frozen-eighteen-migrations-to-empty-isolated-d1'
+                : baseline === 'passport'
+                  ? 'apply-frozen-nineteen-migrations-to-empty-isolated-d1'
+                  : 'apply-frozen-twenty-migrations-to-empty-isolated-d1',
       'bootstrap-independent-checkpoint-and-primary-once-under-quiescence',
       'verify-matching-current-markers-before-opening-browser-ingress',
       'complete-actual-passkey-owner-enrollment-and-prf-vault-open',
@@ -220,7 +214,19 @@ export function authorityPlan(account: string, baseline: PacketBaseline = 'curre
 /** Apply the packaged chain only to in-memory SQLite to inventory its exact schema. */
 export async function authoritySchema(directory: string) {
   const names = (await readdir(directory)).sort();
-  const owner = OWNER_MIGRATIONS.slice(0, packetGeneration(names).ownerCount);
+  const owner = names.includes('0008_dbsc_sessions.sql')
+    ? OWNER_MIGRATIONS
+    : names.includes('0007_passport_issuance.sql')
+      ? OWNER_MIGRATIONS.slice(0, 7)
+      : names.includes('0006_owner_login_wrap.sql')
+        ? OWNER_MIGRATIONS.slice(0, 6)
+        : names.includes('0005_login_connection_review.sql')
+          ? OWNER_MIGRATIONS.slice(0, 5)
+          : names.includes('0004_identity_age_requests.sql')
+            ? OWNER_MIGRATIONS.slice(0, 4)
+            : names.includes('0003_enrollment_waitlist.sql')
+              ? OWNER_MIGRATIONS.slice(0, 3)
+              : OWNER_MIGRATIONS.slice(0, 2);
   const workNames = [
     '0003_work_delegation.sql',
     '0004_work_disclosure_budget.sql',
@@ -304,9 +310,31 @@ export async function authorityInventory(directory: string, source: Source) {
       'authority_packet_config_changed',
     );
   const schema = await authoritySchema(join(directory, 'migrations'));
-  const baseline = packetGeneration(
-    schema.migrations.map(({ path }) => path.replace(/^migrations\//, '')),
-  ).baseline;
+  const baseline = schema.migrations.some(
+    (migration) => migration.path === 'migrations/0008_dbsc_sessions.sql',
+  )
+    ? 'current'
+    : schema.migrations.some(
+          (migration) => migration.path === 'migrations/0007_passport_issuance.sql',
+        )
+      ? 'passport'
+      : schema.migrations.some(
+            (migration) => migration.path === 'migrations/0006_owner_login_wrap.sql',
+          )
+        ? 'wrap'
+        : schema.migrations.some(
+              (migration) => migration.path === 'migrations/0005_login_connection_review.sql',
+            )
+          ? 'review'
+          : schema.migrations.some(
+                (migration) => migration.path === 'migrations/0004_identity_age_requests.sql',
+              )
+            ? 'age'
+            : schema.migrations.some(
+                  (migration) => migration.path === 'migrations/0003_enrollment_waitlist.sql',
+                )
+              ? 'waitlist'
+              : 'retained';
   assert.deepEqual(
     JSON.parse((await packetFile(join(directory, 'plan.json'))).toString('utf8')),
     authorityPlan(AUTHORITY_ACCOUNT, baseline),

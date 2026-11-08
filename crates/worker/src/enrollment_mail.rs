@@ -9,11 +9,7 @@ use zeroize::Zeroizing;
 fn unavailable() -> worker::Error {
     worker::Error::RustError("enrollment_mail_unavailable".into())
 }
-pub(crate) async fn call(
-    object: &JsValue,
-    method: &str,
-    values: &[JsValue],
-) -> worker::Result<JsValue> {
+async fn call(object: &JsValue, method: &str, values: &[JsValue]) -> worker::Result<JsValue> {
     let function = Reflect::get(object, &method.into())?
         .dyn_into::<Function>()
         .map_err(|_| unavailable())?;

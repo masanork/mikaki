@@ -48,31 +48,6 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// Normalize the supported OIDC scope set without accepting duplicates,
-/// unknown scopes, or whitespace outside the OAuth space-delimited grammar.
-/// Email is a separately gated profile and callers must opt in explicitly.
-pub fn canonical_oidc_scope(input: &str, allow_email: bool) -> Option<&'static str> {
-    if input.is_empty() || input.starts_with(' ') || input.ends_with(' ') {
-        return None;
-    }
-    let (mut openid, mut profile, mut email) = (false, false, false);
-    for part in input.split(' ') {
-        match part {
-            "openid" if !openid => openid = true,
-            "profile" if !profile => profile = true,
-            "email" if allow_email && !email => email = true,
-            _ => return None,
-        }
-    }
-    match (openid, profile, email) {
-        (true, false, false) => Some("openid"),
-        (true, true, false) => Some("openid profile"),
-        (true, false, true) => Some("openid email"),
-        (true, true, true) => Some("openid profile email"),
-        _ => None,
-    }
-}
-
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Authorization {
@@ -274,39 +249,6 @@ pub fn pkce(verifier: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn email_scope_is_opt_in_and_normalizes_only_valid_sets() {
-        for input in [
-            "openid email profile",
-            "email profile openid",
-            "profile openid email",
-            "email openid profile",
-            "profile email openid",
-            "openid profile email",
-        ] {
-            assert_eq!(
-                canonical_oidc_scope(input, true),
-                Some("openid profile email")
-            );
-            assert_eq!(canonical_oidc_scope(input, false), None);
-        }
-        assert_eq!(
-            canonical_oidc_scope("email openid", true),
-            Some("openid email")
-        );
-        for invalid in [
-            "openid email email",
-            "openid  email",
-            " openid email",
-            "openid email ",
-            "openid\temail",
-            "email",
-            "openid unknown",
-        ] {
-            assert_eq!(canonical_oidc_scope(invalid, true), None);
-        }
-    }
     #[test]
     fn fapi_accepts_optional_state_and_order_independent_registered_scopes() {
         let mut request = Authorization {
