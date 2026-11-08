@@ -9,6 +9,8 @@ const LOGIN_WRAP: &str = "0006_owner_login_wrap.sql";
 
 const PASSPORT: &str = "0007_passport_issuance.sql";
 const DBSC: &str = "0008_dbsc_sessions.sql";
+const ACCESS_BINDING: &str = "0009_access_email_bindings.sql";
+const ACCESS_SCOPE: &str = "0010_access_email_scope.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -46,10 +48,12 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{DBSC}")
         }
         DBSC => {
-            ledger
-                == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
-                )
+            let current = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+            );
+            ledger == current
+                || ledger == format!("{current},{ACCESS_BINDING}")
+                || ledger == format!("{current},{ACCESS_BINDING},{ACCESS_SCOPE}")
         }
         _ => false,
     }
@@ -209,6 +213,26 @@ mod dbsc_tests {
             format!("{previous},0008_unknown.sql"),
         ] {
             assert!(!ready(&invalid, PASSPORT));
+            assert!(!ready(&invalid, DBSC));
+        }
+    }
+
+    #[test]
+    fn access_schema_bridge_accepts_only_exact_ordered_ledgers() {
+        let current = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC}"
+        );
+        let binding = format!("{current},{ACCESS_BINDING}");
+        let upgraded = format!("{binding},{ACCESS_SCOPE}");
+        assert!(ready(&current, DBSC));
+        assert!(ready(&binding, DBSC));
+        assert!(ready(&upgraded, DBSC));
+        for invalid in [
+            format!("{current},{ACCESS_SCOPE}"),
+            format!("{upgraded},{ACCESS_SCOPE}"),
+            format!("{binding},0010_unknown.sql"),
+            format!("{current},{ACCESS_SCOPE},{ACCESS_BINDING}"),
+        ] {
             assert!(!ready(&invalid, DBSC));
         }
     }
