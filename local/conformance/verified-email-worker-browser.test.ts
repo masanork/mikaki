@@ -10,6 +10,16 @@ import { chromium, expect } from '@playwright/test';
 import { build } from 'vite';
 import { createTestHarness } from 'wrangler';
 
+function confirmationToken(text: string): string {
+  return text.match(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/)?.[0] ?? '';
+}
+
+test('confirmation token extraction accepts base64url edge characters', () => {
+  const token = `-${'a'.repeat(41)}_`;
+  assert.equal(confirmationToken(`Confirmation code: ${token}\n`), token);
+  assert.equal(confirmationToken(`${token}a`), '');
+});
+
 test('email browser controls use Worker, D1 and simulated email together', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const output = new URL('../generated/email-ui-worker/', import.meta.url);
@@ -115,7 +125,7 @@ test('email browser controls use Worker, D1 and simulated email together', async
         const created = (await mailFiles()).filter((p) => !before.has(p));
         if (created.length !== 1) return '';
         const text = await readFile(join(dir, created[0]!), 'utf8').catch(() => '');
-        token = text.match(/\b[A-Za-z0-9_-]{43}\b/)?.[0] ?? '';
+        token = confirmationToken(text);
         return token;
       })
       .toMatch(/^[A-Za-z0-9_-]{43}$/);
