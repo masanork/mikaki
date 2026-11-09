@@ -61,7 +61,7 @@ export const OWNER_MIGRATIONS = [
   },
   {
     name: '0011_access_email_bindings.sql',
-    sha256: '1d836f4d34cbd722a2a846a96ee90b0e3c1c5dae1a72879dcf118db756dc8fa7',
+    sha256: 'fba07c7f4b3208ac33d8de87f275d9f7af36efc2ffa9f9a555981a37a9d09a73',
   },
   {
     name: '0012_access_email_scope.sql',

@@ -46,6 +46,15 @@ class AccessEmailBindingTest(unittest.TestCase):
         self.db.execute("UPDATE access_email_binding SET revision=2, active=0")
         self.assertEqual(self.db.execute("SELECT revision,active FROM access_email_binding").fetchone(), (2, 0))
 
+    def test_audit_records_cannot_be_changed_or_deleted(self):
+        self.db.execute("INSERT INTO access_email_binding_audit VALUES('bind','access','alice','bind',1,'operator','reason',123)")
+        self.db.execute("INSERT INTO access_client_secret_audit VALUES('secret','access','register',1,'operator','reason',123)")
+        for table in ("access_email_binding_audit", "access_client_secret_audit"):
+            for operation in (f"UPDATE {table} SET reason='changed'", f"DELETE FROM {table}"):
+                with self.subTest(operation=operation), self.assertRaises(sqlite3.IntegrityError):
+                    self.db.execute(operation)
+            self.assertEqual(self.db.execute(f"SELECT reason FROM {table}").fetchone()[0], "reason")
+
     def test_unknown_foreign_keys_and_invalid_metadata_are_rejected(self):
         for values in [
             ("missing", "alice", "alice@example.test", 1),

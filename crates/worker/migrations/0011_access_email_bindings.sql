@@ -54,3 +54,13 @@ CREATE TABLE access_client_secret_audit (
   reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 512),
   occurred_at INTEGER NOT NULL CHECK(occurred_at > 0)
 ) STRICT;
+
+-- Preserve operator audit records after insertion, as with verified-email policy audits.
+CREATE TRIGGER access_email_binding_audit_no_update BEFORE UPDATE ON access_email_binding_audit
+BEGIN SELECT RAISE(ABORT, 'access binding audit is immutable'); END;
+CREATE TRIGGER access_email_binding_audit_no_delete BEFORE DELETE ON access_email_binding_audit
+BEGIN SELECT RAISE(ABORT, 'access binding audit is immutable'); END;
+CREATE TRIGGER access_client_secret_audit_no_update BEFORE UPDATE ON access_client_secret_audit
+BEGIN SELECT RAISE(ABORT, 'access client secret audit is immutable'); END;
+CREATE TRIGGER access_client_secret_audit_no_delete BEFORE DELETE ON access_client_secret_audit
+BEGIN SELECT RAISE(ABORT, 'access client secret audit is immutable'); END;
