@@ -50,9 +50,10 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
   const messaging = load(root, 'crates/worker/messaging-migrations', MESSAGING_MIGRATIONS);
   assertWorkMigrationFiles(work);
   assertMessagingMigrationFiles(messaging);
+  const expectedLedger = owner.map(({ name }, i) => ({ id: i + 1, name }));
   assert.deepEqual(
     await query('SELECT id,name FROM d1_migrations ORDER BY id'),
-    owner.map(({ name }, i) => ({ id: i + 1, name })),
+    expectedLedger,
     'Owner ledger differs',
   );
   assertWorkLedger(await query('SELECT id,name,sha256 FROM work_schema_migrations ORDER BY id'));
@@ -74,6 +75,11 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
       'Combined schema differs',
     );
     assert.deepEqual(await query('PRAGMA foreign_key_check'), [], 'Foreign keys failed');
+    assert.deepEqual(
+      await query('SELECT id,name FROM d1_migrations ORDER BY id'),
+      expectedLedger,
+      'Owner ledger changed during audit',
+    );
     return {
       stage,
       owner_migrations: owner.length,

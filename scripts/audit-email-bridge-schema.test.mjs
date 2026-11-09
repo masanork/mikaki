@@ -52,6 +52,17 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
         /Owner ledger differs/,
       );
     }
+    let ledgerReads = 0;
+    const changedLedger = async (statement) => {
+      const rows = await query(statement);
+      if (statement === 'SELECT id,name FROM d1_migrations ORDER BY id' && ++ledgerReads === 2)
+        return [...rows, { id: 11, name: '0011_unexpected.sql' }];
+      return rows;
+    };
+    await assert.rejects(
+      auditBridgeSchema({ root, feature, stage: 10, query: changedLedger }),
+      /Owner ledger changed during audit/,
+    );
     db.exec('CREATE TABLE unexpected_schema(id INTEGER)');
     await assert.rejects(
       auditBridgeSchema({ root, feature, stage: 10, query }),
