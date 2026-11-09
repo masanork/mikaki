@@ -93,6 +93,14 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
   }
 }
 
+export function assertProductionConfig(bytes) {
+  assert.equal(
+    createHash('sha256').update(bytes).digest('hex'),
+    '9e09409199081c3165a3d3f21205f13f289dc0a5da62d3779cec9c3649612e1a',
+    'Production target config differs',
+  );
+}
+
 export function parseAuditArgs(args) {
   assert.equal(args.length, 3, 'Expected --remote --stage 8|9|10');
   assert.equal(args[0], '--remote', 'Expected --remote');
@@ -105,17 +113,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const stage = parseAuditArgs(process.argv.slice(2));
   const root = process.cwd(),
     feature = root;
-  const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-  assert.equal(
-    git(root, 'rev-parse', 'HEAD:crates/worker/wrangler.production.jsonc'),
-    '6c29f65c05cf0dee1fcfc2b98e4b21c36237947c',
-    'Production target config differs',
-  );
-  assert.equal(
-    git(root, 'status', '--porcelain', '--', 'crates/worker/wrangler.production.jsonc'),
-    '',
-    'Production target config is dirty',
-  );
+  assertProductionConfig(readFileSync(join(root, 'crates/worker/wrangler.production.jsonc')));
   const query = async (sql) => {
     const output = execFileSync(
       join(root, 'node_modules/.bin/wrangler'),

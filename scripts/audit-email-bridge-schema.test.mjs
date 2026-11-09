@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { auditBridgeSchema, parseAuditArgs } from './audit-email-bridge-schema.mjs';
+import {
+  assertProductionConfig,
+  auditBridgeSchema,
+  parseAuditArgs,
+} from './audit-email-bridge-schema.mjs';
 import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
 import { WORK_LEDGER_SQL, WORK_MIGRATIONS } from './production-work-schema.ts';
 import { MESSAGING_LEDGER_SQL, MESSAGING_MIGRATIONS } from './production-messaging-schema.ts';
@@ -84,4 +88,13 @@ test('CLI requires an explicit reviewed stage and remote target', () => {
     ['--remote', '--stage', '8', '--extra'],
   ])
     assert.throws(() => parseAuditArgs(args));
+});
+
+test('production target configuration is byte-pinned', () => {
+  const config = readFileSync('crates/worker/wrangler.production.jsonc');
+  assert.doesNotThrow(() => assertProductionConfig(config));
+  assert.throws(
+    () => assertProductionConfig(Buffer.concat([config, Buffer.from(' ')])),
+    /Production target config differs/,
+  );
 });
