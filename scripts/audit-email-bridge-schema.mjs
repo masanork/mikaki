@@ -45,9 +45,19 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
   assert.ok([8, 9, 10].includes(stage), 'stage must be 8, 9 or 10');
   const baseline = OWNER_MIGRATIONS.slice(0, 8);
   assert.equal(baseline.at(-1)?.name, '0008_dbsc_sessions.sql');
-  assert.ok([8, 10].includes(OWNER_MIGRATIONS.length), 'Unexpected Owner migration chain');
-  if (OWNER_MIGRATIONS.length === 10)
-    assert.deepEqual(OWNER_MIGRATIONS.slice(8), upgrades, 'Feature migrations differ from fixtures');
+  assert.ok([8, 10, 12].includes(OWNER_MIGRATIONS.length), 'Unexpected Owner migration chain');
+  if (OWNER_MIGRATIONS.length >= 10)
+    assert.deepEqual(
+      OWNER_MIGRATIONS.slice(8, 10),
+      upgrades,
+      'Feature migrations differ from fixtures',
+    );
+  if (OWNER_MIGRATIONS.length === 12)
+    assert.deepEqual(
+      OWNER_MIGRATIONS.slice(10).map(({ name }) => name),
+      ['0011_access_email_bindings.sql', '0012_access_email_scope.sql'],
+      'Unexpected Access migration chain',
+    );
   const base = load(root, 'crates/worker/migrations', baseline);
   const added = load(feature, 'scripts/fixtures/owner-email-migrations', upgrades);
   const owner = [...base, ...added.slice(0, stage - 8)];
