@@ -1,6 +1,6 @@
 # Owner email schema bridge rollout candidate
 
-The feature in #336 has reached main, but the previous Worker remains deployed with the Owner ledger at 0008. That Worker reports not ready if either new migration is applied. This change temporarily removes the undeployed feature and its migration files while adding a readiness bridge. It also retains #340's later dependency changes, so the candidate is not otherwise identical to the deployed source. The ordinary release pipeline remains unchanged; this is not permission to deploy or migrate production.
+The feature in #336 has reached main, but the previous Worker remains deployed with the Owner ledger at 0008. That Worker reports not ready if either new migration is applied. This change temporarily removes the undeployed feature and its migration files while adding a readiness bridge. It also retains the later #340 and #345 dependency changes, so the candidate is not otherwise identical to the deployed source. The ordinary release pipeline remains unchanged; this is not permission to deploy or migrate production.
 
 The intended sequence, after separate review and qualification, is:
 
