@@ -109,11 +109,16 @@ test('email browser controls use Worker, D1 and simulated email together', async
     await page.getByLabel('Email address').fill('owner@example.org');
     await page.getByRole('button', { name: 'Send confirmation code' }).click();
     await expect(page.getByRole('status')).toContainText('accepted for sending');
-    const created = (await mailFiles()).filter((p) => !before.has(p));
-    assert.equal(created.length, 1);
-    const text = await readFile(join(dir, created[0]!), 'utf8');
-    const token = text.match(/\b[A-Za-z0-9_-]{43}\b/)?.[0];
-    assert.ok(token);
+    let token = '';
+    await expect
+      .poll(async () => {
+        const created = (await mailFiles()).filter((p) => !before.has(p));
+        if (created.length !== 1) return '';
+        const text = await readFile(join(dir, created[0]!), 'utf8').catch(() => '');
+        token = text.match(/\b[A-Za-z0-9_-]{43}\b/)?.[0] ?? '';
+        return token;
+      })
+      .toMatch(/^[A-Za-z0-9_-]{43}$/);
     await page.getByLabel('Confirmation code').fill(token);
     await page.getByRole('button', { name: 'Verify', exact: true }).click();
     await expect(page.getByText('Verified: owner@example.org')).toBeVisible();
