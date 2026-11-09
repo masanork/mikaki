@@ -10,3 +10,9 @@ The intended sequence, after separate review and qualification, is:
 4. Restore the feature in a subsequent change, run its full release validation, and promote it only after both migrations and the full schema are verified. A Worker rollback to the original 0008 version is unsafe after migration; a D1 restore is a separate decision and can discard intervening writes.
 
 No migration runner, backup, restore, or deployment approval is supplied by this change. The migration ordering and recovery procedure need their own executable, synthetic-environment rehearsal and review. The open Access drafts use different migration names and require reconciliation with whichever Owner chain is ultimately adopted.
+
+## Read-only schema audit
+
+`node scripts/audit-email-bridge-schema.mjs --remote --stage 8` compares the current production Owner, Work and Messaging ledgers, full schema and foreign keys with byte-pinned migration inputs. Its remote CLI accepts only stage 8 and the reviewed production configuration. The 0009 and 0010 SQL files under `scripts/fixtures/owner-email-migrations` are byte-pinned review fixtures, not active migrations. The test `node --test scripts/audit-email-bridge-schema.test.mjs` exercises all three stages and rejects an unexpected schema and a wrong ledger.
+
+The audit executes multiple separate reads, not an atomic snapshot, and does not fence writes or establish backup/recovery. It cannot verify production stage 9 or 10. A separately reviewed procedure must address quiescence, post-migration verification, unknown outcomes and recovery before applying any production migration.
