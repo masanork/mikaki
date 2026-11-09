@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, randomUUID } from 'node:crypto';
+import { createPublicKey, randomUUID } from 'node:crypto';
 
 function exactKeys<K extends string>(
   value: unknown,
@@ -24,94 +24,6 @@ function httpsUri(value: unknown) {
 export function validateRegistration(input: unknown) {
   exactKeys(input, ['client_id', 'sector_identifier', 'redirect_uris', 'key']);
   return { ...validateRegistrationIdentity(input), key: validateKey(input.key) };
-}
-
-export function validateSecretRegistration(input: unknown) {
-  exactKeys(input, ['client_id', 'sector_identifier', 'redirect_uris', 'secret']);
-  const identity = validateRegistrationIdentity(input);
-  return { ...identity, verifier: secretVerifier(input.secret) };
-}
-
-function secretVerifier(secret: unknown) {
-  if (typeof secret !== 'string') throw new Error('invalid client secret');
-  const decoded = Buffer.from(secret, 'base64url');
-  if (decoded.length !== 32 || decoded.toString('base64url') !== secret) {
-    throw new Error('client secret must be a canonical base64url encoding of 32 random bytes');
-  }
-  return createHash('sha256').update(secret).digest('base64url');
-}
-
-export function validateSecretRotation(input: unknown) {
-  exactKeys(input, ['secret', 'expected_revision']);
-  if (
-    !Number.isSafeInteger(input.expected_revision) ||
-    (input.expected_revision as number) < 1 ||
-    input.expected_revision === Number.MAX_SAFE_INTEGER
-  ) {
-    throw new Error('expected_revision must be a positive safe integer');
-  }
-  return { verifier: secretVerifier(input.secret), revision: input.expected_revision as number };
-}
-
-export function validateEmailPolicy(input: unknown) {
-  exactKeys(input, ['enabled', 'expected_client_revision']);
-  if (
-    typeof input.enabled !== 'boolean' ||
-    !Number.isSafeInteger(input.expected_client_revision) ||
-    (input.expected_client_revision as number) < 1 ||
-    input.expected_client_revision === Number.MAX_SAFE_INTEGER
-  )
-    throw new Error('invalid email policy');
-  return { enabled: input.enabled, revision: input.expected_client_revision as number };
-}
-
-export async function setClientEmailPolicy(
-  db: any,
-  clientId: string,
-  input: unknown,
-  actor: string,
-  reason: string,
-) {
-  managedClientId(clientId);
-  const value = validateEmailPolicy(input);
-  const meta = metadata(actor, reason);
-  await db.batch([
-    db
-      .prepare(
-        'UPDATE client SET revision=revision+1 WHERE client_id=? AND active=1 AND revision=?',
-      )
-      .bind(clientId, value.revision),
-    db
-      .prepare(
-        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
-      )
-      .bind(meta.operation),
-    db
-      .prepare(
-        'INSERT INTO client_email_policy(client_id,client_revision,enabled) VALUES(?,?,?) ON CONFLICT(client_id) DO UPDATE SET client_revision=excluded.client_revision,enabled=excluded.enabled',
-      )
-      .bind(clientId, value.revision + 1, value.enabled ? 1 : 0),
-    db
-      .prepare(
-        'INSERT INTO client_email_policy_audit(operation_id,client_id,client_revision,enabled,actor,reason,occurred_at) VALUES(?,?,?,?,?,?,?)',
-      )
-      .bind(
-        meta.operation,
-        clientId,
-        value.revision + 1,
-        value.enabled ? 1 : 0,
-        meta.actor,
-        meta.reason,
-        meta.now,
-      ),
-    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
-  ]);
-  return {
-    clientId,
-    revision: value.revision + 1,
-    enabled: value.enabled,
-    operation: meta.operation,
-  };
 }
 
 function validateRegistrationIdentity(input: {
@@ -290,75 +202,6 @@ export async function registerNativeClient(db: any, input: unknown, actor: strin
     audit(db, meta, value.client_id, 'register'),
   ]);
   return { clientId: value.client_id, operation: meta.operation, clientType: 'native' };
-}
-
-export async function registerSecretClient(db: any, input: unknown, actor: string, reason: string) {
-  const value = validateSecretRegistration(input);
-  const meta = metadata(actor, reason);
-  await db.batch([
-    db
-      .prepare(
-        "INSERT INTO client(client_id,revision,active,client_type,auth_method,allow_missing_pkce,sector_identifier) VALUES(?,1,1,'web','client_secret_basic',0,?)",
-      )
-      .bind(value.client_id, value.sector_identifier),
-    ...value.redirect_uris.map((uri) =>
-      db
-        .prepare('INSERT INTO client_redirect_uri(client_id,redirect_uri) VALUES(?,?)')
-        .bind(value.client_id, uri),
-    ),
-    db
-      .prepare('INSERT INTO client_secret(client_id,revision,active,secret_hash) VALUES(?,1,1,?)')
-      .bind(value.client_id, value.verifier),
-    audit(db, meta, value.client_id, 'register'),
-  ]);
-  return {
-    clientId: value.client_id,
-    operation: meta.operation,
-    authMethod: 'client_secret_basic',
-  };
-}
-
-/** Immediate cutover: the old secret and outstanding client revisions stop working. */
-export async function rotateSecretClient(
-  db: any,
-  clientId: string,
-  input: unknown,
-  actor: string,
-  reason: string,
-) {
-  managedClientId(clientId);
-  const value = validateSecretRotation(input);
-  const meta = metadata(actor, reason);
-  await db.batch([
-    db
-      .prepare(
-        "UPDATE client_secret SET secret_hash=?,revision=revision+1 WHERE client_id=? AND active=1 AND revision=? AND secret_hash<>? AND EXISTS(SELECT 1 FROM client WHERE client_id=? AND active=1 AND client_type='web' AND auth_method='client_secret_basic')",
-      )
-      .bind(value.verifier, clientId, value.revision, value.verifier, clientId),
-    db
-      .prepare(
-        'INSERT INTO atomic_guard(operation_id,passed) VALUES(?,CASE WHEN changes()=1 THEN 1 ELSE 0 END)',
-      )
-      .bind(meta.operation),
-    db
-      .prepare('UPDATE client SET revision=revision+1 WHERE client_id=? AND active=1')
-      .bind(clientId),
-    db
-      .prepare(
-        'INSERT INTO client_secret_rotation_audit(operation_id,client_id,previous_revision,new_revision,actor,reason,occurred_at) VALUES(?,?,?,?,?,?,?)',
-      )
-      .bind(
-        meta.operation,
-        clientId,
-        value.revision,
-        value.revision + 1,
-        meta.actor,
-        meta.reason,
-        meta.now,
-      ),
-    db.prepare('DELETE FROM atomic_guard WHERE operation_id=?').bind(meta.operation),
-  ]);
-  return { clientId, operation: meta.operation, revision: value.revision + 1 };
 }
 
 export async function addKey(

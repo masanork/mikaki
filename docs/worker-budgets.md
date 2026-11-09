@@ -52,12 +52,6 @@ measurements. They are neither Cloudflare limits nor size targets. A warning
 is a prompt to examine growth; normal gzip variation does not require a
 threshold change or block a release.
 
-The Chat beta browser qualification also reports its server Wasm raw and gzip
-sizes against the OP warning thresholds. Its browser asset budgets remain
-separate. The beta release upload preparation and reverification apply the
-64 MiB limit to the complete frozen Worker bundle, including its entry point
-and uploaded modules; the single Wasm file is not the deployable bundle.
-
 For example, the combined workspace snapshots and Passkey handoff Vault script
 has **342,007 raw bytes** and the same SHA-256 on local macOS / Node 26.11.1 and
 Ubuntu / Node 26.10.0 CI. Its gzip estimate is **97,871** locally and **98,339**
