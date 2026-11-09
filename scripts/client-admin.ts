@@ -74,7 +74,7 @@ if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.databa
 }
 const action = options['--action'];
 const input = options['--input']
-  ? JSON.parse(await readFile(resolve(options['--input']), 'utf8'))
+  ? JSON.parse(await readFile(resolve(options['--input']), 'utf8')) // NOSONAR: This operator CLI intentionally reads the explicitly supplied input file.
   : null;
 if (action === 'register') validateRegistration(input);
 if (action === 'register-native') validateNativeRegistration(input);
