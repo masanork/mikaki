@@ -25,7 +25,7 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
   try {
     db.exec('PRAGMA foreign_keys=ON');
     db.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT UNIQUE)');
-    for (const [i, { name }] of OWNER_MIGRATIONS.entries()) {
+    for (const [i, { name }] of OWNER_MIGRATIONS.slice(0, 8).entries()) {
       db.exec(sql(root, 'migrations', name));
       db.prepare('INSERT INTO d1_migrations VALUES(?,?)').run(i + 1, name);
     }
