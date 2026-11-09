@@ -12,10 +12,10 @@ license = "MIT OR Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ml-kem = { version = "=0.3.3", default-features = false, features = ["hazmat", "zeroize"] }
-ml-dsa = { version = "=0.1.1", default-features = false, features = ["zeroize"] }
-wasm-bindgen = "=0.2.129"
-hpke = { version = "=0.14.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
+ml-kem = { version = "=0.3.4", default-features = false, features = ["hazmat", "zeroize"] }
+ml-dsa = { version = "=0.1.2", default-features = false, features = ["zeroize"] }
+wasm-bindgen = "=0.2.130"
+hpke = { version = "=0.15.1", default-features = false, features = ["alloc", "mlkem", "hkdfsha2", "aes"] }
 rand_chacha = { version = "=0.10.0", default-features = false }
 sha2 = "=0.11.1"
 
