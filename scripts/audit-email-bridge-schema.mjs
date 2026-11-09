@@ -87,12 +87,16 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
   }
 }
 
+export function parseAuditArgs(args) {
+  assert.equal(args.length, 3, 'Expected --remote --stage 8|9|10');
+  assert.equal(args[0], '--remote', 'Expected --remote');
+  assert.equal(args[1], '--stage', 'Expected --stage');
+  assert.ok(['8', '9', '10'].includes(args[2]), 'Stage must be 8, 9 or 10');
+  return Number(args[2]);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  assert.deepEqual(
-    process.argv.slice(2),
-    ['--remote', '--stage', '8'],
-    'Only the currently observed production stage is enabled',
-  );
+  const stage = parseAuditArgs(process.argv.slice(2));
   const root = process.cwd(),
     feature = root;
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -127,5 +131,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     assert.equal(result[0].success, true);
     return result[0].results;
   };
-  console.log(JSON.stringify(await auditBridgeSchema({ root, feature, stage: 8, query })));
+  console.log(JSON.stringify(await auditBridgeSchema({ root, feature, stage, query })));
 }

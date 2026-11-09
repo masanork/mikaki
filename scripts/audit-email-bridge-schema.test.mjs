@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { auditBridgeSchema } from './audit-email-bridge-schema.mjs';
+import { auditBridgeSchema, parseAuditArgs } from './audit-email-bridge-schema.mjs';
 import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
 import { WORK_LEDGER_SQL, WORK_MIGRATIONS } from './production-work-schema.ts';
 import { MESSAGING_LEDGER_SQL, MESSAGING_MIGRATIONS } from './production-messaging-schema.ts';
@@ -60,4 +60,17 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
   } finally {
     db.close();
   }
+});
+
+test('CLI requires an explicit reviewed stage and remote target', () => {
+  for (const stage of [8, 9, 10])
+    assert.equal(parseAuditArgs(['--remote', '--stage', String(stage)]), stage);
+  for (const args of [
+    [],
+    ['--remote', '--stage', '11'],
+    ['--local', '--stage', '8'],
+    ['--remote', '--stage', '08'],
+    ['--remote', '--stage', '8', '--extra'],
+  ])
+    assert.throws(() => parseAuditArgs(args));
 });
