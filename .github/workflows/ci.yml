@@ -64,6 +64,7 @@ jobs:
           npm run test:identity-trust-freshness
           npm run test:webauthn-fuzz
           node --test scripts/static-sql.test.ts
+          node --test scripts/audit-email-bridge-schema.test.mjs
           npm run test:work-authority-packet
           npm run test:work-authority-allocation
           npm run test:work-authority-deployment
