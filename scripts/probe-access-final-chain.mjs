@@ -159,8 +159,22 @@ try {
   assert.equal(await readyStatus(bridge), 204);
   assert.equal(await readyStatus(feature), 503);
   await login(bridge);
+  const contextBefore = await DB.prepare(
+    'SELECT code_hash,nonce,scope FROM code_context ORDER BY code_hash',
+  ).all();
+  assert.ok(contextBefore.results.length > 0, 'existing authorization contexts must be present');
+  const tokenCountBefore = await DB.prepare('SELECT count(*) AS n FROM token_issue').first();
   await cp(join(migrations, names[11]), join(dir, names[11]));
   await bridge.applyD1Migrations('DB');
+  const contextAfter = await DB.prepare(
+    'SELECT code_hash,nonce,scope FROM code_context ORDER BY code_hash',
+  ).all();
+  assert.deepEqual(contextAfter.results, contextBefore.results, 'authorization contexts changed');
+  assert.deepEqual(
+    await DB.prepare('SELECT count(*) AS n FROM token_issue').first(),
+    tokenCountBefore,
+    'existing token issues changed',
+  );
   assert.equal(await readyStatus(bridge), 204);
   assert.equal(await readyStatus(feature), 204);
   await login(feature);
