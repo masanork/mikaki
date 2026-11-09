@@ -746,8 +746,12 @@ impl IdTokenSigningInput {
             || issued_at == 0
             || expires_at <= issued_at
             || auth_time > issued_at
-            || email.is_some_and(|v| {
-                v.is_empty() || v.len() > 254 || v.bytes().any(|b| b.is_ascii_control())
+            || email.is_some_and(|value| {
+                value.is_empty()
+                    || value.len() > 254
+                    || value
+                        .bytes()
+                        .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
             })
         {
             return Err(InvalidIdTokenClaims);
@@ -1093,6 +1097,41 @@ mod tests {
         assert!(signer.matches_public_jwk(&public_jwk));
         let different = public_jwk.replace("op-1", "op-2");
         assert!(!signer.matches_public_jwk(&different));
+    }
+
+    #[test]
+    fn id_token_optional_verified_email_is_explicit_and_bounded() {
+        fn claims(email: Option<&str>) -> Result<serde_json::Value, InvalidIdTokenClaims> {
+            let input = IdTokenSigningInput::new_with_verified_email(
+                "ES256",
+                "key",
+                "https://issuer.example",
+                "sub",
+                "client",
+                "sid",
+                None,
+                10,
+                11,
+                12,
+                email,
+            )?;
+            let encoded = std::str::from_utf8(input.as_bytes())
+                .unwrap()
+                .split('.')
+                .nth(1)
+                .unwrap();
+            Ok(serde_json::from_slice(&B64.decode(encoded).unwrap()).unwrap())
+        }
+        let absent = claims(None).unwrap();
+        assert!(absent.get("email").is_none());
+        assert!(absent.get("email_verified").is_none());
+        let present = claims(Some("Owner@example.test")).unwrap();
+        assert_eq!(present["email"], "Owner@example.test");
+        assert_eq!(present["email_verified"], true);
+        for invalid in ["", "a\nb@example.test", " a@example.test"] {
+            assert!(claims(Some(invalid)).is_err());
+        }
+        assert!(claims(Some(&"a".repeat(255))).is_err());
     }
 
     #[test]

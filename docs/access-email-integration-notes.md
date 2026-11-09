@@ -1,0 +1,9 @@
+# Access and verified-email integration work in progress
+
+This isolated worktree merges the #349 candidate with #346 head `3acac060`. It is not a release candidate. Owner migration names `0011_access_email_bindings.sql` and `0012_access_email_scope.sql` are provisional; no production migration or deployment is authorized by this experiment.
+
+The structural merge preserves the 0001–0010 email chain, adds the two pinned Access SQL files after it, extends retained authority-packet generations, and retains both branches' Worker contract suites. Owner/Work packet and schema tests pass locally (26 tests), as do the four Access SQL tests. These tests do not qualify the combined application behavior.
+
+The shared ID-token signing implementation retains both sets of tests and rejects ASCII whitespace in emitted email addresses. The existing verified-email enrollment validator rejects such whitespace as well; this compatibility observation is not production qualification.
+
+The provisional integration selects a distinct scope profile for generic verified-email consent and the configured Access client. It preserves the general canonical review scope while retaining the Access-specific stored authorization scope, separately checks both disclosure paths, and adds Access binding identity/revision to the final guarded token exchange. A real local Worker/D1 test exercises both profiles together, generic `client_secret_post` denial, Access `client_secret_post` success, stale binding and mixed-marker denial, and independent withdrawal. The original Access and verified-email suites also pass locally. This work is still a prototype: the complete Worker contract suite, browser flows, migration/restore plan, physical-device qualification, independent security review, and final hosted validation remain required. Do not treat a successful local test as production authorization.

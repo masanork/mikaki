@@ -69,9 +69,20 @@ test('product ingress budgets are atomic across isolates and expired state conve
         headers: { 'CF-Connecting-IP': source },
         body: 'invalid',
       });
-    const replies = await Promise.all(
-      Array.from({ length: 6 }, (_, i) => request('192.0.2.1', i % 2 ? worker : second)),
-    );
+    let replies: Awaited<ReturnType<typeof request>>[] = [];
+    let sameWindow = false;
+    for (let attempt = 0; attempt < 3 && !sameWindow; attempt++) {
+      // A fixed-window boundary may fall while parallel requests are in flight.
+      // Retry against an empty fixture rather than treating two valid windows as
+      // a failure of the per-window concurrency limit.
+      await DB.prepare('DELETE FROM auth_request_window').run();
+      const startWindow = Math.floor(Date.now() / 60_000);
+      replies = await Promise.all(
+        Array.from({ length: 6 }, (_, i) => request('192.0.2.1', i % 2 ? worker : second)),
+      );
+      sameWindow = startWindow === Math.floor(Date.now() / 60_000);
+    }
+    assert.ok(sameWindow, 'requests must be observed within a single fixed window');
     assert.equal(replies.filter((r) => r.status === 429).length, 3);
     for (const r of replies.filter((r) => r.status === 429)) {
       assert.equal(r.headers.get('Retry-After'), '60');
