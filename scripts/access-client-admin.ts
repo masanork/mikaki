@@ -1,6 +1,7 @@
-import { lstat, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
+import { readAccessPrivateInput } from './access-private-input.ts';
 import {
   bindAccessEmail,
   registerAccessClient,
@@ -38,15 +39,7 @@ if (
     'usage: --config FILE --remote yes|no --action register|rotate|revoke-secret|bind-email|revoke-email --input PRIVATE_JSON --actor NAME --reason TEXT --apply yes|no',
   );
 const inputPath = resolve(options['--input']);
-const inputStat = await lstat(inputPath);
-if (
-  !inputStat.isFile() ||
-  (inputStat.mode & 0o077) !== 0 ||
-  inputStat.uid !== process.getuid?.() ||
-  inputStat.size > 16384
-)
-  throw new Error('input must be an owner-only regular file owned by the current user');
-const input: Record<string, unknown> = JSON.parse(await readFile(inputPath, 'utf8'));
+const input: Record<string, unknown> = await readAccessPrivateInput(inputPath);
 const fields: Record<string, string[]> = {
   register: ['client', 'redirect', 'secret', 'method'],
   rotate: ['client', 'expected', 'secret'],
@@ -58,7 +51,8 @@ if (
   !input ||
   typeof input !== 'object' ||
   Array.isArray(input) ||
-  JSON.stringify(Object.keys(input).sort()) !== JSON.stringify(fields[action].sort())
+  Object.keys(input).length !== fields[action].length ||
+  !fields[action].every((field) => Object.hasOwn(input, field))
 )
   throw new Error('unexpected input fields');
 if (
@@ -84,7 +78,7 @@ if (
 )
   throw new Error('operator must verify the exact email address');
 const configPath = resolve(options['--config']);
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+const config = JSON.parse(await readFile(configPath, 'utf8')); // NOSONAR: The operator explicitly selects the target configuration file.
 const remote = options['--remote'] === 'yes';
 const binding = config.d1_databases?.find((item: { binding: string }) => item.binding === 'DB');
 if (!binding || Boolean(binding.remote) !== remote || (remote && !binding.database_id))
