@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { promisify } from 'node:util';
 import { createTestHarness } from 'wrangler';
 import {
   addRedirect,
@@ -15,8 +10,6 @@ import {
   listClients,
   registerClient,
   registerNativeClient,
-  registerSecretClient,
-  rotateSecretClient,
   retireRedirect,
   retirePostLogoutRedirect,
   retireBackchannelLogout,
@@ -24,153 +17,7 @@ import {
   setBackchannelLogout,
   validateRegistration,
   validateNativeRegistration,
-  validateSecretRegistration,
 } from '../../scripts/client-admin-store.ts';
-
-test('secret CLI reads only private regular input and does not print the secret', async (t) => {
-  if (process.platform === 'win32') return t.skip('Requires POSIX ownership and mode checks');
-  const dir = await mkdtemp(join(tmpdir(), 'mikaki-client-secret-test-'));
-  const path = join(dir, 'input.json');
-  const link = join(dir, 'link.json');
-  const secret = randomBytes(32).toString('base64url');
-  const input = {
-    client_id: randomUUID(),
-    sector_identifier: 'rp.example',
-    redirect_uris: ['https://rp.example/callback'],
-    secret,
-  };
-  const args = [
-    'scripts/client-admin.ts',
-    '--config',
-    'crates/worker/wrangler.jsonc',
-    '--remote',
-    'no',
-    '--action',
-    'register-secret',
-    '--input',
-    path,
-    '--actor',
-    'test',
-    '--reason',
-    'test',
-    '--apply',
-    'no',
-  ];
-  const run = promisify(execFile);
-  try {
-    await writeFile(path, JSON.stringify(input), { mode: 0o600 });
-    const result = await run(process.execPath, args);
-    assert.equal(`${result.stdout}${result.stderr}`.includes(secret), false);
-    await chmod(path, 0o644);
-    await assert.rejects(run(process.execPath, args));
-    await chmod(path, 0o600);
-    await symlink(path, link);
-    const linkArgs = [...args];
-    linkArgs[linkArgs.indexOf('--input') + 1] = link;
-    await assert.rejects(run(process.execPath, linkArgs));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test('secret client registration stores only a verifier and requires PKCE', async () => {
-  const harness = createTestHarness({
-    root: new URL('../..', import.meta.url).pathname,
-    workers: [
-      { configPath: new URL('../../crates/worker/wrangler.jsonc', import.meta.url).pathname },
-    ],
-  });
-  try {
-    await harness.listen();
-    const worker = harness.getWorker('mikaki-op-worker');
-    await worker.applyD1Migrations('DB');
-    const { DB } = await worker.getEnv();
-    const secret = randomBytes(32).toString('base64url');
-    const input = {
-      client_id: randomUUID(),
-      sector_identifier: 'rp.example',
-      redirect_uris: ['https://rp.example/callback'],
-      secret,
-    };
-    assert.throws(() => validateSecretRegistration({ ...input, secret: 'short' }));
-    assert.throws(() =>
-      validateSecretRegistration({ ...input, redirect_uris: ['https://evil.example/callback'] }),
-    );
-    const result = await registerSecretClient(DB, input, 'operator', 'test');
-    assert.equal(JSON.stringify(result).includes(secret), false);
-    const row = await DB.prepare(
-      'SELECT c.auth_method,c.allow_missing_pkce,s.secret_hash FROM client c JOIN client_secret s ON s.client_id=c.client_id WHERE c.client_id=?',
-    )
-      .bind(input.client_id)
-      .first();
-    assert.equal(row.auth_method, 'client_secret_basic');
-    assert.equal(row.allow_missing_pkce, 0);
-    assert.equal(row.secret_hash, createHash('sha256').update(secret).digest('base64url'));
-    assert.notEqual(row.secret_hash, secret);
-    const replacement = randomBytes(32).toString('base64url');
-    await assert.rejects(
-      rotateSecretClient(
-        DB,
-        input.client_id,
-        { secret, expected_revision: 1 },
-        'operator',
-        'same secret',
-      ),
-    );
-    await assert.rejects(
-      rotateSecretClient(
-        DB,
-        input.client_id,
-        { secret: replacement, expected_revision: 2 },
-        'operator',
-        'stale',
-      ),
-    );
-    await rotateSecretClient(
-      DB,
-      input.client_id,
-      { secret: replacement, expected_revision: 1 },
-      'operator',
-      'rotation',
-    );
-    await assert.rejects(
-      rotateSecretClient(
-        DB,
-        input.client_id,
-        { secret, expected_revision: 1 },
-        'operator',
-        'stale',
-      ),
-    );
-    const rotated = await DB.prepare(
-      'SELECT c.revision AS client_revision,s.revision AS secret_revision,s.secret_hash FROM client c JOIN client_secret s ON c.client_id=s.client_id WHERE c.client_id=?',
-    )
-      .bind(input.client_id)
-      .first();
-    assert.equal(rotated.client_revision, 2);
-    assert.equal(rotated.secret_revision, 2);
-    assert.equal(rotated.secret_hash, createHash('sha256').update(replacement).digest('base64url'));
-    assert.equal(
-      (
-        await DB.prepare('SELECT count(*) AS n FROM client_secret_rotation_audit WHERE client_id=?')
-          .bind(input.client_id)
-          .first()
-      ).n,
-      1,
-    );
-    await assert.rejects(registerSecretClient(DB, input, 'operator', 'duplicate'));
-    assert.equal(
-      (
-        await DB.prepare('SELECT count(*) AS n FROM client_admin_audit WHERE client_id=?')
-          .bind(input.client_id)
-          .first()
-      ).n,
-      1,
-    );
-  } finally {
-    await harness.close();
-  }
-});
 
 function key(kid: string) {
   const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });

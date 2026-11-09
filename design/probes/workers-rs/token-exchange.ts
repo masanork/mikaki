@@ -101,8 +101,8 @@ try {
       "INSERT INTO signing_key(kid,generation,active,algorithm,public_jwk) VALUES(?,1,1,'ES256',?)",
     ).bind(opKid, JSON.stringify(op.publicJwk)),
     env.DB.prepare(
-      "INSERT INTO app_connection(account_id,client_id,grant_version,active,reviewed_redirect_uri,reviewed_scope,reviewed_client_revision,reviewed_grant_version) VALUES(?,?,1,1,?,'openid',1,1)",
-    ).bind('oidc-test-account', clientId, redirectUri),
+      'INSERT INTO app_connection(account_id,client_id,grant_version,active) VALUES(?,?,1,1)',
+    ).bind('oidc-test-account', clientId),
     env.DB.prepare(
       'INSERT INTO sso_session(sso_id,account_id,credential_id,epoch,expires_at,revoked) VALUES(?,?,?,1,?,0)',
     ).bind('oidc-test-sso', 'oidc-test-account', 'oidc-test-credential', now + 900),
@@ -557,18 +557,13 @@ try {
   ).results;
   const delivery = deliveries.find((row: { sid: string }) => row.sid === logoutPayload.sid);
   assert.ok(deliveries.length >= 1);
-  assert.deepEqual(
-    { ...delivery, state: undefined, attempts: undefined },
-    {
-      client_id: clientId,
-      sid: logoutPayload.sid,
-      logout_uri: 'https://rp.example/backchannel',
-      state: undefined,
-      attempts: undefined,
-    },
-  );
-  assert.ok(delivery.state === 'pending' || delivery.state === 'leased');
-  assert.ok(delivery.attempts === 0 || delivery.attempts === 1);
+  assert.deepEqual(delivery, {
+    client_id: clientId,
+    sid: logoutPayload.sid,
+    logout_uri: 'https://rp.example/backchannel',
+    state: 'pending',
+    attempts: 1,
+  });
   await env.DB.prepare('UPDATE client_backchannel_logout_uri SET logout_uri=? WHERE client_id=?')
     .bind('https://rp.example/rotated-backchannel', clientId)
     .run();

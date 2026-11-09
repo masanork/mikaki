@@ -32,15 +32,7 @@ const source = { commit: 'a'.repeat(40), clean: true as const };
 /** Synthetic bytes qualify inventory rejection, never a product deployment. */
 async function fixture(
   baseline:
-    | 'current'
-    | 'secret'
-    | 'dbsc'
-    | 'passport'
-    | 'wrap'
-    | 'review'
-    | 'age'
-    | 'waitlist'
-    | 'retained' = 'current',
+    'current' | 'passport' | 'wrap' | 'review' | 'age' | 'waitlist' | 'retained' = 'current',
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mikaki-authority-packet-'));
   const write = async (name: string, bytes: string | Buffer) => {
@@ -61,8 +53,6 @@ async function fixture(
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
   const ownerCount = {
     current: OWNER_MIGRATIONS.length,
-    secret: 9,
-    dbsc: 8,
     passport: 7,
     wrap: 6,
     review: 5,
@@ -113,7 +103,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 22);
+    assert.equal(manifest.migrations.length, 20);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -135,25 +125,6 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
     await f.close();
   }
 });
-
-for (const [baseline, count, added] of [
-  ['dbsc', 20, '0009_client_secret_rotation.sql'],
-  ['secret', 21, '0010_verified_email.sql'],
-] as const) {
-  test(`retained ${baseline} packets reject the next migration`, async () => {
-    const f = await fixture(baseline);
-    try {
-      assert.equal((await verifyAuthorityPacket(f.directory)).migrations.length, count);
-      await f.write(
-        `migrations/${added}`,
-        await readFile(join(root, 'crates/worker/migrations', added)),
-      );
-      await assert.rejects(verifyAuthorityPacket(f.directory), /plan_changed/);
-    } finally {
-      await f.close();
-    }
-  });
-}
 
 test('retained nineteen-file packets reject an added DBSC migration', async () => {
   const f = await fixture('passport');

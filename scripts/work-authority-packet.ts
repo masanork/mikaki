@@ -154,9 +154,7 @@ const packetGenerations = [
   { baseline: 'review', ownerCount: 5, count: 'seventeen' },
   { baseline: 'wrap', ownerCount: 6, count: 'eighteen' },
   { baseline: 'passport', ownerCount: 7, count: 'nineteen' },
-  { baseline: 'dbsc', ownerCount: 8, count: 'twenty' },
-  { baseline: 'secret', ownerCount: 9, count: 'twenty-one' },
-  { baseline: 'current', ownerCount: 10, count: 'twenty-two' },
+  { baseline: 'current', ownerCount: 8, count: 'twenty' },
 ] as const;
 type PacketBaseline = (typeof packetGenerations)[number]['baseline'];
 

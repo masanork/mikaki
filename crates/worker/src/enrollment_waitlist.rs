@@ -53,7 +53,7 @@ async fn admit(
             .is_ok_and(|rows| rows.len() == 1)
     }))
 }
-pub(crate) fn email(value: &str) -> Option<String> {
+fn email(value: &str) -> Option<String> {
     let value = value.trim();
     if value.len() > 254 || !value.is_ascii() {
         return None;

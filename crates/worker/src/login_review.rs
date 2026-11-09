@@ -3,7 +3,10 @@ use super::*;
 use wasm_bindgen::JsValue;
 
 pub(super) fn scope(value: &str) -> &str {
-    mikaki_oidc::canonical_oidc_scope(value, true).unwrap_or(value)
+    match value {
+        "profile openid" => "openid profile",
+        _ => value,
+    }
 }
 
 // Append after the transaction is consumed and app_connection is activated,
@@ -36,7 +39,10 @@ pub(super) fn record(
     if url.origin().ascii_serialization() != issuer
         || url.path() != "/authorize"
         || parameters.get("client_id").map(|value| value.as_ref()) != Some(login.client_id.as_str())
-        || mikaki_oidc::canonical_oidc_scope(requested_scope, true).is_none()
+        || !matches!(
+            requested_scope,
+            "openid" | "openid profile" | "profile openid"
+        )
     {
         return Err(worker::Error::RustError("invalid_continuation".into()));
     }
