@@ -335,6 +335,72 @@ test('restoring the whole D1 backup cannot redispatch a credential closed after 
   }
 });
 
+test('shared Owner, Work and Messaging restore preserves the independent authority fence', async () => {
+  const f = await fixture();
+  try {
+    await f.DB.prepare(
+      'CREATE TABLE messaging_schema_migrations(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)',
+    ).run();
+    for (const [index, name] of [
+      '0001_messaging.sql',
+      '0002_beta_profile.sql',
+      '0003_ingress_budget.sql',
+    ].entries()) {
+      const source = await readFile(
+        new URL(`../../crates/worker/messaging-migrations/${name}`, import.meta.url),
+        'utf8',
+      );
+      await f.DB.batch(splitSqlQuery(source).map((statement) => f.DB.prepare(statement)));
+      await f.DB.prepare('INSERT INTO messaging_schema_migrations VALUES(?,?)')
+        .bind(index + 1, name)
+        .run();
+    }
+    await f.DB.prepare(
+      "INSERT INTO messaging_account VALUES('synthetic-delivery-owner','11111111-1111-4111-8111-111111111111')",
+    ).run();
+    await f.call({ action: 'dispatch-preparation', id: f.p.id });
+    await f.call({ action: 'activate-credential-key' });
+    const attempt = await f.call({
+      action: 'reserve-credential',
+      credential: { preparation_id: f.p.id, role: 'task', purpose: 'initial' },
+    });
+    await f.backup();
+    await f.DB.prepare(
+      "INSERT INTO messaging_device_head VALUES('11111111-1111-4111-8111-111111111111','synthetic-device',1,1)",
+    ).run();
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM messaging_device_head').first('n'),
+      1,
+    );
+    assert.equal((await f.call({ action: 'dispatch-credential', id: attempt.id })).started, true);
+    await f.call({ action: 'credential-revoke', id: attempt.id });
+    await f.call({
+      action: 'credential-close',
+      id: attempt.id,
+      credential: { confirmation: 'not_issued' },
+      receipt,
+    });
+    const retained = await f.current();
+    await f.restore();
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM messaging_schema_migrations').first('n'),
+      3,
+    );
+    assert.equal(await f.DB.prepare('SELECT count(*) AS n FROM messaging_account').first('n'), 1);
+    assert.equal(
+      await f.DB.prepare('SELECT count(*) AS n FROM messaging_device_head').first('n'),
+      0,
+    );
+    assert.equal((await f.call({ action: 'credential-status', id: attempt.id })).state, 'reserved');
+    assert.deepEqual((await f.state()).checkpoint, retained);
+    await f.native({ action: 'checkpoint-current' }, 409);
+    await f.call({ action: 'dispatch-credential', id: attempt.id }, 409);
+    assert.deepEqual((await f.state()).checkpoint, retained);
+  } finally {
+    await f.close();
+  }
+});
+
 test('whole D1 rollback may expose historical active grants but cannot commit fresh producer authority', async () => {
   const f = await fixture();
   try {
