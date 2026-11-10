@@ -62,12 +62,24 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{VERIFIED_EMAIL}")
         }
         VERIFIED_EMAIL => {
-            let current = format!(
+            let previous = format!(
                 "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
             );
-            ledger == current
-                || ledger == format!("{current},{ACCESS_BINDING}")
-                || ledger == format!("{current},{ACCESS_BINDING},{ACCESS_SCOPE}")
+            ledger == previous
+                || ledger == format!("{previous},{ACCESS_BINDING}")
+                || ledger == format!("{previous},{ACCESS_BINDING},{ACCESS_SCOPE}")
+        }
+        ACCESS_BINDING => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL},{ACCESS_BINDING}"
+            );
+            ledger == previous || ledger == format!("{previous},{ACCESS_SCOPE}")
+        }
+        ACCESS_SCOPE => {
+            ledger
+                == format!(
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL},{ACCESS_BINDING},{ACCESS_SCOPE}"
+                )
         }
         _ => false,
     }
@@ -96,6 +108,23 @@ mod tests {
         ] {
             assert!(!ready(&ledger, VERIFIED_EMAIL));
         }
+    }
+
+    #[test]
+    fn access_upgrade_requires_the_exact_email_and_access_chain() {
+        let current = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
+        );
+        let first = format!("{current},{ACCESS_BINDING}");
+        let complete = format!("{first},{ACCESS_SCOPE}");
+        assert!(ready(&current, VERIFIED_EMAIL));
+        assert!(ready(&first, VERIFIED_EMAIL));
+        assert!(ready(&complete, VERIFIED_EMAIL));
+        assert!(ready(&first, ACCESS_BINDING));
+        assert!(ready(&complete, ACCESS_SCOPE));
+        assert!(!ready(&current, ACCESS_SCOPE));
+        assert!(!ready(&format!("{current},{ACCESS_SCOPE}"), ACCESS_SCOPE));
+        assert!(!ready(&format!("{complete},{ACCESS_SCOPE}"), ACCESS_SCOPE));
     }
 
     #[test]

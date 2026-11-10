@@ -31,6 +31,16 @@ const upgrades = [
     sha256: '430e7cdb5d0f83c1078ec902f57000b79315551132f0a06de4cb0f52d0d3f4a1',
   },
 ];
+const accessUpgrades = [
+  {
+    name: '0011_access_email_bindings.sql',
+    sha256: 'fba07c7f4b3208ac33d8de87f275d9f7af36efc2ffa9f9a555981a37a9d09a73',
+  },
+  {
+    name: '0012_access_email_scope.sql',
+    sha256: '68015551729188d421fdcc17119145cec8b2c1fe6828aac324d2acf531ab0f36',
+  },
+];
 const load = (root, dir, list) =>
   list.map(({ name, sha256 }) => {
     const sql = readFileSync(join(root, dir, name), 'utf8');
@@ -42,15 +52,26 @@ const load = (root, dir, list) =>
     return { name, sql };
   });
 export async function auditBridgeSchema({ root, feature, stage, query }) {
-  assert.ok([8, 9, 10].includes(stage), 'stage must be 8, 9 or 10');
+  assert.ok([8, 9, 10, 11, 12].includes(stage), 'stage must be 8 through 12');
   const baseline = OWNER_MIGRATIONS.slice(0, 8);
   assert.equal(baseline.at(-1)?.name, '0008_dbsc_sessions.sql');
-  assert.ok([8, 10].includes(OWNER_MIGRATIONS.length), 'Unexpected Owner migration chain');
-  if (OWNER_MIGRATIONS.length === 10)
-    assert.deepEqual(OWNER_MIGRATIONS.slice(8), upgrades, 'Feature migrations differ from fixtures');
+  assert.ok([8, 10, 12].includes(OWNER_MIGRATIONS.length), 'Unexpected Owner migration chain');
+  if (OWNER_MIGRATIONS.length >= 10)
+    assert.deepEqual(
+      OWNER_MIGRATIONS.slice(8, 10),
+      upgrades,
+      'Feature migrations differ from fixtures',
+    );
+  if (OWNER_MIGRATIONS.length === 12)
+    assert.deepEqual(
+      OWNER_MIGRATIONS.slice(10),
+      accessUpgrades,
+      'Unexpected Access migration chain',
+    );
   const base = load(root, 'crates/worker/migrations', baseline);
   const added = load(feature, 'scripts/fixtures/owner-email-migrations', upgrades);
-  const owner = [...base, ...added.slice(0, stage - 8)];
+  const access = load(feature, 'crates/worker/migrations', accessUpgrades);
+  const owner = [...base, ...added, ...access].slice(0, stage);
   const work = load(root, 'crates/worker/work-migrations', WORK_MIGRATIONS);
   const messaging = load(root, 'crates/worker/messaging-migrations', MESSAGING_MIGRATIONS);
   assertWorkMigrationFiles(work);
@@ -107,10 +128,10 @@ export function assertProductionConfig(bytes) {
 }
 
 export function parseAuditArgs(args) {
-  assert.equal(args.length, 3, 'Expected --remote --stage 8|9|10');
+  assert.equal(args.length, 3, 'Expected --remote --stage 8|9|10|11|12');
   assert.equal(args[0], '--remote', 'Expected --remote');
   assert.equal(args[1], '--stage', 'Expected --stage');
-  assert.ok(['8', '9', '10'].includes(args[2]), 'Stage must be 8, 9 or 10');
+  assert.ok(['8', '9', '10', '11', '12'].includes(args[2]), 'Stage must be 8 through 12');
   return Number(args[2]);
 }
 

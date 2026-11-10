@@ -59,6 +59,8 @@ struct SecretAuthContext<'a> {
     now: u64,
     policy: &'a WorkerRuntimePolicy,
     conformance: bool,
+    normal_secret_basic: bool,
+    access_client_id: Option<&'a str>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -75,6 +77,8 @@ async fn authenticate_secret_token_request(
         now,
         policy,
         conformance,
+        normal_secret_basic,
+        access_client_id,
     } = context;
 
     let (client_id, secret, method) = if let Some(header) = header {
@@ -103,6 +107,13 @@ async fn authenticate_secret_token_request(
         || client_id.len() > 128
         || client_id.bytes().any(|byte| byte.is_ascii_control())
         || !(32..=256).contains(&secret.len())
+    {
+        return Err(worker::Error::RustError("invalid_client".into()));
+    }
+    let is_access_client = access_client_id == Some(client_id.as_str());
+    if !conformance
+        && !is_access_client
+        && !(normal_secret_basic && method == "client_secret_basic")
     {
         return Err(worker::Error::RustError("invalid_client".into()));
     }
@@ -155,6 +166,9 @@ async fn authenticate_secret_token_request(
     }
     if form.grant_type != "authorization_code" {
         return Err(worker::Error::RustError("unsupported_grant_type".into()));
+    }
+    if is_access_client && row.allow_missing_pkce != 0 {
+        return Err(worker::Error::RustError("invalid_client".into()));
     }
     let allow_missing_pkce = conformance && row.allow_missing_pkce == 1;
     let code_verifier = match form.code_verifier {
@@ -532,6 +546,7 @@ pub(super) async fn load_authorization_code_context(
     input: &AuthenticatedTokenRequest,
     signer: &WorkerTokenSigner,
     fapi: bool,
+    access_client: Option<&str>,
     dpop_proof: Option<&mikaki_oidc::VerifiedDpopProof>,
     random: &mut impl mikaki_oidc::CryptographicRandom,
 ) -> worker::Result<AuthorizationCodeContext> {
@@ -556,7 +571,7 @@ pub(super) async fn load_authorization_code_context(
     ];
     let row = db
         .prepare(
-            "SELECT ac.client_id, ac.dpop_jkt, cs.sid, v.sub, cc.nonce, cc.scope, sx.auth_time, \
+            "SELECT ac.client_id, cs.account_id, ac.dpop_jkt, cs.sid, v.sub, cc.nonce, cc.scope, sx.auth_time, \
              EXISTS(SELECT 1 FROM authorization_email_scope es WHERE es.code_hash=ac.code_hash) AS email_requested, \
              CASE WHEN EXISTS(SELECT 1 FROM authorization_email_scope es WHERE es.code_hash=ac.code_hash) THEN (SELECT er.email FROM eligible_verified_email_release er WHERE er.account_id=cs.account_id AND er.client_id=ac.client_id) ELSE NULL END AS verified_email, \
              CASE WHEN EXISTS(SELECT 1 FROM authorization_email_scope es WHERE es.code_hash=ac.code_hash) THEN (SELECT er.email_revision FROM eligible_verified_email_release er WHERE er.account_id=cs.account_id AND er.client_id=ac.client_id) ELSE NULL END AS email_revision, \
@@ -609,6 +624,9 @@ pub(super) async fn load_authorization_code_context(
     let base_scope = match row.scope.as_str() {
         "openid" => "openid",
         "openid profile" | "profile openid" => "openid profile",
+        "openid email profile" if access_client == Some(row.client_id.as_str()) => {
+            "openid email profile"
+        }
         _ => return Err(worker::Error::RustError("invalid_grant".into())),
     };
     let scope = match (base_scope, row.email_requested) {
@@ -616,13 +634,33 @@ pub(super) async fn load_authorization_code_context(
         ("openid profile", 0) => "openid profile",
         ("openid", 1) => "openid email",
         ("openid profile", 1) => "openid profile email",
+        ("openid email profile", 0) => "openid email profile",
         _ => return Err(worker::Error::RustError("invalid_grant".into())),
     };
+    #[derive(Deserialize)]
+    struct EmailBinding {
+        email: String,
+        revision: i64,
+    }
+    let binding = if scope == "openid email profile" {
+        Some(db.prepare("SELECT email,revision FROM access_email_binding WHERE client_id=?1 AND account_id=?2 AND active=1")
+            .bind(&[JsValue::from_str(&row.client_id), JsValue::from_str(&row.account_id)])?
+            .first::<EmailBinding>(None).await?
+            .ok_or_else(|| worker::Error::RustError("invalid_grant".into()))?)
+    } else {
+        None
+    };
+    if binding.is_some() && row.verified_email.is_some() {
+        return Err(worker::Error::RustError("invalid_grant".into()));
+    }
     if input.requested_resource.is_some() {
         return Err(worker::Error::RustError("invalid_target".into()));
     }
     Ok(AuthorizationCodeContext {
         client_id: row.client_id,
+        account_id: row.account_id,
+        access_email: binding.as_ref().map(|binding| binding.email.clone()),
+        access_email_revision: binding.map(|binding| binding.revision),
         dpop_jkt: row.dpop_jkt,
         sid: row.sid,
         sub: row.sub,
@@ -774,7 +812,10 @@ pub(super) async fn commit_authorization_code_exchange(
             context.auth_time(),
             now,
             id_token_expires_at,
-            context.verified_email.as_deref(),
+            context
+                .access_email
+                .as_deref()
+                .or(context.verified_email.as_deref()),
         )
         .await?;
 
@@ -855,11 +896,13 @@ pub(super) async fn commit_authorization_code_exchange(
             .as_deref()
             .map(JsValue::from_str)
             .unwrap_or(JsValue::NULL),
-        JsValue::from_f64(if context.scope.split(' ').any(|s| s == "email") {
-            1.0
-        } else {
-            0.0
-        }),
+        JsValue::from_f64(
+            if context.access_email.is_none() && context.scope.split(' ').any(|s| s == "email") {
+                1.0
+            } else {
+                0.0
+            },
+        ),
         context
             .email_revision
             .map(|v| JsValue::from_f64(v as f64))
@@ -868,18 +911,29 @@ pub(super) async fn commit_authorization_code_exchange(
             .email_release_revision
             .map(|v| JsValue::from_f64(v as f64))
             .unwrap_or(JsValue::NULL),
+        context
+            .access_email
+            .as_deref()
+            .map(JsValue::from_str)
+            .unwrap_or(JsValue::NULL),
+        context
+            .access_email_revision
+            .map(|v| JsValue::from_str(&v.to_string()))
+            .unwrap_or(JsValue::NULL),
+        JsValue::from_str(&context.account_id),
     ];
     let mut issue_values = values[..22].to_vec();
     issue_values.push(JsValue::from_str(&id_token_hash));
     issue_values.push(values[24].clone());
+    issue_values.push(values[34].clone());
     let mut statements = vec![
         db.prepare(
             include_str!("../sql/commit-authorization-code.sql"),
         )
         .bind(&values)?,
         db.prepare(
-            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked,id_token_hash,dpop_jkt) \
-             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0,?23,?24 \
+            "INSERT INTO token_issue(code_hash,operation_id,access_hash,access_expires_at,signing_kid,issued_at,revoked,id_token_hash,dpop_jkt,access_email_revision) \
+             SELECT ac.code_hash,?19,?22,?20,?12,ac.consumed_at,0,?23,?24,?25 \
              FROM authorization_code ac JOIN eligible_client_session v \
                ON v.client_id=ac.client_id AND v.sid=ac.sid \
              WHERE ac.code_hash=?1 AND ac.consumed_by=?19 \
@@ -899,7 +953,7 @@ pub(super) async fn commit_authorization_code_exchange(
                AND CAST(?21 AS INTEGER) > CAST(strftime('%s','now') AS INTEGER) AND CAST(?21 AS INTEGER) <= CAST(?18 AS INTEGER) \
              ) THEN 1 ELSE 0 END)",
         )
-        .bind(&issue_values)?,
+        .bind(&issue_values[..24])?,
     ];
     statements.push(
         db.prepare("DELETE FROM atomic_guard WHERE operation_id=?19")
@@ -1033,6 +1087,32 @@ pub(super) fn fapi2_deployment(env: &worker::Env) -> worker::Result<bool> {
     }
 }
 
+/// A single explicitly configured production client may use a shared secret.
+/// This is disabled by default and never applies to the FAPI profile.
+#[cfg(target_arch = "wasm32")]
+pub(super) fn access_secret_client(env: &worker::Env) -> worker::Result<Option<String>> {
+    let Ok(value) = env.var("MIKAKI_ACCESS_SECRET_CLIENT_ID") else {
+        return Ok(None);
+    };
+    let value = value.to_string();
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(worker::Error::RustError(
+            "invalid Access client configuration".into(),
+        ));
+    }
+    if conformance_deployment(env)? || fapi2_deployment(env)? {
+        return Err(worker::Error::RustError(
+            "invalid Access client profile".into(),
+        ));
+    }
+    Ok(Some(value))
+}
+
 #[cfg(target_arch = "wasm32")]
 pub(super) fn normal_secret_basic_enabled(env: &worker::Env) -> worker::Result<bool> {
     let enabled = match env.var("MIKAKI_CLIENT_SECRET_BASIC") {
@@ -1114,6 +1194,7 @@ pub(super) async fn issue_token_response(
     let conformance = conformance_deployment(env)?;
     let fapi = fapi2_deployment(env)?;
     let normal_secret_basic = normal_secret_basic_enabled(env)?;
+    let access_client = access_secret_client(env)?;
     let now_ms = js_sys::Date::now();
     if !now_ms.is_finite() || now_ms < 0.0 {
         return Err(worker::Error::RustError("server_error".into()));
@@ -1147,7 +1228,7 @@ pub(super) async fn issue_token_response(
         }
     }
     let authenticated = if let Some(header) = authorization.as_deref() {
-        if !conformance && !normal_secret_basic {
+        if !conformance && !normal_secret_basic && access_client.is_none() {
             return Err(worker::Error::RustError("invalid_client".into()));
         }
         authenticate_secret_token_request(
@@ -1159,11 +1240,13 @@ pub(super) async fn issue_token_response(
                 now,
                 policy: &policy,
                 conformance,
+                normal_secret_basic,
+                access_client_id: access_client.as_deref(),
             },
             &mut random,
         )
         .await?
-    } else if conformance
+    } else if (conformance || access_client.is_some())
         && let Ok(form) = secret_form(&body)
         && form.client_secret.is_some()
     {
@@ -1176,6 +1259,8 @@ pub(super) async fn issue_token_response(
                 now,
                 policy: &policy,
                 conformance,
+                normal_secret_basic,
+                access_client_id: access_client.as_deref(),
             },
             &mut random,
         )
@@ -1219,11 +1304,13 @@ pub(super) async fn issue_token_response(
         &authenticated,
         &signer,
         fapi,
+        access_client.as_deref(),
         dpop_proof.as_ref(),
         &mut random,
     )
     .await?;
-    if context.scope.split(' ').any(|s| s == "email")
+    if context.access_email.is_none()
+        && context.scope.split(' ').any(|s| s == "email")
         && !env
             .var("MIKAKI_VERIFIED_EMAIL")
             .is_ok_and(|v| v.to_string() == "on")

@@ -50,11 +50,11 @@ test('preparation fixes isolated identities and keeps browser/resource/operator 
   );
   assert.throws(() => authorityTemplates('a'.repeat(32)), /account_denied/);
 });
-test('the packaged twenty-two-migration chain preserves the exact empty Owner/work authority boundary', async () => {
+test('the packaged twenty-four-migration chain preserves the exact empty Owner/work authority boundary', async () => {
   const f = await migrationFixture();
   try {
     const schema = await authoritySchema(f.path);
-    assert.equal(schema.migrations.length, 22);
+    assert.equal(schema.migrations.length, 24);
     assert.ok(schema.schema.objects > 0);
   } finally {
     await f.close();

@@ -7,6 +7,8 @@ WHERE code_hash=?1
   AND consumed_by IS NULL
   AND (?31=0 OR EXISTS(SELECT 1 FROM authorization_email_scope es
 WHERE es.code_hash=authorization_code.code_hash))
+  AND (?34 IS NULL OR NOT EXISTS(SELECT 1 FROM authorization_email_scope es
+WHERE es.code_hash=authorization_code.code_hash))
   AND (?30 IS NULL OR EXISTS(SELECT 1 FROM client_session cs JOIN eligible_verified_email_release er ON er.account_id=cs.account_id
   AND er.client_id=cs.client_id
 WHERE cs.sid=authorization_code.sid
@@ -28,7 +30,15 @@ WHERE c.client_id=?2
 WHERE v.client_id=?2
   AND v.sid=?14
   AND v.sub=?15
-  AND v.expires_at=?18)
+  AND v.expires_at=?18
+  AND v.account_id=?36)
+  AND ((?34 IS NULL AND ?35 IS NULL) OR (?34 IS NOT NULL AND ?35 IS NOT NULL
+  AND EXISTS (SELECT 1 FROM access_email_binding b
+WHERE b.client_id=?2
+  AND b.account_id=?36
+  AND b.active=1
+  AND b.email=?34
+  AND b.revision=?35)))
   AND EXISTS (SELECT 1 FROM client_session cs JOIN sso_context sx ON sx.sso_id=cs.sso_id JOIN code_context cc ON cc.code_hash=?1
 WHERE cs.client_id=?2
   AND cs.sid=?14

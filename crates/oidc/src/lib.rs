@@ -73,6 +73,86 @@ pub fn canonical_oidc_scope(input: &str, allow_email: bool) -> Option<&'static s
     }
 }
 
+/// Identify which independently authorized email profile a request selects.
+/// This does not establish consent, binding ownership, or issuance authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmailScopeProfile {
+    None,
+    VerifiedEmail,
+    CloudflareAccess,
+}
+
+pub fn email_scope_profile(
+    input: &str,
+    fapi: bool,
+    verified_email_enabled: bool,
+    is_access_client: bool,
+) -> Option<EmailScopeProfile> {
+    let scope = canonical_oidc_scope(input, true)?;
+    match scope {
+        "openid" | "openid profile" => Some(EmailScopeProfile::None),
+        _ if fapi => None,
+        "openid profile email" if is_access_client => Some(EmailScopeProfile::CloudflareAccess),
+        "openid email" if is_access_client => None,
+        "openid email" | "openid profile email" if verified_email_enabled => {
+            Some(EmailScopeProfile::VerifiedEmail)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod email_profile_isolation_tests {
+    use super::{EmailScopeProfile as Profile, email_scope_profile};
+
+    #[test]
+    fn email_profiles_remain_disjoint_and_fail_closed() {
+        for scope in ["openid", "openid profile", "profile openid"] {
+            for fapi in [false, true] {
+                for access in [false, true] {
+                    assert_eq!(
+                        email_scope_profile(scope, fapi, false, access),
+                        Some(Profile::None)
+                    );
+                }
+            }
+        }
+        for scope in [
+            "openid email profile",
+            "openid profile email",
+            "email profile openid",
+        ] {
+            assert_eq!(
+                email_scope_profile(scope, false, false, true),
+                Some(Profile::CloudflareAccess)
+            );
+            assert_eq!(
+                email_scope_profile(scope, false, true, true),
+                Some(Profile::CloudflareAccess)
+            );
+            assert_eq!(
+                email_scope_profile(scope, false, true, false),
+                Some(Profile::VerifiedEmail)
+            );
+            assert_eq!(email_scope_profile(scope, false, false, false), None);
+            assert_eq!(email_scope_profile(scope, true, true, true), None);
+        }
+        assert_eq!(
+            email_scope_profile("openid email", false, true, false),
+            Some(Profile::VerifiedEmail)
+        );
+        assert_eq!(email_scope_profile("openid email", false, true, true), None);
+        for invalid in [
+            "openid email email",
+            "openid profile email admin",
+            " openid email",
+            "openid  email",
+        ] {
+            assert_eq!(email_scope_profile(invalid, false, true, true), None);
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Authorization {
@@ -133,12 +213,34 @@ impl PreparedAuthorizationCode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAuthorization;
 
+#[derive(Clone, Copy)]
 enum AuthorizationProfile {
     Core,
     Fapi,
+    CloudflareAccess,
 }
 
 impl Authorization {
+    /// Validate the dedicated Cloudflare Access scope profile. The caller must
+    /// first establish that the registered client is explicitly entitled to
+    /// this profile; this method does not grant email disclosure by itself.
+    pub fn validate_for_cloudflare_access(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        state_limit: usize,
+        nonce_limit: usize,
+    ) -> Result<ValidatedAuthorization, InvalidAuthorization> {
+        self.validate_with_options(
+            client_id,
+            redirect_uri,
+            state_limit,
+            nonce_limit,
+            false,
+            AuthorizationProfile::CloudflareAccess,
+        )
+    }
+
     pub fn validate(
         &self,
         client_id: &str,
@@ -205,10 +307,21 @@ impl Authorization {
         if self.client_id != client_id
             || self.redirect_uri != redirect_uri
             || self.response_type != "code"
-            || !matches!(
-                self.scope.as_str(),
-                "openid" | "openid profile" | "profile openid"
-            )
+            || !match profile {
+                AuthorizationProfile::CloudflareAccess => matches!(
+                    self.scope.as_str(),
+                    "openid email profile"
+                        | "openid profile email"
+                        | "email openid profile"
+                        | "email profile openid"
+                        | "profile openid email"
+                        | "profile email openid"
+                ),
+                _ => matches!(
+                    self.scope.as_str(),
+                    "openid" | "openid profile" | "profile openid"
+                ),
+            }
             || (!matches!(profile, AuthorizationProfile::Fapi) && self.state.is_empty())
             || self.state.len() > state_limit
             || self
@@ -307,6 +420,63 @@ mod tests {
             assert_eq!(canonical_oidc_scope(invalid, true), None);
         }
     }
+    #[test]
+    fn access_scope_is_explicit_and_still_requires_pkce_and_state() {
+        let mut request = Authorization {
+            client_id: "access".into(),
+            redirect_uri: "https://team.cloudflareaccess.com/cdn-cgi/access/callback".into(),
+            response_type: "code".into(),
+            scope: String::new(),
+            state: "state".into(),
+            nonce: None,
+            code_challenge: pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
+            code_challenge_method: "S256".into(),
+        };
+        let redirect = "https://team.cloudflareaccess.com/cdn-cgi/access/callback";
+        for scope in [
+            "openid email profile",
+            "openid profile email",
+            "email openid profile",
+            "email profile openid",
+            "profile openid email",
+            "profile email openid",
+        ] {
+            request.scope = scope.into();
+            assert!(
+                request
+                    .validate_for_cloudflare_access("access", redirect, 256, 256)
+                    .is_ok()
+            );
+            assert!(request.validate("access", redirect, 256, 256).is_err());
+        }
+        for scope in [
+            "openid email",
+            "openid email profile email",
+            "openid email profile admin",
+        ] {
+            request.scope = scope.into();
+            assert!(
+                request
+                    .validate_for_cloudflare_access("access", redirect, 256, 256)
+                    .is_err()
+            );
+        }
+        request.scope = "openid email profile".into();
+        request.state.clear();
+        assert!(
+            request
+                .validate_for_cloudflare_access("access", redirect, 256, 256)
+                .is_err()
+        );
+        request.state = "state".into();
+        request.code_challenge.clear();
+        assert!(
+            request
+                .validate_for_cloudflare_access("access", redirect, 256, 256)
+                .is_err()
+        );
+    }
+
     #[test]
     fn fapi_accepts_optional_state_and_order_independent_registered_scopes() {
         let mut request = Authorization {

@@ -719,6 +719,7 @@
   "loginConnectionPurpose": "今回の要求",
   "loginPurposeSignIn": "このアプリへのサインイン",
   "loginPurposeProfile": "サインインとプロフィール情報の要求。情報の開示には別の承認が必要です。",
+  "loginPurposeAccessEmail": "サインインし、確認済みのメールアドレスをこのアプリに共有します。",
   "loginScopeChanged": "要求している情報が前回から変わっています。",
   "loginReviewHint": "自分で始めた接続か確かめてください。続けるまでは、このアプリへの接続は確定しません。",
   "loginReviewApprove": "この接続を続ける",
