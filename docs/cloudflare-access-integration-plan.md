@@ -9,6 +9,38 @@ This plan targets the existing Cloudflare OS Access application while keeping
 monban available until the new path has been qualified. It is not evidence that
 Mikaki has been registered with Access or is ready for production traffic.
 
+## Integrated-code Access pilot, 2026-11-11
+
+A separate Worker built from clean main `b42542280419152af16055e388cc21ec89e44c09`
+(version `7cfbba73-a10f-46c1-9777-7761bfabc36c`) used dedicated D1, R2 and
+Queue resources with synthetic data and keys. Owner migrations 0001–0012 and
+the runtime policy were applied. Its Claim Worker was a readiness-only stub;
+this did not qualify Claim delivery. Authenticated readiness returned 204.
+
+A temporary OIDC IdP and Access application used a policy allowing only one
+synthetic email. A fresh Chromium context with a pre-seeded synthetic Mikaki
+SSO session reached the protected target through Cloudflare Access. The test
+D1 recorded a `client_secret_basic` token exchange for the pilot client and
+the `openid email profile` scope. This exercises the integrated code and a real
+Access callback, but the pre-seeded session does not test Passkey enrollment or
+authentication. It does not qualify the real owner's email, Cloudflare OS data
+continuity, production activation or recovery.
+
+After the synthetic email binding was revoked, the existing Access session
+still reached the target, while a fresh Access context failed authentication.
+The application-token revocation API returned success; the existing session
+still reached the target after 30 seconds. User-level Access revocation for
+the synthetic email returned success; after 30 seconds the browser did not
+reach the target and encountered too many redirects. This is one observation,
+not a maximum propagation time or a qualified user-facing recovery procedure.
+
+The temporary Access app, policy and IdP were deleted after the test. The
+synthetic binding, client secret, SSO session and issued tokens were revoked.
+The test Worker and dedicated storage remain provisioned. The account's WARP
+application allowed all IdPs during the pilot, but its inspected allow policy
+selected a different explicit email. The Cloudflare OS application selected a
+different IdP; neither application's configuration was changed.
+
 ## Isolated Cloudflare qualification, 2026-11-08
 
 The dedicated `mikaki-access-qualification` Worker, D1 database, R2 bucket and
