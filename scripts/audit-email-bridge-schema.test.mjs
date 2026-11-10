@@ -12,7 +12,7 @@ import { OWNER_MIGRATIONS } from './production-owner-schema.ts';
 import { WORK_LEDGER_SQL, WORK_MIGRATIONS } from './production-work-schema.ts';
 import { MESSAGING_LEDGER_SQL, MESSAGING_MIGRATIONS } from './production-messaging-schema.ts';
 
-test('accepts only the three exact Owner prefixes with the full Work and Messaging schema', async () => {
+test('accepts only the reviewed Owner prefixes with the full Work and Messaging schema', async () => {
   const root = process.cwd(),
     feature = root;
   const db = new DatabaseSync(':memory:');
@@ -43,10 +43,19 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
       [8, null],
       [9, '0009_client_secret_rotation.sql'],
       [10, '0010_verified_email.sql'],
+      [11, '0011_access_email_bindings.sql'],
+      [12, '0012_access_email_scope.sql'],
     ]) {
       if (name) {
         db.exec(
-          readFileSync(join(feature, 'scripts/fixtures/owner-email-migrations', name), 'utf8'),
+          readFileSync(
+            join(
+              feature,
+              stage <= 10 ? 'scripts/fixtures/owner-email-migrations' : 'crates/worker/migrations',
+              name,
+            ),
+            'utf8',
+          ),
         );
         db.prepare('INSERT INTO d1_migrations VALUES(?,?)').run(stage, name);
       }
@@ -60,16 +69,16 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
     const changedLedger = async (statement) => {
       const rows = await query(statement);
       if (statement === 'SELECT id,name FROM d1_migrations ORDER BY id' && ++ledgerReads === 2)
-        return [...rows, { id: 11, name: '0011_unexpected.sql' }];
+        return [...rows, { id: 13, name: '0013_unexpected.sql' }];
       return rows;
     };
     await assert.rejects(
-      auditBridgeSchema({ root, feature, stage: 10, query: changedLedger }),
+      auditBridgeSchema({ root, feature, stage: 12, query: changedLedger }),
       /Owner ledger changed during audit/,
     );
     db.exec('CREATE TABLE unexpected_schema(id INTEGER)');
     await assert.rejects(
-      auditBridgeSchema({ root, feature, stage: 10, query }),
+      auditBridgeSchema({ root, feature, stage: 12, query }),
       /Combined schema differs/,
     );
   } finally {
@@ -78,11 +87,11 @@ test('accepts only the three exact Owner prefixes with the full Work and Messagi
 });
 
 test('CLI requires an explicit reviewed stage and remote target', () => {
-  for (const stage of [8, 9, 10])
+  for (const stage of [8, 9, 10, 11, 12])
     assert.equal(parseAuditArgs(['--remote', '--stage', String(stage)]), stage);
   for (const args of [
     [],
-    ['--remote', '--stage', '11'],
+    ['--remote', '--stage', '13'],
     ['--local', '--stage', '8'],
     ['--remote', '--stage', '08'],
     ['--remote', '--stage', '8', '--extra'],

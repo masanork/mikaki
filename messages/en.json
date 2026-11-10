@@ -719,6 +719,7 @@
   "loginConnectionPurpose": "Requested operation",
   "loginPurposeSignIn": "Sign in to this application",
   "loginPurposeProfile": "Sign in and request profile information. Sharing information requires separate approval.",
+  "loginPurposeAccessEmail": "Sign in and share your verified email address with this application.",
   "loginScopeChanged": "The information requested has changed since last time.",
   "loginReviewHint": "Check that you intended to connect to this application. The connection is confirmed only after you continue.",
   "loginReviewApprove": "Continue this connection",

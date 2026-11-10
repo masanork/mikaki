@@ -11,6 +11,8 @@ const PASSPORT: &str = "0007_passport_issuance.sql";
 const DBSC: &str = "0008_dbsc_sessions.sql";
 const SECRET_ROTATION: &str = "0009_client_secret_rotation.sql";
 const VERIFIED_EMAIL: &str = "0010_verified_email.sql";
+const ACCESS_BINDING: &str = "0011_access_email_bindings.sql";
+const ACCESS_SCOPE: &str = "0012_access_email_scope.sql";
 
 pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
     match compiled_latest {
@@ -60,9 +62,23 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
             ledger == previous || ledger == format!("{previous},{VERIFIED_EMAIL}")
         }
         VERIFIED_EMAIL => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
+            );
+            ledger == previous
+                || ledger == format!("{previous},{ACCESS_BINDING}")
+                || ledger == format!("{previous},{ACCESS_BINDING},{ACCESS_SCOPE}")
+        }
+        ACCESS_BINDING => {
+            let previous = format!(
+                "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL},{ACCESS_BINDING}"
+            );
+            ledger == previous || ledger == format!("{previous},{ACCESS_SCOPE}")
+        }
+        ACCESS_SCOPE => {
             ledger
                 == format!(
-                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
+                    "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL},{ACCESS_BINDING},{ACCESS_SCOPE}"
                 )
         }
         _ => false,
@@ -72,6 +88,44 @@ pub fn ready(ledger: &str, compiled_latest: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn email_bridge_accepts_only_the_ordered_candidate_access_chain() {
+        let current = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
+        );
+        let first = format!("{current},{ACCESS_BINDING}");
+        let complete = format!("{first},{ACCESS_SCOPE}");
+        for ledger in [&current, &first, &complete] {
+            assert!(ready(ledger, VERIFIED_EMAIL));
+        }
+        for ledger in [
+            format!("{current},{ACCESS_SCOPE}"),
+            format!("{current},{ACCESS_SCOPE},{ACCESS_BINDING}"),
+            format!("{first},{ACCESS_BINDING}"),
+            format!("{complete},0013_unknown.sql"),
+            format!("{current},0009_access_email_bindings.sql"),
+        ] {
+            assert!(!ready(&ledger, VERIFIED_EMAIL));
+        }
+    }
+
+    #[test]
+    fn access_upgrade_requires_the_exact_email_and_access_chain() {
+        let current = format!(
+            "{BASELINE},{WRAPPERS},{WAITLIST},{AGE_REQUESTS},{LOGIN_REVIEW},{LOGIN_WRAP},{PASSPORT},{DBSC},{SECRET_ROTATION},{VERIFIED_EMAIL}"
+        );
+        let first = format!("{current},{ACCESS_BINDING}");
+        let complete = format!("{first},{ACCESS_SCOPE}");
+        assert!(ready(&current, VERIFIED_EMAIL));
+        assert!(ready(&first, VERIFIED_EMAIL));
+        assert!(ready(&complete, VERIFIED_EMAIL));
+        assert!(ready(&first, ACCESS_BINDING));
+        assert!(ready(&complete, ACCESS_SCOPE));
+        assert!(!ready(&current, ACCESS_SCOPE));
+        assert!(!ready(&format!("{current},{ACCESS_SCOPE}"), ACCESS_SCOPE));
+        assert!(!ready(&format!("{complete},{ACCESS_SCOPE}"), ACCESS_SCOPE));
+    }
 
     #[test]
     fn secret_rotation_upgrade_bridges_only_the_complete_previous_chain() {

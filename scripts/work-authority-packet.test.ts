@@ -33,6 +33,8 @@ const source = { commit: 'a'.repeat(40), clean: true as const };
 async function fixture(
   baseline:
     | 'current'
+    | 'email'
+    | 'access-binding'
     | 'secret'
     | 'dbsc'
     | 'passport'
@@ -61,6 +63,8 @@ async function fixture(
   for (const name of AUTHORITY_INPUTS) await write(`inputs/${name.replaceAll('/', '__')}`, 'input');
   const ownerCount = {
     current: OWNER_MIGRATIONS.length,
+    email: 10,
+    'access-binding': 11,
     secret: 9,
     dbsc: 8,
     passport: 7,
@@ -113,7 +117,7 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
   const f = await fixture();
   try {
     const manifest = await verifyAuthorityPacket(f.directory);
-    assert.equal(manifest.migrations.length, 22);
+    assert.equal(manifest.migrations.length, 24);
     assert.ok(manifest.schema.objects > 100);
     const wasm = await readFile(join(f.directory, 'op/build/index_bg.wasm'));
     await f.write('op/build/index_bg.wasm', Buffer.concat([wasm, Buffer.from([0, 1, 0])]));
@@ -139,6 +143,8 @@ test('frozen inventory detects bundle/schema substitution and extra or missing m
 for (const [baseline, count, added] of [
   ['dbsc', 20, '0009_client_secret_rotation.sql'],
   ['secret', 21, '0010_verified_email.sql'],
+  ['email', 22, '0011_access_email_bindings.sql'],
+  ['access-binding', 23, '0012_access_email_scope.sql'],
 ] as const) {
   test(`retained ${baseline} packets reject the next migration`, async () => {
     const f = await fixture(baseline);
