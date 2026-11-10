@@ -1,8 +1,9 @@
 # Cloudflare Access integration: implementation and acceptance plan
 
 The qualification below used the earlier standalone Access 0009/0010 chain. The
-combined verified-email prototype uses candidate 0011/0012 names and different
-application code; the earlier results do not qualify that combined candidate.
+integrated verified-email code and its 0011/0012 migrations have since been
+deployed; see the [rollout record](owner-email-bridge-rollout.md). The earlier
+isolated Access results do not qualify the integrated code or its activation.
 
 This plan targets the existing Cloudflare OS Access application while keeping
 monban available until the new path has been qualified. It is not evidence that
