@@ -12,7 +12,7 @@ dependencies {
   implementation("com.android.keyattestation:keyattestation:0.4")
   implementation("com.google.code.gson:gson:2.15.0")
   implementation("com.google.protobuf:protobuf-javalite:4.36.2")
-  implementation("com.google.guava:guava:33.7.2-jre")
+  implementation("com.google.guava:guava:33.8.0-jre")
   implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
   testImplementation(kotlin("test-junit5"))
   testImplementation(platform("org.junit:junit-bom:6.1.3"))
@@ -47,7 +47,7 @@ val kotlinFiles =
 
 dependencies {
   formatter("com.facebook:ktfmt:0.64")
-  formatter("com.google.guava:guava:33.7.2-jre")
+  formatter("com.google.guava:guava:33.8.0-jre")
 }
 
 tasks.register<JavaExec>("formatKotlin") {
