@@ -154,8 +154,9 @@
   disabled={disabled || !records.length}
 >
   <option value="">{m.threadSearchAll()}</option>
-  {#each records as record (record.id)}<option value={record.id}>{record.archive.title}</option
-    >{/each}
+  {#each records as record (record.id)}<option value={record.id}>
+      {record.archive.title}
+    </option>{/each}
 </select>
 <label for="thread-search">{m.ownerWorkspaceSearch()}</label><input
   id="thread-search"
@@ -182,8 +183,9 @@
                 ? m.threadSearchLimited()
                 : ''}
     </p>
-    {#if phase === 'error'}<button {disabled} onclick={() => void run()}>{m.agentRefresh()}</button
-      >{/if}
+    {#if phase === 'error'}<button {disabled} onclick={() => void run()}>
+        {m.agentRefresh()}
+      </button>{/if}
     <ul class="thread-search-hits">
       {#each hits as hit (`${hit.thread}:${hit.message}`)}
         {@const thread = records.find(
@@ -192,11 +194,11 @@
         {#if thread}
           {@const message = hit.message >= 0 ? thread.archive.messages[hit.message] : undefined}
           <li>
-            <button {disabled} onclick={() => void onselect(hit)}
-              ><strong>{thread.archive.title}</strong>{#if message}<small
-                  >{message.speaker}{message.actor === 'ai' ? ' · AI' : ''}</small
-                >{/if}<span>{hit.text}</span></button
-            >
+            <button {disabled} onclick={() => void onselect(hit)}>
+              <strong>{thread.archive.title}</strong>{#if message}<small>
+                  {message.speaker}{message.actor === 'ai' ? ' · AI' : ''}
+                </small>{/if}<span>{hit.text}</span>
+            </button>
           </li>
         {/if}
       {/each}

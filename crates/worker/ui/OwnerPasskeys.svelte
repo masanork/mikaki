@@ -167,13 +167,17 @@
     <button
       id="owner-passkeys-enroll"
       disabled={disabled || loading || pending !== null || registration !== null}
-      onclick={() => run(enroll)}>{m.ownerPasskeysEnroll()}</button
+      onclick={() => run(enroll)}
     >
+      {m.ownerPasskeysEnroll()}
+    </button>
     <button
       id="owner-passkeys-refresh"
       disabled={disabled || loading || pending !== null || registration !== null}
-      onclick={() => run(load)}>{m.ownerPasskeysRefresh()}</button
+      onclick={() => run(load)}
     >
+      {m.ownerPasskeysRefresh()}
+    </button>
   </div>
   <ul>
     {#each rows as row (row.id)}
@@ -190,13 +194,17 @@
           {#if row.wrapped}
             <button
               disabled={disabled || loading || pending !== null || registration !== null}
-              onclick={() => run(() => remove(row.id))}>{m.ownerPasskeysRemove()}</button
+              onclick={() => run(() => remove(row.id))}
             >
+              {m.ownerPasskeysRemove()}
+            </button>
           {:else if row.active}
             <button
               disabled={disabled || loading || pending !== null || registration !== null}
-              onclick={() => run(() => authorize(row.id))}>{m.ownerPasskeysAuthorize()}</button
+              onclick={() => run(() => authorize(row.id))}
             >
+              {m.ownerPasskeysAuthorize()}
+            </button>
           {/if}
         {/if}
       </li>
@@ -205,12 +213,16 @@
   {#if pending}<button
       id="owner-passkeys-retry"
       disabled={disabled || loading}
-      onclick={() => run(commit)}>{m.ownerPasskeysRetry()}</button
-    >{/if}
+      onclick={() => run(commit)}
+    >
+      {m.ownerPasskeysRetry()}
+    </button>{/if}
   {#if registration}<button
       id="owner-passkeys-registration-retry"
       disabled={disabled || loading}
-      onclick={() => run(finishRegistration)}>{m.ownerPasskeysRegistrationRetry()}</button
-    >{/if}
+      onclick={() => run(finishRegistration)}
+    >
+      {m.ownerPasskeysRegistrationRetry()}
+    </button>{/if}
   <p role="status" aria-live="polite">{status}</p>
 </details>

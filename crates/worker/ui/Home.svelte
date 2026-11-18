@@ -27,18 +27,18 @@
         class="saddle right"
         aria-hidden="true"
       ></span>
-      <a class="passkey home-signin" href={`/signin?lang=${locale}`}
-        >{m.homeSignIn()}<span aria-hidden="true">↗</span></a
-      >
+      <a class="passkey home-signin" href={`/signin?lang=${locale}`}>
+        {m.homeSignIn()}<span aria-hidden="true">↗</span>
+      </a>
     </div>
   </main>
   <footer>
-    <a class="quiet home-waitlist" href={`/waitlist?lang=${locale}`}
-      >{m.waitlistHeading()}<span aria-hidden="true">↗</span></a
-    >
-    <a class="quiet home-enroll" href={`/enroll?lang=${locale}`}
-      >{m.homeEnroll()}<span aria-hidden="true">↗</span></a
-    >
+    <a class="quiet home-waitlist" href={`/waitlist?lang=${locale}`}>
+      {m.waitlistHeading()}<span aria-hidden="true">↗</span>
+    </a>
+    <a class="quiet home-enroll" href={`/enroll?lang=${locale}`}>
+      {m.homeEnroll()}<span aria-hidden="true">↗</span>
+    </a>
     <WovenGate pageOrigin={page.origin} rpOrigin={page.origin} paused={false} layout="gate" />
     <select
       class="language"

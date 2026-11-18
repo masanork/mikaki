@@ -42,34 +42,34 @@
   <h3 bind:this={heading} tabindex="-1">{labels[step - 1]}</h3>
   {#if step === 1}
     <p>{m.work_demo_request_intro()}</p>
-    <button type="button" class="example-button" onclick={example}
-      >{m.work_demo_use_example()}</button
-    >
+    <button type="button" class="example-button" onclick={example}>
+      {m.work_demo_use_example()}
+    </button>
     <form
       onsubmit={(event) => {
         event.preventDefault();
         if (goal.trim() && acceptance.trim()) void advance(2);
       }}
     >
-      <label
-        >{m.work_demo_goal()}<textarea
+      <label>
+        {m.work_demo_goal()}<textarea
           rows="3"
           maxlength="500"
           required
           bind:value={goal}
-          placeholder={m.work_demo_goal_example()}></textarea></label
-      >
-      <label
-        >{m.work_demo_acceptance()}<textarea
+          placeholder={m.work_demo_goal_example()}></textarea>
+      </label>
+      <label>
+        {m.work_demo_acceptance()}<textarea
           rows="2"
           maxlength="500"
           required
           bind:value={acceptance}
-          placeholder={m.work_demo_acceptance_example()}></textarea></label
-      >
-      <button class="work-primary" type="submit" disabled={!goal.trim() || !acceptance.trim()}
-        >{m.work_demo_choose_materials()}</button
-      >
+          placeholder={m.work_demo_acceptance_example()}></textarea>
+      </label>
+      <button class="work-primary" type="submit" disabled={!goal.trim() || !acceptance.trim()}>
+        {m.work_demo_choose_materials()}
+      </button>
     </form>
   {:else if step === 2}
     <div class="request-summary">
@@ -81,25 +81,27 @@
       <p>{m.work_demo_code_description()}</p>
       <code>src/login.css · src/Login.svelte</code>
     </div>
-    <label class="reference-choice"
-      ><input type="checkbox" bind:checked={reference} /><span
-        ><strong>design.md</strong><small>{m.work_demo_reference_description()}</small></span
-      ></label
-    >
+    <label class="reference-choice">
+      <input type="checkbox" bind:checked={reference} /><span>
+        <strong>design.md</strong><small>{m.work_demo_reference_description()}</small>
+      </span>
+    </label>
     <div class="permission-summary">
       <strong>{m.work_demo_access_title()}</strong>
       <p>{m.work_demo_access()}</p>
     </div>
-    <label class="reference-choice"
-      ><input type="checkbox" bind:checked={acknowledged} />{m.work_demo_acknowledge()}</label
-    >
+    <label class="reference-choice">
+      <input type="checkbox" bind:checked={acknowledged} />{m.work_demo_acknowledge()}
+    </label>
     <div class="demo-actions">
       <button type="button" onclick={() => advance(1)}>{m.work_demo_edit_request()}</button><button
         type="button"
         class="work-primary"
         disabled={!acknowledged}
-        onclick={() => advance(3)}>{m.work_demo_start()}</button
+        onclick={() => advance(3)}
       >
+        {m.work_demo_start()}
+      </button>
     </div>
   {:else if step === 3}
     <div class="request-summary">
@@ -109,26 +111,24 @@
     <p>{m.work_demo_activity_intro()}</p>
     <ol class="activity-list">
       <li>
-        <strong>{m.work_demo_activity_copy()}</strong><span
-          >{reference
-            ? m.work_demo_activity_with_reference()
-            : m.work_demo_activity_code_only()}</span
-        >
+        <strong>{m.work_demo_activity_copy()}</strong><span>
+          {reference ? m.work_demo_activity_with_reference() : m.work_demo_activity_code_only()}
+        </span>
       </li>
       <li>
-        <strong>{m.work_demo_activity_change()}</strong><span
-          >{m.work_demo_activity_change_detail()}</span
-        >
+        <strong>{m.work_demo_activity_change()}</strong><span>
+          {m.work_demo_activity_change_detail()}
+        </span>
       </li>
       <li>
-        <strong>{m.work_demo_activity_check()}</strong><span
-          >{m.work_demo_activity_check_detail()}</span
-        >
+        <strong>{m.work_demo_activity_check()}</strong><span>
+          {m.work_demo_activity_check_detail()}
+        </span>
       </li>
     </ol>
-    <button type="button" class="work-primary" onclick={() => advance(4)}
-      >{m.work_demo_show_result()}</button
-    >
+    <button type="button" class="work-primary" onclick={() => advance(4)}>
+      {m.work_demo_show_result()}
+    </button>
   {:else}
     <div class="request-summary">
       <strong>{goal}</strong>
@@ -147,8 +147,10 @@
     {#if adopted}<p role="status" class="adoption-result">{m.work_demo_adopted()}</p>{:else}<button
         type="button"
         class="work-primary"
-        onclick={() => (adopted = true)}>{m.work_demo_adopt()}</button
-      >{/if}
+        onclick={() => (adopted = true)}
+      >
+        {m.work_demo_adopt()}
+      </button>{/if}
     <div class="demo-actions">
       <button type="button" onclick={() => advance(1)}>{m.work_demo_restart()}</button>
     </div>

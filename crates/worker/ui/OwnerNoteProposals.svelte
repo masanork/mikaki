@@ -322,8 +322,10 @@
     <button
       id="owner-note-proposals-refresh"
       disabled={disabled || loading || pending !== null}
-      onclick={load}>{m.ownerNoteProposalRefresh()}</button
+      onclick={load}
     >
+      {m.ownerNoteProposalRefresh()}
+    </button>
   </div>
   {#if snapshot}
     <section aria-labelledby="owner-note-proposals-current-heading">
@@ -413,24 +415,27 @@
                 id={`owner-note-proposal-approve-${proposal.proposal_id}`}
                 disabled={!canStart || !actionable(proposal) || !proposal.value}
                 onclick={() => prepareDecision(proposal, true)}
-                >{m.ownerNoteProposalApprove()}</button
               >
+                {m.ownerNoteProposalApprove()}
+              </button>
               <button
                 id={`owner-note-proposal-reject-${proposal.proposal_id}`}
                 disabled={!canStart || !actionable(proposal)}
                 onclick={() => prepareDecision(proposal, false)}
-                >{m.ownerNoteProposalReject()}</button
               >
+                {m.ownerNoteProposalReject()}
+              </button>
             </div>
           {:else if proposal.state === 'approved' && actionable(proposal)}
             <button
               id={`owner-note-proposal-save-${proposal.proposal_id}`}
               disabled={!canStart}
               onclick={() => saveApproved(proposal)}
-              >{proposal.operation_id && proposal.candidate
-                ? m.ownerNoteProposalResumeSave()
-                : m.ownerNoteProposalSave()}</button
             >
+              {proposal.operation_id && proposal.candidate
+                ? m.ownerNoteProposalResumeSave()
+                : m.ownerNoteProposalSave()}
+            </button>
           {/if}
         </article>
       {/each}
@@ -440,8 +445,10 @@
     <button
       id="owner-note-proposals-retry"
       disabled={disabled || loading}
-      onclick={() => send(pending!)}>{m.ownerNoteProposalRetry()}</button
+      onclick={() => send(pending!)}
     >
+      {m.ownerNoteProposalRetry()}
+    </button>
   {/if}
   <p id="owner-note-proposals-status" role="status" aria-live="polite">{status}</p>
 </details>

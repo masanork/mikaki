@@ -61,10 +61,12 @@
       id="connection-approve"
       type="button"
       disabled={busy}
-      onclick={onapprove}>{m.loginReviewApprove()}</button
+      onclick={onapprove}
     >
-    <button class="quiet" id="connection-cancel" type="button" disabled={busy} onclick={oncancel}
-      >{m.loginReviewCancel()}</button
-    >
+      {m.loginReviewApprove()}
+    </button>
+    <button class="quiet" id="connection-cancel" type="button" disabled={busy} onclick={oncancel}>
+      {m.loginReviewCancel()}
+    </button>
   </div>
 </section>

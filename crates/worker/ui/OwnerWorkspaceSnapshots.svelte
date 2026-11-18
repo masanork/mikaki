@@ -207,13 +207,13 @@
       {m.workspaceSnapshotDestination({ origin: offer.origin })}
     </p>{/if}
   {#if offer?.mode !== 'save' && !sent}
-    <button id="workspace-snapshot-list" disabled={disabled || busy} onclick={load}
-      >{m.workspaceSnapshotList()}</button
-    >
+    <button id="workspace-snapshot-list" disabled={disabled || busy} onclick={load}>
+      {m.workspaceSnapshotList()}
+    </button>
     {#each entries as entry}<p>
-        <button disabled={disabled || busy} onclick={() => choose(entry.id, entry.revision)}
-          >{entry.title} — {entry.capturedAt}</button
-        >
+        <button disabled={disabled || busy} onclick={() => choose(entry.id, entry.revision)}>
+          {entry.title} — {entry.capturedAt}
+        </button>
       </p>{/each}
   {/if}
   {#if preview}
@@ -226,22 +226,24 @@
       })}
     </p>
     {#if offer?.mode === 'save'}
-      <button id="workspace-snapshot-save" disabled={disabled || busy} onclick={save}
-        >{pending ? m.ownerVaultRetrySave() : m.appArchiveSave()}</button
-      >
+      <button id="workspace-snapshot-save" disabled={disabled || busy} onclick={save}>
+        {pending ? m.ownerVaultRetrySave() : m.appArchiveSave()}
+      </button>
     {:else if offer?.mode === 'restore' && preview.source.origin === offer.origin}
       <p>{m.workspaceSnapshotRestoreBoundary()}</p>
-      <button id="workspace-snapshot-restore" disabled={disabled || busy || sent} onclick={restore}
-        >{m.workspaceSnapshotRestore()}</button
-      >
+      <button id="workspace-snapshot-restore" disabled={disabled || busy || sent} onclick={restore}>
+        {m.workspaceSnapshotRestore()}
+      </button>
     {:else if offer?.mode === 'restore'}<p>{m.workspaceSnapshotWrongOrigin()}</p>{/if}
     {#if !pending}<button
         disabled={disabled || busy}
         onclick={() => {
           text = null;
           preview = null;
-        }}>{m.workspaceSnapshotDismiss()}</button
-      >{/if}
+        }}
+      >
+        {m.workspaceSnapshotDismiss()}
+      </button>{/if}
   {/if}
   {#if status}<p role="status">{status}</p>{/if}
 </section>

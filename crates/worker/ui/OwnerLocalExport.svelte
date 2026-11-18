@@ -260,13 +260,17 @@
         <button
           id="owner-local-export-download-bundle"
           disabled={disabled || loading || !consent}
-          onclick={() => download('bundle')}>{m.ownerLocalExportDownloadBundle()}</button
+          onclick={() => download('bundle')}
         >
+          {m.ownerLocalExportDownloadBundle()}
+        </button>
         <button
           id="owner-local-export-download-grant"
           disabled={disabled || loading || !consent}
-          onclick={() => download('grant')}>{m.ownerLocalExportDownloadGrant()}</button
+          onclick={() => download('grant')}
         >
+          {m.ownerLocalExportDownloadGrant()}
+        </button>
       </div>
       <button id="owner-local-export-clear" disabled={loading} onclick={clear}>
         {m.ownerLocalExportClear()}
@@ -277,8 +281,10 @@
       id="owner-local-export-prepare"
       class="product-primary"
       disabled={!canPrepare}
-      onclick={prepare}>{m.ownerLocalExportPrepare()}</button
+      onclick={prepare}
     >
+      {m.ownerLocalExportPrepare()}
+    </button>
   {/if}
   <p id="owner-local-export-status" role="status" aria-live="polite">{status}</p>
 </details>

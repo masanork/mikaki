@@ -57,8 +57,10 @@
       event.preventDefault();
       main.focus();
     }
-  }}>{m.productSkipContent()}</a
+  }}
 >
+  {m.productSkipContent()}
+</a>
 <header class="product-header" class:product-material={material} bind:this={header}>
   {#if material}
     <WovenGate
@@ -86,8 +88,8 @@
     {:else}<span class="product-brand-tag">PRIVATE BY DESIGN</span>{/if}
     <div class="product-toolbar">
       <NativeWalletLink className="product-signout" {locale} />
-      <label class="product-language"
-        >{m.language()}
+      <label class="product-language">
+        {m.language()}
         <select
           aria-label={m.language()}
           value={locale}
@@ -104,11 +106,13 @@
           id={lockId}
           class="product-signout product-lock-button"
           type="button"
-          onclick={onlock}>{lockLabel}</button
-        >{/if}
-      {#if session}<a class="product-signout" href="/logout?lang={locale}"
-          >{m.logoutTitle()} <span aria-hidden="true">↗</span></a
-        >{/if}
+          onclick={onlock}
+        >
+          {lockLabel}
+        </button>{/if}
+      {#if session}<a class="product-signout" href="/logout?lang={locale}">
+          {m.logoutTitle()} <span aria-hidden="true">↗</span>
+        </a>{/if}
     </div>
   </div>
 </header>

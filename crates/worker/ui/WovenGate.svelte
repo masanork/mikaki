@@ -109,8 +109,8 @@
   <canvas bind:this={canvas}></canvas>
 </div>
 {#if supportsTilt && tiltControl}
-  <button class="quiet" type="button" aria-pressed={tilted} disabled={paused} onclick={toggleTilt}
-    >{m.authTilt()}</button
-  >
+  <button class="quiet" type="button" aria-pressed={tilted} disabled={paused} onclick={toggleTilt}>
+    {m.authTilt()}
+  </button>
 {/if}
 {#if unavailable}<p class="status" role="status">{m.authTiltUnavailable()}</p>{/if}

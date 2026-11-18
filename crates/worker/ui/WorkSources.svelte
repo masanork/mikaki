@@ -343,16 +343,16 @@
         <p>
           {m.work_code_summary({ files: source.code.head_files, commits: source.code.commits })}
         </p>
-        {#if composeEnabled}<label class="work-code-choice"
-            ><input
+        {#if composeEnabled}<label class="work-code-choice">
+            <input
               type="radio"
               name="copy-code"
               disabled={busy}
               aria-label={m.source_compose_code() + ' (' + source.label + ')'}
               checked={codeId === source.source_id}
               onchange={() => chooseCode(source.source_id)}
-            />{codeId === source.source_id ? m.work_source_selected() : m.work_select_code()}</label
-          >{/if}
+            />{codeId === source.source_id ? m.work_source_selected() : m.work_select_code()}
+          </label>{/if}
         <details class="work-details work-source-metadata">
           <summary>{m.work_selection_details()}</summary>
           <p>{m.source_history({ commits: source.code.commits, files: source.code.head_files })}</p>
@@ -376,23 +376,23 @@
           expandedReferences[source.source_id] = event.currentTarget.open;
         }}
       >
-        <summary class="source-heading"
-          ><span>{source.label}</span><span>{m.work_context_optional()}</span></summary
-        >
+        <summary class="source-heading">
+          <span>{source.label}</span><span>{m.work_context_optional()}</span>
+        </summary>
         <section aria-label={source.label}>
           <p class="work-hint">{m.source_selected_only()}</p>
           <fieldset disabled={busy}>
             <legend>{m.source_choose()}</legend>
-            {#each source.files as file (file.path)}<label class="source-file"
-                ><input
+            {#each source.files as file (file.path)}<label class="source-file">
+                <input
                   type="checkbox"
                   checked={selected[source.source_id]?.includes(file.path) ?? false}
                   onchange={(event) => choose(source, file.path, event.currentTarget.checked)}
                 />
-                <span
-                  ><strong>{file.path}</strong><small>{file.bytes} {m.source_bytes()}</small></span
-                ></label
-              >{/each}
+                <span>
+                  <strong>{file.path}</strong><small>{file.bytes} {m.source_bytes()}</small>
+                </span>
+              </label>{/each}
           </fieldset>
           <details class="work-details">
             <summary>{m.work_selection_details()}</summary>
@@ -411,9 +411,9 @@
       </details>
     {/if}
   {/each}
-  {#if next}<button type="button" disabled={busy} onclick={() => load(true)}
-      >{m.source_more()}</button
-    >{/if}
+  {#if next}<button type="button" disabled={busy} onclick={() => load(true)}>
+      {m.source_more()}
+    </button>{/if}
   <div class="source-review-action">
     {#if composeEnabled}<p>
         {codeSource
@@ -429,8 +429,10 @@
         class="source-primary work-primary"
         type="button"
         disabled={busy || count === 0 || count > 32 || total > 131072 || contexts > 4}
-        onclick={() => review()}>{m.source_preview()}</button
-      >{/if}
+        onclick={() => review()}
+      >
+        {m.source_preview()}
+      </button>{/if}
   </div>
   {#if reads.length}<section aria-label={m.source_preview_title()} class="source-preview">
       <h2 bind:this={previewHeading} tabindex="-1">{m.source_preview_title()}</h2>
@@ -446,8 +448,8 @@
   {#if composeEnabled}<section class="source-preview" aria-label={m.source_compose_title()}>
       <p class="work-hint">{m.source_compose_intro()}</p>
       <details class="work-details">
-        <summary>{m.work_expiry_settings()}</summary><label
-          >{m.source_compose_minutes()}<input
+        <summary>{m.work_expiry_settings()}</summary><label>
+          {m.source_compose_minutes()}<input
             type="number"
             min="2"
             max="30"
@@ -458,8 +460,8 @@
               prepared = null;
               compositionExpires = 0;
             }}
-          /></label
-        >
+          />
+        </label>
       </details>
       {#if !prepared}<button
           class="source-primary work-primary"
@@ -473,8 +475,10 @@
             count > 32 ||
             total > 131072 ||
             (contexts > 0 && reads.length !== contexts)}
-          onclick={() => prepare()}>{m.source_compose_action()}</button
-        >{/if}
+          onclick={() => prepare()}
+        >
+          {m.source_compose_action()}
+        </button>{/if}
       {#if prepared}<div role="status">
           <p>{m.source_compose_ready()}</p>
           <p>{m.preparation_expiry()}: {date(prepared.expires_at)}</p>
@@ -483,8 +487,10 @@
             href={'/work/preparation-review?lang=' +
               getLocale() +
               '#' +
-              encodeURIComponent(prepared.preparation_id)}>{m.source_compose_review()}</a
+              encodeURIComponent(prepared.preparation_id)}
           >
+            {m.source_compose_review()}
+          </a>
         </div>{/if}
     </section>{/if}
   <details class="work-details work-help">
