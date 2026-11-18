@@ -11,7 +11,7 @@ for (const name of ['@openid4vc/oauth2', '@openid4vc/openid4vci', '@openeudi/ope
     await readFile(new URL(`../node_modules/${name}/package.json`, import.meta.url), 'utf8'),
   ).version;
 }
-if (versions['@openid4vc/oauth2'] !== dpopProfile.libraryVersion || versions.jose !== '6.2.12')
+if (versions['@openid4vc/oauth2'] !== dpopProfile.libraryVersion || versions.jose !== '6.2.17')
   throw new Error('Unexpected probe versions');
 const results: Array<{ id: string; layer: string; passed: boolean }> = [];
 for (const scenario of [...scenarios, ...networkScenarios]) {

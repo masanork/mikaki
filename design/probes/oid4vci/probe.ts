@@ -22,7 +22,7 @@ export const profile = {
   vct: presentationProfile.vct,
   configurationId: 'membership_v1',
   grantType: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
-  issuerLibraryVersion: '0.8.0',
+  issuerLibraryVersion: '0.10.0',
   tokenEndpoint: `${presentationProfile.issuer}/token`,
   nonceEndpoint: `${presentationProfile.issuer}/nonce`,
   credentialEndpoint: `${presentationProfile.issuer}/credential`,
@@ -53,15 +53,19 @@ function callbacks(clock: () => number): Callbacks {
     throw new Error('Unsupported fixture operation');
   };
   return {
-    hash: (data, alg) => createHash(alg.replace('-', '')).update(data).digest(),
+    hash: (data, alg) =>
+      createHash(alg.replace('-', ''))
+        .update(typeof data === 'string' ? data : new Uint8Array(data))
+        .digest(),
     generateRandom: (length) => randomBytes(length),
-    signJwt: unsupported,
+    signJws: unsupported,
     encryptJwe: unsupported,
     clientAuthentication: unsupported,
-    async verifyJwt(signer, jwt) {
-      if (signer.method !== 'jwk' || signer.alg !== 'ES256') return { verified: false };
+    async verifyJws(signer, jws) {
+      if (signer.method !== 'jwk' || signer.alg !== 'ES256' || !jws.compact)
+        return { verified: false };
       try {
-        await jwtVerify(jwt.compact, await importJWK(signer.publicJwk, 'ES256'), {
+        await jwtVerify(jws.compact, await importJWK(signer.publicJwk, 'ES256'), {
           algorithms: ['ES256'],
           currentDate: new Date(clock() * 1000),
         });

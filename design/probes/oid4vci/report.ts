@@ -19,7 +19,7 @@ for (const name of [
 }
 if (
   versions['@openid4vc/openid4vci'] !== profile.issuerLibraryVersion ||
-  versions.jose !== '6.2.12'
+  versions.jose !== '6.2.17'
 )
   throw new Error('Probe dependencies do not match the pinned profile');
 const results: { id: string; layer: string; passed: boolean }[] = [];
