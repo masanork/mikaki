@@ -1,14 +1,5 @@
 [
   {
-    "lockfile": "Cargo.lock",
-    "package": "rsa",
-    "version": "0.10.0-rc.19",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
     "lockfile": "apps/mikaki-client/plugins/identity-proximity/Cargo.lock",
     "package": "glib",
     "version": "0.18.5",
@@ -46,33 +37,6 @@
   },
   {
     "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
-    "package": "rsa",
-    "version": "0.10.0-rc.19",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "apps/mikaki-client/src-tauri/Cargo.lock",
-    "package": "rsa",
-    "version": "0.9.10",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "design/probes/jose-custom/Cargo.lock",
-    "package": "rsa",
-    "version": "0.10.0-rc.19",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "design/probes/jose/Cargo.lock",
     "package": "rsa",
     "version": "0.9.10",
     "advisory": "RUSTSEC-2023-0071",
@@ -88,32 +52,5 @@
     "owner": "masanork",
     "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
     "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "design/probes/workers-rs/Cargo.lock",
-    "package": "rsa",
-    "version": "0.10.0-rc.19",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "fuzz/Cargo.lock",
-    "package": "rsa",
-    "version": "0.10.0-rc.19",
-    "advisory": "RUSTSEC-2023-0071",
-    "owner": "masanork",
-    "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
-    "expires": "2026-11-20"
-  },
-  {
-    "lockfile": "design/probes/jose/Cargo.lock",
-    "package": "crypto-bigint",
-    "version": "0.5.5",
-    "advisory": "RUSTSEC-2026-0387",
-    "owner": "masanork",
-    "reason": "The isolated jsonwebtoken 11.1.0 RustCrypto probe exports only public-key signature verification and imports no signing API. Its upstream p256/p384 0.13 constraints cannot resolve crypto-bigint 0.7.6. No product private keys enter this graph. Remove when an upstream-compatible patch is available; re-review before private-key operations. See docs/crypto-bigint-advisory-review.md.",
-    "expires": "2026-11-14"
   }
 ]

@@ -12,7 +12,7 @@ use p256::{
     ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier},
     pkcs8::DecodePublicKey,
 };
-use rsa::{Pkcs1v15Sign, Pss, RsaPublicKey, traits::PublicKeyParts};
+use rsa::{Pkcs1v15Sign, Pss, PublicKey, traits::PublicKeyParts};
 use serde::Serialize;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use x509_cert::{
@@ -380,8 +380,11 @@ fn verify_signature(
     if oid(spki.algorithm.oid, "1.2.840.113549.1.1.1") {
         ensure(no_parameters(&spki.algorithm))?;
         let key =
-            RsaPublicKey::from_public_key_der(&spki.to_der().map_err(invalid)?).map_err(invalid)?;
-        ensure((2048..=4096).contains(&key.n().bits_vartime()) && key.e().bits_vartime() <= 32)?;
+            PublicKey::from_public_key_der(&spki.to_der().map_err(invalid)?).map_err(invalid)?;
+        ensure(
+            (2048..=4096).contains(&key.n().bit_width_vartime())
+                && key.e().bit_width_vartime() <= 32,
+        )?;
         let hashed = digest.digest(message);
         let pss_salt = if signature_oid == "1.2.840.113549.1.1.10" {
             let p = required(algorithm.parameters.as_ref())?

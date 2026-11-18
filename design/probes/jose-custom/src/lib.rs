@@ -12,7 +12,7 @@ use jsonwebtoken::{
 };
 use p256::ecdsa::{Signature, VerifyingKey};
 use rsa::{
-    RsaPublicKey,
+    PublicKey,
     pkcs1::{DecodeRsaPublicKey, EncodeRsaPublicKey},
     pkcs1v15::VerifyingKey as RsaVerifyingKey,
 };
@@ -51,7 +51,7 @@ impl JwtVerifier for Es256Verifier {
     }
 }
 
-struct Rs256Verifier(RsaPublicKey);
+struct Rs256Verifier(PublicKey);
 
 impl Verifier<Vec<u8>> for Rs256Verifier {
     fn verify(&self, message: &[u8], signature: &Vec<u8>) -> std::result::Result<(), Error> {
@@ -101,7 +101,7 @@ fn verifier_factory(
             Ok(Box::new(Es256Verifier(public_key)))
         }
         Algorithm::RS256 => {
-            let public_key = RsaPublicKey::from_pkcs1_der(decoding_key.try_get_as_bytes()?)
+            let public_key = PublicKey::from_pkcs1_der(decoding_key.try_get_as_bytes()?)
                 .map_err(|_| Error::new())?;
             Ok(Box::new(Rs256Verifier(public_key)))
         }
@@ -129,7 +129,7 @@ fn decoding_key(algorithm: Algorithm, public_jwk_json: &str) -> Option<DecodingK
         (Algorithm::RS256, AlgorithmParameters::RSA(params)) => {
             let modulus = URL_SAFE_NO_PAD.decode(&params.n).ok()?;
             let exponent = URL_SAFE_NO_PAD.decode(&params.e).ok()?;
-            let public_key = RsaPublicKey::new(
+            let public_key = PublicKey::new(
                 rsa::BoxedUint::from_be_slice(
                     &modulus,
                     u32::try_from(modulus.len().checked_mul(8)?).ok()?,

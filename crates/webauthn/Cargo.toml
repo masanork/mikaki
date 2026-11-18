@@ -13,7 +13,7 @@ p256.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding"] }
+rsa = { version = "=0.10.0", default-features = false, features = ["encoding", "pkcs1v15"] }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["alloc"] }
 sha1 = "=0.11.0"
 der = { version = "=0.8.3", features = ["derive", "alloc"] }

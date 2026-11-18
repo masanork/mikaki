@@ -69,17 +69,15 @@ Only RustSec records whose every affected entry is explicitly `informational = u
 
 | Finding                                                                        | Current disposition and unresolved work                                                                                                                                                                                                                                                                                                         |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rsa` 0.9.10 / 0.10.0-rc.19, RUSTSEC-2023-0071 (8 graph/version records)       | The Rust crate performs product public-key verification. Product RS256 private-key signing uses runtime WebCrypto; offline tests use synthetic private keys. Re-review before any Rust-crate private-key operation. Native OIDC/probe graphs retain the same restriction. This is a usage-based disposition, not a patched library.             |
+| `rsa` 0.9.10, RUSTSEC-2023-0071 (2 graph/version records) | The native OIDC client and HTTP probe retain the `openidconnect` dependency on RSA 0.9.10. The other RSA graphs use 0.10.0, which RustSec lists as patched. The remaining disposition is for public-key verification. |
 | `glib` 0.18.5, RUSTSEC-2024-0429 and GHSA-wrw7-89jp-8q8g (4 records, 2 graphs) | Tauri GTK3's selected stack requires 0.18; the fix is in 0.20+. No direct `VariantStrIter` use was found in application source, but transitive reachability is not proven safe. **Linux release qualification remains blocked** until a compatible migration/remediation and Linux tests pass. macOS/Android results do not close this finding. |
 
 This change patches `rustls-webpki` to 0.103.16 in all four affected graphs (RUSTSEC-2026-0382), and `webpki-roots` to 1.0.10 in both affected graphs (RUSTSEC-2026-0381). Neither certificate-trust advisory receives an exception. The Identity suite and fresh RustSec scans validate the patch locally; full target builds remain CI evidence.
 
-For RUSTSEC-2026-0387, product `crypto-bigint` graphs use patched releases.
-The isolated JOSE probe remains on 0.5.5 for public verification, with one exact
-disposition expiring **2026-11-14 00:00 UTC**. Its dependency path, source review
-and restrictions are recorded in [the advisory review](crypto-bigint-advisory-review.md).
-The disposition does not assert that the legacy library is patched or authorize
-private-key operations through it.
+For RUSTSEC-2026-0387, product graphs and the isolated JOSE probe use patched
+`crypto-bigint` releases. Updating the probe to jsonwebtoken 12.0.0 removed the
+legacy 0.5.5 dependency and its exact advisory exception. See
+[the advisory review](crypto-bigint-advisory-review.md).
 
 Run locally after installing the tools:
 
