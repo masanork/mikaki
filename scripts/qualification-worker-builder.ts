@@ -98,7 +98,7 @@ export async function buildQualificationWorker(options: {
       bundle: true,
       format: 'esm',
       platform: 'browser',
-      external: ['*.wasm'],
+      external: ['*.wasm', 'cloudflare:workers'],
     });
   }
 }
