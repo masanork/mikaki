@@ -189,7 +189,7 @@
     "@inlang/paraglide-js": "^3.0.0",
     "@inlang/plugin-message-format": "^4.5.7",
     "@jridgewell/trace-mapping": "0.3.31",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.1",
     "@sorane/cli": "0.5.0",
     "@sorane/core": "0.5.0",
     "@sorane/okf": "0.5.0",
@@ -197,6 +197,7 @@
     "@types/mdast": "4.0.4",
     "@types/node": "^26.6.6",
     "@typescript/native": "npm:typescript@7.0.2",
+    "deepmerge": "file:tools/prototype-safe-deepmerge",
     "esbuild": "0.28.2",
     "istanbul-lib-coverage": "3.2.2",
     "istanbul-lib-report": "3.0.1",
@@ -213,14 +214,13 @@
     "unified": "11.0.5",
     "v8-to-istanbul": "9.3.0",
     "vite": "8.3.5",
-    "wrangler": "4.156.2",
-    "deepmerge": "file:tools/prototype-safe-deepmerge"
+    "wrangler": "4.156.2"
   },
   "overrides": {
     "katex": "0.18.2",
     "source-map-js": "1.2.2",
     "@zenuml/core": {
-      "playwright-core": "1.64.1"
+      "playwright-core": "1.65.1"
     },
     "@sorane/core": {
       "mermaid": "12.0.0",
