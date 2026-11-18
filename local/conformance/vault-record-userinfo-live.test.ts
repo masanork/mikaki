@@ -166,7 +166,8 @@ async function qualifyRecordUserInfo(browserCrypto: boolean, profileBenchmark = 
       bundle: true,
       format: 'esm',
       platform: 'browser',
-      target: 'es2022',
+      // This bundle runs in workerd and preserves worker-build's Wasm source import.
+      target: 'esnext',
       external: ['cloudflare:workers'],
       loader: { '.sql': 'text' },
       plugins: [
