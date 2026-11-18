@@ -154,6 +154,22 @@ extension is awaiting explicit operator review under the
 CRL renewal does not extend that approval or authorize provisioning a new card
 trust secret.
 
+### Expired signing certificates — 2026-11-18
+
+The selected SD-JWT, mdoc and Attester signing certificates expired on
+`2026-11-13T21:35:03Z`. The three existing CA roots match the pinned DER
+certificates and the CA registry passes SQLite integrity checks. A CRL refresh
+alone cannot restore validation.
+
+Renew the three signing certificates with CSRs bound to the existing Issuer
+and Attester keys. The current public bundle and the protected
+`IDENTITY_ATTESTER_SIGNING` chain must agree before promotion. Retain the
+previous revocation entries when generating new CRLs. If the previous revoked
+probe has expired, issue and revoke a fresh probe so that the negative case
+continues to exercise rejection of a revoked certificate during its validity
+window. Validate the new public bundle and regenerate the derived settings
+before submitting the source changes for CI.
+
 ## Next activation work
 
 1. Select the public CA/CRL distribution URL and protect offline CA custody.
