@@ -22,7 +22,7 @@ p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "al
 p521 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
 k256 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "alloc"] }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "=0.3.79"
+wasm-bindgen-test = "=0.3.80"
 
 [lints]
 workspace = true

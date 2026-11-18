@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 jsonwebtoken = { version = "=12.0.0", default-features = false, features = ["rust_crypto"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
-wasm-bindgen = "=0.2.129"
+wasm-bindgen = "=0.2.130"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The RustCrypto provider uses getrandom on Wasm.
