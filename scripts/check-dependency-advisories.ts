@@ -173,8 +173,10 @@ export function evaluateReport(
     } else if (unmaintained) maintenance.push(finding);
     else blocked.push(finding);
   }
-  for (const id of scoped.keys())
-    if (!used.has(id)) throw new Error(`Stale exception; remove after review: ${id}`);
+  // The root npm audit checks actual use of its exceptions even if OSV lacks a record.
+  for (const [id, exception] of scoped)
+    if (!used.has(id) && exception.lockfile !== 'package-lock.json')
+      throw new Error(`Stale exception; remove after review: ${id}`);
   return { graphs: results.map((result) => result.graph), blocked, accepted, maintenance };
 }
 

@@ -671,7 +671,8 @@ jobs:
           npm audit --prefix design/probes --audit-level=low
           npm audit --prefix design/probes/vault-search --audit-level=low
           npm audit --prefix tools/svelte-check --audit-level=low
-          npm audit --audit-level=low
+          npm audit --omit=dev --audit-level=low
+          node scripts/check-root-npm-audit.mjs
           npm sbom --sbom-format=cyclonedx --sbom-type=application > /dev/null
 
   worker-browser:

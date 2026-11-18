@@ -52,5 +52,14 @@
     "owner": "masanork",
     "reason": "The Rust rsa crate is used for public-key verification; product RS256 private-key signing uses runtime WebCrypto, not this crate. Test keys are synthetic. Re-review before adding private-key operations through rsa. See docs/adr/0008-webauthn-conformance.md.",
     "expires": "2026-12-04"
+  },
+  {
+    "lockfile": "package-lock.json",
+    "package": "picomatch",
+    "version": "4.0.7",
+    "advisory": "GHSA-fc5q-39xc-vjpf",
+    "owner": "masanork",
+    "reason": "Development-only Vite and Paraglide dependency. Keep the production npm audit blocking and remove after a compatible patched release. See docs/security-ci.md.",
+    "expires": "2026-12-04"
   }
 ]
