@@ -1,7 +1,7 @@
 //! Static issuer signatures prove data authenticity, not live card possession.
 use crate::card::{CardPreview, DocumentType, license_fields, parse_license, parse_preview};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};
-use rsa::{BoxedUint, Pkcs1v15Sign, RsaPublicKey};
+use rsa::{BoxedUint, Pkcs1v15Sign, PublicKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -274,7 +274,7 @@ pub fn verify(
         ) else {
             continue;
         };
-        let Ok(public) = RsaPublicKey::new(n, e) else {
+        let Ok(public) = PublicKey::new(n, e) else {
             continue;
         };
         eligible = true;

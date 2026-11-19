@@ -245,8 +245,10 @@
     <button
       id="owner-name-sharing-refresh"
       disabled={disabled || loading || pending !== null}
-      onclick={load}>{m.ownerNameSharingRefresh()}</button
+      onclick={load}
     >
+      {m.ownerNameSharingRefresh()}
+    </button>
   </div>
   {#if snapshot}
     <section aria-labelledby="owner-name-sharing-preview-heading">
@@ -296,16 +298,18 @@
             id="owner-name-sharing-share"
             disabled={!canPrepare || !snapshot.recipient}
             onclick={() => prepare(() => sharing.prepareShare(snapshot!))}
-            >{m.ownerNameSharingShare()}</button
           >
+            {m.ownerNameSharingShare()}
+          </button>
         {/if}
         {#if snapshot.sharing.grant?.status === 'active'}
           <button
             id="owner-name-sharing-revoke"
             disabled={disabled || loading || pending !== null}
             onclick={() => prepare(() => sharing.prepareRevokeShare(snapshot!))}
-            >{m.ownerNameSharingRevoke()}</button
           >
+            {m.ownerNameSharingRevoke()}
+          </button>
         {/if}
       </div>
     </section>
@@ -363,16 +367,18 @@
               disabled={!canPrepare}
               onclick={() =>
                 prepare(() => sharing.prepareRevokeRelease(snapshot!, client.client_id))}
-              >{m.ownerNameSharingWithdraw()}</button
             >
+              {m.ownerNameSharingWithdraw()}
+            </button>
           {/if}
           {#if client.eligible && sharingCurrent && !client.current}
             <button
               id="owner-name-sharing-allow"
               disabled={!canPrepare}
               onclick={() => prepare(() => sharing.prepareRelease(snapshot!, client.client_id))}
-              >{m.ownerNameSharingAllow()}</button
             >
+              {m.ownerNameSharingAllow()}
+            </button>
           {/if}
         {/if}
       {/if}
@@ -382,8 +388,10 @@
     <button
       id="owner-name-sharing-retry"
       disabled={disabled || loading}
-      onclick={() => commit(pending!)}>{m.ownerNameSharingRetry()}</button
+      onclick={() => commit(pending!)}
     >
+      {m.ownerNameSharingRetry()}
+    </button>
   {/if}
   <p id="owner-name-sharing-status" role="status" aria-live="polite">{status}</p>
 </details>

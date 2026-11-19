@@ -12,7 +12,7 @@ for (const name of ['@openeudi/openid4vp', '@openeudi/dcql', '@sd-jwt/decode', '
 }
 if (
   installedVersions['@openeudi/openid4vp'] !== profile.verifierVersion ||
-  installedVersions.jose !== '6.2.12'
+  installedVersions.jose !== '6.2.17'
 )
   throw new Error('Probe dependencies do not match the pinned profile');
 const lockDigest = digest(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
@@ -35,7 +35,7 @@ const report = {
   independent_verifier: { package: '@openeudi/openid4vp', version: profile.verifierVersion },
   installed_versions: installedVersions,
   dependency_lock_sha256: lockDigest,
-  issuer_wallet: 'Mikaki fixture harness using jose 6.2.12; not an independent wallet',
+  issuer_wallet: 'Mikaki fixture harness using jose 6.2.17; not an independent wallet',
   profile,
   issuer_trust: 'Pinned synthetic issuer public JWK plus exact iss; no x509/HAIP claim',
   status_policy: 'Synthetic local digest-keyed status service; good required on every presentation',

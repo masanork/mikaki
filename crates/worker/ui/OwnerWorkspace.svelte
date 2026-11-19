@@ -484,9 +484,9 @@
     {#if sourceReview || preparationReview}
       <nav class="product-nav" aria-label={m.source_compose_title()}>
         {#if sourceReview}<a href={`/work/source-review?lang=${locale}`}>{m.source_title()}</a>{/if}
-        {#if preparationReview}<a href={`/work/preparation-review?lang=${locale}`}
-            >{m.preparation_title()}</a
-          >{/if}
+        {#if preparationReview}<a href={`/work/preparation-review?lang=${locale}`}>
+            {m.preparation_title()}
+          </a>{/if}
       </nav>
     {/if}
     <VaultWebMcp
@@ -497,16 +497,17 @@
     />
     {#if !opened}
       <section class="product-result" aria-busy={busy}>
-        <button id="unlock" class="product-primary" disabled={busy} onclick={() => unlock()}
-          >{m.vaultUnlock()}</button
-        >
+        <button id="unlock" class="product-primary" disabled={busy} onclick={() => unlock()}>
+          {m.vaultUnlock()}
+        </button>
         <p role="status">{status}</p>
       </section>
     {:else}
       <div class="product-workspace">
         <nav class="product-nav" aria-label={m.vaultHeading()}>
-          <a href="#profile">{m.productProfile()}</a><a href="#owner-note">{m.vaultNoteHeading()}</a
-          ><a href="#threads">{m.ownerWorkspaceThreads()}</a>
+          <a href="#profile">{m.productProfile()}</a><a href="#owner-note">
+            {m.vaultNoteHeading()}
+          </a><a href="#threads">{m.ownerWorkspaceThreads()}</a>
         </nav>
         <div class="product-content">
           <section id="profile" aria-labelledby="profile-heading" aria-busy={busy}>
@@ -526,10 +527,12 @@
                 id="save"
                 class="product-primary"
                 disabled={editingBlocked || pending !== null}
-                onclick={save}>{m.vaultSave()}</button
-              ><button id="reload-profile" disabled={editingBlocked} onclick={reload}
-                >{m.productProfileReload()}</button
+                onclick={save}
               >
+                {m.vaultSave()}
+              </button><button id="reload-profile" disabled={editingBlocked} onclick={reload}>
+                {m.productProfileReload()}
+              </button>
             </div>
             {#if dirty}<p class="product-draft-status">
                 {pending ? m.productUnfinishedOperation() : m.productUnsavedChanges()}
@@ -539,8 +542,9 @@
               class="product-danger"
               disabled={editingBlocked || pending !== null || !savedName}
               onclick={() => remove('personal', 'name', 'name', profileRevision)}
-              >{m.vaultDelete()}</button
             >
+              {m.vaultDelete()}
+            </button>
           </section>
           <OwnerRecordEditor
             bind:this={noteEditor}
@@ -669,8 +673,10 @@
             <div class="product-actions">
               {#each visibleThreads as thread (thread.id)}<button
                   disabled={editingBlocked}
-                  onclick={() => (selected = thread.id)}>{thread.archive.title}</button
-                >{/each}
+                  onclick={() => (selected = thread.id)}
+                >
+                  {thread.archive.title}
+                </button>{/each}
             </div>
             {#if active}<article>
                 <h3 id="thread-title" tabindex="-1">{active.archive.title}</h3>
@@ -682,8 +688,9 @@
                   disabled={editingBlocked || pending !== null}
                   onclick={() =>
                     active && remove('threads', active.id, 'thread-archive', active.revision)}
-                  >{m.vaultDelete()}</button
                 >
+                  {m.vaultDelete()}
+                </button>
                 {#each active.archive.messages as message, index}<div
                     class="archive-message"
                     id={`thread-message-${index}`}
@@ -691,16 +698,17 @@
                   >
                     <strong>{message.speaker}{message.actor === 'ai' ? ' · AI' : ''}</strong><time
                       datetime={message.timestamp}
-                      >{new Date(message.timestamp).toLocaleString(locale)}</time
                     >
+                      {new Date(message.timestamp).toLocaleString(locale)}
+                    </time>
                     <p>{message.text}</p>
                   </div>{/each}
               </article>{/if}
           </section>
           <p id="status" role="status" aria-live="polite">{status}</p>
-          {#if pending}<button id="retry-write" disabled={editingBlocked} onclick={retry}
-              >{m.ownerVaultRetrySave()}</button
-            >{/if}
+          {#if pending}<button id="retry-write" disabled={editingBlocked} onclick={retry}>
+              {m.ownerVaultRetrySave()}
+            </button>{/if}
         </div>
       </div>
     {/if}

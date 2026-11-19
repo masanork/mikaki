@@ -93,8 +93,10 @@
               () => post('/account/email/remove', {}),
               ja ? 'メールを削除しました。' : 'Email removed.',
             );
-        }}>{ja ? '確認済みメールを削除' : 'Remove verified email'}</button
+        }}
       >
+        {ja ? '確認済みメールを削除' : 'Remove verified email'}
+      </button>
     {/if}
     <form
       onsubmit={(event) => {
@@ -117,9 +119,9 @@
         required
         disabled={busy}
       />
-      <button type="submit" disabled={busy}
-        >{ja ? '確認コードを送る' : 'Send confirmation code'}</button
-      >
+      <button type="submit" disabled={busy}>
+        {ja ? '確認コードを送る' : 'Send confirmation code'}
+      </button>
     </form>
     <form
       onsubmit={(event) => {
@@ -167,14 +169,15 @@
                 }),
               ja ? '連携先の設定を更新しました。' : 'App sharing updated.',
             )}
-          >{client.released
+        >
+          {client.released
             ? ja
               ? '提供を取り消す'
               : 'Stop sharing'
             : ja
               ? '提供を許可'
-              : 'Allow sharing'}</button
-        >
+              : 'Allow sharing'}
+        </button>
       </p>
     {/each}
     <p role="status" aria-live="polite">{message}</p>

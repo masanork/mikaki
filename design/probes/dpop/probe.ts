@@ -8,7 +8,6 @@ import {
   exportJWK,
   generateKeyPair,
   importJWK,
-  SignJWT,
   type JWK,
 } from 'jose';
 import {
@@ -21,7 +20,7 @@ import { IssuerFixture, jsonResponse, profile, type Transport } from '../oid4vci
 
 export const dpopProfile = {
   algorithm: 'ES256',
-  libraryVersion: '0.8.0',
+  libraryVersion: '0.10.0',
   maxAgeSeconds: 60,
   clockSkewSeconds: 10,
   replayCapacity: 1000,
@@ -29,7 +28,7 @@ export const dpopProfile = {
 const now = () => Math.floor(Date.now() / 1000);
 const random = () => randomBytes(32).toString('base64url');
 const hash = (value: string) => createHash('sha256').update(value, 'ascii').digest('base64url');
-type DpopCallbacks = Pick<CallbackContext, 'hash' | 'generateRandom' | 'signJwt' | 'verifyJwt'>;
+type DpopCallbacks = Pick<CallbackContext, 'hash' | 'generateRandom' | 'signJws' | 'verifyJws'>;
 
 function publicP256(key: JWK): boolean {
   return (
@@ -48,22 +47,42 @@ function publicP256(key: JWK): boolean {
 }
 function callbacks(privateKey?: JWK): DpopCallbacks {
   return {
-    hash: (data, algorithm) => createHash(algorithm.replace('-', '')).update(data).digest(),
+    hash: (data, algorithm) =>
+      createHash(algorithm.replace('-', ''))
+        .update(typeof data === 'string' ? data : new Uint8Array(data))
+        .digest(),
     generateRandom: (length) => randomBytes(length),
-    async signJwt(signer, jwt) {
+    async signJws(signer, { signingInputBytes }) {
       if (!privateKey || signer.method !== 'jwk' || signer.alg !== 'ES256')
         throw new Error('Unsupported fixture signer');
-      const compact = await new SignJWT(jwt.payload)
-        .setProtectedHeader(jwt.header)
-        .sign(await importJWK(privateKey, 'ES256'));
-      return { jwt: compact, signerJwk: signer.publicJwk };
+      const key = await crypto.subtle.importKey(
+        'jwk',
+        privateKey,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['sign'],
+      );
+      const signature = await crypto.subtle.sign(
+        { name: 'ECDSA', hash: 'SHA-256' },
+        key,
+        new Uint8Array(signingInputBytes),
+      );
+      return {
+        signature: Buffer.from(signature).toString('base64url'),
+        signerJwk: signer.publicJwk,
+      };
     },
-    async verifyJwt(signer, jwt) {
-      if (signer.method !== 'jwk' || signer.alg !== 'ES256' || !publicP256(signer.publicJwk))
+    async verifyJws(signer, jws) {
+      if (
+        signer.method !== 'jwk' ||
+        signer.alg !== 'ES256' ||
+        !publicP256(signer.publicJwk) ||
+        !jws.compact
+      )
         return { verified: false };
       try {
         // DPoP's optional exp/nbf are not authority; freshness is checked from iat below.
-        await compactVerify(jwt.compact, await importJWK(signer.publicJwk, 'ES256'), {
+        await compactVerify(jws.compact, await importJWK(signer.publicJwk, 'ES256'), {
           algorithms: ['ES256'],
         });
         return { verified: true, signerJwk: signer.publicJwk };

@@ -55,9 +55,9 @@ jobs:
           worker-build --release -d build-conformance crates/userinfo-claim-worker --features conformance-gate
           MIKAKI_PREFLIGHT_ONLY=1 node local/conformance/oidf-local-worker.ts
       - name: Install Chromium and WebKit dependencies
-        timeout-minutes: 8
+        timeout-minutes: 15
         run: |
-          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt; fi
+          if [ -f /etc/apt/apt-mirrors.txt ]; then sudo sed -E -i 's#https?://(azure\.archive\.ubuntu\.com|[a-z0-9-]+\.ec2\.archive\.ubuntu\.com)/ubuntu#https://archive.ubuntu.com/ubuntu#g' /etc/apt/apt-mirrors.txt; fi
           npx playwright install --with-deps chromium webkit
       - name: Verify Worker contracts and release boundaries
         run: |

@@ -163,9 +163,9 @@
 </script>
 
 <section aria-busy={busy}>
-  <a href={'/work/preparation-review?lang=' + getLocale() + '#' + encodeURIComponent(id)}
-    >{m.source_compose_review()}</a
-  >
+  <a href={'/work/preparation-review?lang=' + getLocale() + '#' + encodeURIComponent(id)}>
+    {m.source_compose_review()}
+  </a>
   <button type="button" disabled={busy} onclick={() => load()}>{m.copy_refresh()}</button>
   {#if failure}<p role="alert">{m.copy_unavailable()}</p>{/if}
   {#if value}
@@ -194,24 +194,28 @@
           data-work-action="stop_copy"
           type="button"
           disabled={busy}
-          onclick={stop}>{m.copy_cleanup()}</button
-        >{/if}
+          onclick={stop}
+        >
+          {m.copy_cleanup()}
+        </button>{/if}
       {#if value.can_start}
-        <label class="work-acknowledge"
-          ><input
+        <label class="work-acknowledge">
+          <input
             type="checkbox"
             data-work-confirmation="start_copy"
             bind:checked={acknowledged}
             disabled={busy}
-          />{m.copy_acknowledge()}</label
-        >
+          />{m.copy_acknowledge()}
+        </label>
         <button
           class="work-primary"
           data-work-action="start_copy"
           type="button"
           disabled={busy || !acknowledged}
-          onclick={start}>{m.copy_start()}</button
+          onclick={start}
         >
+          {m.copy_start()}
+        </button>
       {/if}
     </section>
   {/if}

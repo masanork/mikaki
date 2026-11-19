@@ -72,7 +72,8 @@ pub(super) fn verify(s: &Value, key: &PublicKey, signed: &[u8], cert: &Certifica
             let e = p.u32()?;
             let n = p.blob()?;
             require(
-                usize::from(bits) == key.n().bits() as usize && n == key.n().to_be_bytes().as_ref(),
+                usize::from(bits) == key.n().bit_width() as usize
+                    && n == key.n().to_be_bytes().as_ref(),
             )?;
             require(rsa::BoxedUint::from(if e == 0 { 65537 } else { e }) == *key.e())?;
         }

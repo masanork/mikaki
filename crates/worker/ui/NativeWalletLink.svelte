@@ -9,6 +9,8 @@
   <a
     class={className}
     href="https://auth.mikaki.org/native/wallet"
-    aria-label={locale === 'ja' ? 'この端末のWalletを開く' : 'Open device Wallet'}>Wallet</a
+    aria-label={locale === 'ja' ? 'この端末のWalletを開く' : 'Open device Wallet'}
   >
+    Wallet
+  </a>
 {/if}

@@ -54,16 +54,18 @@
     <section class="product-card" aria-label={m.waitlistHeading()}>
       {#if confirmed}<p role="status">{m.waitlistConfirmed()}</p>
       {:else if confirmation}<p>{m.waitlistConfirmIntro()}</p>
-        <button class="product-primary" disabled={busy} onclick={() => send(true)}
-          >{m.waitlistConfirm()}</button
-        >
+        <button class="product-primary" disabled={busy} onclick={() => send(true)}>
+          {m.waitlistConfirm()}
+        </button>
       {:else if submitted}<p role="status">{m.waitlistSubmitted()}</p>
         <button
           type="button"
           onclick={() => {
             submitted = false;
-          }}>{m.waitlistAnother()}</button
+          }}
         >
+          {m.waitlistAnother()}
+        </button>
       {:else}<form
           onsubmit={(event) => {
             event.preventDefault();
@@ -81,9 +83,9 @@
             disabled={busy}
           />
           <p>{m.waitlistContactOnly()}</p>
-          <button class="product-primary" type="submit" disabled={busy}
-            >{busy ? m.busy() : m.waitlistSubmit()}</button
-          >
+          <button class="product-primary" type="submit" disabled={busy}>
+            {busy ? m.busy() : m.waitlistSubmit()}
+          </button>
         </form>
       {/if}
       {#if failed}<p role="alert">{limited ? m.waitlistLimited() : m.waitlistError()}</p>{/if}

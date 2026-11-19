@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createTestHarness } from 'wrangler';
-import { chromium, expect, type Page } from '@playwright/test';
+import { chromium, expect, type BrowserContext, type Page } from '@playwright/test';
 import { activateWorkerPolicy } from '../../scripts/worker-policy-store.ts';
 
 type Notifications = 'available' | 'storage-only' | 'unavailable';
@@ -23,6 +23,7 @@ async function exerciseLifecycle(notifications: Notifications) {
     ],
   });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let context: BrowserContext | undefined;
   let evidence: Awaited<ReturnType<typeof startBrowserEvidence>> | undefined;
   let failure: unknown;
   let finishCheck = () => {};
@@ -58,7 +59,7 @@ async function exerciseLifecycle(notifications: Notifications) {
       ),
     ]);
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const logoutDenials = {
       confirm: { channel: 0, storage: 0 },
       ended: { channel: 0, storage: 0 },
@@ -422,9 +423,17 @@ async function exerciseLifecycle(notifications: Notifications) {
   } finally {
     finishCheck();
     finishOwnerCheck();
-    await evidence?.finish(failure);
-    await browser?.close();
-    await harness.close();
+    try {
+      await evidence?.finish(failure);
+      // Both tabs share the context route. Let in-flight callbacks finish before closing it.
+      await context?.unrouteAll({ behavior: 'wait' });
+    } finally {
+      try {
+        await browser?.close();
+      } finally {
+        await harness.close();
+      }
+    }
   }
 }
 

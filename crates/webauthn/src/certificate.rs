@@ -76,7 +76,7 @@ pub(super) fn verify_spki(
         }
         -257 | -258 | -259 | -65535 | -37 | -38 | -39 => {
             require(oid == "1.2.840.113549.1.1.1")?;
-            let key = rsa::RsaPublicKey::from_public_key_der(
+            let key = rsa::PublicKey::from_public_key_der(
                 &spki.to_der().map_err(|_| Invalid::Certificate)?,
             )
             .map_err(|_| Invalid::Certificate)?;

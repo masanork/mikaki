@@ -39,10 +39,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work-bindgen
-          key: ${{ runner.os }}-${{ runner.arch }}-work-bindgen-0.2.129-${{ hashFiles('rust-toolchain.toml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-work-bindgen-0.2.130-${{ hashFiles('rust-toolchain.toml') }}
       - name: Install the locked qualification Wasm tool
         run: |
-          cargo install wasm-bindgen-cli --version 0.2.129 --locked --root "$RUNNER_TEMP/work-bindgen"
+          cargo install wasm-bindgen-cli --version 0.2.130 --locked --root "$RUNNER_TEMP/work-bindgen"
           echo "MIKAKI_WORK_BINDGEN=$RUNNER_TEMP/work-bindgen/bin/wasm-bindgen" >> "$GITHUB_ENV"
       - run: npm ci
       - uses: ./.github/actions/setup-cargo-tools

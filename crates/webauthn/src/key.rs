@@ -1,7 +1,7 @@
 //! Bounded COSE public keys and verification; identical on native and Wasm.
 use super::*;
 use ed25519_dalek::{Signature as EdSignature, VerifyingKey as EdKey};
-use rsa::{BoxedUint, RsaPublicKey, pkcs1v15, pss};
+use rsa::{BoxedUint, PublicKey as RsaPublicKey, pkcs1v15, pss};
 
 pub(super) enum PublicKey {
     Es256(VerifyingKey),

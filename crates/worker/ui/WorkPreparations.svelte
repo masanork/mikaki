@@ -369,9 +369,9 @@
               onclick={() => choose(p.id)}
               aria-pressed={review?.preparation.id === p.id}
             >
-              <strong>{m.work_saved_copy()} · {p.task.name}</strong><span
-                >{copyState(p)} · {date(p.expires_at)}</span
-              >
+              <strong>{m.work_saved_copy()} · {p.task.name}</strong><span>
+                {copyState(p)} · {date(p.expires_at)}
+              </span>
             </button>
           </li>
         {/each}
@@ -379,9 +379,9 @@
     </details>
     <button type="button" disabled={busy} onclick={() => load()}>{m.preparation_refresh()}</button>
   </div>
-  {#if next}<button type="button" disabled={busy} onclick={() => load(true)}
-      >{m.source_more()}</button
-    >{/if}
+  {#if next}<button type="button" disabled={busy} onclick={() => load(true)}>
+      {m.source_more()}
+    </button>{/if}
   {#if review}
     {@const p = review.preparation}
     {@const d = review.disclosure}
@@ -491,8 +491,10 @@
           data-work-action="inspect_copy"
           type="button"
           disabled={busy}
-          onclick={() => inspect()}>{m.preparation_inspect()}</button
+          onclick={() => inspect()}
         >
+          {m.preparation_inspect()}
+        </button>
         {#if inspected}<p class="work-checked" role="status">{m.work_inspection_ready()}</p>{/if}
       </div>
       {#if reads.length}<section class="source-preview" aria-label={m.source_preview_title()}>
@@ -509,22 +511,24 @@
         <section class="work-consent" aria-label={m.preparation_copy_consent()}>
           <p class="work-copy-notice">{m.work_copy_notice()}</p>
           {#if copy.status === 'unconfirmed' && inspected}
-            <label class="work-acknowledge"
-              ><input
+            <label class="work-acknowledge">
+              <input
                 type="checkbox"
                 data-work-confirmation="approve_copy"
                 bind:checked={acknowledged}
                 disabled={busy || !inspected || !copy.can_approve}
               />
-              {m.preparation_copy_acknowledge()}</label
-            >
+              {m.preparation_copy_acknowledge()}
+            </label>
             <button
               class="work-primary"
               type="button"
               disabled={busy || !inspected || !acknowledged || !copy.can_approve}
               data-work-action="approve_copy"
-              onclick={() => decideCopy('POST')}>{m.preparation_copy_approve()}</button
+              onclick={() => decideCopy('POST')}
             >
+              {m.preparation_copy_approve()}
+            </button>
           {:else if copy.status === 'approved'}
             <p role="status">
               {copy.current ? m.preparation_copy_approved() : m.preparation_copy_inactive()}
@@ -532,22 +536,26 @@
             {#if executionEnabled}<a
                 class="work-primary"
                 href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
-                >{m.copy_open()}</a
-              >{/if}
+              >
+                {m.copy_open()}
+              </a>{/if}
             <button
               data-work-action="withdraw_copy"
               type="button"
               disabled={busy}
-              onclick={() => decideCopy('DELETE')}>{m.preparation_copy_withdraw()}</button
+              onclick={() => decideCopy('DELETE')}
             >
+              {m.preparation_copy_withdraw()}
+            </button>
             <p class="work-hint">{m.preparation_copy_withdraw_boundary()}</p>
           {:else if copy.status === 'withdrawn'}<p role="status">
               {m.preparation_copy_withdrawn()}
             </p>
             {#if executionEnabled}<a
                 href={'/work/copy-review?lang=' + getLocale() + '#' + encodeURIComponent(p.id)}
-                >{m.copy_open()}</a
-              >{/if}
+              >
+                {m.copy_open()}
+              </a>{/if}
           {/if}
         </section>
       {/if}
@@ -555,8 +563,10 @@
         <button
           type="button"
           disabled={busy || !review.currentSources || p.expires_at <= now}
-          onclick={() => downloadDisclosure()}>{m.preparation_record_save()}</button
+          onclick={() => downloadDisclosure()}
         >
+          {m.preparation_record_save()}
+        </button>
         <details class="work-details work-record-details">
           <summary>{m.preparation_integrity()}</summary>
           <p>{m.preparation_record_scope()}</p>
@@ -577,19 +587,19 @@
   {/if}
   {#if preparations.some((p) => p.expires_at <= now)}
     <details class="work-details work-history">
-      <summary
-        >{m.work_history({
+      <summary>
+        {m.work_history({
           count: preparations.filter((p) => p.expires_at <= now).length,
-        })}</summary
-      >
+        })}
+      </summary>
       <ul class="preparation-list">
         {#each preparations.filter((p) => p.expires_at <= now) as p (p.id)}
           <li>
-            <button type="button" disabled
-              ><strong>{m.work_past_copy()}</strong><span
-                >{copyState(p)} · {m.preparation_expired()}</span
-              ></button
-            >
+            <button type="button" disabled>
+              <strong>{m.work_past_copy()}</strong><span>
+                {copyState(p)} · {m.preparation_expired()}
+              </span>
+            </button>
           </li>
         {/each}
       </ul>

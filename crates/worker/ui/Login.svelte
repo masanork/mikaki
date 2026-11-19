@@ -460,8 +460,8 @@
   {#if checkingInvitation}<p role="status">{m.busy()}</p>
   {:else if errorKind !== 'link'}
     {#if linkedInvitation}<p>{m.enrollLinkIntro()}</p>
-    {:else}<label class="invite" for="invitation"
-        >{m.invite()}
+    {:else}<label class="invite" for="invitation">
+        {m.invite()}
         <input
           id="invitation"
           type="text"
@@ -478,9 +478,9 @@
     {#if errorKind === 'required'}<p class="auth-field-error" id="invite-error" role="alert">
         {m.inviteRequired()}
       </p>{/if}
-    <button class="quiet" id="register" type="button" disabled={busy} onclick={register}
-      >{busy ? m.busy() : linkedInvitation ? m.enrollStart() : m.register()}</button
-    >
+    <button class="quiet" id="register" type="button" disabled={busy} onclick={register}>
+      {busy ? m.busy() : linkedInvitation ? m.enrollStart() : m.register()}
+    </button>
     <p class="recovery">{m.recovery()}</p>
   {/if}
 {/snippet}
@@ -504,9 +504,9 @@
       class="item origin destination"
       style={`--grain-step:${rpProfile.spacing / 2}px;--grain-angle:${rpProfile.grainAngle}deg`}
     >
-      <span>{m.authRpOriginLabel()}</span><strong
-        >{destination.host || connection.destination}</strong
-      >
+      <span>{m.authRpOriginLabel()}</span><strong>
+        {destination.host || connection.destination}
+      </strong>
     </div>
   </div>
   {#if !enrollment}
@@ -545,8 +545,10 @@
           id="passkey"
           type="button"
           disabled={busy}
-          onclick={() => authenticate()}>{busy ? m.busy() : m.loginAuthorize()}</button
+          onclick={() => authenticate()}
         >
+          {busy ? m.busy() : m.loginAuthorize()}
+        </button>
       </div>
     {/if}
     {#if errorKind === 'operation'}<p class="auth-alert" id="error" role="alert">
@@ -569,9 +571,9 @@
   </main>
   <footer>
     <NativeWalletLink className="quiet" {locale} />
-    {#if !pending && !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}
-        >{m.homeEnroll()}</a
-      >
+    {#if !pending && !enrollment && ownerLogin}<a class="quiet" href={`/enroll?lang=${locale}`}>
+        {m.homeEnroll()}
+      </a>
     {:else if !pending && !enrollment}<details class="registration" bind:open={registrationOpen}>
         <summary>{m.authRegisterHeading()}</summary>
         {@render invitationForm()}
@@ -586,7 +588,8 @@
       aria-label={m.language()}
       value={locale}
       onchange={(event) => switchLocale(event.currentTarget.value)}
-      ><option value="ja">日本語</option><option value="en">English</option></select
     >
+      <option value="ja">日本語</option><option value="en">English</option>
+    </select>
   </footer>
 </div>

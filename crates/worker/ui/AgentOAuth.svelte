@@ -227,22 +227,22 @@
         <p>{m.agentOAuthSourceRevision()} {review.authorization_details[0].source.revision}</p>
       {/if}
       <p>{m.agentOAuthDisclosure()}</p>
-      <label
-        >{m.agentOAuthGrant()}<select
+      <label>
+        {m.agentOAuthGrant()}<select
           bind:value={selected}
           disabled={busy || disabled}
           onchange={() => (consent = false)}
         >
           <option value="">{m.agentOAuthChoose()}</option>
           {#each choices as grant (grant.grant_id)}
-            <option value={grant.grant_id}
-              >{grant.source.kind === 'name' ? m.vaultName() : m.vaultNoteHeading()} ·
+            <option value={grant.grant_id}>
+              {grant.source.kind === 'name' ? m.vaultName() : m.vaultNoteHeading()} ·
               {m.agentSnapshotRevision({ revision: String(grant.source.revision) })} ·
-              {grant.delegate} · {grant.provider} · {grant.grant_id}</option
-            >
+              {grant.delegate} · {grant.provider} · {grant.grant_id}
+            </option>
           {/each}
-        </select></label
-      >
+        </select>
+      </label>
       {#each choices.filter((grant) => grant.grant_id === selected) as grant (grant.grant_id)}
         <p>
           {m.agentOAuthSource()}
@@ -259,25 +259,29 @@
         </p>
       {/each}
       {#if choices.length === 0}<p>{m.agentOAuthNoGrant()}</p>{/if}
-      <label
-        ><input
+      <label>
+        <input
           type="checkbox"
           bind:checked={consent}
           disabled={busy || disabled}
-        />{m.agentOAuthConsent()}</label
-      >
+        />{m.agentOAuthConsent()}
+      </label>
       <button
         class="product-primary"
         type="button"
         disabled={busy || disabled || !consent || !choices.some((g) => g.grant_id === selected)}
-        onclick={() => decide(true)}>{m.agentOAuthAllow()}</button
+        onclick={() => decide(true)}
       >
+        {m.agentOAuthAllow()}
+      </button>
       <button
         class="product-danger"
         type="button"
         disabled={busy || disabled}
-        onclick={() => decide(false)}>{m.agentReject()}</button
+        onclick={() => decide(false)}
       >
+        {m.agentReject()}
+      </button>
     {/if}
     {#if failed || !requestId}<p role="status">{m.agentOAuthFailed()}</p>{/if}
     <button type="button" disabled={busy || disabled} onclick={load}>{m.agentRefresh()}</button>

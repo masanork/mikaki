@@ -307,29 +307,31 @@
       type="button"
       disabled={disabled || busy || !loaded || pending?.method === 'DELETE'}
       onclick={() => mutate('PUT')}
-      >{pending?.method === 'PUT'
+    >
+      {pending?.method === 'PUT'
         ? m.ownerVaultRetrySave()
         : head?.deleted
           ? m.ownerVaultRecreate()
           : note
             ? m.vaultNoteSave()
-            : m.vaultSave()}</button
-    >
+            : m.vaultSave()}
+    </button>
     <button
       id={`${prefix}-delete`}
       class="product-danger"
       type="button"
       disabled={disabled || busy || !loaded || !head?.record || pending?.method === 'PUT'}
       onclick={() => mutate('DELETE')}
-      >{pending?.method === 'DELETE'
+    >
+      {pending?.method === 'DELETE'
         ? m.ownerVaultRetryDelete()
         : note
           ? m.vaultNoteDelete()
-          : m.vaultDelete()}</button
-    >
-    <button id={`${prefix}-reload`} type="button" disabled={disabled || busy} onclick={reload}
-      >{note ? m.vaultNoteReload() : m.productProfileReload()}</button
-    >
+          : m.vaultDelete()}
+    </button>
+    <button id={`${prefix}-reload`} type="button" disabled={disabled || busy} onclick={reload}>
+      {note ? m.vaultNoteReload() : m.productProfileReload()}
+    </button>
   </div>
   {#if invalid}<p role="alert">
       {invalid === 'name'

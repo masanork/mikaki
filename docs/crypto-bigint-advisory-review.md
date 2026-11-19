@@ -1,6 +1,6 @@
 # crypto-bigint timing advisory disposition
 
-Re-reviewed on 2026-11-07 for [RUSTSEC-2026-0387](https://github.com/RustSec/advisory-db/blob/main/crates/crypto-bigint/RUSTSEC-2026-0387.md).
+Historical review from 2026-11-07 for [RUSTSEC-2026-0387](https://github.com/RustSec/advisory-db/blob/main/crates/crypto-bigint/RUSTSEC-2026-0387.md).
 The advisory concerns secret-dependent timing in integer arithmetic. Its patched
 range is `>=0.7.6`; it does not identify a compatible fix for the 0.5 series.
 
@@ -29,7 +29,11 @@ cargo tree --locked --manifest-path design/probes/jose/Cargo.toml -i crypto-bigi
 cargo tree --locked --manifest-path design/probes/native-identity-http/Cargo.toml -i crypto-bigint
 ```
 
-The exact graph/version/advisory dispositions are in
+On 2026-11-18, the JOSE probe moved to jsonwebtoken 12.0.0. Its RustCrypto
+provider resolves `crypto-bigint` 0.7.11, so the 0.5.5 exception was removed.
+The probe still only verifies public signatures.
+
+The historical graph/version/advisory dispositions were in
 [the dependency policy](../.github/dependency-advisory-exceptions.json).
 Other versions, graphs or advisories remain blocking. Remove the remaining entry when
 the JOSE dependency supports a patched version. Any private-key

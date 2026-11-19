@@ -115,42 +115,42 @@
     <h2 id="vault-browser-assistant-heading">{m.webmcpHeading()}</h2>
     <p>{m.webmcpExplanation()}</p>
     {#if host.owner()}
-      <label
-        ><input
+      <label>
+        <input
           id="webmcp-enabled"
           type="checkbox"
           bind:checked={enabled}
           onchange={(event) => {
             if (!event.currentTarget.checked) clear();
           }}
-        />{m.webmcpEnable()}</label
-      >
+        />{m.webmcpEnable()}
+      </label>
       {#if enabled}
         <fieldset>
           <legend>{m.ownerAgentGrantPermissions()}</legend>
-          <label
-            ><input
+          <label>
+            <input
               id="webmcp-name"
               type="checkbox"
               bind:checked={shareName}
-            />{m.webmcpRecordAccess({ record: m.vaultName() })}</label
-          >
-          <label
-            ><input
+            />{m.webmcpRecordAccess({ record: m.vaultName() })}
+          </label>
+          <label>
+            <input
               id="webmcp-note"
               type="checkbox"
               bind:checked={shareNote}
-            />{m.webmcpRecordAccess({ record: m.vaultNoteHeading() })}</label
-          >
+            />{m.webmcpRecordAccess({ record: m.vaultNoteHeading() })}
+          </label>
           {#each records as record (record.id)}
-            <label
-              ><input
+            <label>
+              <input
                 type="checkbox"
                 value={record.id}
                 bind:group={threadIds}
                 disabled={!threadIds.includes(record.id) && threadIds.length >= 16}
-              />{record.archive.title}</label
-            >
+              />{record.archive.title}
+            </label>
           {/each}
           <p>{m.webmcpSessionOnly()}</p>
         </fieldset>

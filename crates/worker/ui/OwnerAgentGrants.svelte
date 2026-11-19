@@ -419,8 +419,10 @@
     <button
       id="owner-agent-grants-refresh"
       disabled={disabled || loading || pending !== null}
-      onclick={load}>{m.ownerAgentGrantsRefresh()}</button
+      onclick={load}
     >
+      {m.ownerAgentGrantsRefresh()}
+    </button>
   </div>
   {#if snapshot}
     {@const selectedSource = snapshot.sources[sourceId]}
@@ -442,8 +444,9 @@
           <option
             value={source}
             disabled={!snapshot.sources[source as 'name' | 'owner_note'].available}
-            >{source === 'name' ? m.ownerAgentGrantName() : m.ownerAgentGrantOwnerNote()}</option
           >
+            {source === 'name' ? m.ownerAgentGrantName() : m.ownerAgentGrantOwnerNote()}
+          </option>
         {/each}
       </select>
       <p>{m.ownerAgentGrantRevision({ revision: selectedSource.revision })}</p>
@@ -524,8 +527,10 @@
           !delegate.trim() ||
           !provider.trim() ||
           !grantConsent}
-        onclick={issue}>{m.ownerAgentGrantIssue()}</button
+        onclick={issue}
       >
+        {m.ownerAgentGrantIssue()}
+      </button>
     </section>
     {#if shownToken}
       <section aria-labelledby="owner-agent-grant-token-heading" aria-live="polite">
@@ -538,12 +543,12 @@
         </p>
         <code id="owner-agent-grant-token">{shownToken}</code>
         <div class="product-actions">
-          <button id="owner-agent-grant-token-copy" onclick={copyToken}
-            >{m.ownerAgentGrantCopyToken()}</button
-          >
-          <button id="owner-agent-grant-token-dismiss" onclick={() => (shownToken = null)}
-            >{m.ownerAgentGrantTokenDone()}</button
-          >
+          <button id="owner-agent-grant-token-copy" onclick={copyToken}>
+            {m.ownerAgentGrantCopyToken()}
+          </button>
+          <button id="owner-agent-grant-token-dismiss" onclick={() => (shownToken = null)}>
+            {m.ownerAgentGrantTokenDone()}
+          </button>
         </div>
       </section>
     {/if}
@@ -600,16 +605,20 @@
                   <button
                     id={`owner-agent-capability-allow-${grant.grant_id}`}
                     disabled={!canPrepare || capabilityConsent !== grant.grant_id}
-                    onclick={() => allowCapability(grant)}>{m.ownerAgentCapabilityAllow()}</button
+                    onclick={() => allowCapability(grant)}
                   >
+                    {m.ownerAgentCapabilityAllow()}
+                  </button>
                 {/if}
               </div>
               <button
                 id={`owner-agent-grant-revoke-${grant.grant_id}`}
                 class="product-danger"
                 disabled={!canPrepare}
-                onclick={() => revoke(grant)}>{m.ownerAgentGrantRevoke()}</button
+                onclick={() => revoke(grant)}
               >
+                {m.ownerAgentGrantRevoke()}
+              </button>
             {:else}
               <p>{m.ownerAgentGrantHistoricalRevokeOnly()}</p>
             {/if}
@@ -622,8 +631,10 @@
     <button
       id="owner-agent-grants-retry"
       disabled={disabled || loading}
-      onclick={() => send(pending!)}>{m.ownerAgentGrantsRetry()}</button
+      onclick={() => send(pending!)}
     >
+      {m.ownerAgentGrantsRetry()}
+    </button>
   {/if}
   <p id="owner-agent-grants-status" role="status" aria-live="polite">{status}</p>
 </details>

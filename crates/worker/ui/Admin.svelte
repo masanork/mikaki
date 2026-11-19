@@ -229,8 +229,10 @@
         disabled={busy || loading}
         onclick={() => {
           void reload();
-        }}>{m.adminRefresh()}</button
+        }}
       >
+        {m.adminRefresh()}
+      </button>
       {#if loading}<p role="status">{m.busy()}</p>
       {:else}
         {#if !mailReady}<p role="alert">{m.adminMailUnavailable()}</p>{/if}
@@ -240,12 +242,12 @@
               <div>
                 <strong>{entry.email}</strong>
                 <p>{status(entry.status)}</p>
-                <time datetime={new Date(entry.created_at * 1000).toISOString()}
-                  >{new Intl.DateTimeFormat(locale, {
+                <time datetime={new Date(entry.created_at * 1000).toISOString()}>
+                  {new Intl.DateTimeFormat(locale, {
                     dateStyle: 'medium',
                     timeStyle: 'short',
-                  }).format(entry.created_at * 1000)}</time
-                >
+                  }).format(entry.created_at * 1000)}
+                </time>
                 {#if entry.expires_at && entry.status !== 'registered'}<p>
                     {m.adminExpires()}: {new Intl.DateTimeFormat(locale, {
                       dateStyle: 'medium',
@@ -257,21 +259,25 @@
                   class="product-primary"
                   disabled={busy || !mailReady}
                   onclick={() => issue({ id: entry.id, action: 'invite' })}
-                  >{m.adminInviteEmail()}</button
                 >
+                  {m.adminInviteEmail()}
+                </button>
               {:else if entry.status === 'invited' || entry.status === 'failed'}<button
                   disabled={busy || !mailReady || !entry.can_resend}
                   onclick={() => issue({ id: entry.id, action: 'resend' })}
-                  >{m.adminResend()}</button
-                >{/if}
+                >
+                  {m.adminResend()}
+                </button>{/if}
             </li>{/each}
         </ul>
         {#if nextCursor}<button
             disabled={busy || loading}
             onclick={() => {
               void reload(true);
-            }}>{m.adminLoadMore()}</button
-          >{/if}
+            }}
+          >
+            {m.adminLoadMore()}
+          </button>{/if}
       {/if}
       {#if message}<p role="status">{message}</p>{/if}
       {#if failed}<p role="alert">{m.adminError()}</p>{/if}
@@ -280,20 +286,20 @@
       <details>
         <summary>{m.adminManual()}</summary>
         <p>{m.adminIntro()}</p>
-        <button class="product-primary" type="button" disabled={busy} onclick={() => issue()}
-          >{m.adminIssue()}</button
-        >
+        <button class="product-primary" type="button" disabled={busy} onclick={() => issue()}>
+          {m.adminIssue()}
+        </button>
         {#if failed}<p role="alert">{m.adminError()}</p>{/if}
         {#if invitation}
           <p role="status">{m.adminReady()}</p>
           <p>{m.adminInvitation()}: <code>{invitation}</code></p>
           <p>
             {m.adminExpires()}:
-            <time datetime={new Date(expiresAt * 1000).toISOString()}
-              >{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+            <time datetime={new Date(expiresAt * 1000).toISOString()}>
+              {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
                 expiresAt * 1000,
-              )}</time
-            >
+              )}
+            </time>
           </p>
         {/if}
       </details>

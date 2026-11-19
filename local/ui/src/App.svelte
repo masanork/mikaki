@@ -119,8 +119,9 @@
         aria-label={m.language()}
         value={getLocale()}
         onchange={(event) => switchLocale(event.currentTarget.value as Locale)}
-        ><option value="ja">日本語</option><option value="en">English</option></select
       >
+        <option value="ja">日本語</option><option value="en">English</option>
+      </select>
     </label>
   </header>
   <main class="auth-layout">
@@ -151,19 +152,21 @@
           <strong class="auth-client-name">{context.client}</strong>
         </div>
         <p class="auth-description">{m.loginConsentDescription()}</p>
-        <label class="auth-consent"
-          ><input type="checkbox" bind:checked={consent} />{m.consent()}</label
-        >
+        <label class="auth-consent">
+          <input type="checkbox" bind:checked={consent} />{m.consent()}
+        </label>
         {#if context.signed_in}
-          <button class="auth-primary" disabled={!consent || busy} onclick={() => run('consent')}
-            >{busy ? m.busy() : m.continue()}</button
-          >
+          <button class="auth-primary" disabled={!consent || busy} onclick={() => run('consent')}>
+            {busy ? m.busy() : m.continue()}
+          </button>
         {:else}
           <button
             class="auth-primary"
             disabled={!consent || busy}
-            onclick={() => run('authenticate')}>{busy ? m.busy() : m.login()}</button
+            onclick={() => run('authenticate')}
           >
+            {busy ? m.busy() : m.login()}
+          </button>
           <hr class="auth-divider" />
           <h3 class="auth-subheading">{m.authRegisterHeading()}</h3>
           <p class="auth-field-help" id="invite-help">{m.authInviteHelp()}</p>
@@ -184,9 +187,13 @@
           {#if missingInvitation}<p class="auth-field-error" id="invite-error" role="alert">
               {m.inviteRequired()}
             </p>{/if}
-          <button class="auth-secondary" disabled={!consent || busy} onclick={() => run('register')}
-            >{busy ? m.busy() : m.register()}</button
+          <button
+            class="auth-secondary"
+            disabled={!consent || busy}
+            onclick={() => run('register')}
           >
+            {busy ? m.busy() : m.register()}
+          </button>
           <p class="auth-note">{m.recovery()}</p>
         {/if}
       {/if}

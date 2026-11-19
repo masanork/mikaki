@@ -127,21 +127,25 @@
   <main id="product-main" class="product-main" tabindex="-1">
     {#if !shell}<div class="product-heading">
         <h1>mikaki</h1>
-        <button type="button" aria-expanded={settings} onclick={toggleSettings}
-          >{ja ? '設定' : 'Settings'}</button
-        >
+        <button type="button" aria-expanded={settings} onclick={toggleSettings}>
+          {ja ? '設定' : 'Settings'}
+        </button>
       </div>
       <nav class="mvp-tabs" aria-label={ja ? '画面' : 'Pages'}>
         <button
           type="button"
           aria-current={tab === 'wallet' ? 'page' : undefined}
-          onclick={() => select('wallet')}>Wallet</button
+          onclick={() => select('wallet')}
         >
+          Wallet
+        </button>
         <button
           type="button"
           aria-current={tab === 'chat' ? 'page' : undefined}
-          onclick={() => select('chat')}>Chat</button
+          onclick={() => select('chat')}
         >
+          Chat
+        </button>
       </nav>{/if}
     {#if settings}
       <section class="product-card" aria-label={ja ? '設定' : 'Settings'}>
@@ -157,9 +161,9 @@
         {:else}<p>
             {ja ? 'パスキーの管理にはロック解除が必要です。' : 'Unlock to manage passkeys.'}
           </p>
-          <button type="button" class="product-primary" disabled={busy} onclick={() => unlock()}
-            >{m.vaultUnlock()}</button
-          >
+          <button type="button" class="product-primary" disabled={busy} onclick={() => unlock()}>
+            {m.vaultUnlock()}
+          </button>
           <p role="status">{status}</p>{/if}
       </section>
     {:else if tab === 'wallet'}
@@ -170,9 +174,9 @@
             ? '本人確認をして証明書を受け取り、必要な相手に提示します。'
             : 'Receive credentials and present what you need to the right person.'}
         </p>
-        <a class="mvp-primary" href={native ? '/native/wallet' : 'mikaki-wallet:'}
-          >{ja ? 'Walletアプリで開く' : 'Open the Wallet app'}</a
-        >
+        <a class="mvp-primary" href={native ? '/native/wallet' : 'mikaki-wallet:'}>
+          {ja ? 'Walletアプリで開く' : 'Open the Wallet app'}
+        </a>
         <p class="product-muted">
           {ja
             ? '本人確認書類の読取と証明書の保管・提示は、スマートフォンのMikakiアプリで行います。'
@@ -192,8 +196,10 @@
           class="product-primary"
           type="button"
           disabled={busy}
-          onclick={() => unlock()}>{m.vaultUnlock()}</button
+          onclick={() => unlock()}
         >
+          {m.vaultUnlock()}
+        </button>
         <p role="status">{status}</p>
       </section>
     {:else}

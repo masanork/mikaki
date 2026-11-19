@@ -5,7 +5,7 @@ use mikaki_identity::{
     issuance::{self, PublicJwk},
 };
 use p256::ecdsa::SigningKey;
-use rsa::{Pkcs1v15Sign, RsaPrivateKey, traits::PublicKeyParts};
+use rsa::{Pkcs1v15Sign, PrivateKey, traits::PublicKeyParts};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 const NOW: u64 = 1_790_812_800;
@@ -18,11 +18,9 @@ fn passport_read_data_is_not_accepted_as_existing_card_evidence() {
         Err(VerificationError::InvalidEvidence)
     ));
 }
-fn key() -> &'static RsaPrivateKey {
-    static KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
-    KEY.get_or_init(|| {
-        RsaPrivateKey::new(&mut rand_core::UnwrapErr(getrandom::SysRng), 2048).unwrap()
-    })
+fn key() -> &'static PrivateKey {
+    static KEY: OnceLock<PrivateKey> = OnceLock::new();
+    KEY.get_or_init(|| PrivateKey::new(&mut rand_core::UnwrapErr(getrandom::SysRng), 2048).unwrap())
 }
 fn trust(kind: DocumentType) -> TrustedKey {
     TrustedKey {

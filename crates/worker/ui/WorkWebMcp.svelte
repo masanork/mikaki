@@ -73,8 +73,8 @@
   <section id="work-browser-assistant" aria-labelledby="work-browser-assistant-heading">
     <h2 id="work-browser-assistant-heading">{m.webmcpHeading()}</h2>
     <p>{m.workAssistantSession()}</p>
-    <label
-      ><input
+    <label>
+      <input
         id="work-assistant-enabled"
         type="checkbox"
         bind:checked={enabled}
@@ -82,11 +82,11 @@
         onchange={() => {
           sharedSelection = null;
         }}
-      />{m.workAssistantEnable()}</label
-    >
+      />{m.workAssistantEnable()}
+    </label>
     {#if enabled && host.page !== 'copy'}
-      <label
-        ><input
+      <label>
+        <input
           id="work-assistant-content"
           type="checkbox"
           checked={sharedSelection !== null}
@@ -94,8 +94,8 @@
           onchange={(event) => {
             sharedSelection = event.currentTarget.checked ? selection : null;
           }}
-        />{m.workAssistantContent()}</label
-      >
+        />{m.workAssistantContent()}
+      </label>
     {/if}
     <p role="status">{status}</p>
   </section>
