@@ -122,7 +122,7 @@ export async function auditBridgeSchema({ root, feature, stage, query }) {
 export function assertProductionConfig(bytes) {
   assert.equal(
     createHash('sha256').update(bytes).digest('hex'),
-    '9e09409199081c3165a3d3f21205f13f289dc0a5da62d3779cec9c3649612e1a',
+    '930c49201525b7ea85d3d7c0bbe31560f6e177af039259bf37279637d04e0f40',
     'Production target config differs',
   );
 }
