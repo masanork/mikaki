@@ -1,5 +1,17 @@
 # Identity test-deployment checkpoint
 
+## Proposed single-card renewal — 2026-11-20
+
+This proposal renews the same one-card `mikaki_test` / `age_over_18` policy
+by changing only `not_after`. The proposed deadline is
+`2026-11-25T23:07:30Z` (2026-11-26 08:07:30 JST), bounded by the
+selected credential CRLs. The proposed compact policy SHA-256 is
+`071b4f143a8747ddb8d1e05dd6e65a9f6c865603c416f7f79570146cf3883f08`.
+
+The preceding approval expired on 2026-11-13. Operator approval of this exact
+extension is pending. Provision the production trust secret only after
+recording that approval, then verify the source-bound deployment and smoke.
+
 ## Approved single-card renewal — 2026-11-06
 
 The operator approved this exact single-card renewal in direct response to PR
