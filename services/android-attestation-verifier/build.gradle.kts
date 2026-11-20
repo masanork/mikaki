@@ -13,7 +13,7 @@ dependencies {
   implementation("com.google.code.gson:gson:2.15.0")
   implementation("com.google.protobuf:protobuf-javalite:4.36.2")
   implementation("com.google.guava:guava:33.8.0-jre")
-  implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+  implementation("org.bouncycastle:bcpkix-jdk18on:1.87")
   testImplementation(kotlin("test-junit5"))
   testImplementation(platform("org.junit:junit-bom:6.1.3"))
   testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
