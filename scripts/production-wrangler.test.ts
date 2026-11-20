@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  activateUploadedVersion,
   productionWrangler,
   retryableWrangler,
   uploadedVersionView,
@@ -199,4 +200,66 @@ test('other IDs, permission errors and malformed CLI failures never enter the vi
       assert.fail('Invalid version ID must fail before executing Wrangler');
     }),
   );
+});
+
+test('activation retries only the selected version GET failure, with bounded waits', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  const waits: number[] = [];
+  let calls = 0;
+  const execute = (args: string[]) => {
+    assert.deepEqual(args, [
+      'versions',
+      'deploy',
+      uploadedId + '@100',
+      '--yes',
+      '--config',
+      'config',
+      '--message',
+      'message',
+    ]);
+    if (++calls < 3) throw notVisible;
+    return 'activated';
+  };
+  assert.equal(
+    await activateUploadedVersion(uploadedId, 'config', 'message', execute, async (ms) => {
+      waits.push(ms);
+    }),
+    'activated',
+  );
+  assert.deepEqual(waits, [2000, 4000]);
+  calls = 0;
+  await assert.rejects(
+    activateUploadedVersion(
+      uploadedId,
+      'config',
+      'message',
+      () => {
+        calls++;
+        throw notVisible;
+      },
+      async () => {},
+    ),
+    (error) => error === notVisible,
+  );
+  assert.equal(calls, 5);
+  for (const error of [
+    unavailable,
+    { stderr: notVisible.stderr.replace('/versions/', '/deployments/') },
+    { stderr: notVisible.stderr.replace(uploadedId, 'other') },
+  ]) {
+    await assert.rejects(
+      activateUploadedVersion(
+        uploadedId,
+        'config',
+        'message',
+        () => {
+          throw error;
+        },
+        async () => {
+          assert.fail('Unexpected activation retry');
+        },
+      ),
+      (thrown) => thrown === error,
+    );
+  }
 });

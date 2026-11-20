@@ -1,4 +1,4 @@
-/** Bounded control-plane retry. Never retry activation, triggers, schema or resource creation. */
+/** Bounded control-plane retry. Never retry ambiguous activation, triggers, schema or resource creation. */
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -66,6 +66,42 @@ export async function uploadedVersionView(
         }),
       );
       await wait(1000 * 2 ** attempt);
+    }
+  }
+}
+
+/** Retry only Wrangler's exact version GET failure before it sends the deployment POST. */
+export async function activateUploadedVersion(
+  id: string,
+  config: string,
+  message: string,
+  execute: (args: string[]) => string | Promise<string>,
+  wait: (milliseconds: number) => Promise<unknown> = delay,
+): Promise<string> {
+  assert.match(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+  const args = [
+    'versions',
+    'deploy',
+    `${id}@100`,
+    '--yes',
+    '--config',
+    config,
+    '--message',
+    message,
+  ];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await execute(args);
+    } catch (error) {
+      if (attempt === 4 || !uploadedVersionNotVisible(id, error)) throw error;
+      console.log(
+        JSON.stringify({
+          event: 'production_activation_preflight_wait',
+          version_id: id,
+          attempt: attempt + 2,
+        }),
+      );
+      await wait(2000 * 2 ** attempt);
     }
   }
 }
