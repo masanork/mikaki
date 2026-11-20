@@ -15,7 +15,11 @@ import { assertProductionWorkRolloutSchema } from './production-work-migration.t
 import { productionWorkPacketDigest } from './production-work-packet.ts';
 import { cloudflareMetadataGet } from './production-worker-inventory.ts';
 import { PRODUCTION_WORK_TARGET } from './production-work-adoption.ts';
-import { productionWrangler, uploadedVersionView } from './production-wrangler.ts';
+import {
+  activateUploadedVersion,
+  productionWrangler,
+  uploadedVersionView,
+} from './production-wrangler.ts';
 import { assertDedicatedIdentityKey } from './identity-issuer-key.ts';
 import { identityTestTrust, productionIdentityTestProfile } from './identity-test-profile.ts';
 import { assertIdentityHaipSecrets } from './identity-haip-profile.ts';
@@ -553,16 +557,12 @@ async function main() {
     'Checkpoint deployment must retain its existing namespace',
   );
   if (priorNamespace !== null) {
-    await wrangler([
-      'versions',
-      'deploy',
-      `${checkpointId}@100`,
-      '--yes',
-      '--config',
+    await activateUploadedVersion(
+      checkpointId,
       checkpointConfigPath,
-      '--message',
       `main CI ${source.commit}`,
-    ]);
+      wrangler,
+    );
   }
   record.workers.checkpoint = {
     version_id: checkpointId,
@@ -619,16 +619,7 @@ async function main() {
         'OP changed while the ordinary promotion was staged',
       );
     console.log(
-      await wrangler([
-        'versions',
-        'deploy',
-        `${item.id}@100`,
-        '--yes',
-        '--config',
-        item.configPath,
-        '--message',
-        `main CI ${source.commit}`,
-      ]),
+      await activateUploadedVersion(item.id, item.configPath, `main CI ${source.commit}`, wrangler),
     );
     (record.workers[item.worker] as { activated: boolean }).activated = true;
     writeFileSync(evidence, `${JSON.stringify(record, null, 2)}\n`);
