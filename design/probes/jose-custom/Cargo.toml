@@ -10,7 +10,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jsonwebtoken = { version = "=11.1.0", default-features = false }
+jsonwebtoken = { version = "=12.0.0", default-features = false }
 base64 = "=0.23.1"
 p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 rsa = { version = "=0.10.0", default-features = false, features = ["encoding", "pkcs1v15"] }
